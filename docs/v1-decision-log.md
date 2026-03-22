@@ -320,7 +320,6 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** PR-009 usability pass adds editor-mode comment entry.
 9. **Affected PRs/Files:** PR-007, PR-009; `internal/cli/root.go`, command UX tests/docs.
-
 ## DEC-023
 
 1. **Decision ID:** DEC-023
