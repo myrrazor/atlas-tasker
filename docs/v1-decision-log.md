@@ -347,7 +347,6 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** medium
 8. **Revisit Trigger:** Projection freshness/consistency issues require fallback strategy.
 9. **Affected PRs/Files:** PR-008+; `internal/cli/root.go`, `internal/storage/sqlite/*`.
-
 ## DEC-025
 
 1. **Decision ID:** DEC-025

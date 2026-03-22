@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -124,5 +125,36 @@ func TestTicketMutationInputValidation(t *testing.T) {
 	}
 	if _, err := runCLI(t, "ticket", "assign", "APP-1", "not-an-actor", "--actor", "human:owner"); err == nil {
 		t.Fatal("expected invalid assignee actor to fail")
+	}
+}
+
+func TestBoardMarkdownOrderIsDeterministic(t *testing.T) {
+	withTempWorkspace(t)
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	out, err := runCLI(t, "board", "--md")
+	if err != nil {
+		t.Fatalf("board --md failed: %v", err)
+	}
+	expectedOrder := []string{
+		"### backlog",
+		"### ready",
+		"### in_progress",
+		"### in_review",
+		"### blocked",
+		"### done",
+		"### canceled",
+	}
+	last := -1
+	for _, marker := range expectedOrder {
+		index := strings.Index(out, marker)
+		if index == -1 {
+			t.Fatalf("missing marker %q in board markdown: %s", marker, out)
+		}
+		if index <= last {
+			t.Fatalf("marker %q out of order in board markdown: %s", marker, out)
+		}
+		last = index
 	}
 }
