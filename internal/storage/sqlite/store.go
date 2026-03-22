@@ -111,7 +111,7 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 		return err
 	}
 
-	if ticket, ok := extractTicketSnapshot(event.Payload); ok {
+	for _, ticket := range extractTicketSnapshots(event.Payload) {
 		if err := s.upsertTicket(ctx, ticket); err != nil {
 			return err
 		}
@@ -144,7 +144,7 @@ func (s *Store) Rebuild(ctx context.Context, project string) error {
 		if err := s.insertEventOnly(ctx, event); err != nil {
 			return err
 		}
-		if ticket, ok := extractTicketSnapshot(event.Payload); ok {
+		for _, ticket := range extractTicketSnapshots(event.Payload) {
 			if err := s.upsertTicket(ctx, ticket); err != nil {
 				return err
 			}
@@ -195,7 +195,9 @@ func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions
 		if err != nil {
 			return contracts.BoardView{}, err
 		}
-		columns[ticket.Status] = append(columns[ticket.Status], ticket)
+		boardTicket := ticket
+		boardTicket.Status = contracts.BoardStatus(ticket)
+		columns[boardTicket.Status] = append(columns[boardTicket.Status], boardTicket)
 	}
 	if err := rows.Err(); err != nil {
 		return contracts.BoardView{}, err
@@ -490,25 +492,43 @@ func scanTicket(rows *sql.Rows) (contracts.TicketSnapshot, error) {
 	return ticket, nil
 }
 
-func extractTicketSnapshot(payload any) (contracts.TicketSnapshot, bool) {
+func extractTicketSnapshots(payload any) []contracts.TicketSnapshot {
 	if payload == nil {
-		return contracts.TicketSnapshot{}, false
+		return nil
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return contracts.TicketSnapshot{}, false
+		return nil
 	}
-	var ticket contracts.TicketSnapshot
-	if err := json.Unmarshal(raw, &ticket); err == nil && ticket.ID != "" {
-		return ticket, true
+
+	result := make([]contracts.TicketSnapshot, 0, 2)
+	seen := map[string]struct{}{}
+	appendTicket := func(ticket contracts.TicketSnapshot) {
+		if ticket.ValidateForCreate() != nil {
+			return
+		}
+		if _, ok := seen[ticket.ID]; ok {
+			return
+		}
+		seen[ticket.ID] = struct{}{}
+		result = append(result, ticket)
 	}
+
 	var wrapped struct {
-		Ticket contracts.TicketSnapshot `json:"ticket"`
+		Ticket      contracts.TicketSnapshot `json:"ticket"`
+		OtherTicket contracts.TicketSnapshot `json:"other_ticket"`
 	}
-	if err := json.Unmarshal(raw, &wrapped); err == nil && wrapped.Ticket.ID != "" {
-		return wrapped.Ticket, true
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		appendTicket(wrapped.Ticket)
+		appendTicket(wrapped.OtherTicket)
 	}
-	return contracts.TicketSnapshot{}, false
+
+	var ticket contracts.TicketSnapshot
+	if err := json.Unmarshal(raw, &ticket); err == nil {
+		appendTicket(ticket)
+	}
+
+	return result
 }
 
 func nullable(value string) any {

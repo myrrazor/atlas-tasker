@@ -252,3 +252,129 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** medium
 8. **Revisit Trigger:** Performance or compatibility issues in projection workloads.
 9. **Affected PRs/Files:** PR-004+; `internal/storage/sqlite/*`, `go.mod`, `go.sum`.
+
+## DEC-018
+
+1. **Decision ID:** DEC-018
+2. **Date:** 2026-03-22
+3. **Question:** Which framework should define v1 CLI command tree and shell parity scaffolding?
+4. **Options Considered:**
+   - `github.com/spf13/cobra`.
+   - Custom command parser/dispatcher.
+5. **Chosen Option:** `github.com/spf13/cobra`.
+6. **Why We Chose It:** Matches the v1 stack recommendation and simplifies exact command-surface scaffolding with subcommands and flags.
+7. **Confidence:** high
+8. **Revisit Trigger:** CLI ergonomics or dependency policy changes.
+9. **Affected PRs/Files:** PR-005+; `cmd/tracker/*`, `internal/cli/*`, `go.mod`, `go.sum`.
+
+## DEC-019
+
+1. **Decision ID:** DEC-019
+2. **Date:** 2026-03-22
+3. **Question:** How should v1 load and persist `config.toml` for completion-mode gates?
+4. **Options Considered:**
+   - Hand-rolled parser.
+   - `github.com/pelletier/go-toml/v2`.
+5. **Chosen Option:** `github.com/pelletier/go-toml/v2`.
+6. **Why We Chose It:** Keeps config parsing/writing predictable while supporting the spec's `config.toml` contract.
+7. **Confidence:** high
+8. **Revisit Trigger:** Dependency policy requires parser removal.
+9. **Affected PRs/Files:** PR-006+; `internal/config/*`, `internal/cli/root.go`, `go.mod`, `go.sum`.
+
+## DEC-020
+
+1. **Decision ID:** DEC-020
+2. **Date:** 2026-03-22
+3. **Question:** How should v1 enforce relationship-link integrity before persistence commands are wired?
+4. **Options Considered:**
+   - Only validate at command layer later.
+   - Add domain-level link apply/remove + cycle checks now.
+5. **Chosen Option:** Domain-level link helpers now.
+6. **Why We Chose It:** Prevents scattered link logic and guarantees symmetric blocks/blocked_by updates, self-link rejection, and parent-cycle enforcement before command handlers are implemented.
+7. **Confidence:** high
+8. **Revisit Trigger:** Relationship model expands beyond current fields.
+9. **Affected PRs/Files:** PR-006+; `internal/domain/links.go`, `internal/domain/links_test.go`.
+
+## DEC-021
+
+1. **Decision ID:** DEC-021
+2. **Date:** 2026-03-22
+3. **Question:** How should v1 allocate ticket IDs and event IDs before a dedicated allocator exists?
+4. **Options Considered:**
+   - Maintain separate allocator tables now.
+   - Derive next IDs from existing markdown snapshots and event stream.
+5. **Chosen Option:** Derive next IDs from current markdown/events for v1.
+6. **Why We Chose It:** Keeps PR-007 focused and compatible with existing storage contracts without introducing new allocation infrastructure.
+7. **Confidence:** medium
+8. **Revisit Trigger:** Performance issues from repeated scans or multi-writer requirements.
+9. **Affected PRs/Files:** PR-007+; `internal/cli/actions.go`.
+
+## DEC-022
+
+1. **Decision ID:** DEC-022
+2. **Date:** 2026-03-22
+3. **Question:** How should `ticket comment` work before interactive editor support is added?
+4. **Options Considered:**
+   - Require `--body` in non-interactive mode now.
+   - Add editor invocation in PR-007.
+5. **Chosen Option:** Require `--body` now.
+6. **Why We Chose It:** Maintains deterministic CLI behavior while deferring editor integration to hardening scope.
+7. **Confidence:** high
+8. **Revisit Trigger:** PR-009 usability pass adds editor-mode comment entry.
+9. **Affected PRs/Files:** PR-007, PR-009; `internal/cli/root.go`, command UX tests/docs.
+
+## DEC-023
+
+1. **Decision ID:** DEC-023
+2. **Date:** 2026-03-22
+3. **Question:** Which libraries should power v1 terminal rendering for pretty/markdown output?
+4. **Options Considered:**
+   - Plain text only.
+   - `lipgloss` + `glamour` + terminal width detection.
+5. **Chosen Option:** `lipgloss` + `glamour` + `golang.org/x/term`.
+6. **Why We Chose It:** Aligns with the v1 stack direction and enables readable styled output with markdown rendering and width-aware wrapping.
+7. **Confidence:** high
+8. **Revisit Trigger:** Terminal compatibility or performance regressions.
+9. **Affected PRs/Files:** PR-008+; `internal/render/*`, read command render paths, `go.mod`, `go.sum`.
+
+## DEC-024
+
+1. **Decision ID:** DEC-024
+2. **Date:** 2026-03-22
+3. **Question:** Which source should drive board/backlog/next/blocked/search views in v1?
+4. **Options Considered:**
+   - Mix markdown snapshots for some views and SQLite projection for others.
+   - Route all those views through SQLite projection.
+5. **Chosen Option:** Route all these views through SQLite projection.
+6. **Why We Chose It:** Keeps list/board/search outputs consistent and aligned with the projection/index purpose of v1.
+7. **Confidence:** medium
+8. **Revisit Trigger:** Projection freshness/consistency issues require fallback strategy.
+9. **Affected PRs/Files:** PR-008+; `internal/cli/root.go`, `internal/storage/sqlite/*`.
+
+## DEC-025
+
+1. **Decision ID:** DEC-025
+2. **Date:** 2026-03-22
+3. **Question:** Which platforms should CI enforce for v1 completion?
+4. **Options Considered:**
+   - macOS + Linux + Windows.
+   - macOS + Linux only (Windows deferred).
+5. **Chosen Option:** macOS + Linux only for v1; Windows deferred to v1.1.
+6. **Why We Chose It:** Matches the latest scope lock while still validating core cross-platform behavior.
+7. **Confidence:** medium
+8. **Revisit Trigger:** v1.1 planning begins or release policy requires Windows gating.
+9. **Affected PRs/Files:** PR-009; `.github/workflows/ci.yml`, release docs.
+
+## DEC-026
+
+1. **Decision ID:** DEC-026
+2. **Date:** 2026-03-22
+3. **Question:** How should board-style views bucket blocked and canceled tickets in v1?
+4. **Options Considered:**
+   - Use raw workflow status only for board columns.
+   - Derive board columns so any ticket with `blocked_by` links appears in `blocked`, and fold `canceled` into the `done` column.
+5. **Chosen Option:** Derive board columns from ticket relationships + terminal status.
+6. **Why We Chose It:** Matches the handoff acceptance flow: a ticket linked as blocked must show up in the blocked column without an extra status move, and canceled work should share the done/closed terminal bucket in board output.
+7. **Confidence:** high
+8. **Revisit Trigger:** v1 introduces a dedicated closed/canceled view or separate board column configuration.
+9. **Affected PRs/Files:** PR-004, PR-008, PR-009; `internal/contracts/domain.go`, `internal/storage/sqlite/store.go`, `internal/cli/root.go`, `internal/render/render.go`, board-related tests/docs.
