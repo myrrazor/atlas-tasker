@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/domain"
+	"github.com/myrrazor/atlas-tasker/internal/render"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
 	"github.com/spf13/cobra"
 )
@@ -75,7 +77,7 @@ func newDoctorCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run consistency checks",
-		RunE:  notImplemented("tracker doctor", "PR-009"),
+		RunE:  runDoctor,
 	}
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
@@ -85,7 +87,7 @@ func newReindexCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reindex",
 		Short: "Rebuild SQLite projection from markdown and events",
-		RunE:  notImplemented("tracker reindex", "PR-009"),
+		RunE:  runReindex,
 	}
 	return cmd
 }
@@ -296,7 +298,7 @@ func newTicketCommand() *cobra.Command {
 
 func newBoardCommand() *cobra.Command {
 	flags := &outputFlags{}
-	cmd := &cobra.Command{Use: "board", Short: "Show board view", RunE: notImplemented("tracker board", "PR-008")}
+	cmd := &cobra.Command{Use: "board", Short: "Show board view", RunE: runBoard}
 	cmd.Flags().String("project", "", "Filter by project")
 	cmd.Flags().String("assignee", "", "Filter by assignee")
 	cmd.Flags().String("type", "", "Filter by ticket type")
@@ -305,31 +307,31 @@ func newBoardCommand() *cobra.Command {
 }
 
 func newBacklogCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "backlog", Short: "Show backlog tickets", RunE: notImplemented("tracker backlog", "PR-008")}
+	cmd := &cobra.Command{Use: "backlog", Short: "Show backlog tickets", RunE: runBacklog}
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
 func newNextCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "next", Short: "Show next-up queue", RunE: notImplemented("tracker next", "PR-008")}
+	cmd := &cobra.Command{Use: "next", Short: "Show next-up queue", RunE: runNext}
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
 func newBlockedCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "blocked", Short: "Show blocked tickets", RunE: notImplemented("tracker blocked", "PR-008")}
+	cmd := &cobra.Command{Use: "blocked", Short: "Show blocked tickets", RunE: runBlocked}
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
 func newSearchCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "search <QUERY>", Args: cobra.ExactArgs(1), Short: "Search tickets", RunE: notImplemented("tracker search", "PR-008")}
+	cmd := &cobra.Command{Use: "search <QUERY>", Args: cobra.ExactArgs(1), Short: "Search tickets", RunE: runSearch}
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
 func newRenderCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "render <ID>", Args: cobra.ExactArgs(1), Short: "Render markdown ticket details", RunE: notImplemented("tracker render", "PR-008")}
+	cmd := &cobra.Command{Use: "render <ID>", Args: cobra.ExactArgs(1), Short: "Render markdown ticket details", RunE: runRender}
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
@@ -343,12 +345,6 @@ func addReadOutputFlags(cmd *cobra.Command, flags *outputFlags) {
 func addMutationFlags(cmd *cobra.Command, flags *mutationFlags) {
 	cmd.Flags().StringVar(&flags.Actor, "actor", flags.Actor, "Mutation actor (e.g. human:owner)")
 	cmd.Flags().StringVar(&flags.Reason, "reason", "", "Optional reason for change")
-}
-
-func notImplemented(commandName string, milestone string) func(*cobra.Command, []string) error {
-	return func(_ *cobra.Command, _ []string) error {
-		return fmt.Errorf("%s is not implemented yet (%s)", commandName, milestone)
-	}
 }
 
 func executeArgs(args []string) error {
@@ -878,6 +874,203 @@ func runTicketHistory(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, events, pretty, pretty)
 }
 
+func runDoctor(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	if _, err := config.Load(workspace.root); err != nil {
+		return err
+	}
+	events, err := workspace.events.StreamEvents(ctx, "", 0)
+	if err != nil {
+		return err
+	}
+	if _, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
+		return err
+	}
+	message := fmt.Sprintf("doctor ok: %d events scanned", len(events))
+	return writeCommandOutput(cmd, map[string]any{"ok": true, "events_scanned": len(events)}, message, message)
+}
+
+func runReindex(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	if _, err := config.Load(workspace.root); err != nil {
+		return err
+	}
+	if err := workspace.projection.Rebuild(ctx, ""); err != nil {
+		return err
+	}
+	message := "reindex complete"
+	return writeCommandOutput(cmd, map[string]any{"ok": true}, message, message)
+}
+
+func runBoard(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	project, _ := cmd.Flags().GetString("project")
+	assigneeRaw, _ := cmd.Flags().GetString("assignee")
+	typeRaw, _ := cmd.Flags().GetString("type")
+	board, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{
+		Project:  project,
+		Assignee: contracts.Actor(strings.TrimSpace(assigneeRaw)),
+		Type:     contracts.TicketType(strings.TrimSpace(typeRaw)),
+	})
+	if err != nil {
+		return err
+	}
+	markdown := "## Board\n\n"
+	for _, status := range orderedBoardStatuses() {
+		tickets := board.Columns[status]
+		sort.Slice(tickets, func(i, j int) bool {
+			if tickets[i].UpdatedAt.Equal(tickets[j].UpdatedAt) {
+				return tickets[i].ID < tickets[j].ID
+			}
+			return tickets[i].UpdatedAt.Before(tickets[j].UpdatedAt)
+		})
+		markdown += fmt.Sprintf("### %s\n", status)
+		if len(tickets) == 0 {
+			markdown += "- (empty)\n"
+			continue
+		}
+		for _, ticket := range tickets {
+			markdown += fmt.Sprintf("- %s %s\n", ticket.ID, ticket.Title)
+		}
+	}
+	pretty := render.BoardPretty(board)
+	return writeCommandOutput(cmd, board, markdown, pretty)
+}
+
+func runBacklog(cmd *cobra.Command, _ []string) error {
+	return runListByStatus(cmd, "Backlog", contracts.StatusBacklog)
+}
+
+func runBlocked(cmd *cobra.Command, _ []string) error {
+	return runListByStatus(cmd, "Blocked", contracts.StatusBlocked)
+}
+
+func runListByStatus(cmd *cobra.Command, title string, status contracts.Status) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	board, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{})
+	if err != nil {
+		return err
+	}
+	tickets := append([]contracts.TicketSnapshot{}, board.Columns[status]...)
+	sort.Slice(tickets, func(i, j int) bool {
+		if tickets[i].UpdatedAt.Equal(tickets[j].UpdatedAt) {
+			return tickets[i].ID < tickets[j].ID
+		}
+		return tickets[i].UpdatedAt.Before(tickets[j].UpdatedAt)
+	})
+	markdown := fmt.Sprintf("## %s\n\n", title)
+	for _, ticket := range tickets {
+		markdown += fmt.Sprintf("- %s [%s] %s\n", ticket.ID, ticket.Priority, ticket.Title)
+	}
+	return writeCommandOutput(cmd, tickets, markdown, render.TicketsPretty(title, tickets))
+}
+
+func runNext(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	board, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{})
+	if err != nil {
+		return err
+	}
+	tickets := make([]contracts.TicketSnapshot, 0)
+	tickets = append(tickets, board.Columns[contracts.StatusReady]...)
+	tickets = append(tickets, board.Columns[contracts.StatusInProgress]...)
+	tickets = append(tickets, board.Columns[contracts.StatusBlocked]...)
+	tickets = append(tickets, board.Columns[contracts.StatusInReview]...)
+	priorityRank := map[contracts.Priority]int{
+		contracts.PriorityCritical: 4,
+		contracts.PriorityHigh:     3,
+		contracts.PriorityMedium:   2,
+		contracts.PriorityLow:      1,
+	}
+	sort.Slice(tickets, func(i, j int) bool {
+		leftReady := tickets[i].Status == contracts.StatusReady
+		rightReady := tickets[j].Status == contracts.StatusReady
+		if leftReady != rightReady {
+			return leftReady
+		}
+		leftPriority := priorityRank[tickets[i].Priority]
+		rightPriority := priorityRank[tickets[j].Priority]
+		if leftPriority != rightPriority {
+			return leftPriority > rightPriority
+		}
+		if !tickets[i].UpdatedAt.Equal(tickets[j].UpdatedAt) {
+			return tickets[i].UpdatedAt.Before(tickets[j].UpdatedAt)
+		}
+		return tickets[i].ID < tickets[j].ID
+	})
+	markdown := "## Next\n\n"
+	for _, ticket := range tickets {
+		markdown += fmt.Sprintf("- %s [%s/%s] %s\n", ticket.ID, ticket.Status, ticket.Priority, ticket.Title)
+	}
+	return writeCommandOutput(cmd, tickets, markdown, render.TicketsPretty("Next", tickets))
+}
+
+func runSearch(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	query, err := contracts.ParseSearchQuery(args[0])
+	if err != nil {
+		return err
+	}
+	tickets, err := workspace.projection.QuerySearch(ctx, query)
+	if err != nil {
+		return err
+	}
+	markdown := "## Search Results\n\n"
+	for _, ticket := range tickets {
+		markdown += fmt.Sprintf("- %s [%s] %s\n", ticket.ID, ticket.Status, ticket.Title)
+	}
+	return writeCommandOutput(cmd, tickets, markdown, render.TicketsPretty("Search", tickets))
+}
+
+func runRender(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	ticket, err := workspace.ticket.GetTicket(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	rawMD, err := mdstore.EncodeTicketMarkdown(ticket)
+	if err != nil {
+		return err
+	}
+	pretty := render.Markdown(rawMD)
+	return writeCommandOutput(cmd, ticket, rawMD, pretty)
+}
+
 func addUniqueLabel(values []string, label string) []string {
 	for _, existing := range values {
 		if existing == label {
@@ -895,4 +1088,15 @@ func removeLabel(values []string, label string) []string {
 		}
 	}
 	return result
+}
+
+func orderedBoardStatuses() []contracts.Status {
+	return []contracts.Status{
+		contracts.StatusBacklog,
+		contracts.StatusReady,
+		contracts.StatusInProgress,
+		contracts.StatusInReview,
+		contracts.StatusBlocked,
+		contracts.StatusDone,
+	}
 }
