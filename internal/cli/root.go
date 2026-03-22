@@ -77,7 +77,7 @@ func newDoctorCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run consistency checks",
-		RunE:  notImplemented("tracker doctor", "PR-009"),
+		RunE:  runDoctor,
 	}
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
@@ -87,7 +87,7 @@ func newReindexCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reindex",
 		Short: "Rebuild SQLite projection from markdown and events",
-		RunE:  notImplemented("tracker reindex", "PR-009"),
+		RunE:  runReindex,
 	}
 	return cmd
 }
@@ -345,12 +345,6 @@ func addReadOutputFlags(cmd *cobra.Command, flags *outputFlags) {
 func addMutationFlags(cmd *cobra.Command, flags *mutationFlags) {
 	cmd.Flags().StringVar(&flags.Actor, "actor", flags.Actor, "Mutation actor (e.g. human:owner)")
 	cmd.Flags().StringVar(&flags.Reason, "reason", "", "Optional reason for change")
-}
-
-func notImplemented(commandName string, milestone string) func(*cobra.Command, []string) error {
-	return func(_ *cobra.Command, _ []string) error {
-		return fmt.Errorf("%s is not implemented yet (%s)", commandName, milestone)
-	}
 }
 
 func executeArgs(args []string) error {
@@ -880,6 +874,44 @@ func runTicketHistory(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, events, pretty, pretty)
 }
 
+func runDoctor(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	if _, err := config.Load(workspace.root); err != nil {
+		return err
+	}
+	events, err := workspace.events.StreamEvents(ctx, "", 0)
+	if err != nil {
+		return err
+	}
+	if _, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
+		return err
+	}
+	message := fmt.Sprintf("doctor ok: %d events scanned", len(events))
+	return writeCommandOutput(cmd, map[string]any{"ok": true, "events_scanned": len(events)}, message, message)
+}
+
+func runReindex(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	if _, err := config.Load(workspace.root); err != nil {
+		return err
+	}
+	if err := workspace.projection.Rebuild(ctx, ""); err != nil {
+		return err
+	}
+	message := "reindex complete"
+	return writeCommandOutput(cmd, map[string]any{"ok": true}, message, message)
+}
+
 func runBoard(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
 	workspace, err := openWorkspace()
@@ -1066,6 +1098,5 @@ func orderedBoardStatuses() []contracts.Status {
 		contracts.StatusInReview,
 		contracts.StatusBlocked,
 		contracts.StatusDone,
-		contracts.StatusCanceled,
 	}
 }

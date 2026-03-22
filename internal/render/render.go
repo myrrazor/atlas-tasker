@@ -80,7 +80,6 @@ func BoardPretty(board contracts.BoardView) string {
 		contracts.StatusInReview,
 		contracts.StatusBlocked,
 		contracts.StatusDone,
-		contracts.StatusCanceled,
 	}
 	labels := map[contracts.Status]string{
 		contracts.StatusBacklog:    "Backlog",
@@ -89,7 +88,6 @@ func BoardPretty(board contracts.BoardView) string {
 		contracts.StatusInReview:   "In Review",
 		contracts.StatusBlocked:    "Blocked",
 		contracts.StatusDone:       "Done",
-		contracts.StatusCanceled:   "Canceled",
 	}
 	sections := make([]string, 0, len(ordered))
 	for _, status := range ordered {
