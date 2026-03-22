@@ -209,3 +209,18 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** None (one-time procedural acknowledgement).
 9. **Affected PRs/Files:** Process decision only; no repo code impact.
+
+## DEC-015
+
+1. **Decision ID:** DEC-015
+2. **Date:** 2026-03-22
+3. **Question:** Where should `workflow.completion_mode` be modeled for v1 permission checks?
+4. **Options Considered:**
+   - Ticket-level field.
+   - Project-level field.
+   - Tracker config field (`workflow.completion_mode`).
+5. **Chosen Option:** Tracker config field.
+6. **Why We Chose It:** This matches the v1 spec and avoids policy drift across tickets when gate mode changes.
+7. **Confidence:** high
+8. **Revisit Trigger:** Requirement emerges for per-project or per-ticket completion policy.
+9. **Affected PRs/Files:** PR-002+; `internal/contracts/domain.go`, later config loader/store code.

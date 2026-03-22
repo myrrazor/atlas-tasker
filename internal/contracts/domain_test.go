@@ -45,4 +45,26 @@ func TestTicketSnapshotValidateForCreate(t *testing.T) {
 	if err := ticket.ValidateForCreate(); err == nil {
 		t.Fatal("expected error for invalid type")
 	}
+
+	ticket.Type = TicketTypeTask
+	ticket.SchemaVersion = 99
+	if err := ticket.ValidateForCreate(); err == nil {
+		t.Fatal("expected error for invalid schema version")
+	}
+}
+
+func TestTrackerConfigValidate(t *testing.T) {
+	cfg := TrackerConfig{
+		Workflow: WorkflowConfig{
+			CompletionMode: CompletionModeOwnerGate,
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected valid config, got %v", err)
+	}
+
+	cfg.Workflow.CompletionMode = CompletionMode("invalid")
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid completion mode error")
+	}
 }

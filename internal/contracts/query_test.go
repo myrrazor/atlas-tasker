@@ -15,6 +15,17 @@ func TestParseSearchQuery(t *testing.T) {
 	}
 }
 
+func TestParseSearchQuerySupportsAllV1Operators(t *testing.T) {
+	raw := "status=ready type=task project=APP assignee=agent:builder-1 label=cli text~parser"
+	query, err := ParseSearchQuery(raw)
+	if err != nil {
+		t.Fatalf("expected parse success, got %v", err)
+	}
+	if len(query.Terms) != 6 {
+		t.Fatalf("expected 6 terms, got %d", len(query.Terms))
+	}
+}
+
 func TestParseSearchQueryRejectsUnsupportedToken(t *testing.T) {
 	_, err := ParseSearchQuery("foo=bar")
 	if err == nil {

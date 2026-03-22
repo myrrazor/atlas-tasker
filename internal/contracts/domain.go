@@ -118,6 +118,27 @@ func (p Project) Validate() error {
 	return nil
 }
 
+// WorkflowConfig captures project/workspace workflow policy.
+type WorkflowConfig struct {
+	CompletionMode CompletionMode `json:"completion_mode"`
+}
+
+func (w WorkflowConfig) Validate() error {
+	if !w.CompletionMode.IsValid() {
+		return fmt.Errorf("invalid completion mode: %s", w.CompletionMode)
+	}
+	return nil
+}
+
+// TrackerConfig defines top-level runtime config contracts.
+type TrackerConfig struct {
+	Workflow WorkflowConfig `json:"workflow"`
+}
+
+func (c TrackerConfig) Validate() error {
+	return c.Workflow.Validate()
+}
+
 // TicketSnapshot mirrors v1 ticket markdown frontmatter plus body sections.
 type TicketSnapshot struct {
 	ID            string     `json:"id"`
@@ -168,8 +189,8 @@ func (t TicketSnapshot) ValidateForCreate() error {
 	if t.Reviewer != "" && !t.Reviewer.IsValid() {
 		return fmt.Errorf("invalid reviewer actor: %s", t.Reviewer)
 	}
-	if t.SchemaVersion == 0 {
-		return fmt.Errorf("schema_version is required")
+	if t.SchemaVersion != CurrentSchemaVersion {
+		return fmt.Errorf("schema_version must be %d", CurrentSchemaVersion)
 	}
 	if t.CreatedAt.IsZero() {
 		return fmt.Errorf("created_at is required")
