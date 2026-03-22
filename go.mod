@@ -3,6 +3,7 @@ module github.com/myrrazor/atlas-tasker
 go 1.25.0
 
 require (
+	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.47.0
