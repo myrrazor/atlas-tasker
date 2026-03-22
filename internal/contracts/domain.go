@@ -204,3 +204,14 @@ func (t TicketSnapshot) ValidateForCreate() error {
 func IsTerminalStatus(status Status) bool {
 	return status == StatusDone || status == StatusCanceled
 }
+
+// BoardStatus returns the status bucket used by board-style views.
+func BoardStatus(ticket TicketSnapshot) Status {
+	if IsTerminalStatus(ticket.Status) {
+		return StatusDone
+	}
+	if ticket.Status != StatusBlocked && len(ticket.BlockedBy) > 0 {
+		return StatusBlocked
+	}
+	return ticket.Status
+}
