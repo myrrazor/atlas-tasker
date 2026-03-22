@@ -1,0 +1,78 @@
+# Atlas Tasker v1 Command Reference
+
+## Top-Level
+
+- `tracker init`
+- `tracker help`
+- `tracker doctor`
+- `tracker reindex`
+- `tracker config get [KEY]`
+- `tracker config set <KEY> <VALUE>`
+
+## Project
+
+- `tracker project create <KEY> <NAME>`
+- `tracker project list`
+- `tracker project view <KEY>`
+
+## Ticket CRUD
+
+- `tracker ticket create --project <KEY> --title <TEXT> --type <epic|task|bug|subtask> [flags]`
+- `tracker ticket view <ID>`
+- `tracker ticket edit <ID> [flags]`
+- `tracker ticket delete <ID>`
+- `tracker ticket list [--project <KEY>] [--status <STATUS>] [--assignee <ACTOR>] [--type <TYPE>]`
+
+## Ticket Mutation
+
+- `tracker ticket move <ID> <STATUS>`
+- `tracker ticket assign <ID> <ACTOR>`
+- `tracker ticket priority <ID> <PRIORITY>`
+- `tracker ticket label add <ID> <LABEL>`
+- `tracker ticket label remove <ID> <LABEL>`
+
+## Relationships
+
+- `tracker ticket link <ID> --blocks <OTHER_ID>`
+- `tracker ticket link <ID> --blocked-by <OTHER_ID>`
+- `tracker ticket link <ID> --parent <PARENT_ID>`
+- `tracker ticket unlink <ID> <OTHER_ID>`
+
+## Comments and History
+
+- `tracker ticket comment <ID> --body <TEXT>`
+- `tracker ticket history <ID>`
+
+## Views
+
+- `tracker board`
+- `tracker backlog`
+- `tracker next`
+- `tracker blocked`
+- `tracker search <QUERY>`
+- `tracker render <ID>`
+
+## Shell Mode
+
+- `tracker shell`
+
+Slash command examples:
+
+- `/project create APP "App Project"`
+- `/ticket create --project APP --title "Task" --type task`
+- `/ticket move APP-1 in_review --actor agent:builder-1`
+- `/ticket history APP-1`
+- `/board`
+
+## Common Flags
+
+Read commands:
+
+- `--pretty`
+- `--md`
+- `--json`
+
+Mutating commands:
+
+- `--actor <ACTOR>`
+- `--reason <TEXT>`

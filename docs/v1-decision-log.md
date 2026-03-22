@@ -360,7 +360,6 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** medium
 8. **Revisit Trigger:** v1.1 planning begins or release policy requires Windows gating.
 9. **Affected PRs/Files:** PR-009; `.github/workflows/ci.yml`, release docs.
-
 ## DEC-026
 
 1. **Decision ID:** DEC-026
