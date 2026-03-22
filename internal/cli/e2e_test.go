@@ -45,6 +45,9 @@ func TestAcceptanceFlowWithRecovery(t *testing.T) {
 	if !strings.Contains(board, "APP-2") || !strings.Contains(board, "Done") {
 		t.Fatalf("board output missing expected ticket/state: %s", board)
 	}
+	if !strings.Contains(board, "Blocked (1)") || !strings.Contains(board, "APP-4 Bug") {
+		t.Fatalf("board output missing blocked ticket placement: %s", board)
+	}
 
 	history := must("ticket", "history", "APP-2", "--pretty")
 	if !strings.Contains(history, "ticket.moved") {
@@ -58,6 +61,9 @@ func TestAcceptanceFlowWithRecovery(t *testing.T) {
 	reindexedBoard := must("board", "--project", "APP", "--pretty")
 	if !strings.Contains(reindexedBoard, "APP-2") {
 		t.Fatalf("reindex board missing APP-2: %s", reindexedBoard)
+	}
+	if !strings.Contains(reindexedBoard, "Blocked (1)") || !strings.Contains(reindexedBoard, "APP-4 Bug") {
+		t.Fatalf("reindex board missing blocked placement: %s", reindexedBoard)
 	}
 }
 
