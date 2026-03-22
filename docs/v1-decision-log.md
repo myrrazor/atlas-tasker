@@ -224,3 +224,17 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Requirement emerges for per-project or per-ticket completion policy.
 9. **Affected PRs/Files:** PR-002+; `internal/contracts/domain.go`, later config loader/store code.
+
+## DEC-016
+
+1. **Decision ID:** DEC-016
+2. **Date:** 2026-03-22
+3. **Question:** How should v1 parse and emit markdown frontmatter for ticket/project files?
+4. **Options Considered:**
+   - Custom ad-hoc parser.
+   - `gopkg.in/yaml.v3` for frontmatter encode/decode.
+5. **Chosen Option:** Use `gopkg.in/yaml.v3`.
+6. **Why We Chose It:** Reduces parsing bugs and keeps markdown snapshot contracts explicit and deterministic.
+7. **Confidence:** high
+8. **Revisit Trigger:** Dependency policy requires zero third-party packages.
+9. **Affected PRs/Files:** PR-003+; `internal/storage/markdown/*`, `go.mod`, `go.sum`.

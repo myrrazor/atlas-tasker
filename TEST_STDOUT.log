@@ -1,2 +1,5 @@
 ok  	github.com/myrrazor/atlas-tasker/internal/contracts	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/domain	(cached)
+?   	github.com/myrrazor/atlas-tasker/internal/storage	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	(cached)
