@@ -293,7 +293,6 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Relationship model expands beyond current fields.
 9. **Affected PRs/Files:** PR-006+; `internal/domain/links.go`, `internal/domain/links_test.go`.
-
 ## DEC-021
 
 1. **Decision ID:** DEC-021

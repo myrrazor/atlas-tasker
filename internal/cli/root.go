@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -72,14 +74,41 @@ func newReindexCommand() *cobra.Command {
 func newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "config", Short: "Read or update tracker config"}
 	cmd.AddCommand(&cobra.Command{
-		Use:   "get",
+		Use:   "get [KEY]",
+		Args:  cobra.MaximumNArgs(1),
 		Short: "Get config values",
-		RunE:  notImplemented("tracker config get", "PR-006"),
+		RunE: func(_ *cobra.Command, args []string) error {
+			key := ""
+			if len(args) == 1 {
+				key = args[0]
+			}
+			rootDir, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			value, err := config.Get(rootDir, key)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stdout, "%s\n", value)
+			return nil
+		},
 	})
 	cmd.AddCommand(&cobra.Command{
-		Use:   "set",
+		Use:   "set <KEY> <VALUE>",
+		Args:  cobra.ExactArgs(2),
 		Short: "Set config values",
-		RunE:  notImplemented("tracker config set", "PR-006"),
+		RunE: func(_ *cobra.Command, args []string) error {
+			rootDir, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			if err := config.Set(rootDir, args[0], args[1]); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stdout, "ok\n")
+			return nil
+		},
 	})
 	return cmd
 }
