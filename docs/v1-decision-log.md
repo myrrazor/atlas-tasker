@@ -238,3 +238,17 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Dependency policy requires zero third-party packages.
 9. **Affected PRs/Files:** PR-003+; `internal/storage/markdown/*`, `go.mod`, `go.sum`.
+
+## DEC-017
+
+1. **Decision ID:** DEC-017
+2. **Date:** 2026-03-22
+3. **Question:** Which SQLite driver should v1 use for local projection/index?
+4. **Options Considered:**
+   - `modernc.org/sqlite` (pure Go).
+   - `github.com/mattn/go-sqlite3` (CGO).
+5. **Chosen Option:** `modernc.org/sqlite`.
+6. **Why We Chose It:** Keeps local setup straightforward without CGO dependencies while supporting macOS/Linux v1 targets.
+7. **Confidence:** medium
+8. **Revisit Trigger:** Performance or compatibility issues in projection workloads.
+9. **Affected PRs/Files:** PR-004+; `internal/storage/sqlite/*`, `go.mod`, `go.sum`.
