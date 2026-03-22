@@ -266,7 +266,6 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** CLI ergonomics or dependency policy changes.
 9. **Affected PRs/Files:** PR-005+; `cmd/tracker/*`, `internal/cli/*`, `go.mod`, `go.sum`.
-
 ## DEC-019
 
 1. **Decision ID:** DEC-019
