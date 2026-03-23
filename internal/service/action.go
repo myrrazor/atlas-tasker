@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,6 +81,238 @@ func (s *ActionService) AppendAndProject(ctx context.Context, event contracts.Ev
 		}
 	}
 	return nil
+}
+
+func (s *ActionService) AllocateTicketID(ctx context.Context, project string) (string, error) {
+	tickets, err := s.Tickets.ListTickets(ctx, contracts.TicketListOptions{Project: strings.TrimSpace(project), IncludeArchived: true})
+	if err != nil {
+		return "", err
+	}
+	max := 0
+	prefix := strings.TrimSpace(project) + "-"
+	for _, ticket := range tickets {
+		if !strings.HasPrefix(ticket.ID, prefix) {
+			continue
+		}
+		raw := strings.TrimPrefix(ticket.ID, prefix)
+		n, err := strconv.Atoi(raw)
+		if err == nil && n > max {
+			max = n
+		}
+	}
+	return fmt.Sprintf("%s-%d", strings.TrimSpace(project), max+1), nil
+}
+
+func (s *ActionService) CreateTrackedTicket(ctx context.Context, ticket contracts.TicketSnapshot, actor contracts.Actor, reason string) (contracts.TicketSnapshot, error) {
+	if !actor.IsValid() {
+		return contracts.TicketSnapshot{}, fmt.Errorf("invalid actor: %s", actor)
+	}
+	if _, err := s.Projects.GetProject(ctx, ticket.Project); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	normalized := contracts.NormalizeTicketSnapshot(ticket)
+	if strings.TrimSpace(normalized.ID) == "" {
+		id, err := s.AllocateTicketID(ctx, normalized.Project)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		normalized.ID = id
+	}
+	if normalized.SchemaVersion == 0 {
+		normalized.SchemaVersion = contracts.CurrentSchemaVersion
+	}
+	if err := s.CreateTicket(ctx, normalized); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	eventID, err := s.NextEventID(ctx, normalized.Project)
+	if err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	event := contracts.Event{
+		EventID:       eventID,
+		Timestamp:     normalized.UpdatedAt,
+		Actor:         actor,
+		Reason:        reason,
+		Type:          contracts.EventTicketCreated,
+		Project:       normalized.Project,
+		TicketID:      normalized.ID,
+		Payload:       normalized,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := s.AppendAndProject(ctx, event); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	return normalized, nil
+}
+
+func (s *ActionService) SaveTrackedTicket(ctx context.Context, ticket contracts.TicketSnapshot, actor contracts.Actor, reason string) (contracts.TicketSnapshot, error) {
+	if !actor.IsValid() {
+		return contracts.TicketSnapshot{}, fmt.Errorf("invalid actor: %s", actor)
+	}
+	normalized := contracts.NormalizeTicketSnapshot(ticket)
+	if err := s.UpdateTicket(ctx, normalized); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	eventID, err := s.NextEventID(ctx, normalized.Project)
+	if err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	event := contracts.Event{
+		EventID:       eventID,
+		Timestamp:     normalized.UpdatedAt,
+		Actor:         actor,
+		Reason:        reason,
+		Type:          contracts.EventTicketUpdated,
+		Project:       normalized.Project,
+		TicketID:      normalized.ID,
+		Payload:       normalized,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := s.AppendAndProject(ctx, event); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	return normalized, nil
+}
+
+func (s *ActionService) AssignTicket(ctx context.Context, ticketID string, assignee contracts.Actor, actor contracts.Actor, reason string) (contracts.TicketSnapshot, error) {
+	if !actor.IsValid() {
+		return contracts.TicketSnapshot{}, fmt.Errorf("invalid actor: %s", actor)
+	}
+	if assignee != "" && !assignee.IsValid() {
+		return contracts.TicketSnapshot{}, fmt.Errorf("invalid assignee actor: %s", assignee)
+	}
+	ticket, err := s.Tickets.GetTicket(ctx, ticketID)
+	if err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	ticket.Assignee = assignee
+	ticket.UpdatedAt = s.now()
+	return s.SaveTrackedTicket(ctx, ticket, actor, reason)
+}
+
+func (s *ActionService) CommentTicket(ctx context.Context, ticketID string, body string, actor contracts.Actor, reason string) error {
+	if !actor.IsValid() {
+		return fmt.Errorf("invalid actor: %s", actor)
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return fmt.Errorf("comment body is required in v1 non-interactive mode")
+	}
+	ticket, err := s.Tickets.GetTicket(ctx, ticketID)
+	if err != nil {
+		return err
+	}
+	now := s.now()
+	eventID, err := s.NextEventID(ctx, ticket.Project)
+	if err != nil {
+		return err
+	}
+	event := contracts.Event{
+		EventID:       eventID,
+		Timestamp:     now,
+		Actor:         actor,
+		Reason:        reason,
+		Type:          contracts.EventTicketCommented,
+		Project:       ticket.Project,
+		TicketID:      ticket.ID,
+		Payload:       map[string]any{"body": body},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	return s.AppendAndProject(ctx, event)
+}
+
+func (s *ActionService) LinkTickets(ctx context.Context, id string, otherID string, kind domain.LinkKind, actor contracts.Actor, reason string) (contracts.Event, error) {
+	if !actor.IsValid() {
+		return contracts.Event{}, fmt.Errorf("invalid actor: %s", actor)
+	}
+	mapped, err := s.loadTicketsMap(ctx)
+	if err != nil {
+		return contracts.Event{}, err
+	}
+	if err := domain.ApplyLink(mapped, id, otherID, kind); err != nil {
+		return contracts.Event{}, err
+	}
+	now := s.now()
+	trimmedOther := strings.TrimSpace(otherID)
+	for _, ticketID := range []string{strings.TrimSpace(id), trimmedOther} {
+		ticket := mapped[ticketID]
+		ticket.UpdatedAt = now
+		if err := s.UpdateTicket(ctx, ticket); err != nil {
+			return contracts.Event{}, err
+		}
+	}
+	eventID, err := s.NextEventID(ctx, mapped[strings.TrimSpace(id)].Project)
+	if err != nil {
+		return contracts.Event{}, err
+	}
+	event := contracts.Event{
+		EventID:   eventID,
+		Timestamp: now,
+		Actor:     actor,
+		Reason:    reason,
+		Type:      contracts.EventTicketLinked,
+		Project:   mapped[strings.TrimSpace(id)].Project,
+		TicketID:  strings.TrimSpace(id),
+		Payload: map[string]any{
+			"id":           strings.TrimSpace(id),
+			"other_id":     trimmedOther,
+			"kind":         kind,
+			"ticket":       mapped[strings.TrimSpace(id)],
+			"other_ticket": mapped[trimmedOther],
+		},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := s.AppendAndProject(ctx, event); err != nil {
+		return contracts.Event{}, err
+	}
+	return event, nil
+}
+
+func (s *ActionService) UnlinkTickets(ctx context.Context, id string, otherID string, actor contracts.Actor, reason string) (contracts.Event, error) {
+	if !actor.IsValid() {
+		return contracts.Event{}, fmt.Errorf("invalid actor: %s", actor)
+	}
+	mapped, err := s.loadTicketsMap(ctx)
+	if err != nil {
+		return contracts.Event{}, err
+	}
+	if err := domain.RemoveLink(mapped, id, otherID); err != nil {
+		return contracts.Event{}, err
+	}
+	now := s.now()
+	trimmedID := strings.TrimSpace(id)
+	trimmedOther := strings.TrimSpace(otherID)
+	for _, ticketID := range []string{trimmedID, trimmedOther} {
+		ticket := mapped[ticketID]
+		ticket.UpdatedAt = now
+		if err := s.UpdateTicket(ctx, ticket); err != nil {
+			return contracts.Event{}, err
+		}
+	}
+	eventID, err := s.NextEventID(ctx, mapped[trimmedID].Project)
+	if err != nil {
+		return contracts.Event{}, err
+	}
+	event := contracts.Event{
+		EventID:   eventID,
+		Timestamp: now,
+		Actor:     actor,
+		Reason:    reason,
+		Type:      contracts.EventTicketUnlinked,
+		Project:   mapped[trimmedID].Project,
+		TicketID:  trimmedID,
+		Payload: map[string]any{
+			"id":           trimmedID,
+			"other_id":     trimmedOther,
+			"ticket":       mapped[trimmedID],
+			"other_ticket": mapped[trimmedOther],
+		},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := s.AppendAndProject(ctx, event); err != nil {
+		return contracts.Event{}, err
+	}
+	return event, nil
 }
 
 func (s *ActionService) ClaimTicket(ctx context.Context, ticketID string, actor contracts.Actor, reason string) (contracts.TicketSnapshot, error) {
@@ -622,4 +855,16 @@ func (s *ActionService) expireLease(ctx context.Context, ticket *contracts.Ticke
 		return contracts.TicketSnapshot{}, err
 	}
 	return *ticket, nil
+}
+
+func (s *ActionService) loadTicketsMap(ctx context.Context) (map[string]contracts.TicketSnapshot, error) {
+	tickets, err := s.Tickets.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	if err != nil {
+		return nil, err
+	}
+	mapped := make(map[string]contracts.TicketSnapshot, len(tickets))
+	for _, ticket := range tickets {
+		mapped[ticket.ID] = ticket
+	}
+	return mapped, nil
 }
