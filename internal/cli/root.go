@@ -594,25 +594,8 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("invalid reviewer actor: %s", reviewerRaw)
 		}
 	}
-	if err := workspace.ticket.CreateTicket(ctx, ticket); err != nil {
-		return err
-	}
-	eventID, err := workspace.nextEventID(ctx, project)
+	ticket, err = workspace.actions.CreateTrackedTicket(ctx, ticket, actor, reason)
 	if err != nil {
-		return err
-	}
-	event := contracts.Event{
-		EventID:       eventID,
-		Timestamp:     now,
-		Actor:         actor,
-		Reason:        reason,
-		Type:          contracts.EventTicketCreated,
-		Project:       project,
-		TicketID:      id,
-		Payload:       ticket,
-		SchemaVersion: contracts.CurrentSchemaVersion,
-	}
-	if err := workspace.appendAndProject(ctx, event); err != nil {
 		return err
 	}
 	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s", ticket.ID, ticket.Title), fmt.Sprintf("created %s", ticket.ID))
@@ -703,15 +686,8 @@ func runTicketEdit(cmd *cobra.Command, args []string) error {
 		}
 	}
 	ticket.UpdatedAt = defaultNow()
-	if err := workspace.ticket.UpdateTicket(ctx, ticket); err != nil {
-		return err
-	}
-	eventID, err := workspace.nextEventID(ctx, ticket.Project)
+	ticket, err = workspace.actions.SaveTrackedTicket(ctx, ticket, normalizeActor(actorRaw), reason)
 	if err != nil {
-		return err
-	}
-	event := contracts.Event{EventID: eventID, Timestamp: ticket.UpdatedAt, Actor: normalizeActor(actorRaw), Reason: reason, Type: contracts.EventTicketUpdated, Project: ticket.Project, TicketID: ticket.ID, Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion}
-	if err := workspace.appendAndProject(ctx, event); err != nil {
 		return err
 	}
 	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s", ticket.ID, ticket.Title), fmt.Sprintf("updated %s", ticket.ID))
@@ -849,15 +825,7 @@ func runTicketFieldUpdate(cmd *cobra.Command, ticketID string, mutate func(*cont
 	}
 	mutate(&ticket)
 	ticket.UpdatedAt = defaultNow()
-	if err := workspace.ticket.UpdateTicket(ctx, ticket); err != nil {
-		return err
-	}
-	eventID, err := workspace.nextEventID(ctx, ticket.Project)
-	if err != nil {
-		return err
-	}
-	event := contracts.Event{EventID: eventID, Timestamp: ticket.UpdatedAt, Actor: actor, Reason: reason, Type: contracts.EventTicketUpdated, Project: ticket.Project, TicketID: ticket.ID, Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion}
-	if err := workspace.appendAndProject(ctx, event); err != nil {
+	if _, err := workspace.actions.SaveTrackedTicket(ctx, ticket, actor, reason); err != nil {
 		return err
 	}
 	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s", ticket.ID, message), fmt.Sprintf("%s: %s", message, ticket.ID))
@@ -901,27 +869,8 @@ func runTicketLink(cmd *cobra.Command, args []string) error {
 		otherID = parent
 		kind = domain.LinkParent
 	}
-	mapped, err := loadTicketsMap(ctx, workspace)
+	event, err := workspace.actions.LinkTickets(ctx, args[0], otherID, kind, normalizeActor(actorRaw), reason)
 	if err != nil {
-		return err
-	}
-	if err := domain.ApplyLink(mapped, args[0], otherID, kind); err != nil {
-		return err
-	}
-	now := defaultNow()
-	for _, id := range []string{args[0], strings.TrimSpace(otherID)} {
-		ticket := mapped[id]
-		ticket.UpdatedAt = now
-		if err := workspace.ticket.UpdateTicket(ctx, ticket); err != nil {
-			return err
-		}
-	}
-	eventID, err := workspace.nextEventID(ctx, mapped[args[0]].Project)
-	if err != nil {
-		return err
-	}
-	event := contracts.Event{EventID: eventID, Timestamp: now, Actor: normalizeActor(actorRaw), Reason: reason, Type: contracts.EventTicketLinked, Project: mapped[args[0]].Project, TicketID: args[0], Payload: map[string]any{"id": args[0], "other_id": strings.TrimSpace(otherID), "kind": kind, "ticket": mapped[args[0]], "other_ticket": mapped[strings.TrimSpace(otherID)]}, SchemaVersion: contracts.CurrentSchemaVersion}
-	if err := workspace.appendAndProject(ctx, event); err != nil {
 		return err
 	}
 	return writeCommandOutput(cmd, event, fmt.Sprintf("linked %s %s %s", args[0], kind, strings.TrimSpace(otherID)), fmt.Sprintf("linked %s", args[0]))
@@ -936,27 +885,8 @@ func runTicketUnlink(cmd *cobra.Command, args []string) error {
 	defer workspace.close()
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
-	mapped, err := loadTicketsMap(ctx, workspace)
+	event, err := workspace.actions.UnlinkTickets(ctx, args[0], args[1], normalizeActor(actorRaw), reason)
 	if err != nil {
-		return err
-	}
-	if err := domain.RemoveLink(mapped, args[0], args[1]); err != nil {
-		return err
-	}
-	now := defaultNow()
-	for _, id := range []string{strings.TrimSpace(args[0]), strings.TrimSpace(args[1])} {
-		ticket := mapped[id]
-		ticket.UpdatedAt = now
-		if err := workspace.ticket.UpdateTicket(ctx, ticket); err != nil {
-			return err
-		}
-	}
-	eventID, err := workspace.nextEventID(ctx, mapped[strings.TrimSpace(args[0])].Project)
-	if err != nil {
-		return err
-	}
-	event := contracts.Event{EventID: eventID, Timestamp: now, Actor: normalizeActor(actorRaw), Reason: reason, Type: contracts.EventTicketUnlinked, Project: mapped[strings.TrimSpace(args[0])].Project, TicketID: strings.TrimSpace(args[0]), Payload: map[string]any{"id": strings.TrimSpace(args[0]), "other_id": strings.TrimSpace(args[1]), "ticket": mapped[strings.TrimSpace(args[0])], "other_ticket": mapped[strings.TrimSpace(args[1])]}, SchemaVersion: contracts.CurrentSchemaVersion}
-	if err := workspace.appendAndProject(ctx, event); err != nil {
 		return err
 	}
 	return writeCommandOutput(cmd, event, fmt.Sprintf("unlinked %s %s", args[0], args[1]), fmt.Sprintf("unlinked %s", args[0]))
@@ -975,20 +905,10 @@ func runTicketComment(cmd *cobra.Command, args []string) error {
 	}
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
-	ticket, err := workspace.ticket.GetTicket(ctx, args[0])
-	if err != nil {
+	if err := workspace.actions.CommentTicket(ctx, args[0], body, normalizeActor(actorRaw), reason); err != nil {
 		return err
 	}
-	now := defaultNow()
-	eventID, err := workspace.nextEventID(ctx, ticket.Project)
-	if err != nil {
-		return err
-	}
-	event := contracts.Event{EventID: eventID, Timestamp: now, Actor: normalizeActor(actorRaw), Reason: reason, Type: contracts.EventTicketCommented, Project: ticket.Project, TicketID: ticket.ID, Payload: map[string]any{"body": strings.TrimSpace(body)}, SchemaVersion: contracts.CurrentSchemaVersion}
-	if err := workspace.appendAndProject(ctx, event); err != nil {
-		return err
-	}
-	return writeCommandOutput(cmd, event, body, fmt.Sprintf("comment added to %s", ticket.ID))
+	return writeCommandOutput(cmd, map[string]any{"ticket_id": args[0], "body": strings.TrimSpace(body)}, body, fmt.Sprintf("comment added to %s", args[0]))
 }
 
 func runTicketHistory(cmd *cobra.Command, args []string) error {

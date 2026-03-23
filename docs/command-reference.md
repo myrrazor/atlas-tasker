@@ -89,6 +89,28 @@ Slash command examples:
 - `/ticket history APP-1`
 - `/board`
 
+## TUI Shortcuts
+
+Once `tracker tui` is running:
+
+- `/` opens the slash command palette
+- `n` opens the create-ticket form
+- `e` edits the selected ticket
+- `m` opens the move prompt
+- `s` opens the assign prompt
+- `l` opens the link prompt
+- `u` opens the unlink prompt
+- `c` toggles claim/release for the selected ticket
+- `o` opens the comment prompt
+- `p` requests review for the selected ticket
+- `v` approves the selected ticket
+- `x` opens the reject prompt
+- `d` completes the selected ticket
+- `tab` / `shift+tab` switch tabs
+- `j` / `k` or arrow keys move the list cursor
+- `enter` opens detail or submits the active dialog
+- `esc` cancels the active dialog
+
 ## Common Flags
 
 Read commands:
