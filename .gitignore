@@ -1,0 +1,10 @@
+# test artifacts
+TEST_STDOUT.log
+*.log
+
+# local review notes
+CLAUDE_REVIEW_*.md
+CLAW_REVIEW_*.md
+
+# editor/system
+.DS_Store

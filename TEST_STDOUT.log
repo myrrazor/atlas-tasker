@@ -1,2 +1,12 @@
-ok  	github.com/myrrazor/atlas-tasker/internal/contracts	(cached)
+?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	0.646s
+ok  	github.com/myrrazor/atlas-tasker/internal/config	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.153s
 ok  	github.com/myrrazor/atlas-tasker/internal/domain	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/render	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/service	0.420s
+?   	github.com/myrrazor/atlas-tasker/internal/storage	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	0.275s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	0.716s
+?   	github.com/myrrazor/atlas-tasker/internal/testutil	[no test files]
