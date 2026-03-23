@@ -13,6 +13,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
+	"github.com/myrrazor/atlas-tasker/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -53,6 +54,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newSearchCommand())
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newShellCommand())
+	root.AddCommand(newTUICommand())
 
 	return root
 }
@@ -404,6 +406,12 @@ func newTemplatesCommand() *cobra.Command {
 	view := &cobra.Command{Use: "view <NAME>", Args: cobra.ExactArgs(1), Short: "Show template details", RunE: runTemplatesView}
 	addReadOutputFlags(view, &outputFlags{})
 	cmd.AddCommand(view)
+	return cmd
+}
+
+func newTUICommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "tui", Short: "Launch the full-screen tracker TUI", RunE: runTUI}
+	cmd.Flags().String("actor", "", "Actor used for queue-aware tabs")
 	return cmd
 }
 
@@ -1603,6 +1611,15 @@ func runTemplatesView(cmd *cobra.Command, args []string) error {
 	}
 	pretty := fmt.Sprintf("template %s [%s] %s", template.Name, template.Type, template.Blueprint)
 	return writeCommandOutput(cmd, template, template.TemplateBody, pretty)
+}
+
+func runTUI(cmd *cobra.Command, _ []string) error {
+	rootDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	return tui.Run(rootDir, contracts.Actor(strings.TrimSpace(actorRaw)))
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
