@@ -178,10 +178,146 @@ func ensureInitArtifacts(root string) error {
 		}
 	}
 	templates := map[string]string{
-		"epic.md":    "# Summary\n\n## Description\n\n## Acceptance Criteria\n\n## Notes\n",
-		"task.md":    "# Summary\n\n## Description\n\n## Acceptance Criteria\n\n## Notes\n",
-		"bug.md":     "# Summary\n\n## Description\n\n## Acceptance Criteria\n\n## Notes\n",
-		"subtask.md": "# Summary\n\n## Description\n\n## Acceptance Criteria\n\n## Notes\n",
+		"epic.md": `---
+type: epic
+blueprint: design
+---
+# Summary
+
+## Description
+
+Shape the full slice before you break it into child work.
+
+## Acceptance Criteria
+- Scope is clear
+- Child tickets can be created from this epic
+`,
+		"task.md": `---
+type: task
+blueprint: implement
+---
+# Summary
+
+## Description
+
+Implement the scoped change.
+
+## Acceptance Criteria
+- Code is merged locally
+- Tests cover the new behavior
+`,
+		"bug.md": `---
+type: bug
+blueprint: qa
+---
+# Summary
+
+## Description
+
+Describe the broken behavior and the expected fix.
+
+## Acceptance Criteria
+- Repro is documented
+- Fix is verified
+`,
+		"subtask.md": `---
+type: subtask
+blueprint: implement
+---
+# Summary
+
+## Description
+
+Small child task under a parent item.
+
+## Acceptance Criteria
+- Parent stays up to date
+`,
+		"design.md": `---
+type: task
+labels:
+  - design
+blueprint: design
+skill_hint: design
+---
+# Summary
+
+## Description
+
+Capture the UX, constraints, and acceptance shape before implementation.
+
+## Acceptance Criteria
+- Design direction is written down
+- Open questions are resolved or tracked
+`,
+		"implement.md": `---
+type: task
+labels:
+  - implementation
+blueprint: implement
+skill_hint: implement
+---
+# Summary
+
+## Description
+
+Build the scoped change and keep the diff reviewable.
+
+## Acceptance Criteria
+- Behavior works locally
+- Tests are updated
+`,
+		"review.md": `---
+type: task
+labels:
+  - review
+blueprint: review
+skill_hint: review
+---
+# Summary
+
+## Description
+
+Audit the implementation for regressions and missing tests.
+
+## Acceptance Criteria
+- Findings are documented
+- Blocking issues are fixed or tracked
+`,
+		"qa.md": `---
+type: task
+labels:
+  - qa
+blueprint: qa
+skill_hint: qa
+---
+# Summary
+
+## Description
+
+Run end-to-end validation and record the results.
+
+## Acceptance Criteria
+- Happy path is verified
+- Edge cases are covered
+`,
+		"spike.md": `---
+type: task
+labels:
+  - spike
+blueprint: spike
+skill_hint: spike
+---
+# Summary
+
+## Description
+
+Time-boxed investigation with explicit follow-up output.
+
+## Acceptance Criteria
+- Findings are written down
+- Next steps are clear
+`,
 	}
 	for name, body := range templates {
 		path := filepath.Join(storage.TrackerDir(root), "templates", name)
