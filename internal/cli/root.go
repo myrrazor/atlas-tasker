@@ -204,6 +204,19 @@ func newProjectCommand() *cobra.Command {
 	}
 	addReadOutputFlags(view, &outputFlags{})
 	cmd.AddCommand(view)
+
+	policy := &cobra.Command{Use: "policy", Short: "Read or update project policy"}
+	policyGet := &cobra.Command{Use: "get <KEY>", Args: cobra.ExactArgs(1), Short: "Get project policy", RunE: runProjectPolicyGet}
+	addReadOutputFlags(policyGet, &outputFlags{})
+	policy.AddCommand(policyGet)
+	policySet := &cobra.Command{Use: "set <KEY>", Args: cobra.ExactArgs(1), Short: "Set project policy", RunE: runProjectPolicySet}
+	policySet.Flags().String("completion-mode", "", "Default completion mode")
+	policySet.Flags().Int("lease-ttl", 0, "Default lease TTL in minutes")
+	policySet.Flags().String("allowed-workers", "", "Comma-separated allowed actors")
+	policySet.Flags().String("required-reviewer", "", "Default required reviewer actor")
+	addMutationFlags(policySet, &mutationFlags{Actor: "human:owner"})
+	policy.AddCommand(policySet)
+	cmd.AddCommand(policy)
 	return cmd
 }
 
@@ -310,6 +323,37 @@ func newTicketCommand() *cobra.Command {
 	heartbeat := &cobra.Command{Use: "heartbeat <ID>", Args: cobra.ExactArgs(1), Short: "Extend an active ticket lease", RunE: runTicketHeartbeat}
 	addMutationFlags(heartbeat, &mutationFlags{})
 	cmd.AddCommand(heartbeat)
+
+	requestReview := &cobra.Command{Use: "request-review <ID>", Args: cobra.ExactArgs(1), Short: "Move ticket into review", RunE: runTicketRequestReview}
+	addMutationFlags(requestReview, &mutationFlags{})
+	cmd.AddCommand(requestReview)
+
+	approve := &cobra.Command{Use: "approve <ID>", Args: cobra.ExactArgs(1), Short: "Approve a ticket in review", RunE: runTicketApprove}
+	addMutationFlags(approve, &mutationFlags{})
+	cmd.AddCommand(approve)
+
+	reject := &cobra.Command{Use: "reject <ID>", Args: cobra.ExactArgs(1), Short: "Reject a ticket in review", RunE: runTicketReject}
+	addMutationFlags(reject, &mutationFlags{})
+	_ = reject.MarkFlagRequired("reason")
+	cmd.AddCommand(reject)
+
+	complete := &cobra.Command{Use: "complete <ID>", Args: cobra.ExactArgs(1), Short: "Complete an approved ticket", RunE: runTicketComplete}
+	addMutationFlags(complete, &mutationFlags{})
+	cmd.AddCommand(complete)
+
+	policy := &cobra.Command{Use: "policy", Short: "Read or update ticket policy"}
+	ticketPolicyGet := &cobra.Command{Use: "get <ID>", Args: cobra.ExactArgs(1), Short: "Get ticket policy", RunE: runTicketPolicyGet}
+	addReadOutputFlags(ticketPolicyGet, &outputFlags{})
+	policy.AddCommand(ticketPolicyGet)
+	ticketPolicySet := &cobra.Command{Use: "set <ID>", Args: cobra.ExactArgs(1), Short: "Set ticket policy", RunE: runTicketPolicySet}
+	ticketPolicySet.Flags().Bool("inherit", false, "Ticket inherits upstream policy")
+	ticketPolicySet.Flags().String("completion-mode", "", "Override completion mode")
+	ticketPolicySet.Flags().String("allowed-workers", "", "Comma-separated allowed actors")
+	ticketPolicySet.Flags().String("required-reviewer", "", "Required reviewer actor")
+	ticketPolicySet.Flags().Bool("owner-override", false, "Allow owner override")
+	addMutationFlags(ticketPolicySet, &mutationFlags{Actor: "human:owner"})
+	policy.AddCommand(ticketPolicySet)
+	cmd.AddCommand(policy)
 
 	return cmd
 }
@@ -676,34 +720,19 @@ func runTicketMove(cmd *cobra.Command, args []string) error {
 	defer workspace.close()
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
-	actor := normalizeActor(actorRaw)
-	ticket, err := workspace.ticket.GetTicket(ctx, args[0])
-	if err != nil {
-		return err
-	}
-	cfg, err := config.Load(workspace.root)
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
 	if err != nil {
 		return err
 	}
 	to := contracts.Status(args[1])
-	if err := domain.ValidateMove(cfg.Workflow.CompletionMode, ticket.Status, to, actor, ticket.Reviewer); err != nil {
-		return err
+	if !to.IsValid() {
+		return fmt.Errorf("invalid status: %s", to)
 	}
-	from := ticket.Status
-	ticket.Status = to
-	ticket.UpdatedAt = defaultNow()
-	if err := workspace.ticket.UpdateTicket(ctx, ticket); err != nil {
-		return err
-	}
-	eventID, err := workspace.nextEventID(ctx, ticket.Project)
+	ticket, err := workspace.actions.MoveTicket(ctx, args[0], to, actor, reason)
 	if err != nil {
 		return err
 	}
-	event := contracts.Event{EventID: eventID, Timestamp: ticket.UpdatedAt, Actor: actor, Reason: reason, Type: contracts.EventTicketMoved, Project: ticket.Project, TicketID: ticket.ID, Payload: map[string]any{"from": from, "to": to, "ticket": ticket}, SchemaVersion: contracts.CurrentSchemaVersion}
-	if err := workspace.appendAndProject(ctx, event); err != nil {
-		return err
-	}
-	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s -> %s", ticket.ID, from, to), fmt.Sprintf("moved %s to %s", ticket.ID, to))
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\nmoved to %s", ticket.ID, ticket.Status), fmt.Sprintf("moved %s to %s", ticket.ID, ticket.Status))
 }
 
 func runTicketAssign(cmd *cobra.Command, args []string) error {
@@ -974,6 +1003,175 @@ func runTicketHeartbeat(cmd *cobra.Command, args []string) error {
 	}
 	pretty := fmt.Sprintf("heartbeat %s -> %s", ticket.ID, ticket.Lease.ExpiresAt.Format(timeRFC3339))
 	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\nlease extended", ticket.ID), pretty)
+}
+
+func runTicketRequestReview(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ticket, err := workspace.actions.RequestReview(ctx, args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\nreview requested", ticket.ID), fmt.Sprintf("requested review for %s", ticket.ID))
+}
+
+func runTicketApprove(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ticket, err := workspace.actions.ApproveTicket(ctx, args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\napproved", ticket.ID), fmt.Sprintf("approved %s", ticket.ID))
+}
+
+func runTicketReject(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ticket, err := workspace.actions.RejectTicket(ctx, args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\nrejected", ticket.ID), fmt.Sprintf("rejected %s", ticket.ID))
+}
+
+func runTicketComplete(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ticket, err := workspace.actions.CompleteTicket(ctx, args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\ndone", ticket.ID), fmt.Sprintf("completed %s", ticket.ID))
+}
+
+func runTicketPolicyGet(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	policy, effective, err := workspace.actions.GetTicketPolicy(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	payload := map[string]any{"policy": policy, "effective_policy": effective}
+	md := fmt.Sprintf("## Ticket Policy %s\n\n- Completion: %s\n- Effective Completion: %s\n", args[0], policy.CompletionMode, effective.CompletionMode)
+	pretty := fmt.Sprintf("ticket policy %s -> %s (effective %s)", args[0], policy.CompletionMode, effective.CompletionMode)
+	return writeCommandOutput(cmd, payload, md, pretty)
+}
+
+func runTicketPolicySet(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	current, _, err := workspace.actions.GetTicketPolicy(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	policy, err := ticketPolicyFromFlags(cmd, current)
+	if err != nil {
+		return err
+	}
+	ticket, err := workspace.actions.SetTicketPolicy(ctx, args[0], policy, actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\npolicy updated", ticket.ID), fmt.Sprintf("updated ticket policy for %s", ticket.ID))
+}
+
+func runProjectPolicyGet(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	defaults, err := workspace.actions.GetProjectPolicy(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	md := fmt.Sprintf("## Project Policy %s\n\n- Completion: %s\n- Lease TTL: %d\n", args[0], defaults.CompletionMode, defaults.LeaseTTLMinutes)
+	pretty := fmt.Sprintf("project policy %s -> %s/%d", args[0], defaults.CompletionMode, defaults.LeaseTTLMinutes)
+	return writeCommandOutput(cmd, defaults, md, pretty)
+}
+
+func runProjectPolicySet(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	current, err := workspace.actions.GetProjectPolicy(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	defaults, err := projectPolicyFromFlags(cmd, current)
+	if err != nil {
+		return err
+	}
+	project, err := workspace.actions.SetProjectPolicy(ctx, args[0], defaults, actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, project, fmt.Sprintf("# %s\n\nproject policy updated", project.Key), fmt.Sprintf("updated project policy for %s", project.Key))
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
@@ -1370,4 +1568,79 @@ func orderedQueueCategories() []service.QueueCategory {
 		service.QueueStaleClaims,
 		service.QueuePolicyViolations,
 	}
+}
+
+func parseActors(raw string) ([]contracts.Actor, error) {
+	labels := parseLabels(raw)
+	actors := make([]contracts.Actor, 0, len(labels))
+	for _, value := range labels {
+		actor := contracts.Actor(value)
+		if !actor.IsValid() {
+			return nil, fmt.Errorf("invalid actor: %s", value)
+		}
+		actors = append(actors, actor)
+	}
+	return actors, nil
+}
+
+func ticketPolicyFromFlags(cmd *cobra.Command, policy contracts.TicketPolicy) (contracts.TicketPolicy, error) {
+	if cmd.Flags().Changed("inherit") {
+		value, _ := cmd.Flags().GetBool("inherit")
+		policy.Inherit = value
+	}
+	if cmd.Flags().Changed("completion-mode") {
+		value, _ := cmd.Flags().GetString("completion-mode")
+		policy.CompletionMode = contracts.CompletionMode(strings.TrimSpace(value))
+	}
+	if cmd.Flags().Changed("allowed-workers") {
+		value, _ := cmd.Flags().GetString("allowed-workers")
+		actors, err := parseActors(value)
+		if err != nil {
+			return contracts.TicketPolicy{}, err
+		}
+		policy.AllowedWorkers = actors
+	}
+	if cmd.Flags().Changed("required-reviewer") {
+		value, _ := cmd.Flags().GetString("required-reviewer")
+		if strings.TrimSpace(value) != "" {
+			policy.RequiredReviewer = contracts.Actor(strings.TrimSpace(value))
+			if !policy.RequiredReviewer.IsValid() {
+				return contracts.TicketPolicy{}, fmt.Errorf("invalid required reviewer: %s", value)
+			}
+		}
+	}
+	if cmd.Flags().Changed("owner-override") {
+		value, _ := cmd.Flags().GetBool("owner-override")
+		policy.OwnerOverride = value
+	}
+	return policy, policy.Validate()
+}
+
+func projectPolicyFromFlags(cmd *cobra.Command, defaults contracts.ProjectDefaults) (contracts.ProjectDefaults, error) {
+	if cmd.Flags().Changed("completion-mode") {
+		value, _ := cmd.Flags().GetString("completion-mode")
+		defaults.CompletionMode = contracts.CompletionMode(strings.TrimSpace(value))
+	}
+	if cmd.Flags().Changed("lease-ttl") {
+		value, _ := cmd.Flags().GetInt("lease-ttl")
+		defaults.LeaseTTLMinutes = value
+	}
+	if cmd.Flags().Changed("allowed-workers") {
+		value, _ := cmd.Flags().GetString("allowed-workers")
+		actors, err := parseActors(value)
+		if err != nil {
+			return contracts.ProjectDefaults{}, err
+		}
+		defaults.AllowedWorkers = actors
+	}
+	if cmd.Flags().Changed("required-reviewer") {
+		value, _ := cmd.Flags().GetString("required-reviewer")
+		if strings.TrimSpace(value) != "" {
+			defaults.RequiredReviewer = contracts.Actor(strings.TrimSpace(value))
+			if !defaults.RequiredReviewer.IsValid() {
+				return contracts.ProjectDefaults{}, fmt.Errorf("invalid required reviewer: %s", value)
+			}
+		}
+	}
+	return defaults, defaults.Validate()
 }

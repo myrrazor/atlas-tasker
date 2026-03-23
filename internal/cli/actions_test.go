@@ -251,3 +251,58 @@ func TestClaimQueueAndSweepCommands(t *testing.T) {
 		t.Fatalf("who output should not include APP-1 after sweep: %s", whoOut)
 	}
 }
+
+func TestReviewCommandsAndPolicyCommands(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("project", "policy", "set", "APP", "--completion-mode", "dual_gate", "--lease-ttl", "45", "--allowed-workers", "agent:builder-1", "--required-reviewer", "agent:reviewer-1", "--actor", "human:owner")
+	projectPolicy := must("project", "policy", "get", "APP", "--json")
+	if !strings.Contains(projectPolicy, "\"completion_mode\": \"dual_gate\"") {
+		t.Fatalf("unexpected project policy output: %s", projectPolicy)
+	}
+
+	must("ticket", "create", "--project", "APP", "--title", "Review flow", "--type", "task", "--reviewer", "agent:reviewer-1", "--actor", "human:owner")
+	must("ticket", "policy", "set", "APP-1", "--completion-mode", "dual_gate", "--allowed-workers", "agent:builder-1", "--actor", "human:owner")
+	ticketPolicy := must("ticket", "policy", "get", "APP-1", "--json")
+	if !strings.Contains(ticketPolicy, "\"effective_policy\"") {
+		t.Fatalf("unexpected ticket policy output: %s", ticketPolicy)
+	}
+
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
+	must("ticket", "request-review", "APP-1", "--actor", "agent:builder-1")
+	if _, err := runCLI(t, "ticket", "complete", "APP-1", "--actor", "human:owner"); err == nil {
+		t.Fatal("expected complete to require approval first")
+	}
+	rejectOut := must("ticket", "reject", "APP-1", "--actor", "agent:reviewer-1", "--reason", "fix this")
+	if !strings.Contains(rejectOut, "rejected APP-1") {
+		t.Fatalf("unexpected reject output: %s", rejectOut)
+	}
+	must("ticket", "request-review", "APP-1", "--actor", "agent:builder-1")
+	approveOut := must("ticket", "approve", "APP-1", "--actor", "agent:reviewer-1")
+	if !strings.Contains(approveOut, "approved APP-1") {
+		t.Fatalf("unexpected approve output: %s", approveOut)
+	}
+	ownerQueue := must("owner-queue", "--pretty")
+	if !strings.Contains(ownerQueue, "APP-1") {
+		t.Fatalf("owner queue should include approved dual_gate ticket: %s", ownerQueue)
+	}
+	if _, err := runCLI(t, "ticket", "complete", "APP-1", "--actor", "agent:reviewer-1"); err == nil {
+		t.Fatal("expected dual_gate to reject reviewer completion")
+	}
+	completeOut := must("ticket", "complete", "APP-1", "--actor", "human:owner")
+	if !strings.Contains(completeOut, "completed APP-1") {
+		t.Fatalf("unexpected complete output: %s", completeOut)
+	}
+}

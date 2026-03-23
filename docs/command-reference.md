@@ -14,6 +14,8 @@
 - `tracker project create <KEY> <NAME>`
 - `tracker project list`
 - `tracker project view <KEY>`
+- `tracker project policy get <KEY>`
+- `tracker project policy set <KEY> [flags]`
 
 ## Ticket CRUD
 
@@ -33,6 +35,12 @@
 - `tracker ticket claim <ID> [--actor <ACTOR>]`
 - `tracker ticket release <ID> [--actor <ACTOR>]`
 - `tracker ticket heartbeat <ID> [--actor <ACTOR>]`
+- `tracker ticket request-review <ID> [--actor <ACTOR>]`
+- `tracker ticket approve <ID> [--actor <ACTOR>]`
+- `tracker ticket reject <ID> --reason <TEXT> [--actor <ACTOR>]`
+- `tracker ticket complete <ID> [--actor <ACTOR>]`
+- `tracker ticket policy get <ID>`
+- `tracker ticket policy set <ID> [flags]`
 
 ## Relationships
 
