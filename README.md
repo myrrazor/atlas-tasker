@@ -1,14 +1,30 @@
 # atlas-tasker
 
-Atlas Tasker v1 is a local-first, terminal-first, markdown-native issue tracker for AI coding agents.
+Atlas Tasker is a local-first, terminal-first, markdown-native issue tracker for AI coding agents.
+
+## Install
+
+One-line install for published releases:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
+```
+
+Source install for local development:
+
+```bash
+go build -o tracker ./cmd/tracker
+./tracker init
+```
 
 ## Quickstart
 
 ```bash
-go run ./cmd/tracker init
-go run ./cmd/tracker project create APP "App Project"
-go run ./cmd/tracker ticket create --project APP --title "First task" --type task
-go run ./cmd/tracker board --project APP
+tracker init
+tracker project create APP "App Project"
+tracker ticket create --project APP --title "First task" --type task --actor human:owner
+tracker queue --actor agent:builder-1
+tracker tui --actor agent:builder-1
 ```
 
 ## Docs
@@ -21,6 +37,7 @@ go run ./cmd/tracker board --project APP
 - [Decision log](docs/v1-decision-log.md)
 - [Architecture](docs/architecture.md)
 - [Command reference](docs/command-reference.md)
+- [Release guide](docs/release.md)
 - [Agent rules](AGENTS.md)
 
 ## Fixture
@@ -28,4 +45,4 @@ go run ./cmd/tracker board --project APP
 Sample workspace fixture for smoke tests:
 
 - `fixtures/app_sample`
-- Run `go run ./cmd/tracker reindex` inside that fixture before querying board/search views.
+- Run `tracker doctor --repair` and `tracker reindex` inside that fixture before querying board/search views.
