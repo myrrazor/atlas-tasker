@@ -13,6 +13,7 @@ import (
 
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
@@ -26,6 +27,8 @@ type workspace struct {
 	ticket     mdstore.TicketStore
 	events     *eventstore.Log
 	projection *sqlitestore.Store
+	actions    *service.ActionService
+	queries    *service.QueryService
 }
 
 func openWorkspace() (*workspace, error) {
@@ -39,13 +42,17 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &workspace{
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	w := &workspace{
 		root:       root,
-		project:    mdstore.ProjectStore{RootDir: root},
+		project:    projectStore,
 		ticket:     ticketStore,
 		events:     eventLog,
 		projection: projection,
-	}, nil
+	}
+	w.actions = service.NewActionService(projectStore, ticketStore, eventLog, projection, defaultNow)
+	w.queries = service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
+	return w, nil
 }
 
 func (w *workspace) close() {
@@ -55,29 +62,11 @@ func (w *workspace) close() {
 }
 
 func (w *workspace) nextEventID(ctx context.Context, project string) (int64, error) {
-	events, err := w.events.StreamEvents(ctx, project, 0)
-	if err != nil {
-		return 0, err
-	}
-	var maxID int64
-	for _, event := range events {
-		if event.EventID > maxID {
-			maxID = event.EventID
-		}
-	}
-	return maxID + 1, nil
+	return w.actions.NextEventID(ctx, project)
 }
 
 func (w *workspace) appendAndProject(ctx context.Context, event contracts.Event) error {
-	if err := w.events.AppendEvent(ctx, event); err != nil {
-		return err
-	}
-	if w.projection != nil {
-		if err := w.projection.ApplyEvent(ctx, event); err != nil {
-			return err
-		}
-	}
-	return nil
+	return w.actions.AppendAndProject(ctx, event)
 }
 
 func writeCommandOutput(cmd *cobra.Command, data any, markdown string, pretty string) error {

@@ -38,7 +38,8 @@ func TestEncodeDecodeTicketMarkdownRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
-	if !reflect.DeepEqual(decoded, ticket) {
+	want := contracts.NormalizeTicketSnapshot(ticket)
+	if !reflect.DeepEqual(decoded, want) {
 		t.Fatalf("round trip mismatch:\n got: %#v\nwant: %#v", decoded, ticket)
 	}
 }

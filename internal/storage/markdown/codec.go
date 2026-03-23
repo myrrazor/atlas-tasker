@@ -10,25 +10,33 @@ import (
 )
 
 type ticketFrontmatter struct {
-	ID            string               `yaml:"id"`
-	Project       string               `yaml:"project"`
-	Title         string               `yaml:"title"`
-	Type          contracts.TicketType `yaml:"type"`
-	Status        contracts.Status     `yaml:"status"`
-	Priority      contracts.Priority   `yaml:"priority"`
-	Parent        string               `yaml:"parent,omitempty"`
-	Labels        []string             `yaml:"labels"`
-	Assignee      contracts.Actor      `yaml:"assignee,omitempty"`
-	Reviewer      contracts.Actor      `yaml:"reviewer,omitempty"`
-	BlockedBy     []string             `yaml:"blocked_by"`
-	Blocks        []string             `yaml:"blocks"`
-	CreatedAt     time.Time            `yaml:"created_at"`
-	UpdatedAt     time.Time            `yaml:"updated_at"`
-	SchemaVersion int                  `yaml:"schema_version"`
-	Archived      bool                 `yaml:"archived,omitempty"`
+	ID            string                    `yaml:"id"`
+	Project       string                    `yaml:"project"`
+	Title         string                    `yaml:"title"`
+	Type          contracts.TicketType      `yaml:"type"`
+	Status        contracts.Status          `yaml:"status"`
+	Priority      contracts.Priority        `yaml:"priority"`
+	Parent        string                    `yaml:"parent,omitempty"`
+	Labels        []string                  `yaml:"labels"`
+	Assignee      contracts.Actor           `yaml:"assignee,omitempty"`
+	Reviewer      contracts.Actor           `yaml:"reviewer,omitempty"`
+	BlockedBy     []string                  `yaml:"blocked_by"`
+	Blocks        []string                  `yaml:"blocks"`
+	CreatedAt     time.Time                 `yaml:"created_at"`
+	UpdatedAt     time.Time                 `yaml:"updated_at"`
+	SchemaVersion int                       `yaml:"schema_version"`
+	Archived      bool                      `yaml:"archived,omitempty"`
+	Policy        contracts.TicketPolicy    `yaml:"policy,omitempty"`
+	ReviewState   contracts.ReviewState     `yaml:"review_state,omitempty"`
+	Lease         contracts.LeaseState      `yaml:"lease,omitempty"`
+	Template      string                    `yaml:"template,omitempty"`
+	SkillHint     string                    `yaml:"skill_hint,omitempty"`
+	Blueprint     string                    `yaml:"blueprint,omitempty"`
+	Progress      contracts.ProgressSummary `yaml:"progress,omitempty"`
 }
 
 func EncodeTicketMarkdown(ticket contracts.TicketSnapshot) (string, error) {
+	ticket = contracts.NormalizeTicketSnapshot(ticket)
 	fm := ticketFrontmatter{
 		ID:            ticket.ID,
 		Project:       ticket.Project,
@@ -46,6 +54,13 @@ func EncodeTicketMarkdown(ticket contracts.TicketSnapshot) (string, error) {
 		UpdatedAt:     ticket.UpdatedAt,
 		SchemaVersion: ticket.SchemaVersion,
 		Archived:      ticket.Archived,
+		Policy:        ticket.Policy,
+		ReviewState:   ticket.ReviewState,
+		Lease:         ticket.Lease,
+		Template:      ticket.Template,
+		SkillHint:     ticket.SkillHint,
+		Blueprint:     ticket.Blueprint,
+		Progress:      ticket.Progress,
 	}
 	rawFM, err := yaml.Marshal(fm)
 	if err != nil {
@@ -118,13 +133,20 @@ func DecodeTicketMarkdown(doc string) (contracts.TicketSnapshot, error) {
 		UpdatedAt:          fm.UpdatedAt,
 		SchemaVersion:      fm.SchemaVersion,
 		Archived:           fm.Archived,
+		Policy:             fm.Policy,
+		ReviewState:        fm.ReviewState,
+		Lease:              fm.Lease,
+		Template:           strings.TrimSpace(fm.Template),
+		SkillHint:          strings.TrimSpace(fm.SkillHint),
+		Blueprint:          strings.TrimSpace(fm.Blueprint),
+		Progress:           fm.Progress,
 		Summary:            summary,
 		Description:        description,
 		AcceptanceCriteria: acceptance,
 		Notes:              notes,
 	}
 
-	return ticket, nil
+	return contracts.NormalizeTicketSnapshot(ticket), nil
 }
 
 func splitFrontmatter(doc string) (string, string, error) {

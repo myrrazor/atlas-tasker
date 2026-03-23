@@ -464,33 +464,22 @@ func runTicketView(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer workspace.close()
-	ticket, err := workspace.ticket.GetTicket(ctx, args[0])
+	detail, err := workspace.queries.TicketDetail(ctx, args[0])
 	if err != nil {
 		return err
 	}
-	events, err := listTicketEvents(ctx, workspace, args[0])
+	rawMD, err := mdstore.EncodeTicketMarkdown(detail.Ticket)
 	if err != nil {
 		return err
 	}
-	comments := make([]string, 0)
-	for _, event := range events {
-		if event.Type == contracts.EventTicketCommented {
-			if payloadMap, ok := event.Payload.(map[string]any); ok {
-				if body, ok := payloadMap["body"].(string); ok {
-					comments = append(comments, body)
-				}
-			}
-		}
-	}
-	rawMD, _ := mdstore.EncodeTicketMarkdown(ticket)
-	if len(comments) > 0 {
+	if len(detail.Comments) > 0 {
 		rawMD += "\n## Recent Comments\n\n"
-		for _, comment := range comments {
+		for _, comment := range detail.Comments {
 			rawMD += "- " + comment + "\n"
 		}
 	}
-	pretty := fmt.Sprintf("%s [%s] %s", ticket.ID, ticket.Status, ticket.Title)
-	payload := map[string]any{"ticket": ticket, "comments": comments}
+	pretty := fmt.Sprintf("%s [%s] %s", detail.Ticket.ID, detail.Ticket.Status, detail.Ticket.Title)
+	payload := map[string]any{"ticket": detail.Ticket, "comments": detail.Comments, "effective_policy": detail.EffectivePolicy}
 	return writeCommandOutput(cmd, payload, rawMD, pretty)
 }
 
@@ -863,15 +852,15 @@ func runTicketHistory(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer workspace.close()
-	events, err := listTicketEvents(ctx, workspace, args[0])
+	history, err := workspace.queries.History(ctx, args[0])
 	if err != nil {
 		return err
 	}
 	pretty := "history:\n"
-	for _, event := range events {
+	for _, event := range history.Events {
 		pretty += fmt.Sprintf("- #%d %s %s %s\n", event.EventID, event.Timestamp.Format(timeRFC3339), event.Type, event.Actor)
 	}
-	return writeCommandOutput(cmd, events, pretty, pretty)
+	return writeCommandOutput(cmd, history, pretty, pretty)
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
@@ -922,7 +911,7 @@ func runBoard(cmd *cobra.Command, _ []string) error {
 	project, _ := cmd.Flags().GetString("project")
 	assigneeRaw, _ := cmd.Flags().GetString("assignee")
 	typeRaw, _ := cmd.Flags().GetString("type")
-	board, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{
+	boardVM, err := workspace.queries.Board(ctx, contracts.BoardQueryOptions{
 		Project:  project,
 		Assignee: contracts.Actor(strings.TrimSpace(assigneeRaw)),
 		Type:     contracts.TicketType(strings.TrimSpace(typeRaw)),
@@ -930,6 +919,7 @@ func runBoard(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	board := boardVM.Board
 	markdown := "## Board\n\n"
 	for _, status := range orderedBoardStatuses() {
 		tickets := board.Columns[status]
@@ -967,11 +957,11 @@ func runListByStatus(cmd *cobra.Command, title string, status contracts.Status) 
 		return err
 	}
 	defer workspace.close()
-	board, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{})
+	boardVM, err := workspace.queries.Board(ctx, contracts.BoardQueryOptions{})
 	if err != nil {
 		return err
 	}
-	tickets := append([]contracts.TicketSnapshot{}, board.Columns[status]...)
+	tickets := append([]contracts.TicketSnapshot{}, boardVM.Board.Columns[status]...)
 	sort.Slice(tickets, func(i, j int) bool {
 		if tickets[i].UpdatedAt.Equal(tickets[j].UpdatedAt) {
 			return tickets[i].ID < tickets[j].ID
@@ -992,15 +982,15 @@ func runNext(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer workspace.close()
-	board, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{})
+	boardVM, err := workspace.queries.Board(ctx, contracts.BoardQueryOptions{})
 	if err != nil {
 		return err
 	}
 	tickets := make([]contracts.TicketSnapshot, 0)
-	tickets = append(tickets, board.Columns[contracts.StatusReady]...)
-	tickets = append(tickets, board.Columns[contracts.StatusInProgress]...)
-	tickets = append(tickets, board.Columns[contracts.StatusBlocked]...)
-	tickets = append(tickets, board.Columns[contracts.StatusInReview]...)
+	tickets = append(tickets, boardVM.Board.Columns[contracts.StatusReady]...)
+	tickets = append(tickets, boardVM.Board.Columns[contracts.StatusInProgress]...)
+	tickets = append(tickets, boardVM.Board.Columns[contracts.StatusBlocked]...)
+	tickets = append(tickets, boardVM.Board.Columns[contracts.StatusInReview]...)
 	priorityRank := map[contracts.Priority]int{
 		contracts.PriorityCritical: 4,
 		contracts.PriorityHigh:     3,
@@ -1041,7 +1031,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	tickets, err := workspace.projection.QuerySearch(ctx, query)
+	tickets, err := workspace.queries.Search(ctx, query)
 	if err != nil {
 		return err
 	}
@@ -1059,9 +1049,12 @@ func runRender(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer workspace.close()
-	ticket, err := workspace.ticket.GetTicket(ctx, args[0])
+	ticket, err := workspace.queries.Projection.QueryTicket(ctx, args[0])
 	if err != nil {
-		return err
+		ticket, err = workspace.ticket.GetTicket(ctx, args[0])
+		if err != nil {
+			return err
+		}
 	}
 	rawMD, err := mdstore.EncodeTicketMarkdown(ticket)
 	if err != nil {

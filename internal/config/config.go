@@ -15,11 +15,15 @@ type fileConfig struct {
 	Workflow struct {
 		CompletionMode string `toml:"completion_mode"`
 	} `toml:"workflow"`
+	Actor struct {
+		Default string `toml:"default"`
+	} `toml:"actor"`
 }
 
 func defaultConfig() contracts.TrackerConfig {
 	return contracts.TrackerConfig{
 		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
+		Actor:    contracts.ActorConfig{},
 	}
 }
 
@@ -42,6 +46,9 @@ func Load(root string) (contracts.TrackerConfig, error) {
 	}
 	cfg := contracts.TrackerConfig{
 		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionMode(strings.TrimSpace(parsed.Workflow.CompletionMode))},
+		Actor: contracts.ActorConfig{
+			Default: contracts.Actor(strings.TrimSpace(parsed.Actor.Default)),
+		},
 	}
 	if cfg.Workflow.CompletionMode == "" {
 		cfg.Workflow.CompletionMode = contracts.CompletionModeOpen
@@ -62,6 +69,7 @@ func Save(root string, cfg contracts.TrackerConfig) error {
 	}
 	out := fileConfig{}
 	out.Workflow.CompletionMode = string(cfg.Workflow.CompletionMode)
+	out.Actor.Default = string(cfg.Actor.Default)
 	raw, err := toml.Marshal(out)
 	if err != nil {
 		return fmt.Errorf("encode config: %w", err)
@@ -80,6 +88,8 @@ func Get(root string, key string) (string, error) {
 	switch strings.TrimSpace(key) {
 	case "", "workflow.completion_mode":
 		return string(cfg.Workflow.CompletionMode), nil
+	case "actor.default":
+		return string(cfg.Actor.Default), nil
 	default:
 		return "", fmt.Errorf("unsupported config key: %s", key)
 	}
@@ -93,6 +103,8 @@ func Set(root string, key string, value string) error {
 	switch strings.TrimSpace(key) {
 	case "workflow.completion_mode":
 		cfg.Workflow.CompletionMode = contracts.CompletionMode(strings.TrimSpace(value))
+	case "actor.default":
+		cfg.Actor.Default = contracts.Actor(strings.TrimSpace(value))
 	default:
 		return fmt.Errorf("unsupported config key: %s", key)
 	}

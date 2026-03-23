@@ -27,6 +27,7 @@ func (s TicketStore) now() time.Time {
 }
 
 func (s TicketStore) CreateTicket(_ context.Context, ticket contracts.TicketSnapshot) error {
+	ticket = contracts.NormalizeTicketSnapshot(ticket)
 	if err := ticket.ValidateForCreate(); err != nil {
 		return err
 	}
@@ -64,10 +65,11 @@ func (s TicketStore) GetTicket(_ context.Context, id string) (contracts.TicketSn
 	if err != nil {
 		return contracts.TicketSnapshot{}, fmt.Errorf("decode ticket %s: %w", id, err)
 	}
-	return ticket, nil
+	return contracts.NormalizeTicketSnapshot(ticket), nil
 }
 
 func (s TicketStore) UpdateTicket(_ context.Context, ticket contracts.TicketSnapshot) error {
+	ticket = contracts.NormalizeTicketSnapshot(ticket)
 	if strings.TrimSpace(ticket.ID) == "" {
 		return fmt.Errorf("ticket id is required")
 	}
@@ -104,6 +106,7 @@ func (s TicketStore) ListTickets(_ context.Context, opts contracts.TicketListOpt
 		if err != nil {
 			return nil, err
 		}
+		ticket = contracts.NormalizeTicketSnapshot(ticket)
 		if !opts.IncludeArchived && ticket.Archived {
 			continue
 		}

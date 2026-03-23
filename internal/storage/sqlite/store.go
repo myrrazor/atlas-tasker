@@ -14,6 +14,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+const ticketSelectColumns = `
+	id, project, title, type, status, priority, parent, labels_json, assignee, reviewer,
+	blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
+	summary, description, acceptance_json, notes, policy_json, review_state,
+	lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
+	template, skill_hint, blueprint, progress_json
+`
+
 // Store is a SQLite-backed projection and query engine.
 type Store struct {
 	DB           *sql.DB
@@ -76,11 +84,24 @@ func (s *Store) migrate() error {
 			summary TEXT,
 			description TEXT,
 			acceptance_json TEXT NOT NULL,
-			notes TEXT
+			notes TEXT,
+			policy_json TEXT NOT NULL DEFAULT '{}',
+			review_state TEXT NOT NULL DEFAULT 'none',
+			lease_actor TEXT,
+			lease_kind TEXT,
+			lease_acquired_at TEXT,
+			lease_expires_at TEXT,
+			lease_heartbeat_at TEXT,
+			template TEXT,
+			skill_hint TEXT,
+			blueprint TEXT,
+			progress_json TEXT NOT NULL DEFAULT '{}'
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_project_status ON tickets(project, status);`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_project_updated ON tickets(project, updated_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_assignee ON tickets(assignee);`,
+		`CREATE INDEX IF NOT EXISTS idx_tickets_review_state ON tickets(review_state);`,
+		`CREATE INDEX IF NOT EXISTS idx_tickets_lease_expires ON tickets(lease_expires_at);`,
 		`CREATE TABLE IF NOT EXISTS events (
 			project TEXT NOT NULL,
 			event_id INTEGER NOT NULL,
@@ -100,6 +121,59 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("sqlite migrate failed: %w", err)
 		}
 	}
+
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{name: "policy_json", definition: `TEXT NOT NULL DEFAULT '{}'`},
+		{name: "review_state", definition: `TEXT NOT NULL DEFAULT 'none'`},
+		{name: "lease_actor", definition: `TEXT`},
+		{name: "lease_kind", definition: `TEXT`},
+		{name: "lease_acquired_at", definition: `TEXT`},
+		{name: "lease_expires_at", definition: `TEXT`},
+		{name: "lease_heartbeat_at", definition: `TEXT`},
+		{name: "template", definition: `TEXT`},
+		{name: "skill_hint", definition: `TEXT`},
+		{name: "blueprint", definition: `TEXT`},
+		{name: "progress_json", definition: `TEXT NOT NULL DEFAULT '{}'`},
+	}
+	for _, column := range columns {
+		if err := s.ensureTicketColumn(column.name, column.definition); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureTicketColumn(name string, definition string) error {
+	rows, err := s.DB.Query(`PRAGMA table_info(tickets)`)
+	if err != nil {
+		return fmt.Errorf("inspect tickets schema: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			cid        int
+			columnName string
+			typ        string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err := rows.Scan(&cid, &columnName, &typ, &notNull, &defaultVal, &pk); err != nil {
+			return fmt.Errorf("scan table info: %w", err)
+		}
+		if columnName == name {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate table info: %w", err)
+	}
+	if _, err := s.DB.Exec(`ALTER TABLE tickets ADD COLUMN ` + name + ` ` + definition); err != nil {
+		return fmt.Errorf("add tickets.%s: %w", name, err)
+	}
 	return nil
 }
 
@@ -110,7 +184,6 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 	if err := s.insertEventOnly(ctx, event); err != nil {
 		return err
 	}
-
 	for _, ticket := range extractTicketSnapshots(event.Payload) {
 		if err := s.upsertTicket(ctx, ticket); err != nil {
 			return err
@@ -124,8 +197,11 @@ func (s *Store) Rebuild(ctx context.Context, project string) error {
 		return fmt.Errorf("rebuild requires ticket and event sources")
 	}
 	if project == "" {
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM tickets; DELETE FROM events;`); err != nil {
-			return fmt.Errorf("clear projection: %w", err)
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM tickets`); err != nil {
+			return fmt.Errorf("clear tickets: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM events`); err != nil {
+			return fmt.Errorf("clear events: %w", err)
 		}
 	} else {
 		if _, err := s.DB.ExecContext(ctx, `DELETE FROM tickets WHERE project = ?`, project); err != nil {
@@ -165,9 +241,7 @@ func (s *Store) Rebuild(ctx context.Context, project string) error {
 }
 
 func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions) (contracts.BoardView, error) {
-	query := `SELECT id, project, title, type, status, priority, parent, labels_json, assignee, reviewer, blocked_by_json, blocks_json,
-	created_at, updated_at, schema_version, archived, summary, description, acceptance_json, notes
-	FROM tickets WHERE archived = 0`
+	query := `SELECT ` + ticketSelectColumns + ` FROM tickets WHERE archived = 0`
 	args := make([]any, 0)
 	if opts.Project != "" {
 		query += ` AND project = ?`
@@ -205,10 +279,17 @@ func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions
 	return contracts.BoardView{Columns: columns}, nil
 }
 
+func (s *Store) QueryTicket(ctx context.Context, ticketID string) (contracts.TicketSnapshot, error) {
+	row := s.DB.QueryRowContext(ctx, `SELECT `+ticketSelectColumns+` FROM tickets WHERE id = ?`, ticketID)
+	ticket, err := scanTicket(row)
+	if err != nil {
+		return contracts.TicketSnapshot{}, fmt.Errorf("query ticket %s: %w", ticketID, err)
+	}
+	return ticket, nil
+}
+
 func (s *Store) QuerySearch(ctx context.Context, query contracts.SearchQuery) ([]contracts.TicketSnapshot, error) {
-	base := `SELECT id, project, title, type, status, priority, parent, labels_json, assignee, reviewer, blocked_by_json, blocks_json,
-	created_at, updated_at, schema_version, archived, summary, description, acceptance_json, notes
-	FROM tickets WHERE 1=1`
+	base := `SELECT ` + ticketSelectColumns + ` FROM tickets WHERE 1=1`
 	args := make([]any, 0)
 	for _, term := range query.Terms {
 		switch term.Kind {
@@ -303,28 +384,19 @@ func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.
 }
 
 func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapshot) error {
-	labelsJSON, err := json.Marshal(ticket.Labels)
+	ticket = contracts.NormalizeTicketSnapshot(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, err := marshalTicketJSON(ticket)
 	if err != nil {
-		return fmt.Errorf("marshal labels: %w", err)
-	}
-	blockedByJSON, err := json.Marshal(ticket.BlockedBy)
-	if err != nil {
-		return fmt.Errorf("marshal blocked_by: %w", err)
-	}
-	blocksJSON, err := json.Marshal(ticket.Blocks)
-	if err != nil {
-		return fmt.Errorf("marshal blocks: %w", err)
-	}
-	acceptanceJSON, err := json.Marshal(ticket.AcceptanceCriteria)
-	if err != nil {
-		return fmt.Errorf("marshal acceptance criteria: %w", err)
+		return err
 	}
 	_, err = s.DB.ExecContext(ctx, `
 		INSERT INTO tickets (
 			id, project, title, type, status, priority, parent, labels_json, assignee, reviewer,
 			blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
-			summary, description, acceptance_json, notes
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			summary, description, acceptance_json, notes, policy_json, review_state,
+			lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
+			template, skill_hint, blueprint, progress_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title=excluded.title,
 			type=excluded.type,
@@ -342,8 +414,26 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 			summary=excluded.summary,
 			description=excluded.description,
 			acceptance_json=excluded.acceptance_json,
-			notes=excluded.notes
-	`, ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent), string(labelsJSON), nullable(string(ticket.Assignee)), nullable(string(ticket.Reviewer)), string(blockedByJSON), string(blocksJSON), ticket.CreatedAt.UTC().Format(time.RFC3339Nano), ticket.UpdatedAt.UTC().Format(time.RFC3339Nano), ticket.SchemaVersion, boolToInt(ticket.Archived), nullable(ticket.Summary), nullable(ticket.Description), string(acceptanceJSON), nullable(ticket.Notes))
+			notes=excluded.notes,
+			policy_json=excluded.policy_json,
+			review_state=excluded.review_state,
+			lease_actor=excluded.lease_actor,
+			lease_kind=excluded.lease_kind,
+			lease_acquired_at=excluded.lease_acquired_at,
+			lease_expires_at=excluded.lease_expires_at,
+			lease_heartbeat_at=excluded.lease_heartbeat_at,
+			template=excluded.template,
+			skill_hint=excluded.skill_hint,
+			blueprint=excluded.blueprint,
+			progress_json=excluded.progress_json
+	`,
+		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
+		labelsJSON, nullable(string(ticket.Assignee)), nullable(string(ticket.Reviewer)), blockedByJSON, blocksJSON,
+		ticket.CreatedAt.UTC().Format(time.RFC3339Nano), ticket.UpdatedAt.UTC().Format(time.RFC3339Nano), ticket.SchemaVersion, boolToInt(ticket.Archived),
+		nullable(ticket.Summary), nullable(ticket.Description), acceptanceJSON, nullable(ticket.Notes), policyJSON, string(ticket.ReviewState),
+		nullable(string(ticket.Lease.Actor)), nullable(string(ticket.Lease.Kind)), nullableTime(ticket.Lease.AcquiredAt), nullableTime(ticket.Lease.ExpiresAt), nullableTime(ticket.Lease.LastHeartbeatAt),
+		nullable(ticket.Template), nullable(ticket.SkillHint), nullable(ticket.Blueprint), progressJSON,
+	)
 	if err != nil {
 		return fmt.Errorf("upsert ticket %s: %w", ticket.ID, err)
 	}
@@ -351,30 +441,28 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 }
 
 func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.TicketSnapshot) error {
-	labelsJSON, err := json.Marshal(ticket.Labels)
+	ticket = contracts.NormalizeTicketSnapshot(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, err := marshalTicketJSON(ticket)
 	if err != nil {
-		return fmt.Errorf("marshal labels: %w", err)
-	}
-	blockedByJSON, err := json.Marshal(ticket.BlockedBy)
-	if err != nil {
-		return fmt.Errorf("marshal blocked_by: %w", err)
-	}
-	blocksJSON, err := json.Marshal(ticket.Blocks)
-	if err != nil {
-		return fmt.Errorf("marshal blocks: %w", err)
-	}
-	acceptanceJSON, err := json.Marshal(ticket.AcceptanceCriteria)
-	if err != nil {
-		return fmt.Errorf("marshal acceptance criteria: %w", err)
+		return err
 	}
 	_, err = s.DB.ExecContext(ctx, `
 		INSERT INTO tickets (
 			id, project, title, type, status, priority, parent, labels_json, assignee, reviewer,
 			blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
-			summary, description, acceptance_json, notes
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			summary, description, acceptance_json, notes, policy_json, review_state,
+			lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
+			template, skill_hint, blueprint, progress_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
-	`, ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent), string(labelsJSON), nullable(string(ticket.Assignee)), nullable(string(ticket.Reviewer)), string(blockedByJSON), string(blocksJSON), ticket.CreatedAt.UTC().Format(time.RFC3339Nano), ticket.UpdatedAt.UTC().Format(time.RFC3339Nano), ticket.SchemaVersion, boolToInt(ticket.Archived), nullable(ticket.Summary), nullable(ticket.Description), string(acceptanceJSON), nullable(ticket.Notes))
+	`,
+		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
+		labelsJSON, nullable(string(ticket.Assignee)), nullable(string(ticket.Reviewer)), blockedByJSON, blocksJSON,
+		ticket.CreatedAt.UTC().Format(time.RFC3339Nano), ticket.UpdatedAt.UTC().Format(time.RFC3339Nano), ticket.SchemaVersion, boolToInt(ticket.Archived),
+		nullable(ticket.Summary), nullable(ticket.Description), acceptanceJSON, nullable(ticket.Notes), policyJSON, string(ticket.ReviewState),
+		nullable(string(ticket.Lease.Actor)), nullable(string(ticket.Lease.Kind)), nullableTime(ticket.Lease.AcquiredAt), nullableTime(ticket.Lease.ExpiresAt), nullableTime(ticket.Lease.LastHeartbeatAt),
+		nullable(ticket.Template), nullable(ticket.SkillHint), nullable(ticket.Blueprint), progressJSON,
+	)
 	if err != nil {
 		return fmt.Errorf("insert missing ticket %s: %w", ticket.ID, err)
 	}
@@ -401,27 +489,42 @@ func (s *Store) insertEventOnly(ctx context.Context, event contracts.Event) erro
 	return nil
 }
 
-func scanTicket(rows *sql.Rows) (contracts.TicketSnapshot, error) {
+type ticketScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 	var (
-		ticket         contracts.TicketSnapshot
-		typeValue      string
-		statusValue    string
-		priorityValue  string
-		createdAt      string
-		updatedAt      string
-		archived       int
-		labelsJSON     string
-		blockedByJSON  string
-		blocksJSON     string
-		acceptanceJSON string
-		parent         sql.NullString
-		assignee       sql.NullString
-		reviewer       sql.NullString
-		summary        sql.NullString
-		description    sql.NullString
-		notes          sql.NullString
+		ticket           contracts.TicketSnapshot
+		typeValue        string
+		statusValue      string
+		priorityValue    string
+		createdAt        string
+		updatedAt        string
+		archived         int
+		labelsJSON       string
+		blockedByJSON    string
+		blocksJSON       string
+		acceptanceJSON   string
+		policyJSON       string
+		progressJSON     string
+		parent           sql.NullString
+		assignee         sql.NullString
+		reviewer         sql.NullString
+		summary          sql.NullString
+		description      sql.NullString
+		notes            sql.NullString
+		reviewState      sql.NullString
+		leaseActor       sql.NullString
+		leaseKind        sql.NullString
+		leaseAcquiredAt  sql.NullString
+		leaseExpiresAt   sql.NullString
+		leaseHeartbeatAt sql.NullString
+		template         sql.NullString
+		skillHint        sql.NullString
+		blueprint        sql.NullString
 	)
-	if err := rows.Scan(
+	if err := scanner.Scan(
 		&ticket.ID,
 		&ticket.Project,
 		&ticket.Title,
@@ -442,6 +545,17 @@ func scanTicket(rows *sql.Rows) (contracts.TicketSnapshot, error) {
 		&description,
 		&acceptanceJSON,
 		&notes,
+		&policyJSON,
+		&reviewState,
+		&leaseActor,
+		&leaseKind,
+		&leaseAcquiredAt,
+		&leaseExpiresAt,
+		&leaseHeartbeatAt,
+		&template,
+		&skillHint,
+		&blueprint,
+		&progressJSON,
 	); err != nil {
 		return contracts.TicketSnapshot{}, err
 	}
@@ -463,6 +577,18 @@ func scanTicket(rows *sql.Rows) (contracts.TicketSnapshot, error) {
 		return contracts.TicketSnapshot{}, err
 	}
 	if err := json.Unmarshal([]byte(acceptanceJSON), &ticket.AcceptanceCriteria); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if strings.TrimSpace(policyJSON) == "" {
+		policyJSON = `{}`
+	}
+	if err := json.Unmarshal([]byte(policyJSON), &ticket.Policy); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if strings.TrimSpace(progressJSON) == "" {
+		progressJSON = `{}`
+	}
+	if err := json.Unmarshal([]byte(progressJSON), &ticket.Progress); err != nil {
 		return contracts.TicketSnapshot{}, err
 	}
 	ticket.Type = contracts.TicketType(typeValue)
@@ -489,7 +615,71 @@ func scanTicket(rows *sql.Rows) (contracts.TicketSnapshot, error) {
 	if notes.Valid {
 		ticket.Notes = notes.String
 	}
-	return ticket, nil
+	if reviewState.Valid {
+		ticket.ReviewState = contracts.ReviewState(reviewState.String)
+	}
+	if leaseActor.Valid {
+		ticket.Lease.Actor = contracts.Actor(leaseActor.String)
+	}
+	if leaseKind.Valid {
+		ticket.Lease.Kind = contracts.LeaseKind(leaseKind.String)
+	}
+	if leaseAcquiredAt.Valid {
+		ticket.Lease.AcquiredAt, err = time.Parse(time.RFC3339Nano, leaseAcquiredAt.String)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+	}
+	if leaseExpiresAt.Valid {
+		ticket.Lease.ExpiresAt, err = time.Parse(time.RFC3339Nano, leaseExpiresAt.String)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+	}
+	if leaseHeartbeatAt.Valid {
+		ticket.Lease.LastHeartbeatAt, err = time.Parse(time.RFC3339Nano, leaseHeartbeatAt.String)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+	}
+	if template.Valid {
+		ticket.Template = template.String
+	}
+	if skillHint.Valid {
+		ticket.SkillHint = skillHint.String
+	}
+	if blueprint.Valid {
+		ticket.Blueprint = blueprint.String
+	}
+	return contracts.NormalizeTicketSnapshot(ticket), nil
+}
+
+func marshalTicketJSON(ticket contracts.TicketSnapshot) (labelsJSON string, blockedByJSON string, blocksJSON string, acceptanceJSON string, policyJSON string, progressJSON string, err error) {
+	labelsRaw, err := json.Marshal(ticket.Labels)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal labels: %w", err)
+	}
+	blockedByRaw, err := json.Marshal(ticket.BlockedBy)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal blocked_by: %w", err)
+	}
+	blocksRaw, err := json.Marshal(ticket.Blocks)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal blocks: %w", err)
+	}
+	acceptanceRaw, err := json.Marshal(ticket.AcceptanceCriteria)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal acceptance criteria: %w", err)
+	}
+	policyRaw, err := json.Marshal(ticket.Policy)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal policy: %w", err)
+	}
+	progressRaw, err := json.Marshal(ticket.Progress)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal progress: %w", err)
+	}
+	return string(labelsRaw), string(blockedByRaw), string(blocksRaw), string(acceptanceRaw), string(policyRaw), string(progressRaw), nil
 }
 
 func extractTicketSnapshots(payload any) []contracts.TicketSnapshot {
@@ -504,6 +694,7 @@ func extractTicketSnapshots(payload any) []contracts.TicketSnapshot {
 	result := make([]contracts.TicketSnapshot, 0, 2)
 	seen := map[string]struct{}{}
 	appendTicket := func(ticket contracts.TicketSnapshot) {
+		ticket = contracts.NormalizeTicketSnapshot(ticket)
 		if ticket.ValidateForCreate() != nil {
 			return
 		}
@@ -536,6 +727,13 @@ func nullable(value string) any {
 		return nil
 	}
 	return value
+}
+
+func nullableTime(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func boolToInt(value bool) int {

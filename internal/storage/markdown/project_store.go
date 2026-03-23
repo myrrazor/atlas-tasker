@@ -14,10 +14,11 @@ import (
 )
 
 type projectFrontmatter struct {
-	Key           string    `yaml:"key"`
-	Name          string    `yaml:"name"`
-	CreatedAt     time.Time `yaml:"created_at"`
-	SchemaVersion int       `yaml:"schema_version"`
+	Key           string                    `yaml:"key"`
+	Name          string                    `yaml:"name"`
+	CreatedAt     time.Time                 `yaml:"created_at"`
+	SchemaVersion int                       `yaml:"schema_version"`
+	Defaults      contracts.ProjectDefaults `yaml:"defaults,omitempty"`
 }
 
 // ProjectStore persists project metadata under projects/<KEY>/project.md.
@@ -26,6 +27,8 @@ type ProjectStore struct {
 }
 
 func (s ProjectStore) CreateProject(_ context.Context, project contracts.Project) error {
+	project = contracts.NormalizeProject(project)
+	project.SchemaVersion = contracts.CurrentSchemaVersion
 	if err := project.Validate(); err != nil {
 		return err
 	}
@@ -39,7 +42,13 @@ func (s ProjectStore) CreateProject(_ context.Context, project contracts.Project
 		return fmt.Errorf("create project directories: %w", err)
 	}
 
-	fm := projectFrontmatter{Key: project.Key, Name: project.Name, CreatedAt: project.CreatedAt, SchemaVersion: contracts.CurrentSchemaVersion}
+	fm := projectFrontmatter{
+		Key:           project.Key,
+		Name:          project.Name,
+		CreatedAt:     project.CreatedAt,
+		SchemaVersion: project.SchemaVersion,
+		Defaults:      project.Defaults,
+	}
 	rawFM, err := yaml.Marshal(fm)
 	if err != nil {
 		return fmt.Errorf("marshal project frontmatter: %w", err)
@@ -50,6 +59,33 @@ func (s ProjectStore) CreateProject(_ context.Context, project contracts.Project
 		return fmt.Errorf("write project file: %w", err)
 	}
 
+	return nil
+}
+
+func (s ProjectStore) UpdateProject(_ context.Context, project contracts.Project) error {
+	project = contracts.NormalizeProject(project)
+	project.SchemaVersion = contracts.CurrentSchemaVersion
+	if err := project.Validate(); err != nil {
+		return err
+	}
+	path := storage.ProjectFile(s.RootDir, project.Key)
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("project %s not found: %w", project.Key, err)
+	}
+	rawFM, err := yaml.Marshal(projectFrontmatter{
+		Key:           project.Key,
+		Name:          project.Name,
+		CreatedAt:     project.CreatedAt,
+		SchemaVersion: project.SchemaVersion,
+		Defaults:      project.Defaults,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal project frontmatter: %w", err)
+	}
+	doc := fmt.Sprintf("---\n%s---\n\n# %s\n\nProject `%s`.\n", string(rawFM), project.Name, project.Key)
+	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+		return fmt.Errorf("write project file: %w", err)
+	}
 	return nil
 }
 
@@ -97,10 +133,13 @@ func (s ProjectStore) GetProject(_ context.Context, key string) (contracts.Proje
 	}
 
 	project := contracts.Project{
-		Key:       strings.TrimSpace(fm.Key),
-		Name:      strings.TrimSpace(fm.Name),
-		CreatedAt: fm.CreatedAt,
+		Key:           strings.TrimSpace(fm.Key),
+		Name:          strings.TrimSpace(fm.Name),
+		CreatedAt:     fm.CreatedAt,
+		SchemaVersion: fm.SchemaVersion,
+		Defaults:      fm.Defaults,
 	}
+	project = contracts.NormalizeProject(project)
 	if err := project.Validate(); err != nil {
 		return contracts.Project{}, err
 	}

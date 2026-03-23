@@ -68,3 +68,25 @@ func TestTrackerConfigValidate(t *testing.T) {
 		t.Fatal("expected invalid completion mode error")
 	}
 }
+
+func TestNormalizeProjectPreservesLegacyCompletionFallback(t *testing.T) {
+	legacy := NormalizeProject(Project{
+		Key:           "APP",
+		Name:          "App",
+		SchemaVersion: SchemaVersionV1,
+	})
+	if legacy.Defaults.CompletionMode != "" {
+		t.Fatalf("expected legacy project completion mode to stay empty, got %s", legacy.Defaults.CompletionMode)
+	}
+	if legacy.SchemaVersion != SchemaVersionV1 {
+		t.Fatalf("expected legacy schema to remain v1 in-memory until write, got %d", legacy.SchemaVersion)
+	}
+
+	fresh := NormalizeProject(Project{Key: "NEW", Name: "New"})
+	if fresh.Defaults.CompletionMode != CompletionModeOpen {
+		t.Fatalf("expected fresh project completion mode to default to open, got %s", fresh.Defaults.CompletionMode)
+	}
+	if fresh.SchemaVersion != CurrentSchemaVersion {
+		t.Fatalf("expected fresh project schema to default to current, got %d", fresh.SchemaVersion)
+	}
+}

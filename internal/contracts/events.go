@@ -6,24 +6,53 @@ import (
 	"time"
 )
 
-// EventType captures every v1 mutation event.
+// EventType captures every persisted mutation event.
 type EventType string
 
 const (
-	EventTicketCreated   EventType = "ticket.created"
-	EventTicketUpdated   EventType = "ticket.updated"
-	EventTicketMoved     EventType = "ticket.moved"
-	EventTicketCommented EventType = "ticket.commented"
-	EventTicketLinked    EventType = "ticket.linked"
-	EventTicketUnlinked  EventType = "ticket.unlinked"
-	EventTicketClosed    EventType = "ticket.closed"
-	EventConfigChanged   EventType = "config.changed"
+	EventTicketCreated         EventType = "ticket.created"
+	EventTicketUpdated         EventType = "ticket.updated"
+	EventTicketMoved           EventType = "ticket.moved"
+	EventTicketCommented       EventType = "ticket.commented"
+	EventTicketLinked          EventType = "ticket.linked"
+	EventTicketUnlinked        EventType = "ticket.unlinked"
+	EventTicketClosed          EventType = "ticket.closed"
+	EventTicketClaimed         EventType = "ticket.claimed"
+	EventTicketReleased        EventType = "ticket.released"
+	EventTicketHeartbeat       EventType = "ticket.heartbeat"
+	EventTicketLeaseExpired    EventType = "ticket.lease_expired"
+	EventTicketReviewRequested EventType = "ticket.review_requested"
+	EventTicketApproved        EventType = "ticket.approved"
+	EventTicketRejected        EventType = "ticket.rejected"
+	EventTicketPolicyUpdated   EventType = "ticket.policy_updated"
+	EventTicketTemplateApplied EventType = "ticket.template_applied"
+	EventOwnerAttentionRaised  EventType = "ticket.owner_attention_required"
+	EventOwnerAttentionCleared EventType = "ticket.owner_attention_cleared"
+	EventProjectPolicyUpdated  EventType = "project.policy_updated"
+	EventConfigChanged         EventType = "config.changed"
 )
 
 var validEventTypes = map[EventType]struct{}{
-	EventTicketCreated: {}, EventTicketUpdated: {}, EventTicketMoved: {},
-	EventTicketCommented: {}, EventTicketLinked: {}, EventTicketUnlinked: {},
-	EventTicketClosed: {}, EventConfigChanged: {},
+	EventTicketCreated:         {},
+	EventTicketUpdated:         {},
+	EventTicketMoved:           {},
+	EventTicketCommented:       {},
+	EventTicketLinked:          {},
+	EventTicketUnlinked:        {},
+	EventTicketClosed:          {},
+	EventTicketClaimed:         {},
+	EventTicketReleased:        {},
+	EventTicketHeartbeat:       {},
+	EventTicketLeaseExpired:    {},
+	EventTicketReviewRequested: {},
+	EventTicketApproved:        {},
+	EventTicketRejected:        {},
+	EventTicketPolicyUpdated:   {},
+	EventTicketTemplateApplied: {},
+	EventOwnerAttentionRaised:  {},
+	EventOwnerAttentionCleared: {},
+	EventProjectPolicyUpdated:  {},
+	EventConfigChanged:         {},
 }
 
 func (t EventType) IsValid() bool {

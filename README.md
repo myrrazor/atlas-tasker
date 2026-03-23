@@ -13,6 +13,9 @@ go run ./cmd/tracker board --project APP
 
 ## Docs
 
+- [v1.2 implementation plan](docs/v1.2-implementation-plan.md)
+- [v1.2 PR breakdown](docs/v1.2-ticket-breakdown.md)
+- [v1.2 decision log](docs/v1.2-decision-log.md)
 - [Implementation plan](docs/v1-implementation-plan.md)
 - [PR breakdown](docs/v1-ticket-pr-breakdown.md)
 - [Decision log](docs/v1-decision-log.md)

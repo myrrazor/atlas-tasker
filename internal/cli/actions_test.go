@@ -61,12 +61,18 @@ func TestTicketLifecycleAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ticket history failed: %v", err)
 	}
-	var payload []map[string]any
+	var payload struct {
+		TicketID string           `json:"ticket_id"`
+		Events   []map[string]any `json:"events"`
+	}
 	if err := json.Unmarshal([]byte(historyJSON), &payload); err != nil {
 		t.Fatalf("history json parse failed: %v\nraw=%s", err, historyJSON)
 	}
-	if len(payload) < 3 {
-		t.Fatalf("expected at least 3 events, got %d", len(payload))
+	if payload.TicketID != "APP-1" {
+		t.Fatalf("unexpected history ticket id: %s", payload.TicketID)
+	}
+	if len(payload.Events) < 3 {
+		t.Fatalf("expected at least 3 events, got %d", len(payload.Events))
 	}
 }
 
