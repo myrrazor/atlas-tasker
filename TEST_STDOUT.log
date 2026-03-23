@@ -10,4 +10,3 @@ ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	(cached)
 ?   	github.com/myrrazor/atlas-tasker/internal/testutil	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	(cached)
