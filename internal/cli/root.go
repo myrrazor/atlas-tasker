@@ -10,6 +10,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/domain"
+	"github.com/myrrazor/atlas-tasker/internal/integrations"
 	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
@@ -51,6 +52,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newSweepCommand())
 	root.AddCommand(newInspectCommand())
 	root.AddCommand(newTemplatesCommand())
+	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newShellCommand())
@@ -154,6 +156,40 @@ func newConfigCommand() *cobra.Command {
 			return nil
 		},
 	})
+	return cmd
+}
+
+func newIntegrationsCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "integrations", Short: "Install agent guidance for Atlas Tasker"}
+	install := &cobra.Command{Use: "install", Short: "Install Atlas Tasker guidance into agent files"}
+	for _, target := range []string{"codex", "claude"} {
+		target := target
+		targetCmd := &cobra.Command{
+			Use:   target,
+			Short: fmt.Sprintf("Install %s guidance", target),
+			RunE: func(command *cobra.Command, _ []string) error {
+				rootDir, err := os.Getwd()
+				if err != nil {
+					return err
+				}
+				if err := ensureInitArtifacts(rootDir); err != nil {
+					return err
+				}
+				force, _ := command.Flags().GetBool("force")
+				result, err := integrations.Installer{Root: rootDir}.Install(integrations.Target(target), force)
+				if err != nil {
+					return err
+				}
+				pretty := fmt.Sprintf("installed %s guidance into %s", target, result.InstructionFile)
+				md := fmt.Sprintf("# %s integration\n\n- Instructions: %s\n- Guide: %s", target, result.InstructionFile, result.GuideFile)
+				return writeCommandOutput(command, result, md, pretty)
+			},
+		}
+		targetCmd.Flags().Bool("force", false, "Replace the whole instruction file instead of only the Atlas Tasker managed block")
+		addReadOutputFlags(targetCmd, &outputFlags{})
+		install.AddCommand(targetCmd)
+	}
+	cmd.AddCommand(install)
 	return cmd
 }
 

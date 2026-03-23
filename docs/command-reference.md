@@ -9,6 +9,8 @@
 - `tracker inspect <ID> [--actor <ACTOR>]`
 - `tracker templates list`
 - `tracker templates view <NAME>`
+- `tracker integrations install codex [--force]`
+- `tracker integrations install claude [--force]`
 - `tracker tui [--actor <ACTOR>]`
 - `tracker config get [KEY]`
 - `tracker config set <KEY> <VALUE>`

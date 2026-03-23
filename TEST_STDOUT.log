@@ -3,6 +3,7 @@ ok  	github.com/myrrazor/atlas-tasker/internal/cli	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/config	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/contracts	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/domain	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/render	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/service	(cached)
 ?   	github.com/myrrazor/atlas-tasker/internal/slashcmd	[no test files]
