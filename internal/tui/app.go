@@ -219,6 +219,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(items) == 0 {
 				return m, nil
 			}
+			if m.cursor >= len(items) {
+				m.cursor = len(items) - 1
+			}
 			if m.cursor > 0 {
 				m.cursor--
 			}
@@ -228,6 +231,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			items := m.itemsForScreen()
 			if len(items) == 0 {
 				return m, nil
+			}
+			if m.cursor >= len(items) {
+				m.cursor = len(items) - 1
 			}
 			if m.cursor < len(items)-1 {
 				m.cursor++

@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
@@ -88,5 +90,37 @@ func TestModelLoadsDataAndSwitchesTabs(t *testing.T) {
 	m = updated.(model)
 	if m.screen != screenQueues {
 		t.Fatalf("expected queue screen, got %v", m.screen)
+	}
+}
+
+func TestCursorClampsAcrossScreenSizes(t *testing.T) {
+	m := model{
+		keys: keyMap{
+			Up:   key.NewBinding(key.WithKeys("up")),
+			Down: key.NewBinding(key.WithKeys("down")),
+		},
+		screen: screenOwner,
+		cursor: 7,
+		owner: service.QueueView{
+			Categories: map[service.QueueCategory][]service.QueueEntry{
+				service.QueueAwaitingOwner: {
+					{Ticket: contracts.TicketSnapshot{ID: "APP-1"}},
+					{Ticket: contracts.TicketSnapshot{ID: "APP-2"}},
+				},
+			},
+		},
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(model)
+	if m.cursor != 0 {
+		t.Fatalf("expected cursor to clamp to first valid index, got %d", m.cursor)
+	}
+
+	m.cursor = 9
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(model)
+	if m.cursor != 1 {
+		t.Fatalf("expected cursor to clamp to last valid index, got %d", m.cursor)
 	}
 }
