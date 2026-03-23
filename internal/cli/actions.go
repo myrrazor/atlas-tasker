@@ -50,7 +50,7 @@ func openWorkspace() (*workspace, error) {
 		events:     eventLog,
 		projection: projection,
 	}
-	w.actions = service.NewActionService(projectStore, ticketStore, eventLog, projection, defaultNow)
+	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
 	w.queries = service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
 	return w, nil
 }

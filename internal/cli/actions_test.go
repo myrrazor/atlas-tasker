@@ -2,10 +2,15 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
 )
 
 func runCLI(t *testing.T, args ...string) (string, error) {
@@ -161,5 +166,88 @@ func TestBoardMarkdownOrderIsDeterministic(t *testing.T) {
 			t.Fatalf("marker %q out of order in board markdown: %s", marker, out)
 		}
 		last = index
+	}
+}
+
+func TestClaimQueueAndSweepCommands(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("config", "set", "actor.default", "agent:builder-1")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Queue me", "--type", "task", "--priority", "high", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	claimOut := must("ticket", "claim", "APP-1")
+	if !strings.Contains(claimOut, "claimed APP-1") {
+		t.Fatalf("unexpected claim output: %s", claimOut)
+	}
+	queueOut := must("queue", "--json")
+	if !strings.Contains(queueOut, "claimed_by_me") {
+		t.Fatalf("queue output missing claimed_by_me: %s", queueOut)
+	}
+	heartbeatOut := must("ticket", "heartbeat", "APP-1")
+	if !strings.Contains(heartbeatOut, "heartbeat APP-1") {
+		t.Fatalf("unexpected heartbeat output: %s", heartbeatOut)
+	}
+	whoOut := must("who", "--pretty")
+	if !strings.Contains(whoOut, "APP-1") || !strings.Contains(whoOut, "agent:builder-1") || !strings.Contains(whoOut, "[active]") {
+		t.Fatalf("unexpected who output: %s", whoOut)
+	}
+	must("ticket", "release", "APP-1")
+	queueOut = must("queue", "--pretty")
+	if strings.Contains(queueOut, "claimed_by_me:\n  - APP-1") {
+		t.Fatalf("ticket should not remain claimed after release: %s", queueOut)
+	}
+
+	must("ticket", "create", "--project", "APP", "--title", "Review me", "--type", "task", "--reviewer", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "move", "APP-2", "ready", "--actor", "human:owner")
+	must("ticket", "move", "APP-2", "in_progress", "--actor", "human:owner")
+	must("ticket", "move", "APP-2", "in_review", "--actor", "human:owner")
+	reviewQueueOut := must("review-queue", "--pretty")
+	if !strings.Contains(reviewQueueOut, "APP-2") {
+		t.Fatalf("review-queue should include APP-2: %s", reviewQueueOut)
+	}
+
+	ownerQueueOut := must("owner-queue", "--pretty")
+	if !strings.Contains(ownerQueueOut, "awaiting_owner") {
+		t.Fatalf("owner-queue output missing awaiting_owner section: %s", ownerQueueOut)
+	}
+
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	store := mdstore.TicketStore{RootDir: root}
+	ticket, err := store.GetTicket(context.Background(), "APP-1")
+	if err != nil {
+		t.Fatalf("load ticket for stale lease setup: %v", err)
+	}
+	ticket.Lease = contracts.LeaseState{
+		Actor:           contracts.Actor("agent:builder-1"),
+		Kind:            contracts.LeaseKindWork,
+		AcquiredAt:      time.Now().UTC().Add(-2 * time.Hour),
+		ExpiresAt:       time.Now().UTC().Add(-1 * time.Hour),
+		LastHeartbeatAt: time.Now().UTC().Add(-90 * time.Minute),
+	}
+	ticket.UpdatedAt = time.Now().UTC().Add(-90 * time.Minute)
+	if err := store.UpdateTicket(context.Background(), ticket); err != nil {
+		t.Fatalf("update stale ticket: %v", err)
+	}
+	sweepOut := must("sweep", "--actor", "human:owner", "--reason", "cleanup")
+	if !strings.Contains(sweepOut, "expired 1 lease(s)") {
+		t.Fatalf("unexpected sweep output: %s", sweepOut)
+	}
+	whoOut = must("who", "--pretty")
+	if strings.Contains(whoOut, "APP-1") {
+		t.Fatalf("who output should not include APP-1 after sweep: %s", whoOut)
 	}
 }

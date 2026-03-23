@@ -11,6 +11,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/domain"
 	"github.com/myrrazor/atlas-tasker/internal/render"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
 	"github.com/spf13/cobra"
 )
@@ -42,6 +43,11 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newBacklogCommand())
 	root.AddCommand(newNextCommand())
 	root.AddCommand(newBlockedCommand())
+	root.AddCommand(newQueueCommand())
+	root.AddCommand(newReviewQueueCommand())
+	root.AddCommand(newOwnerQueueCommand())
+	root.AddCommand(newWhoCommand())
+	root.AddCommand(newSweepCommand())
 	root.AddCommand(newSearchCommand())
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newShellCommand())
@@ -293,6 +299,18 @@ func newTicketCommand() *cobra.Command {
 	addReadOutputFlags(history, &outputFlags{})
 	cmd.AddCommand(history)
 
+	claim := &cobra.Command{Use: "claim <ID>", Args: cobra.ExactArgs(1), Short: "Claim a ticket lease", RunE: runTicketClaim}
+	addMutationFlags(claim, &mutationFlags{})
+	cmd.AddCommand(claim)
+
+	release := &cobra.Command{Use: "release <ID>", Args: cobra.ExactArgs(1), Short: "Release a ticket lease", RunE: runTicketRelease}
+	addMutationFlags(release, &mutationFlags{})
+	cmd.AddCommand(release)
+
+	heartbeat := &cobra.Command{Use: "heartbeat <ID>", Args: cobra.ExactArgs(1), Short: "Extend an active ticket lease", RunE: runTicketHeartbeat}
+	addMutationFlags(heartbeat, &mutationFlags{})
+	cmd.AddCommand(heartbeat)
+
 	return cmd
 }
 
@@ -320,6 +338,39 @@ func newNextCommand() *cobra.Command {
 
 func newBlockedCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "blocked", Short: "Show blocked tickets", RunE: runBlocked}
+	addReadOutputFlags(cmd, &outputFlags{})
+	return cmd
+}
+
+func newQueueCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "queue", Short: "Show actor queue", RunE: runQueue}
+	cmd.Flags().String("actor", "", "Queue actor")
+	addReadOutputFlags(cmd, &outputFlags{})
+	return cmd
+}
+
+func newReviewQueueCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "review-queue", Short: "Show review queue for actor", RunE: runReviewQueue}
+	cmd.Flags().String("actor", "", "Reviewer actor")
+	addReadOutputFlags(cmd, &outputFlags{})
+	return cmd
+}
+
+func newOwnerQueueCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "owner-queue", Short: "Show owner attention queue", RunE: runOwnerQueue}
+	addReadOutputFlags(cmd, &outputFlags{})
+	return cmd
+}
+
+func newWhoCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "who", Short: "List claimed tickets", RunE: runWho}
+	addReadOutputFlags(cmd, &outputFlags{})
+	return cmd
+}
+
+func newSweepCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "sweep", Short: "Expire stale leases", RunE: runSweep}
+	addMutationFlags(cmd, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
@@ -863,6 +914,68 @@ func runTicketHistory(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, history, pretty, pretty)
 }
 
+func runTicketClaim(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ticket, err := workspace.actions.ClaimTicket(ctx, args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("claimed %s as %s until %s", ticket.ID, ticket.Lease.Kind, ticket.Lease.ExpiresAt.Format(timeRFC3339))
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\nclaimed by %s", ticket.ID, actor), pretty)
+}
+
+func runTicketRelease(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ticket, err := workspace.actions.ReleaseTicket(ctx, args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\nlease released", ticket.ID), fmt.Sprintf("released %s", ticket.ID))
+}
+
+func runTicketHeartbeat(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ticket, err := workspace.actions.HeartbeatTicket(ctx, args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("heartbeat %s -> %s", ticket.ID, ticket.Lease.ExpiresAt.Format(timeRFC3339))
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\nlease extended", ticket.ID), pretty)
+}
+
 func runDoctor(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
 	workspace, err := openWorkspace()
@@ -899,6 +1012,127 @@ func runReindex(cmd *cobra.Command, _ []string) error {
 	}
 	message := "reindex complete"
 	return writeCommandOutput(cmd, map[string]any{"ok": true}, message, message)
+}
+
+func runQueue(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	queue, err := workspace.queries.Queue(ctx, actor)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, queue, queueMarkdown(queue), queuePretty(queue))
+}
+
+func runReviewQueue(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	queue, err := workspace.queries.Queue(ctx, actor)
+	if err != nil {
+		return err
+	}
+	filtered := service.QueueView{
+		Actor:       queue.Actor,
+		GeneratedAt: queue.GeneratedAt,
+		Categories:  map[service.QueueCategory][]service.QueueEntry{service.QueueNeedsReview: queue.Categories[service.QueueNeedsReview]},
+	}
+	return writeCommandOutput(cmd, filtered, queueMarkdown(filtered), queuePretty(filtered))
+}
+
+func runOwnerQueue(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	queue, err := workspace.queries.Queue(ctx, contracts.Actor("human:owner"))
+	if err != nil {
+		return err
+	}
+	filtered := service.QueueView{
+		Actor:       queue.Actor,
+		GeneratedAt: queue.GeneratedAt,
+		Categories: map[service.QueueCategory][]service.QueueEntry{
+			service.QueueAwaitingOwner: queue.Categories[service.QueueAwaitingOwner],
+			service.QueueStaleClaims:   queue.Categories[service.QueueStaleClaims],
+		},
+	}
+	return writeCommandOutput(cmd, filtered, queueMarkdown(filtered), queuePretty(filtered))
+}
+
+func runWho(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	tickets, err := workspace.queries.Who(ctx)
+	if err != nil {
+		return err
+	}
+	md := "## Claimed Tickets\n\n"
+	now := defaultNow()
+	for _, ticket := range tickets {
+		state := "active"
+		if !ticket.Lease.Active(now) {
+			state = "stale"
+		}
+		md += fmt.Sprintf("- %s `%s` `%s` until %s (%s)\n", ticket.ID, ticket.Lease.Actor, ticket.Lease.Kind, ticket.Lease.ExpiresAt.Format(timeRFC3339), state)
+	}
+	pretty := "claimed tickets:\n"
+	for _, ticket := range tickets {
+		state := "active"
+		if !ticket.Lease.Active(now) {
+			state = "STALE"
+		}
+		pretty += fmt.Sprintf("- %s %s %s until %s [%s]\n", ticket.ID, ticket.Lease.Actor, ticket.Lease.Kind, ticket.Lease.ExpiresAt.Format(timeRFC3339), state)
+	}
+	return writeCommandOutput(cmd, tickets, md, pretty)
+}
+
+func runSweep(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	tickets, err := workspace.actions.SweepExpiredClaims(ctx, actor, reason)
+	if err != nil {
+		return err
+	}
+	md := "## Sweep\n\n"
+	for _, ticket := range tickets {
+		md += fmt.Sprintf("- expired %s\n", ticket.ID)
+	}
+	pretty := fmt.Sprintf("expired %d lease(s)", len(tickets))
+	return writeCommandOutput(cmd, tickets, md, pretty)
 }
 
 func runBoard(cmd *cobra.Command, _ []string) error {
@@ -1091,5 +1325,49 @@ func orderedBoardStatuses() []contracts.Status {
 		contracts.StatusInReview,
 		contracts.StatusBlocked,
 		contracts.StatusDone,
+	}
+}
+
+func queueMarkdown(queue service.QueueView) string {
+	md := fmt.Sprintf("## Queue for %s\n\n", queue.Actor)
+	for _, category := range orderedQueueCategories() {
+		entries := queue.Categories[category]
+		md += fmt.Sprintf("### %s\n", category)
+		if len(entries) == 0 {
+			md += "- (empty)\n"
+			continue
+		}
+		for _, entry := range entries {
+			md += fmt.Sprintf("- %s [%s] %s — %s\n", entry.Ticket.ID, entry.Ticket.Priority, entry.Ticket.Title, entry.Reason)
+		}
+	}
+	return md
+}
+
+func queuePretty(queue service.QueueView) string {
+	pretty := fmt.Sprintf("queue for %s:\n", queue.Actor)
+	for _, category := range orderedQueueCategories() {
+		entries := queue.Categories[category]
+		pretty += fmt.Sprintf("%s:\n", category)
+		if len(entries) == 0 {
+			pretty += "  (empty)\n"
+			continue
+		}
+		for _, entry := range entries {
+			pretty += fmt.Sprintf("  - %s [%s/%s] %s — %s\n", entry.Ticket.ID, entry.Ticket.Status, entry.Ticket.Priority, entry.Ticket.Title, entry.Reason)
+		}
+	}
+	return pretty
+}
+
+func orderedQueueCategories() []service.QueueCategory {
+	return []service.QueueCategory{
+		service.QueueReadyForMe,
+		service.QueueClaimedByMe,
+		service.QueueBlockedForMe,
+		service.QueueNeedsReview,
+		service.QueueAwaitingOwner,
+		service.QueueStaleClaims,
+		service.QueuePolicyViolations,
 	}
 }
