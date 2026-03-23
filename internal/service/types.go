@@ -70,3 +70,27 @@ type InspectView struct {
 	History         []contracts.Event        `json:"history"`
 	QueueCategories []QueueCategory          `json:"queue_categories,omitempty"`
 }
+
+type TemplateView struct {
+	Name         string                 `json:"name"`
+	Path         string                 `json:"path"`
+	Type         contracts.TicketType   `json:"type,omitempty"`
+	Labels       []string               `json:"labels,omitempty"`
+	Reviewer     contracts.Actor        `json:"reviewer,omitempty"`
+	Policy       contracts.TicketPolicy `json:"policy,omitempty"`
+	Blueprint    string                 `json:"blueprint,omitempty"`
+	SkillHint    string                 `json:"skill_hint,omitempty"`
+	Description  string                 `json:"description,omitempty"`
+	Acceptance   []string               `json:"acceptance,omitempty"`
+	TemplateBody string                 `json:"template_body"`
+}
+
+type NextEntry struct {
+	Category QueueCategory `json:"category"`
+	Entry    QueueEntry    `json:"entry"`
+}
+
+type NextView struct {
+	Actor   contracts.Actor `json:"actor"`
+	Entries []NextEntry     `json:"entries"`
+}

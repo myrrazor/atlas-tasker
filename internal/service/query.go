@@ -79,6 +79,10 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
+	ticket, err = s.withProgress(ctx, ticket)
+	if err != nil {
+		return TicketDetailView{}, err
+	}
 	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, EffectivePolicy: policy}, nil
 }
 
@@ -218,6 +222,33 @@ func (s *QueryService) ResolveActor(ctx context.Context, explicit contracts.Acto
 	return "", fmt.Errorf("actor is required: pass --actor, set TRACKER_ACTOR, or configure actor.default")
 }
 
+func (s *QueryService) Next(ctx context.Context, actor contracts.Actor) (NextView, error) {
+	resolved, err := s.ResolveActor(ctx, actor)
+	if err != nil {
+		return NextView{}, err
+	}
+	queue, err := s.Queue(ctx, resolved)
+	if err != nil {
+		return NextView{}, err
+	}
+	order := []QueueCategory{
+		QueueReadyForMe,
+		QueueClaimedByMe,
+		QueueNeedsReview,
+		QueueAwaitingOwner,
+		QueueBlockedForMe,
+		QueueStaleClaims,
+		QueuePolicyViolations,
+	}
+	view := NextView{Actor: resolved}
+	for _, category := range order {
+		for _, entry := range queue.Categories[category] {
+			view.Entries = append(view.Entries, NextEntry{Category: category, Entry: entry})
+		}
+	}
+	return view, nil
+}
+
 func applyPolicy(view *EffectivePolicyView, policy contracts.TicketPolicy) {
 	if policy.CompletionMode != "" {
 		view.CompletionMode = policy.CompletionMode
@@ -257,4 +288,36 @@ func sortQueueEntries(entries []QueueEntry) {
 		}
 		return entries[i].Ticket.ID < entries[j].Ticket.ID
 	})
+}
+
+func (s *QueryService) withProgress(ctx context.Context, ticket contracts.TicketSnapshot) (contracts.TicketSnapshot, error) {
+	children, err := s.Tickets.ListTickets(ctx, contracts.TicketListOptions{Project: ticket.Project, IncludeArchived: false})
+	if err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	total := 0
+	done := 0
+	blocked := 0
+	for _, child := range children {
+		if child.Parent != ticket.ID {
+			continue
+		}
+		total++
+		if contracts.IsTerminalStatus(child.Status) {
+			done++
+		}
+		if contracts.BoardStatus(child) == contracts.StatusBlocked {
+			blocked++
+		}
+	}
+	if total == 0 {
+		return ticket, nil
+	}
+	ticket.Progress = contracts.ProgressSummary{
+		TotalChildren:   total,
+		DoneChildren:    done,
+		BlockedChildren: blocked,
+		Percent:         (done * 100) / total,
+	}
+	return ticket, nil
 }

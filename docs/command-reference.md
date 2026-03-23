@@ -7,6 +7,8 @@
 - `tracker doctor [--repair]`
 - `tracker reindex`
 - `tracker inspect <ID> [--actor <ACTOR>]`
+- `tracker templates list`
+- `tracker templates view <NAME>`
 - `tracker config get [KEY]`
 - `tracker config set <KEY> <VALUE>`
 
@@ -20,7 +22,7 @@
 
 ## Ticket CRUD
 
-- `tracker ticket create --project <KEY> --title <TEXT> --type <epic|task|bug|subtask> [flags]`
+- `tracker ticket create --project <KEY> --title <TEXT> [--type <epic|task|bug|subtask>] [--template <NAME>] [flags]`
 - `tracker ticket view <ID>`
 - `tracker ticket edit <ID> [flags]`
 - `tracker ticket delete <ID>`
@@ -59,7 +61,7 @@
 
 - `tracker board`
 - `tracker backlog`
-- `tracker next`
+- `tracker next [--actor <ACTOR>]`
 - `tracker blocked`
 - `tracker queue [--actor <ACTOR>]`
 - `tracker review-queue [--actor <ACTOR>]`

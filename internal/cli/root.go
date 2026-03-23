@@ -49,6 +49,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newWhoCommand())
 	root.AddCommand(newSweepCommand())
 	root.AddCommand(newInspectCommand())
+	root.AddCommand(newTemplatesCommand())
 	root.AddCommand(newSearchCommand())
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newShellCommand())
@@ -243,7 +244,8 @@ func newTicketCommand() *cobra.Command {
 	addMutationFlags(create, &mutationFlags{Actor: "human:owner"})
 	create.Flags().String("project", "", "Project key (required)")
 	create.Flags().String("title", "", "Ticket title (required)")
-	create.Flags().String("type", "", "Ticket type: epic|task|bug|subtask (required)")
+	create.Flags().String("type", "", "Ticket type: epic|task|bug|subtask")
+	create.Flags().String("template", "", "Template name from .tracker/templates")
 	create.Flags().String("status", "backlog", "Initial status")
 	create.Flags().String("priority", "medium", "Ticket priority")
 	create.Flags().String("parent", "", "Parent ticket id")
@@ -254,7 +256,6 @@ func newTicketCommand() *cobra.Command {
 	create.Flags().StringArray("acceptance", []string{}, "Acceptance criterion (repeatable)")
 	_ = create.MarkFlagRequired("project")
 	_ = create.MarkFlagRequired("title")
-	_ = create.MarkFlagRequired("type")
 	cmd.AddCommand(create)
 
 	view := &cobra.Command{Use: "view <ID>", Args: cobra.ExactArgs(1), Short: "View ticket", RunE: runTicketView}
@@ -390,7 +391,19 @@ func newBacklogCommand() *cobra.Command {
 
 func newNextCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "next", Short: "Show next-up queue", RunE: runNext}
+	cmd.Flags().String("actor", "", "Actor used for queue-aware next")
 	addReadOutputFlags(cmd, &outputFlags{})
+	return cmd
+}
+
+func newTemplatesCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "templates", Short: "List and inspect ticket templates"}
+	list := &cobra.Command{Use: "list", Short: "List templates", RunE: runTemplatesList}
+	addReadOutputFlags(list, &outputFlags{})
+	cmd.AddCommand(list)
+	view := &cobra.Command{Use: "view <NAME>", Args: cobra.ExactArgs(1), Short: "Show template details", RunE: runTemplatesView}
+	addReadOutputFlags(view, &outputFlags{})
+	cmd.AddCommand(view)
 	return cmd
 }
 
@@ -473,6 +486,7 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	project, _ := cmd.Flags().GetString("project")
 	title, _ := cmd.Flags().GetString("title")
 	typeValue, _ := cmd.Flags().GetString("type")
+	templateName, _ := cmd.Flags().GetString("template")
 	statusValue, _ := cmd.Flags().GetString("status")
 	priorityValue, _ := cmd.Flags().GetString("priority")
 	parent, _ := cmd.Flags().GetString("parent")
@@ -488,9 +502,19 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	if _, err := workspace.project.GetProject(ctx, project); err != nil {
 		return err
 	}
+	var template service.TemplateView
+	if strings.TrimSpace(templateName) != "" {
+		template, err = workspace.queries.Template(ctx, templateName)
+		if err != nil {
+			return err
+		}
+	}
 	existing, err := workspace.ticket.ListTickets(ctx, contracts.TicketListOptions{Project: project, IncludeArchived: true})
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(typeValue) == "" && template.Type != "" {
+		typeValue = string(template.Type)
 	}
 	ticketType := contracts.TicketType(typeValue)
 	if !ticketType.IsValid() {
@@ -521,26 +545,46 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 		Priority:           priority,
 		Parent:             parent,
 		Labels:             parseLabels(labelsRaw),
-		Assignee:           normalizeActor(assigneeRaw),
-		Reviewer:           normalizeActor(reviewerRaw),
 		CreatedAt:          now,
 		UpdatedAt:          now,
 		SchemaVersion:      contracts.CurrentSchemaVersion,
 		Summary:            title,
 		Description:        description,
 		AcceptanceCriteria: acceptance,
+		Template:           strings.TrimSpace(templateName),
 	}
-	if assigneeRaw != "" && !ticket.Assignee.IsValid() {
-		return fmt.Errorf("invalid assignee actor: %s", assigneeRaw)
+	if len(ticket.Labels) == 0 && len(template.Labels) > 0 {
+		ticket.Labels = append([]string{}, template.Labels...)
 	}
-	if reviewerRaw != "" && !ticket.Reviewer.IsValid() {
-		return fmt.Errorf("invalid reviewer actor: %s", reviewerRaw)
+	if ticket.Reviewer == "" && template.Reviewer != "" {
+		ticket.Reviewer = template.Reviewer
 	}
-	if assigneeRaw == "" {
-		ticket.Assignee = ""
+	if strings.TrimSpace(ticket.Description) == "" && strings.TrimSpace(template.Description) != "" {
+		ticket.Description = template.Description
 	}
-	if reviewerRaw == "" {
-		ticket.Reviewer = ""
+	if len(ticket.AcceptanceCriteria) == 0 && len(template.Acceptance) > 0 {
+		ticket.AcceptanceCriteria = append([]string{}, template.Acceptance...)
+	}
+	if !ticket.Policy.HasOverrides() && template.Policy.HasOverrides() {
+		ticket.Policy = template.Policy
+	}
+	if ticket.Blueprint == "" {
+		ticket.Blueprint = template.Blueprint
+	}
+	if ticket.SkillHint == "" {
+		ticket.SkillHint = template.SkillHint
+	}
+	if strings.TrimSpace(assigneeRaw) != "" {
+		ticket.Assignee = contracts.Actor(strings.TrimSpace(assigneeRaw))
+		if !ticket.Assignee.IsValid() {
+			return fmt.Errorf("invalid assignee actor: %s", assigneeRaw)
+		}
+	}
+	if strings.TrimSpace(reviewerRaw) != "" {
+		ticket.Reviewer = contracts.Actor(strings.TrimSpace(reviewerRaw))
+		if !ticket.Reviewer.IsValid() {
+			return fmt.Errorf("invalid reviewer actor: %s", reviewerRaw)
+		}
 	}
 	if err := workspace.ticket.CreateTicket(ctx, ticket); err != nil {
 		return err
@@ -1512,42 +1556,53 @@ func runNext(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer workspace.close()
-	boardVM, err := workspace.queries.Board(ctx, contracts.BoardQueryOptions{})
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	nextView, err := workspace.queries.Next(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
 	if err != nil {
 		return err
 	}
-	tickets := make([]contracts.TicketSnapshot, 0)
-	tickets = append(tickets, boardVM.Board.Columns[contracts.StatusReady]...)
-	tickets = append(tickets, boardVM.Board.Columns[contracts.StatusInProgress]...)
-	tickets = append(tickets, boardVM.Board.Columns[contracts.StatusBlocked]...)
-	tickets = append(tickets, boardVM.Board.Columns[contracts.StatusInReview]...)
-	priorityRank := map[contracts.Priority]int{
-		contracts.PriorityCritical: 4,
-		contracts.PriorityHigh:     3,
-		contracts.PriorityMedium:   2,
-		contracts.PriorityLow:      1,
-	}
-	sort.Slice(tickets, func(i, j int) bool {
-		leftReady := tickets[i].Status == contracts.StatusReady
-		rightReady := tickets[j].Status == contracts.StatusReady
-		if leftReady != rightReady {
-			return leftReady
-		}
-		leftPriority := priorityRank[tickets[i].Priority]
-		rightPriority := priorityRank[tickets[j].Priority]
-		if leftPriority != rightPriority {
-			return leftPriority > rightPriority
-		}
-		if !tickets[i].UpdatedAt.Equal(tickets[j].UpdatedAt) {
-			return tickets[i].UpdatedAt.Before(tickets[j].UpdatedAt)
-		}
-		return tickets[i].ID < tickets[j].ID
-	})
 	markdown := "## Next\n\n"
-	for _, ticket := range tickets {
-		markdown += fmt.Sprintf("- %s [%s/%s] %s\n", ticket.ID, ticket.Status, ticket.Priority, ticket.Title)
+	pretty := fmt.Sprintf("next for %s:\n", nextView.Actor)
+	for _, item := range nextView.Entries {
+		markdown += fmt.Sprintf("- %s [%s/%s] %s (%s)\n", item.Entry.Ticket.ID, item.Entry.Ticket.Status, item.Entry.Ticket.Priority, item.Entry.Ticket.Title, item.Entry.Reason)
+		pretty += fmt.Sprintf("- %s [%s] %s -> %s\n", item.Entry.Ticket.ID, item.Category, item.Entry.Ticket.Title, item.Entry.Reason)
 	}
-	return writeCommandOutput(cmd, tickets, markdown, render.TicketsPretty("Next", tickets))
+	return writeCommandOutput(cmd, nextView, markdown, pretty)
+}
+
+func runTemplatesList(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	templates, err := workspace.queries.ListTemplates(ctx)
+	if err != nil {
+		return err
+	}
+	md := "## Templates\n\n"
+	pretty := "templates:\n"
+	for _, template := range templates {
+		md += fmt.Sprintf("- %s [%s] %s\n", template.Name, template.Type, template.Blueprint)
+		pretty += fmt.Sprintf("- %s [%s] %s\n", template.Name, template.Type, template.Blueprint)
+	}
+	return writeCommandOutput(cmd, templates, md, pretty)
+}
+
+func runTemplatesView(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	template, err := workspace.queries.Template(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("template %s [%s] %s", template.Name, template.Type, template.Blueprint)
+	return writeCommandOutput(cmd, template, template.TemplateBody, pretty)
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
