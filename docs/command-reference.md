@@ -30,6 +30,9 @@
 - `tracker ticket priority <ID> <PRIORITY>`
 - `tracker ticket label add <ID> <LABEL>`
 - `tracker ticket label remove <ID> <LABEL>`
+- `tracker ticket claim <ID> [--actor <ACTOR>]`
+- `tracker ticket release <ID> [--actor <ACTOR>]`
+- `tracker ticket heartbeat <ID> [--actor <ACTOR>]`
 
 ## Relationships
 
@@ -49,8 +52,16 @@
 - `tracker backlog`
 - `tracker next`
 - `tracker blocked`
+- `tracker queue [--actor <ACTOR>]`
+- `tracker review-queue [--actor <ACTOR>]`
+- `tracker owner-queue`
+- `tracker who`
 - `tracker search <QUERY>`
 - `tracker render <ID>`
+
+## Maintenance
+
+- `tracker sweep`
 
 ## Shell Mode
 

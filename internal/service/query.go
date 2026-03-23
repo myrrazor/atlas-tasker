@@ -83,45 +83,7 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 }
 
 func (s *QueryService) EffectivePolicy(ctx context.Context, ticket contracts.TicketSnapshot) (EffectivePolicyView, error) {
-	cfg, err := config.Load(s.Root)
-	if err != nil {
-		return EffectivePolicyView{}, err
-	}
-	project, err := s.Projects.GetProject(ctx, ticket.Project)
-	if err != nil {
-		return EffectivePolicyView{}, err
-	}
-
-	view := EffectivePolicyView{
-		CompletionMode: cfg.Workflow.CompletionMode,
-		LeaseTTL:       contracts.DefaultLeaseTTL,
-		Sources:        []PolicySource{PolicySourceLegacy},
-	}
-	if project.Defaults.CompletionMode != "" {
-		view.CompletionMode = project.Defaults.CompletionMode
-		view.Sources = append(view.Sources, PolicySourceProject)
-	}
-	if project.Defaults.LeaseTTLMinutes > 0 {
-		view.LeaseTTL = time.Duration(project.Defaults.LeaseTTLMinutes) * time.Minute
-	}
-	if len(project.Defaults.AllowedWorkers) > 0 {
-		view.AllowedWorkers = append([]contracts.Actor{}, project.Defaults.AllowedWorkers...)
-	}
-	if project.Defaults.RequiredReviewer != "" {
-		view.RequiredReviewer = project.Defaults.RequiredReviewer
-	}
-	if ticket.Parent != "" {
-		parent, err := s.Tickets.GetTicket(ctx, ticket.Parent)
-		if err == nil && parent.Type == contracts.TicketTypeEpic && parent.Policy.HasOverrides() {
-			applyPolicy(&view, parent.Policy)
-			view.Sources = append(view.Sources, PolicySourceEpic)
-		}
-	}
-	if ticket.Policy.HasOverrides() {
-		applyPolicy(&view, ticket.Policy)
-		view.Sources = append(view.Sources, PolicySourceTicket)
-	}
-	return view, nil
+	return resolveEffectivePolicy(ctx, s.Root, s.Projects, s.Tickets, ticket)
 }
 
 func (s *QueryService) Queue(ctx context.Context, actor contracts.Actor) (QueueView, error) {
@@ -167,6 +129,36 @@ func (s *QueryService) Queue(ctx context.Context, actor contracts.Actor) (QueueV
 		sortQueueEntries(view.Categories[category])
 	}
 	return view, nil
+}
+
+func (s *QueryService) Who(ctx context.Context) ([]contracts.TicketSnapshot, error) {
+	tickets, err := s.Tickets.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: false})
+	if err != nil {
+		return nil, err
+	}
+	now := s.now()
+	active := make([]contracts.TicketSnapshot, 0)
+	for _, ticket := range tickets {
+		if ticket.Lease.Actor == "" {
+			continue
+		}
+		if ticket.Lease.Active(now) || (!ticket.Lease.ExpiresAt.IsZero() && ticket.Lease.ExpiresAt.Before(now)) {
+			active = append(active, ticket)
+		}
+	}
+	sort.Slice(active, func(i, j int) bool {
+		if active[i].Lease.ExpiresAt.Equal(active[j].Lease.ExpiresAt) {
+			return active[i].ID < active[j].ID
+		}
+		if active[i].Lease.ExpiresAt.IsZero() {
+			return false
+		}
+		if active[j].Lease.ExpiresAt.IsZero() {
+			return true
+		}
+		return active[i].Lease.ExpiresAt.Before(active[j].Lease.ExpiresAt)
+	})
+	return active, nil
 }
 
 func (s *QueryService) ResolveActor(ctx context.Context, explicit contracts.Actor) (contracts.Actor, error) {
