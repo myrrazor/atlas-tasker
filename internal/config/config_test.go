@@ -51,3 +51,27 @@ func TestSetAndGetDefaultActor(t *testing.T) {
 		t.Fatalf("unexpected actor.default: %s", value)
 	}
 }
+
+func TestNotificationsDefaultsAndSetters(t *testing.T) {
+	root := t.TempDir()
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("load default config failed: %v", err)
+	}
+	if !cfg.Notifications.Terminal {
+		t.Fatal("expected terminal notifications to default on")
+	}
+	if err := Set(root, "notifications.file_enabled", "true"); err != nil {
+		t.Fatalf("enable file notifications failed: %v", err)
+	}
+	if err := Set(root, "notifications.file_path", ".tracker/custom-notify.log"); err != nil {
+		t.Fatalf("set notification file path failed: %v", err)
+	}
+	value, err := Get(root, "notifications.file_path")
+	if err != nil {
+		t.Fatalf("get notifications.file_path failed: %v", err)
+	}
+	if value != ".tracker/custom-notify.log" {
+		t.Fatalf("unexpected notifications.file_path: %s", value)
+	}
+}

@@ -306,3 +306,43 @@ func TestReviewCommandsAndPolicyCommands(t *testing.T) {
 		t.Fatalf("unexpected complete output: %s", completeOut)
 	}
 }
+
+func TestDoctorRepairAndInspectCommands(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("config", "set", "notifications.file_enabled", "true")
+	must("config", "set", "notifications.file_path", ".tracker/ops-notify.log")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Inspect me", "--type", "task", "--reviewer", "agent:reviewer-1", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
+	must("ticket", "request-review", "APP-1", "--actor", "agent:builder-1", "--reason", "ready")
+
+	inspectOut := must("inspect", "APP-1", "--actor", "agent:reviewer-1", "--json")
+	if !strings.Contains(inspectOut, "\"queue_categories\"") || !strings.Contains(inspectOut, "needs_review") {
+		t.Fatalf("unexpected inspect output: %s", inspectOut)
+	}
+
+	doctorOut := must("doctor", "--repair", "--json")
+	if !strings.Contains(doctorOut, "\"repair_ran\": true") {
+		t.Fatalf("unexpected doctor output: %s", doctorOut)
+	}
+
+	raw, err := os.ReadFile(".tracker/ops-notify.log")
+	if err != nil {
+		t.Fatalf("read notify log failed: %v", err)
+	}
+	if !strings.Contains(string(raw), "ticket.review_requested") {
+		t.Fatalf("unexpected notify log contents: %s", string(raw))
+	}
+}

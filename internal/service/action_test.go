@@ -48,7 +48,7 @@ func TestActionServiceClaimHeartbeatReleaseSweep(t *testing.T) {
 	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
 		t.Fatalf("create ticket: %v", err)
 	}
-	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock })
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, nil)
 	createdEvent := contracts.Event{EventID: 1, Timestamp: now, Actor: contracts.Actor("human:owner"), Type: contracts.EventTicketCreated, Project: "APP", TicketID: ticket.ID, Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion}
 	if err := actions.AppendAndProject(ctx, createdEvent); err != nil {
 		t.Fatalf("append create event: %v", err)
@@ -128,7 +128,7 @@ func TestActionServiceReviewAndPolicyFlow(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 
-	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock })
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, nil)
 	updatedProject, err := actions.SetProjectPolicy(ctx, "APP", contracts.ProjectDefaults{
 		CompletionMode:   contracts.CompletionModeDualGate,
 		LeaseTTLMinutes:  45,

@@ -1,11 +1,12 @@
-# Atlas Tasker v1 Command Reference
+# Atlas Tasker v1.2 Command Reference
 
 ## Top-Level
 
 - `tracker init`
 - `tracker help`
-- `tracker doctor`
+- `tracker doctor [--repair]`
 - `tracker reindex`
+- `tracker inspect <ID> [--actor <ACTOR>]`
 - `tracker config get [KEY]`
 - `tracker config set <KEY> <VALUE>`
 
@@ -70,6 +71,8 @@
 ## Maintenance
 
 - `tracker sweep`
+- `tracker doctor --repair`
+- `tracker inspect <ID>`
 
 ## Shell Mode
 
@@ -95,3 +98,11 @@ Mutating commands:
 
 - `--actor <ACTOR>`
 - `--reason <TEXT>`
+
+Useful config keys:
+
+- `workflow.completion_mode`
+- `actor.default`
+- `notifications.terminal`
+- `notifications.file_enabled`
+- `notifications.file_path`

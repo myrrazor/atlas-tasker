@@ -82,6 +82,39 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, EffectivePolicy: policy}, nil
 }
 
+func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor contracts.Actor) (InspectView, error) {
+	detail, err := s.TicketDetail(ctx, ticketID)
+	if err != nil {
+		return InspectView{}, err
+	}
+	view := InspectView{
+		Ticket:          detail.Ticket,
+		BoardStatus:     contracts.BoardStatus(detail.Ticket),
+		LeaseActive:     detail.Ticket.Lease.Active(s.now()),
+		EffectivePolicy: detail.EffectivePolicy,
+		History:         detail.History,
+	}
+	if actor == "" {
+		return view, nil
+	}
+	queue, err := s.Queue(ctx, actor)
+	if err != nil {
+		return InspectView{}, err
+	}
+	for category, entries := range queue.Categories {
+		for _, entry := range entries {
+			if entry.Ticket.ID == ticketID {
+				view.QueueCategories = append(view.QueueCategories, category)
+				break
+			}
+		}
+	}
+	sort.Slice(view.QueueCategories, func(i, j int) bool {
+		return view.QueueCategories[i] < view.QueueCategories[j]
+	})
+	return view, nil
+}
+
 func (s *QueryService) EffectivePolicy(ctx context.Context, ticket contracts.TicketSnapshot) (EffectivePolicyView, error) {
 	return resolveEffectivePolicy(ctx, s.Root, s.Projects, s.Tickets, ticket)
 }
