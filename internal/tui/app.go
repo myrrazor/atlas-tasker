@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -37,16 +38,19 @@ var screenNames = []string{"Board", "Queues", "Detail", "Search", "Review", "Own
 type keyMap struct {
 	Left    key.Binding
 	Right   key.Binding
+	Up      key.Binding
+	Down    key.Binding
+	Select  key.Binding
 	Refresh key.Binding
 	Quit    key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Left, k.Right, k.Refresh, k.Quit}
+	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Refresh, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Left, k.Right, k.Refresh, k.Quit}}
+	return [][]key.Binding{{k.Left, k.Right, k.Up, k.Down, k.Select, k.Refresh, k.Quit}}
 }
 
 type model struct {
@@ -65,18 +69,29 @@ type model struct {
 	review     service.QueueView
 	owner      service.QueueView
 	detail     service.TicketDetailView
+	search     textinput.Model
+	searchHits []contracts.TicketSnapshot
+	selectedID string
+	cursor     int
 	status     string
 }
 
 type loadedMsg struct {
-	board    service.BoardViewModel
-	queue    service.QueueView
-	review   service.QueueView
-	owner    service.QueueView
-	detail   service.TicketDetailView
-	actor    contracts.Actor
-	actorErr string
-	err      error
+	board      service.BoardViewModel
+	queue      service.QueueView
+	review     service.QueueView
+	owner      service.QueueView
+	detail     service.TicketDetailView
+	searchHits []contracts.TicketSnapshot
+	selectedID string
+	actor      contracts.Actor
+	actorErr   string
+	err        error
+}
+
+type detailMsg struct {
+	detail service.TicketDetailView
+	err    error
 }
 
 func Run(root string, explicitActor contracts.Actor) error {
@@ -102,9 +117,17 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 	km := keyMap{
 		Left:    key.NewBinding(key.WithKeys("left", "shift+tab"), key.WithHelp("←/shift+tab", "prev tab")),
 		Right:   key.NewBinding(key.WithKeys("right", "tab"), key.WithHelp("→/tab", "next tab")),
+		Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "move")),
+		Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "move")),
+		Select:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open detail/search")),
 		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
+	searchInput := textinput.New()
+	searchInput.Prompt = "search> "
+	searchInput.Placeholder = "status=ready, text~auth, label=bug"
+	searchInput.CharLimit = 120
+	searchInput.Width = 48
 	return model{
 		root:       root,
 		queries:    queries,
@@ -112,6 +135,7 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		actor:      explicitActor,
 		keys:       km,
 		help:       help.New(),
+		search:     searchInput,
 		status:     "loading…",
 	}, nil
 }
@@ -131,12 +155,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		m.board = msg.board
-		m.queue = msg.queue
-		m.review = msg.review
-		m.owner = msg.owner
-		m.detail = msg.detail
-		m.actor = msg.actor
+		if msg.board.Board.Columns != nil {
+			m.board = msg.board
+		}
+		if msg.queue.Categories != nil {
+			m.queue = msg.queue
+		}
+		if msg.review.Categories != nil {
+			m.review = msg.review
+		}
+		if msg.owner.Categories != nil {
+			m.owner = msg.owner
+		}
+		if msg.detail.Ticket.ID != "" {
+			m.detail = msg.detail
+		}
+		if msg.searchHits != nil {
+			m.searchHits = msg.searchHits
+			m.cursor = 0
+		}
+		if msg.selectedID != "" {
+			m.selectedID = msg.selectedID
+			m.cursor = 0
+		}
+		if msg.actor != "" {
+			m.actor = msg.actor
+		}
 		m.actorErr = msg.actorErr
 		if m.actorErr != "" {
 			m.status = m.actorErr
@@ -144,7 +188,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "synced"
 		}
 		return m, nil
+	case detailMsg:
+		if msg.err != nil {
+			m.status = msg.err.Error()
+			return m, nil
+		}
+		m.detail = msg.detail
+		m.screen = screenDetail
+		m.status = "detail synced"
+		return m, nil
 	case tea.KeyMsg:
+		if m.screen == screenSearch {
+			var cmd tea.Cmd
+			m.search, cmd = m.search.Update(msg)
+			if msg.String() != "enter" && cmd != nil {
+				return m, cmd
+			}
+		}
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
@@ -154,6 +214,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Right):
 			m.screen = (m.screen + 1) % screen(len(screenNames))
 			return m, nil
+		case key.Matches(msg, m.keys.Up):
+			items := m.itemsForScreen()
+			if len(items) == 0 {
+				return m, nil
+			}
+			if m.cursor > 0 {
+				m.cursor--
+			}
+			m.selectedID = items[m.cursor].ID
+			return m, nil
+		case key.Matches(msg, m.keys.Down):
+			items := m.itemsForScreen()
+			if len(items) == 0 {
+				return m, nil
+			}
+			if m.cursor < len(items)-1 {
+				m.cursor++
+			}
+			m.selectedID = items[m.cursor].ID
+			return m, nil
+		case key.Matches(msg, m.keys.Select):
+			if m.screen == screenSearch {
+				return m, m.searchCmd()
+			}
+			items := m.itemsForScreen()
+			if len(items) == 0 {
+				return m, nil
+			}
+			if m.cursor >= len(items) {
+				m.cursor = len(items) - 1
+			}
+			return m, m.loadDetail(items[m.cursor].ID)
 		case key.Matches(msg, m.keys.Refresh):
 			m.status = "refreshing…"
 			return m, m.refresh()
@@ -188,26 +280,30 @@ func (m model) View() string {
 func (m model) bodyView() string {
 	switch m.screen {
 	case screenBoard:
-		return render.BoardPretty(m.board.Board)
+		return ticketsListView("Board", m.itemsForScreen(), m.cursor)
 	case screenQueues:
 		if m.actor == "" {
 			return render.EmptyState("Queues", "Set --actor, TRACKER_ACTOR, or actor.default to populate queue tabs.")
 		}
-		return queuePretty(m.queue)
+		return ticketsListView("Queues", m.itemsForScreen(), m.cursor)
 	case screenDetail:
 		if m.detail.Ticket.ID == "" {
 			return render.EmptyState("Detail", "No ticket selected yet. The foundation TUI will pick this up in PR-207.")
 		}
 		return render.TicketPretty(m.detail.Ticket, m.detail.Comments)
 	case screenSearch:
-		return render.EmptyState("Search", "Search/list screen lands in PR-207.")
+		body := m.search.View() + "\n\n"
+		if len(m.searchHits) == 0 {
+			return body + render.EmptyState("Search", "Type a query and press enter.")
+		}
+		return body + ticketsListView("Search Results", m.searchHits, m.cursor)
 	case screenReview:
 		if m.actor == "" {
 			return render.EmptyState("Review", "Set an actor to see review work.")
 		}
-		return queuePretty(m.review)
+		return ticketsListView("Review Inbox", m.itemsForScreen(), m.cursor)
 	case screenOwner:
-		return queuePretty(m.owner)
+		return ticketsListView("Owner Attention", m.itemsForScreen(), m.cursor)
 	default:
 		return ""
 	}
@@ -246,6 +342,7 @@ func (m model) refresh() tea.Cmd {
 			}}
 		}
 		detail := service.TicketDetailView{}
+		selectedID := ""
 		for _, status := range []contracts.Status{contracts.StatusReady, contracts.StatusInProgress, contracts.StatusInReview, contracts.StatusBlocked, contracts.StatusBacklog, contracts.StatusDone} {
 			tickets := board.Board.Columns[status]
 			if len(tickets) == 0 {
@@ -255,9 +352,39 @@ func (m model) refresh() tea.Cmd {
 			if err != nil {
 				return loadedMsg{err: err}
 			}
+			selectedID = tickets[0].ID
 			break
 		}
-		return loadedMsg{board: board, queue: queue, review: review, owner: owner, detail: detail, actor: actor, actorErr: actorErr}
+		return loadedMsg{board: board, queue: queue, review: review, owner: owner, detail: detail, actor: actor, actorErr: actorErr, selectedID: selectedID}
+	}
+}
+
+func (m model) searchCmd() tea.Cmd {
+	query := strings.TrimSpace(m.search.Value())
+	return func() tea.Msg {
+		if query == "" {
+			return loadedMsg{searchHits: []contracts.TicketSnapshot{}}
+		}
+		parsed, err := contracts.ParseSearchQuery(query)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		results, err := m.queries.Search(context.Background(), parsed)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		msg := loadedMsg{searchHits: results}
+		if len(results) > 0 {
+			msg.selectedID = results[0].ID
+		}
+		return msg
+	}
+}
+
+func (m model) loadDetail(ticketID string) tea.Cmd {
+	return func() tea.Msg {
+		detail, err := m.queries.TicketDetail(context.Background(), ticketID)
+		return detailMsg{detail: detail, err: err}
 	}
 }
 
@@ -292,6 +419,60 @@ func queuePretty(queue service.QueueView) string {
 		lines = append(lines, "")
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func (m model) itemsForScreen() []contracts.TicketSnapshot {
+	switch m.screen {
+	case screenBoard:
+		items := make([]contracts.TicketSnapshot, 0)
+		for _, status := range []contracts.Status{contracts.StatusReady, contracts.StatusInProgress, contracts.StatusInReview, contracts.StatusBlocked, contracts.StatusBacklog, contracts.StatusDone} {
+			items = append(items, m.board.Board.Columns[status]...)
+		}
+		return items
+	case screenQueues:
+		return queueItems(m.queue)
+	case screenReview:
+		return queueItems(m.review)
+	case screenOwner:
+		return queueItems(m.owner)
+	case screenSearch:
+		return m.searchHits
+	default:
+		return nil
+	}
+}
+
+func queueItems(queue service.QueueView) []contracts.TicketSnapshot {
+	items := make([]contracts.TicketSnapshot, 0)
+	for _, category := range []service.QueueCategory{
+		service.QueueReadyForMe,
+		service.QueueClaimedByMe,
+		service.QueueNeedsReview,
+		service.QueueAwaitingOwner,
+		service.QueueBlockedForMe,
+		service.QueueStaleClaims,
+		service.QueuePolicyViolations,
+	} {
+		for _, entry := range queue.Categories[category] {
+			items = append(items, entry.Ticket)
+		}
+	}
+	return items
+}
+
+func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor int) string {
+	if len(tickets) == 0 {
+		return render.EmptyState(title, "No items in this view yet.")
+	}
+	lines := []string{title + ":"}
+	for idx, ticket := range tickets {
+		prefix := "  "
+		if idx == cursor {
+			prefix = "> "
+		}
+		lines = append(lines, fmt.Sprintf("%s%s [%s/%s] %s", prefix, ticket.ID, ticket.Status, ticket.Priority, ticket.Title))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func optionalActor(actor contracts.Actor, fallback string) string {
