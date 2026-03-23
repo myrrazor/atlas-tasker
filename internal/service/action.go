@@ -269,15 +269,15 @@ func (s *ActionService) MoveTicket(ctx context.Context, ticketID string, to cont
 	}
 	now := s.now()
 	from := ticket.Status
+	priorReviewState := ticket.ReviewState
 	ticket.Status = to
-	if to != contracts.StatusInReview {
+	if to == contracts.StatusInProgress && from == contracts.StatusInReview && priorReviewState == contracts.ReviewStateApproved && policy.CompletionMode != contracts.CompletionModeReviewGate {
+		ticket.ReviewState = contracts.ReviewStateChangesRequested
+	} else if to != contracts.StatusInReview {
 		ticket.ReviewState = contracts.ReviewStateNone
 	}
-	if to == contracts.StatusInReview && ticket.ReviewState == contracts.ReviewStateNone {
+	if to == contracts.StatusInReview && priorReviewState == contracts.ReviewStateNone {
 		ticket.ReviewState = contracts.ReviewStatePending
-	}
-	if to == contracts.StatusInProgress && from == contracts.StatusInReview && ticket.ReviewState == contracts.ReviewStateApproved && policy.CompletionMode != contracts.CompletionModeReviewGate {
-		ticket.ReviewState = contracts.ReviewStateChangesRequested
 	}
 	ticket.UpdatedAt = now
 	if err := s.UpdateTicket(ctx, ticket); err != nil {
