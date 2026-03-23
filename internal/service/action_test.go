@@ -202,6 +202,22 @@ func TestActionServiceReviewAndPolicyFlow(t *testing.T) {
 	if approved.ReviewState != contracts.ReviewStateApproved || approved.Status != contracts.StatusInReview {
 		t.Fatalf("unexpected approved ticket: %#v", approved)
 	}
+	clock = clock.Add(time.Minute)
+	returned, err := actions.MoveTicket(ctx, ticket.ID, contracts.StatusInProgress, contracts.Actor("agent:builder-1"), "follow-up work")
+	if err != nil {
+		t.Fatalf("move ticket back to in_progress: %v", err)
+	}
+	if returned.ReviewState != contracts.ReviewStateChangesRequested {
+		t.Fatalf("expected changes_requested after approved review regresses, got %#v", returned)
+	}
+	clock = clock.Add(time.Minute)
+	if _, err := actions.RequestReview(ctx, ticket.ID, contracts.Actor("agent:builder-1"), "retry"); err != nil {
+		t.Fatalf("request review third time: %v", err)
+	}
+	clock = clock.Add(time.Minute)
+	if _, err := actions.ApproveTicket(ctx, ticket.ID, contracts.Actor("agent:reviewer-1"), "now good"); err != nil {
+		t.Fatalf("approve ticket second time: %v", err)
+	}
 	if _, err := actions.CompleteTicket(ctx, ticket.ID, contracts.Actor("agent:reviewer-1"), "trying to finish"); err == nil {
 		t.Fatal("expected dual_gate to reject reviewer completion")
 	}

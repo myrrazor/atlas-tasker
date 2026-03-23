@@ -1,10 +1,10 @@
 ?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/cli	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	0.361s
 ok  	github.com/myrrazor/atlas-tasker/internal/config	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/contracts	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/domain	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/render	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/service	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/service	0.360s
 ?   	github.com/myrrazor/atlas-tasker/internal/storage	[no test files]
 ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	(cached)
