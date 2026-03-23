@@ -18,12 +18,18 @@ type fileConfig struct {
 	Actor struct {
 		Default string `toml:"default"`
 	} `toml:"actor"`
+	Notifications struct {
+		Terminal    *bool  `toml:"terminal"`
+		FileEnabled bool   `toml:"file_enabled"`
+		FilePath    string `toml:"file_path"`
+	} `toml:"notifications"`
 }
 
 func defaultConfig() contracts.TrackerConfig {
 	return contracts.TrackerConfig{
-		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
-		Actor:    contracts.ActorConfig{},
+		Workflow:      contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
+		Actor:         contracts.ActorConfig{},
+		Notifications: contracts.NotificationsConfig{Terminal: true, FilePath: filepath.Join(storage.TrackerDir(""), "notifications.log")},
 	}
 }
 
@@ -49,9 +55,21 @@ func Load(root string) (contracts.TrackerConfig, error) {
 		Actor: contracts.ActorConfig{
 			Default: contracts.Actor(strings.TrimSpace(parsed.Actor.Default)),
 		},
+		Notifications: contracts.NotificationsConfig{
+			FileEnabled: parsed.Notifications.FileEnabled,
+			FilePath:    strings.TrimSpace(parsed.Notifications.FilePath),
+		},
 	}
 	if cfg.Workflow.CompletionMode == "" {
 		cfg.Workflow.CompletionMode = contracts.CompletionModeOpen
+	}
+	if parsed.Notifications.Terminal == nil {
+		cfg.Notifications.Terminal = true
+	} else {
+		cfg.Notifications.Terminal = *parsed.Notifications.Terminal
+	}
+	if cfg.Notifications.FilePath == "" {
+		cfg.Notifications.FilePath = filepath.Join(storage.TrackerDir(root), "notifications.log")
 	}
 	if err := cfg.Validate(); err != nil {
 		return contracts.TrackerConfig{}, err
@@ -70,6 +88,9 @@ func Save(root string, cfg contracts.TrackerConfig) error {
 	out := fileConfig{}
 	out.Workflow.CompletionMode = string(cfg.Workflow.CompletionMode)
 	out.Actor.Default = string(cfg.Actor.Default)
+	out.Notifications.Terminal = &cfg.Notifications.Terminal
+	out.Notifications.FileEnabled = cfg.Notifications.FileEnabled
+	out.Notifications.FilePath = cfg.Notifications.FilePath
 	raw, err := toml.Marshal(out)
 	if err != nil {
 		return fmt.Errorf("encode config: %w", err)
@@ -90,6 +111,18 @@ func Get(root string, key string) (string, error) {
 		return string(cfg.Workflow.CompletionMode), nil
 	case "actor.default":
 		return string(cfg.Actor.Default), nil
+	case "notifications.terminal":
+		if cfg.Notifications.Terminal {
+			return "true", nil
+		}
+		return "false", nil
+	case "notifications.file_enabled":
+		if cfg.Notifications.FileEnabled {
+			return "true", nil
+		}
+		return "false", nil
+	case "notifications.file_path":
+		return cfg.Notifications.FilePath, nil
 	default:
 		return "", fmt.Errorf("unsupported config key: %s", key)
 	}
@@ -105,6 +138,12 @@ func Set(root string, key string, value string) error {
 		cfg.Workflow.CompletionMode = contracts.CompletionMode(strings.TrimSpace(value))
 	case "actor.default":
 		cfg.Actor.Default = contracts.Actor(strings.TrimSpace(value))
+	case "notifications.terminal":
+		cfg.Notifications.Terminal = strings.EqualFold(strings.TrimSpace(value), "true")
+	case "notifications.file_enabled":
+		cfg.Notifications.FileEnabled = strings.EqualFold(strings.TrimSpace(value), "true")
+	case "notifications.file_path":
+		cfg.Notifications.FilePath = strings.TrimSpace(value)
 	default:
 		return fmt.Errorf("unsupported config key: %s", key)
 	}

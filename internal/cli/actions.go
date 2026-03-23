@@ -43,6 +43,14 @@ func openWorkspace() (*workspace, error) {
 		return nil, err
 	}
 	projectStore := mdstore.ProjectStore{RootDir: root}
+	cfg, err := config.Load(root)
+	if err != nil {
+		return nil, err
+	}
+	notifier, err := service.BuildNotifier(root, cfg, os.Stderr)
+	if err != nil {
+		return nil, err
+	}
 	w := &workspace{
 		root:       root,
 		project:    projectStore,
@@ -50,7 +58,7 @@ func openWorkspace() (*workspace, error) {
 		events:     eventLog,
 		projection: projection,
 	}
-	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
+	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, notifier)
 	w.queries = service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
 	return w, nil
 }

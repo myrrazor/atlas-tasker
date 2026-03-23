@@ -17,10 +17,11 @@ type ActionService struct {
 	Events     contracts.EventLog
 	Projection contracts.ProjectionStore
 	Clock      func() time.Time
+	Notifier   Notifier
 }
 
-func NewActionService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *ActionService {
-	return &ActionService{Root: root, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Clock: clock}
+func NewActionService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time, notifier Notifier) *ActionService {
+	return &ActionService{Root: root, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Clock: clock, Notifier: notifier}
 }
 
 func (s *ActionService) now() time.Time {
@@ -70,6 +71,11 @@ func (s *ActionService) AppendAndProject(ctx context.Context, event contracts.Ev
 	}
 	if s.Projection != nil {
 		if err := s.Projection.ApplyEvent(ctx, event); err != nil {
+			return err
+		}
+	}
+	if s.Notifier != nil {
+		if err := s.Notifier.Notify(ctx, event); err != nil {
 			return err
 		}
 	}

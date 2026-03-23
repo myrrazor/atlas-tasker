@@ -61,3 +61,12 @@ type HistoryView struct {
 	TicketID string            `json:"ticket_id"`
 	Events   []contracts.Event `json:"events"`
 }
+
+type InspectView struct {
+	Ticket          contracts.TicketSnapshot `json:"ticket"`
+	BoardStatus     contracts.Status         `json:"board_status"`
+	LeaseActive     bool                     `json:"lease_active"`
+	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
+	History         []contracts.Event        `json:"history"`
+	QueueCategories []QueueCategory          `json:"queue_categories,omitempty"`
+}

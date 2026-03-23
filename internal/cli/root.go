@@ -48,6 +48,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newOwnerQueueCommand())
 	root.AddCommand(newWhoCommand())
 	root.AddCommand(newSweepCommand())
+	root.AddCommand(newInspectCommand())
 	root.AddCommand(newSearchCommand())
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newShellCommand())
@@ -85,6 +86,7 @@ func newDoctorCommand() *cobra.Command {
 		Short: "Run consistency checks",
 		RunE:  runDoctor,
 	}
+	cmd.Flags().Bool("repair", false, "Rebuild the projection after checks")
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
@@ -95,6 +97,18 @@ func newReindexCommand() *cobra.Command {
 		Short: "Rebuild SQLite projection from markdown and events",
 		RunE:  runReindex,
 	}
+	return cmd
+}
+
+func newInspectCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "inspect <ID>",
+		Args:  cobra.ExactArgs(1),
+		Short: "Inspect a ticket with policy, lease, and history context",
+		RunE:  runInspect,
+	}
+	cmd.Flags().String("actor", "", "Actor used to resolve queue placement")
+	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
@@ -1181,18 +1195,102 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer workspace.close()
-	if _, err := config.Load(workspace.root); err != nil {
+	cfg, err := config.Load(workspace.root)
+	if err != nil {
 		return err
 	}
 	events, err := workspace.events.StreamEvents(ctx, "", 0)
 	if err != nil {
 		return err
 	}
-	if _, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
+	projects, err := workspace.project.ListProjects(ctx)
+	if err != nil {
 		return err
 	}
-	message := fmt.Sprintf("doctor ok: %d events scanned", len(events))
-	return writeCommandOutput(cmd, map[string]any{"ok": true, "events_scanned": len(events)}, message, message)
+	tickets, err := workspace.ticket.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	if err != nil {
+		return err
+	}
+	projectIssues := 0
+	for _, project := range projects {
+		if err := project.Validate(); err != nil {
+			return err
+		}
+	}
+	ticketIssues := 0
+	for _, ticket := range tickets {
+		normalized := contracts.NormalizeTicketSnapshot(ticket)
+		if strings.TrimSpace(normalized.ID) == "" || strings.TrimSpace(normalized.Project) == "" || strings.TrimSpace(normalized.Title) == "" {
+			return fmt.Errorf("invalid ticket snapshot: %s", ticket.ID)
+		}
+		if !normalized.Type.IsValid() || !normalized.Status.IsValid() || !normalized.Priority.IsValid() {
+			return fmt.Errorf("invalid ticket snapshot enums: %s", ticket.ID)
+		}
+		if err := normalized.Policy.Validate(); err != nil {
+			return err
+		}
+		if err := normalized.Lease.Validate(); err != nil {
+			return err
+		}
+		if err := normalized.Progress.Validate(); err != nil {
+			return err
+		}
+		if normalized.Project == "" {
+			ticketIssues++
+		}
+	}
+	if _, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
+		repair, _ := cmd.Flags().GetBool("repair")
+		if !repair {
+			return err
+		}
+		if rebuildErr := workspace.projection.Rebuild(ctx, ""); rebuildErr != nil {
+			return rebuildErr
+		}
+	} else {
+		repair, _ := cmd.Flags().GetBool("repair")
+		if repair {
+			if err := workspace.projection.Rebuild(ctx, ""); err != nil {
+				return err
+			}
+		}
+	}
+	repair, _ := cmd.Flags().GetBool("repair")
+	message := fmt.Sprintf("doctor ok: %d events scanned, %d projects, %d tickets", len(events), len(projects), len(tickets))
+	payload := map[string]any{
+		"ok":             true,
+		"events_scanned": len(events),
+		"projects":       len(projects),
+		"tickets":        len(tickets),
+		"repair_ran":     repair,
+		"config":         cfg,
+		"issues": map[string]any{
+			"project_issues": projectIssues,
+			"ticket_issues":  ticketIssues,
+		},
+	}
+	return writeCommandOutput(cmd, payload, message, message)
+}
+
+func runInspect(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	actor := contracts.Actor(strings.TrimSpace(actorRaw))
+	if actor != "" && !actor.IsValid() {
+		return fmt.Errorf("invalid actor: %s", actor)
+	}
+	view, err := workspace.queries.InspectTicket(ctx, args[0], actor)
+	if err != nil {
+		return err
+	}
+	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Lease Active: %t\n- Completion: %s\n", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode)
+	pretty := fmt.Sprintf("inspect %s -> board=%s lease_active=%t completion=%s", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode)
+	return writeCommandOutput(cmd, view, md, pretty)
 }
 
 func runReindex(cmd *cobra.Command, _ []string) error {

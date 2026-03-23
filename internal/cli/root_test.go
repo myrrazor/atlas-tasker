@@ -6,7 +6,8 @@ func TestRootCommandIncludesRequiredTopLevelCommands(t *testing.T) {
 	root := NewRootCommand()
 	required := []string{
 		"init", "doctor", "reindex", "config", "project", "ticket",
-		"board", "backlog", "next", "blocked", "search", "render", "shell",
+		"board", "backlog", "next", "blocked", "queue", "review-queue", "owner-queue",
+		"who", "sweep", "inspect", "search", "render", "shell",
 	}
 	for _, name := range required {
 		if _, _, err := root.Find([]string{name}); err != nil {
