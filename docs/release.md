@@ -1,6 +1,6 @@
 # Atlas Tasker Release Guide
 
-Atlas Tasker v1.2 ships prebuilt macOS and Linux binaries plus a one-line install script.
+Atlas Tasker v1.3 ships prebuilt macOS and Linux binaries plus a one-line install script.
 
 ## Artifacts
 
@@ -41,3 +41,25 @@ The release workflow runs on tags matching `v*` and:
 2. generates SHA256 checksums
 3. uploads the archives and `checksums.txt` to the GitHub release
 4. publishes `scripts/install.sh` alongside the release assets for reference
+
+## Prerelease Rehearsal
+
+Before cutting a real release:
+
+1. create a prerelease tag
+2. let GitHub build real artifacts
+3. install with the published install script into a clean temp directory
+4. run a smoke flow end to end
+
+Suggested smoke flow:
+
+```bash
+tracker init
+tracker project create APP "App Project"
+tracker ticket create --project APP --title "Smoke" --type task --actor human:owner
+tracker ticket move APP-1 ready --actor human:owner
+tracker queue --actor human:owner
+tracker tui --actor human:owner
+```
+
+Release is not done until that flow works against the real published artifacts.

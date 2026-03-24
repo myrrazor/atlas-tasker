@@ -274,6 +274,13 @@ func TestDetailViewIncludesGitContext(t *testing.T) {
 func seededTUIWorkspace(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	seededTUIWorkspaceAt(root, func(format string, args ...any) {
+		t.Fatalf(format, args...)
+	})
+	return root
+}
+
+func seededTUIWorkspaceAt(root string, fail func(string, ...any)) {
 	ctx := context.Background()
 	now := time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC)
 	projectStore := mdstore.ProjectStore{RootDir: root}
@@ -281,25 +288,24 @@ func seededTUIWorkspace(t *testing.T) string {
 	eventsLog := &eventstore.Log{RootDir: root}
 	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventsLog)
 	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
+		fail("open sqlite: %v", err)
 	}
 	defer projection.Close()
 	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}, Actor: contracts.ActorConfig{Default: contracts.Actor("agent:builder-1")}}); err != nil {
-		t.Fatalf("save config: %v", err)
+		fail("save config: %v", err)
 	}
 	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
-		t.Fatalf("create project: %v", err)
+		fail("create project: %v", err)
 	}
 	ticket := contracts.TicketSnapshot{ID: "APP-1", Project: "APP", Title: "Seed", Summary: "Seed", Type: contracts.TicketTypeTask, Status: contracts.StatusReady, Priority: contracts.PriorityHigh, CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}
 	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
-		t.Fatalf("create ticket: %v", err)
+		fail("create ticket: %v", err)
 	}
 	event := contracts.Event{EventID: 1, Timestamp: now, Actor: contracts.Actor("human:owner"), Type: contracts.EventTicketCreated, Project: "APP", TicketID: ticket.ID, Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion}
 	if err := eventsLog.AppendEvent(ctx, event); err != nil {
-		t.Fatalf("append event: %v", err)
+		fail("append event: %v", err)
 	}
 	if err := projection.ApplyEvent(ctx, event); err != nil {
-		t.Fatalf("apply event: %v", err)
+		fail("apply event: %v", err)
 	}
-	return root
 }
