@@ -1237,13 +1237,16 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			ticketIssues++
 		}
 	}
+	repairReport := service.RepairReport{}
 	if _, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
 		repair, _ := cmd.Flags().GetBool("repair")
 		if !repair {
 			return err
 		}
 		if rebuildErr := workspace.withWriteLock(ctx, "doctor repair", func(ctx context.Context) error {
-			return workspace.projection.Rebuild(ctx, "")
+			var err error
+			repairReport, err = service.RepairWorkspace(ctx, workspace.root, workspace.actions.Clock, workspace.events, workspace.projection)
+			return err
 		}); rebuildErr != nil {
 			return rebuildErr
 		}
@@ -1251,7 +1254,9 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		repair, _ := cmd.Flags().GetBool("repair")
 		if repair {
 			if err := workspace.withWriteLock(ctx, "doctor repair", func(ctx context.Context) error {
-				return workspace.projection.Rebuild(ctx, "")
+				var err error
+				repairReport, err = service.RepairWorkspace(ctx, workspace.root, workspace.actions.Clock, workspace.events, workspace.projection)
+				return err
 			}); err != nil {
 				return err
 			}
@@ -1265,6 +1270,8 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"projects":       len(projects),
 		"tickets":        len(tickets),
 		"repair_ran":     repair,
+		"repair_actions": append([]string{}, repairReport.Actions...),
+		"repair_pending": repairReport.Pending,
 		"config":         cfg,
 		"issue_codes":    []string{},
 		"issues": map[string]any{
