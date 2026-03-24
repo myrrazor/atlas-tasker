@@ -177,6 +177,100 @@ func TestCreateFormCreatesTicket(t *testing.T) {
 	}
 }
 
+func TestViewsTabRunsSavedView(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	if err := (service.ViewStore{Root: root}).SaveView(contracts.SavedView{Name: "ready-search", Kind: contracts.SavedViewKindSearch, Query: "status=ready"}); err != nil {
+		t.Fatalf("save view: %v", err)
+	}
+	m, err := newModel(root, contracts.Actor("agent:builder-1"))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	defer m.close()
+	updated, _ := m.Update(m.refresh()().(loadedMsg))
+	m = updated.(model)
+	for m.screen != screenViews {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+		m = updated.(model)
+	}
+	if !strings.Contains(m.View(), "ready-search") {
+		t.Fatalf("expected views panel to include saved view, got %s", m.View())
+	}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("expected saved view load command")
+	}
+	updated, _ = m.Update(cmd().(loadedMsg))
+	m = updated.(model)
+	if m.screen != screenSearch {
+		t.Fatalf("expected search screen after loading saved view, got %v", m.screen)
+	}
+	if len(m.searchHits) == 0 || m.searchHits[0].ID != "APP-1" {
+		t.Fatalf("expected saved view search hits, got %#v", m.searchHits)
+	}
+}
+
+func TestBulkPreviewAndApplyFromTUI(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	defer m.close()
+	updated, _ := m.Update(m.refresh()().(loadedMsg))
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	m = updated.(model)
+	m.dialog.Input.SetValue("move in_progress")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("expected bulk preview command")
+	}
+	updated, _ = m.Update(cmd().(bulkMsg))
+	m = updated.(model)
+	if m.screen != screenOps {
+		t.Fatalf("expected ops screen after bulk preview, got %v", m.screen)
+	}
+	if m.lastBulk == nil || m.lastBulk.Summary.Skipped != 1 {
+		t.Fatalf("expected dry-run summary on ops screen, got %#v", m.lastBulk)
+	}
+
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("expected bulk apply command")
+	}
+	updated, cmd = m.Update(cmd().(bulkMsg))
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("expected reload after bulk apply")
+	}
+	updated, _ = m.Update(cmd().(loadedMsg))
+	m = updated.(model)
+	if m.detail.Ticket.Status != contracts.StatusInProgress {
+		t.Fatalf("expected selected ticket to move in_progress, got %#v", m.detail.Ticket)
+	}
+}
+
+func TestDetailViewIncludesGitContext(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	m, err := newModel(root, contracts.Actor("agent:builder-1"))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	defer m.close()
+	updated, _ := m.Update(m.refresh()().(loadedMsg))
+	m = updated.(model)
+	m.screen = screenDetail
+	view := m.View()
+	if !strings.Contains(view, "Git Context:") {
+		t.Fatalf("expected git context in detail view, got %s", view)
+	}
+}
+
 func seededTUIWorkspace(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
