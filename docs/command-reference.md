@@ -33,6 +33,12 @@
 - `tracker unwatch ticket <ID> [--actor <ACTOR>]`
 - `tracker unwatch project <KEY> [--actor <ACTOR>]`
 - `tracker unwatch view <NAME> [--actor <ACTOR>]`
+- `tracker bulk move <STATUS> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk assign <ACTOR> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk request-review [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk complete [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk claim [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk release [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
 - `tracker templates list`
 - `tracker templates view <NAME>`
 - `tracker integrations install codex [--force]`
@@ -117,6 +123,24 @@
 - `tracker unwatch ticket <ID> [--actor <ACTOR>]`
 - `tracker unwatch project <KEY> [--actor <ACTOR>]`
 - `tracker unwatch view <NAME> [--actor <ACTOR>]`
+
+## Bulk Operations
+
+- `tracker bulk move <STATUS> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk assign <ACTOR> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk request-review [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk complete [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk claim [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk release [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+
+Rules:
+
+- `--dry-run` previews the batch without mutating anything
+- live bulk mutations require `--yes`
+- `--ticket` may be repeated
+- `--view` expands any saved board/search/queue/next view into ticket IDs
+- duplicate ticket IDs are deduplicated before the batch runs
+- every committed per-ticket event carries the same `metadata.batch_id`
 
 ## Maintenance
 
