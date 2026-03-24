@@ -57,6 +57,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newInspectCommand())
 	root.AddCommand(newAutomationCommand())
 	root.AddCommand(newNotifyCommand())
+	root.AddCommand(newGitCommand())
 	root.AddCommand(newTemplatesCommand())
 	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
@@ -255,6 +256,21 @@ func newNotifyCommand() *cobra.Command {
 	addReadOutputFlags(dead, &outputFlags{})
 
 	cmd.AddCommand(send, logCmd, dead)
+	return cmd
+}
+
+func newGitCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "git", Short: "Inspect local git context for Atlas tickets"}
+	status := &cobra.Command{Use: "status", Short: "Show local git repository status", RunE: runGitStatus}
+	branchName := &cobra.Command{Use: "branch-name <ID>", Args: cobra.ExactArgs(1), Short: "Suggest a branch name for a ticket", RunE: runGitBranchName}
+	refs := &cobra.Command{Use: "refs <ID>", Args: cobra.ExactArgs(1), Short: "Show local commits referencing a ticket", RunE: runGitRefs}
+	commit := &cobra.Command{Use: "commit <ID>", Args: cobra.ExactArgs(1), Short: "Create a local git commit tied to a ticket", RunE: runGitCommit}
+	commit.Flags().String("message", "", "Commit message body")
+	_ = commit.MarkFlagRequired("message")
+	for _, sub := range []*cobra.Command{status, branchName, refs, commit} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	cmd.AddCommand(status, branchName, refs, commit)
 	return cmd
 }
 
@@ -1960,6 +1976,80 @@ func notifyEventFromFlags(cmd *cobra.Command) (contracts.Event, error) {
 		},
 	}
 	return event, event.Validate()
+}
+
+func runGitStatus(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	status, err := service.SCMService{Root: workspace.root}.RepoStatus(commandContext(cmd))
+	if err != nil {
+		return err
+	}
+	pretty := "git repo not detected"
+	md := "## Git Status\n\n- Present: false\n"
+	if status.Present {
+		pretty = fmt.Sprintf("git %s dirty=%t", status.Branch, status.Dirty)
+		md = fmt.Sprintf("## Git Status\n\n- Present: true\n- Root: %s\n- Branch: %s\n- Dirty: %t\n", status.Root, status.Branch, status.Dirty)
+	}
+	return writeCommandOutput(cmd, status, md, pretty)
+}
+
+func runGitBranchName(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	ticket, err := workspace.queries.TicketDetail(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	branch := service.SCMService{Root: workspace.root}.SuggestedBranch(ticket.Ticket)
+	payload := map[string]any{"ticket_id": args[0], "branch": branch}
+	return writeCommandOutput(cmd, payload, fmt.Sprintf("## Branch Name\n\n- Ticket: %s\n- Branch: %s\n", args[0], branch), branch)
+}
+
+func runGitRefs(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	refs, err := service.SCMService{Root: workspace.root}.TicketRefs(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	md := "## Git Refs\n\n"
+	pretty := "git refs:\n"
+	for _, ref := range refs {
+		md += fmt.Sprintf("- %s %s %s\n", ref.Hash, ref.AuthorDate.Format(timeRFC3339), ref.Subject)
+		pretty += fmt.Sprintf("- %s %s\n", ref.Hash[:7], ref.Subject)
+	}
+	return writeCommandOutput(cmd, refs, md, pretty)
+}
+
+func runGitCommit(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	ticket, err := workspace.queries.TicketDetail(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	message, _ := cmd.Flags().GetString("message")
+	hash, err := service.SCMService{Root: workspace.root}.Commit(ctx, ticket.Ticket, message)
+	if err != nil {
+		return err
+	}
+	payload := map[string]any{"ticket_id": args[0], "commit": hash}
+	return writeCommandOutput(cmd, payload, fmt.Sprintf("## Git Commit\n\n- Ticket: %s\n- Commit: %s\n", args[0], hash), fmt.Sprintf("committed %s", hash))
 }
 
 func runTemplatesList(cmd *cobra.Command, _ []string) error {
