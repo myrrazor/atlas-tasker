@@ -154,6 +154,9 @@ func ensureInitArtifacts(root string) error {
 	if err := os.MkdirAll(storage.AutomationsDir(root), 0o755); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(storage.ViewsDir(root), 0o755); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "templates"), 0o755); err != nil {
 		return err
 	}

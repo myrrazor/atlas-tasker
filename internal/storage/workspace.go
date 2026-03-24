@@ -27,6 +27,10 @@ func AutomationsDir(root string) string {
 	return filepath.Join(TrackerDir(root), "automations")
 }
 
+func ViewsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "views")
+}
+
 func ProjectDir(root string, key string) string {
 	return filepath.Join(ProjectsDir(root), key)
 }

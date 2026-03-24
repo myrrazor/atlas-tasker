@@ -58,6 +58,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newAutomationCommand())
 	root.AddCommand(newNotifyCommand())
 	root.AddCommand(newGitCommand())
+	root.AddCommand(newViewsCommand())
 	root.AddCommand(newTemplatesCommand())
 	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
@@ -499,6 +500,7 @@ func newTicketCommand() *cobra.Command {
 func newBoardCommand() *cobra.Command {
 	flags := &outputFlags{}
 	cmd := &cobra.Command{Use: "board", Short: "Show board view", RunE: runBoard}
+	cmd.Flags().String("view", "", "Saved board view to run")
 	cmd.Flags().String("project", "", "Filter by project")
 	cmd.Flags().String("assignee", "", "Filter by assignee")
 	cmd.Flags().String("type", "", "Filter by ticket type")
@@ -515,6 +517,7 @@ func newBacklogCommand() *cobra.Command {
 func newNextCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "next", Short: "Show next-up queue", RunE: runNext}
 	cmd.Flags().String("actor", "", "Actor used for queue-aware next")
+	cmd.Flags().String("view", "", "Saved next view to run")
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
@@ -545,6 +548,7 @@ func newBlockedCommand() *cobra.Command {
 func newQueueCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "queue", Short: "Show actor queue", RunE: runQueue}
 	cmd.Flags().String("actor", "", "Queue actor")
+	cmd.Flags().String("view", "", "Saved queue view to run")
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
@@ -576,8 +580,34 @@ func newSweepCommand() *cobra.Command {
 }
 
 func newSearchCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "search <QUERY>", Args: cobra.ExactArgs(1), Short: "Search tickets", RunE: runSearch}
+	cmd := &cobra.Command{Use: "search [QUERY]", Args: cobra.MaximumNArgs(1), Short: "Search tickets", RunE: runSearch}
+	cmd.Flags().String("view", "", "Saved search view to run")
 	addReadOutputFlags(cmd, &outputFlags{})
+	return cmd
+}
+
+func newViewsCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "views", Short: "Manage saved views"}
+	list := &cobra.Command{Use: "list", Short: "List saved views", RunE: runViewsList}
+	view := &cobra.Command{Use: "view <NAME>", Args: cobra.ExactArgs(1), Short: "Show one saved view", RunE: runViewsView}
+	save := &cobra.Command{Use: "save <NAME>", Args: cobra.ExactArgs(1), Short: "Create or update a saved view", RunE: runViewsSave}
+	remove := &cobra.Command{Use: "delete <NAME>", Args: cobra.ExactArgs(1), Short: "Delete a saved view", RunE: runViewsDelete}
+	run := &cobra.Command{Use: "run <NAME>", Args: cobra.ExactArgs(1), Short: "Run a saved view", RunE: runViewsRun}
+	for _, sub := range []*cobra.Command{list, view, save, remove, run} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	save.Flags().String("kind", "", "View kind: board, search, queue, next")
+	save.Flags().String("title", "", "Optional display title")
+	save.Flags().String("query", "", "Search query for search views")
+	save.Flags().String("project", "", "Project filter")
+	save.Flags().String("assignee", "", "Assignee filter")
+	save.Flags().String("type", "", "Ticket type filter")
+	save.Flags().String("actor", "", "Default actor for queue/next views")
+	save.Flags().StringArray("column", nil, "Board columns to include")
+	save.Flags().StringArray("queue-category", nil, "Queue categories to include for queue/next views")
+	_ = save.MarkFlagRequired("kind")
+	run.Flags().String("actor", "", "Actor override for queue/next views")
+	cmd.AddCommand(list, view, save, remove, run)
 	return cmd
 }
 
@@ -1417,7 +1447,21 @@ func runQueue(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer workspace.close()
+	viewName, _ := cmd.Flags().GetString("view")
 	actorRaw, _ := cmd.Flags().GetString("actor")
+	if strings.TrimSpace(viewName) != "" {
+		if _, err := requireSavedViewKind(workspace, viewName, contracts.SavedViewKindQueue); err != nil {
+			return err
+		}
+		result, err := workspace.queries.RunSavedView(ctx, viewName, contracts.Actor(strings.TrimSpace(actorRaw)))
+		if err != nil {
+			return err
+		}
+		if result.Queue == nil {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("saved view %s is not a queue view", viewName))
+		}
+		return writeCommandOutput(cmd, result, queueMarkdownSelected(*result.Queue, result.View.Queue.Categories, savedViewTitle(result.View, "Queue")), queuePrettySelected(*result.Queue, result.View.Queue.Categories, savedViewTitle(result.View, "Queue")))
+	}
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
 	if err != nil {
 		return err
@@ -1541,9 +1585,25 @@ func runBoard(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer workspace.close()
+	viewName, _ := cmd.Flags().GetString("view")
 	project, _ := cmd.Flags().GetString("project")
 	assigneeRaw, _ := cmd.Flags().GetString("assignee")
 	typeRaw, _ := cmd.Flags().GetString("type")
+	if strings.TrimSpace(viewName) != "" {
+		if _, err := requireSavedViewKind(workspace, viewName, contracts.SavedViewKindBoard); err != nil {
+			return err
+		}
+		result, err := workspace.queries.RunSavedView(ctx, viewName, "")
+		if err != nil {
+			return err
+		}
+		if result.Board == nil {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("saved view %s is not a board view", viewName))
+		}
+		board := result.Board.Board
+		markdown := boardMarkdown(savedViewTitle(result.View, "Board"), board, result.View.Board.Columns)
+		return writeCommandOutput(cmd, result, markdown, render.BoardPretty(board))
+	}
 	boardVM, err := workspace.queries.Board(ctx, contracts.BoardQueryOptions{
 		Project:  project,
 		Assignee: contracts.Actor(strings.TrimSpace(assigneeRaw)),
@@ -1553,8 +1613,18 @@ func runBoard(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	board := boardVM.Board
-	markdown := "## Board\n\n"
-	for _, status := range orderedBoardStatuses() {
+	markdown := boardMarkdown("Board", board, nil)
+	pretty := render.BoardPretty(board)
+	return writeCommandOutput(cmd, board, markdown, pretty)
+}
+
+func boardMarkdown(title string, board contracts.BoardView, columns []contracts.Status) string {
+	markdown := fmt.Sprintf("## %s\n\n", title)
+	ordered := orderedBoardStatuses()
+	if len(columns) > 0 {
+		ordered = columns
+	}
+	for _, status := range ordered {
 		tickets := board.Columns[status]
 		sort.Slice(tickets, func(i, j int) bool {
 			if tickets[i].UpdatedAt.Equal(tickets[j].UpdatedAt) {
@@ -1571,8 +1641,7 @@ func runBoard(cmd *cobra.Command, _ []string) error {
 			markdown += fmt.Sprintf("- %s %s\n", ticket.ID, ticket.Title)
 		}
 	}
-	pretty := render.BoardPretty(board)
-	return writeCommandOutput(cmd, board, markdown, pretty)
+	return markdown
 }
 
 func runBacklog(cmd *cobra.Command, _ []string) error {
@@ -1615,18 +1684,38 @@ func runNext(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer workspace.close()
+	viewName, _ := cmd.Flags().GetString("view")
 	actorRaw, _ := cmd.Flags().GetString("actor")
+	if strings.TrimSpace(viewName) != "" {
+		if _, err := requireSavedViewKind(workspace, viewName, contracts.SavedViewKindNext); err != nil {
+			return err
+		}
+		result, err := workspace.queries.RunSavedView(ctx, viewName, contracts.Actor(strings.TrimSpace(actorRaw)))
+		if err != nil {
+			return err
+		}
+		if result.Next == nil {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("saved view %s is not a next view", viewName))
+		}
+		markdown, pretty := nextOutput(*result.Next, savedViewTitle(result.View, "Next"))
+		return writeCommandOutput(cmd, result, markdown, pretty)
+	}
 	nextView, err := workspace.queries.Next(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
 	if err != nil {
 		return err
 	}
-	markdown := "## Next\n\n"
-	pretty := fmt.Sprintf("next for %s:\n", nextView.Actor)
+	markdown, pretty := nextOutput(nextView, "Next")
+	return writeCommandOutput(cmd, nextView, markdown, pretty)
+}
+
+func nextOutput(nextView service.NextView, title string) (string, string) {
+	markdown := fmt.Sprintf("## %s\n\n", title)
+	pretty := fmt.Sprintf("%s for %s:\n", strings.ToLower(title), nextView.Actor)
 	for _, item := range nextView.Entries {
 		markdown += fmt.Sprintf("- %s [%s/%s] %s (%s)\n", item.Entry.Ticket.ID, item.Entry.Ticket.Status, item.Entry.Ticket.Priority, item.Entry.Ticket.Title, item.Entry.Reason)
 		pretty += fmt.Sprintf("- %s [%s] %s -> %s\n", item.Entry.Ticket.ID, item.Category, item.Entry.Ticket.Title, item.Entry.Reason)
 	}
-	return writeCommandOutput(cmd, nextView, markdown, pretty)
+	return markdown, pretty
 }
 
 func runAutomationList(cmd *cobra.Command, _ []string) error {
@@ -1856,6 +1945,70 @@ func parseAutomationAction(raw string) (contracts.AutomationAction, error) {
 	default:
 		return contracts.AutomationAction{}, fmt.Errorf("unsupported automation action: %s", raw)
 	}
+}
+
+func buildSavedViewFromFlags(cmd *cobra.Command, name string) (contracts.SavedView, error) {
+	kindRaw, _ := cmd.Flags().GetString("kind")
+	title, _ := cmd.Flags().GetString("title")
+	query, _ := cmd.Flags().GetString("query")
+	project, _ := cmd.Flags().GetString("project")
+	assigneeRaw, _ := cmd.Flags().GetString("assignee")
+	typeRaw, _ := cmd.Flags().GetString("type")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	columnsRaw, _ := cmd.Flags().GetStringArray("column")
+	categories, _ := cmd.Flags().GetStringArray("queue-category")
+	view := contracts.SavedView{
+		Name:     name,
+		Title:    strings.TrimSpace(title),
+		Kind:     contracts.SavedViewKind(strings.TrimSpace(kindRaw)),
+		Query:    strings.TrimSpace(query),
+		Project:  strings.TrimSpace(project),
+		Assignee: normalizeActor(assigneeRaw),
+		Type:     contracts.TicketType(strings.TrimSpace(typeRaw)),
+		Actor:    normalizeActor(actorRaw),
+		Queue:    contracts.SavedQueueConfig{Categories: categories},
+	}
+	for _, raw := range columnsRaw {
+		column := contracts.Status(strings.TrimSpace(raw))
+		if column == "" {
+			continue
+		}
+		view.Board.Columns = append(view.Board.Columns, column)
+	}
+	return view, view.Validate()
+}
+
+func savedViewTitle(view contracts.SavedView, fallback string) string {
+	if strings.TrimSpace(view.Title) != "" {
+		return strings.TrimSpace(view.Title)
+	}
+	return fallback
+}
+
+func savedViewKindTitle(kind contracts.SavedViewKind) string {
+	switch kind {
+	case contracts.SavedViewKindBoard:
+		return "Board"
+	case contracts.SavedViewKindSearch:
+		return "Search Results"
+	case contracts.SavedViewKindQueue:
+		return "Queue"
+	case contracts.SavedViewKindNext:
+		return "Next"
+	default:
+		return "Saved View"
+	}
+}
+
+func requireSavedViewKind(workspace *workspace, name string, kind contracts.SavedViewKind) (contracts.SavedView, error) {
+	view, err := workspace.queries.SavedView(name)
+	if err != nil {
+		return contracts.SavedView{}, err
+	}
+	if view.Kind != kind {
+		return contracts.SavedView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("saved view %s is not a %s view", name, kind))
+	}
+	return view, nil
 }
 
 func runNotifySend(cmd *cobra.Command, _ []string) error {
@@ -2103,6 +2256,28 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer workspace.close()
+	viewName, _ := cmd.Flags().GetString("view")
+	if strings.TrimSpace(viewName) != "" {
+		if len(args) > 0 {
+			return apperr.New(apperr.CodeInvalidInput, "search accepts either a query argument or --view, not both")
+		}
+		if _, err := requireSavedViewKind(workspace, viewName, contracts.SavedViewKindSearch); err != nil {
+			return err
+		}
+		result, err := workspace.queries.RunSavedView(ctx, viewName, "")
+		if err != nil {
+			return err
+		}
+		title := savedViewTitle(result.View, "Search Results")
+		markdown := fmt.Sprintf("## %s\n\n", title)
+		for _, ticket := range result.Tickets {
+			markdown += fmt.Sprintf("- %s [%s] %s\n", ticket.ID, ticket.Status, ticket.Title)
+		}
+		return writeCommandOutput(cmd, result, markdown, render.TicketsPretty(title, result.Tickets))
+	}
+	if len(args) != 1 {
+		return apperr.New(apperr.CodeInvalidInput, "search requires a query or --view")
+	}
 	query, err := contracts.ParseSearchQuery(args[0])
 	if err != nil {
 		return err
@@ -2116,6 +2291,126 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		markdown += fmt.Sprintf("- %s [%s] %s\n", ticket.ID, ticket.Status, ticket.Title)
 	}
 	return writeCommandOutput(cmd, tickets, markdown, render.TicketsPretty("Search", tickets))
+}
+
+func runViewsList(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	views, err := workspace.queries.ListSavedViews()
+	if err != nil {
+		return err
+	}
+	md := "## Saved Views\n\n"
+	pretty := "saved views:\n"
+	for _, view := range views {
+		title := strings.TrimSpace(view.Title)
+		if title == "" {
+			title = view.Name
+		}
+		md += fmt.Sprintf("- %s [%s] %s\n", view.Name, view.Kind, title)
+		pretty += fmt.Sprintf("- %s [%s] %s\n", view.Name, view.Kind, title)
+	}
+	return writeCommandOutput(cmd, views, md, pretty)
+}
+
+func runViewsView(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.SavedView(args[0])
+	if err != nil {
+		return err
+	}
+	md := fmt.Sprintf("## %s\n\n- Kind: %s\n", view.Name, view.Kind)
+	if strings.TrimSpace(view.Title) != "" {
+		md += fmt.Sprintf("- Title: %s\n", view.Title)
+	}
+	if strings.TrimSpace(view.Query) != "" {
+		md += fmt.Sprintf("- Query: %s\n", view.Query)
+	}
+	pretty := fmt.Sprintf("saved view %s [%s]", view.Name, view.Kind)
+	return writeCommandOutput(cmd, view, md, pretty)
+}
+
+func runViewsSave(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := buildSavedViewFromFlags(cmd, args[0])
+	if err != nil {
+		return err
+	}
+	if err := workspace.withWriteLock(commandContext(cmd), "save saved view", func(_ context.Context) error {
+		return workspace.queries.Views.SaveView(view)
+	}); err != nil {
+		return err
+	}
+	md := fmt.Sprintf("## %s\n\nsaved\n", view.Name)
+	pretty := fmt.Sprintf("saved view %s", view.Name)
+	return writeCommandOutput(cmd, view, md, pretty)
+}
+
+func runViewsDelete(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	if err := workspace.withWriteLock(commandContext(cmd), "delete saved view", func(_ context.Context) error {
+		return workspace.queries.Views.DeleteView(args[0])
+	}); err != nil {
+		return err
+	}
+	payload := map[string]any{"ok": true, "name": args[0]}
+	return writeCommandOutput(cmd, payload, fmt.Sprintf("## %s\n\ndeleted\n", args[0]), fmt.Sprintf("deleted view %s", args[0]))
+}
+
+func runViewsRun(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	result, err := workspace.queries.RunSavedView(ctx, args[0], contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	title := savedViewTitle(result.View, savedViewKindTitle(result.View.Kind))
+	switch result.View.Kind {
+	case contracts.SavedViewKindBoard:
+		if result.Board == nil {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("saved view %s returned no board payload", result.View.Name))
+		}
+		return writeCommandOutput(cmd, result, boardMarkdown(title, result.Board.Board, result.View.Board.Columns), render.BoardPretty(result.Board.Board))
+	case contracts.SavedViewKindSearch:
+		md := fmt.Sprintf("## %s\n\n", title)
+		for _, ticket := range result.Tickets {
+			md += fmt.Sprintf("- %s [%s] %s\n", ticket.ID, ticket.Status, ticket.Title)
+		}
+		return writeCommandOutput(cmd, result, md, render.TicketsPretty(title, result.Tickets))
+	case contracts.SavedViewKindQueue:
+		if result.Queue == nil {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("saved view %s returned no queue payload", result.View.Name))
+		}
+		return writeCommandOutput(cmd, result, queueMarkdownSelected(*result.Queue, result.View.Queue.Categories, title), queuePrettySelected(*result.Queue, result.View.Queue.Categories, title))
+	case contracts.SavedViewKindNext:
+		if result.Next == nil {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("saved view %s returned no next payload", result.View.Name))
+		}
+		md, pretty := nextOutput(*result.Next, title)
+		return writeCommandOutput(cmd, result, md, pretty)
+	default:
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unsupported saved view kind: %s", result.View.Kind))
+	}
 }
 
 func runRender(cmd *cobra.Command, args []string) error {
@@ -2171,8 +2466,12 @@ func orderedBoardStatuses() []contracts.Status {
 }
 
 func queueMarkdown(queue service.QueueView) string {
-	md := fmt.Sprintf("## Queue for %s\n\n", queue.Actor)
-	for _, category := range orderedQueueCategories() {
+	return queueMarkdownSelected(queue, nil, "Queue")
+}
+
+func queueMarkdownSelected(queue service.QueueView, categories []string, title string) string {
+	md := fmt.Sprintf("## %s for %s\n\n", title, queue.Actor)
+	for _, category := range orderedQueueCategoriesSelected(categories) {
 		entries := queue.Categories[category]
 		md += fmt.Sprintf("### %s\n", category)
 		if len(entries) == 0 {
@@ -2187,8 +2486,12 @@ func queueMarkdown(queue service.QueueView) string {
 }
 
 func queuePretty(queue service.QueueView) string {
-	pretty := fmt.Sprintf("queue for %s:\n", queue.Actor)
-	for _, category := range orderedQueueCategories() {
+	return queuePrettySelected(queue, nil, "Queue")
+}
+
+func queuePrettySelected(queue service.QueueView, categories []string, title string) string {
+	pretty := fmt.Sprintf("%s for %s:\n", strings.ToLower(title), queue.Actor)
+	for _, category := range orderedQueueCategoriesSelected(categories) {
 		entries := queue.Categories[category]
 		pretty += fmt.Sprintf("%s:\n", category)
 		if len(entries) == 0 {
@@ -2212,6 +2515,27 @@ func orderedQueueCategories() []service.QueueCategory {
 		service.QueueStaleClaims,
 		service.QueuePolicyViolations,
 	}
+}
+
+func orderedQueueCategoriesSelected(categories []string) []service.QueueCategory {
+	if len(categories) == 0 {
+		return orderedQueueCategories()
+	}
+	allowed := make(map[service.QueueCategory]struct{}, len(categories))
+	for _, raw := range categories {
+		category := service.QueueCategory(strings.TrimSpace(raw))
+		if category == "" {
+			continue
+		}
+		allowed[category] = struct{}{}
+	}
+	selected := make([]service.QueueCategory, 0, len(allowed))
+	for _, category := range orderedQueueCategories() {
+		if _, ok := allowed[category]; ok {
+			selected = append(selected, category)
+		}
+	}
+	return selected
 }
 
 func parseActors(raw string) ([]contracts.Actor, error) {

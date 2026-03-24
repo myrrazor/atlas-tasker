@@ -98,6 +98,15 @@ type NextView struct {
 	Entries []NextEntry     `json:"entries"`
 }
 
+type SavedViewResult struct {
+	View    contracts.SavedView        `json:"view"`
+	Actor   contracts.Actor            `json:"actor,omitempty"`
+	Board   *BoardViewModel            `json:"board,omitempty"`
+	Queue   *QueueView                 `json:"queue,omitempty"`
+	Next    *NextView                  `json:"next,omitempty"`
+	Tickets []contracts.TicketSnapshot `json:"tickets,omitempty"`
+}
+
 type GitRepoView struct {
 	Branch  string `json:"branch,omitempty"`
 	Dirty   bool   `json:"dirty"`
