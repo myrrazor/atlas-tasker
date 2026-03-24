@@ -1,4 +1,4 @@
-# Atlas Tasker v1.2 Command Reference
+# Atlas Tasker v1.3 Command Reference
 
 ## Top-Level
 
@@ -7,6 +7,13 @@
 - `tracker doctor [--repair]`
 - `tracker reindex`
 - `tracker inspect <ID> [--actor <ACTOR>]`
+- `tracker automation list`
+- `tracker automation view <NAME>`
+- `tracker automation create <NAME> [flags]`
+- `tracker automation edit <NAME> [flags]`
+- `tracker automation delete <NAME>`
+- `tracker automation dry-run <NAME> [--ticket <ID>] [--event-type <TYPE>] [--actor <ACTOR>]`
+- `tracker automation explain <NAME> [--ticket <ID>] [--event-type <TYPE>] [--actor <ACTOR>]`
 - `tracker templates list`
 - `tracker templates view <NAME>`
 - `tracker integrations install codex [--force]`
@@ -78,6 +85,23 @@
 - `tracker sweep`
 - `tracker doctor --repair`
 - `tracker inspect <ID>`
+
+## Automation
+
+- `tracker automation list`
+- `tracker automation view <NAME>`
+- `tracker automation create <NAME> --on <EVENT_TYPE> [--on <EVENT_TYPE>] --action <ACTION> [--action <ACTION>] [flags]`
+- `tracker automation edit <NAME> --on <EVENT_TYPE> [--on <EVENT_TYPE>] --action <ACTION> [--action <ACTION>] [flags]`
+- `tracker automation delete <NAME>`
+- `tracker automation dry-run <NAME> --event-type <EVENT_TYPE> [--ticket <ID>] [--actor <ACTOR>]`
+- `tracker automation explain <NAME> --event-type <EVENT_TYPE> [--ticket <ID>] [--actor <ACTOR>]`
+
+Supported automation actions:
+
+- `comment:<TEXT>`
+- `move:<STATUS>`
+- `request_review`
+- `notify:<TEXT>`
 
 ## Shell Mode
 

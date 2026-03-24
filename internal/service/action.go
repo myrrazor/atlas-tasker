@@ -21,10 +21,11 @@ type ActionService struct {
 	Clock       func() time.Time
 	LockManager WriteLockManager
 	Notifier    Notifier
+	Automation  *AutomationEngine
 }
 
-func NewActionService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time, locks WriteLockManager, notifier Notifier) *ActionService {
-	return &ActionService{Root: root, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier}
+func NewActionService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time, locks WriteLockManager, notifier Notifier, automation *AutomationEngine) *ActionService {
+	return &ActionService{Root: root, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
 }
 
 func (s *ActionService) now() time.Time {
@@ -52,6 +53,7 @@ func (s *ActionService) newEvent(ctx context.Context, project string, at time.Ti
 		Project:       project,
 		TicketID:      ticketID,
 		Payload:       payload,
+		Metadata:      eventMetadataFromContext(ctx, actor),
 		SchemaVersion: contracts.CurrentSchemaVersion,
 	}, nil
 }
@@ -100,6 +102,9 @@ func (s *ActionService) commitMutation(ctx context.Context, purpose string, cano
 	}
 	if err := s.journal().Complete(journal.ID); err != nil {
 		return apperr.Wrap(apperr.CodeRepairNeeded, err, "finalize mutation journal")
+	}
+	if s.Automation != nil {
+		_, _ = s.Automation.Run(ctx, s, NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock), event)
 	}
 	return nil
 }

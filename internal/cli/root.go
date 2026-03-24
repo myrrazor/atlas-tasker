@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
 
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/domain"
@@ -53,6 +55,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newWhoCommand())
 	root.AddCommand(newSweepCommand())
 	root.AddCommand(newInspectCommand())
+	root.AddCommand(newAutomationCommand())
 	root.AddCommand(newTemplatesCommand())
 	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
@@ -195,6 +198,39 @@ func newIntegrationsCommand() *cobra.Command {
 		install.AddCommand(targetCmd)
 	}
 	cmd.AddCommand(install)
+	return cmd
+}
+
+func newAutomationCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "automation", Short: "Manage local automation rules"}
+	list := &cobra.Command{Use: "list", Short: "List automation rules", RunE: runAutomationList}
+	view := &cobra.Command{Use: "view <NAME>", Args: cobra.ExactArgs(1), Short: "Show one automation rule", RunE: runAutomationView}
+	create := &cobra.Command{Use: "create <NAME>", Args: cobra.ExactArgs(1), Short: "Create an automation rule", RunE: runAutomationCreate}
+	edit := &cobra.Command{Use: "edit <NAME>", Args: cobra.ExactArgs(1), Short: "Replace an automation rule", RunE: runAutomationEdit}
+	remove := &cobra.Command{Use: "delete <NAME>", Args: cobra.ExactArgs(1), Short: "Delete an automation rule", RunE: runAutomationDelete}
+	dryRun := &cobra.Command{Use: "dry-run <NAME>", Args: cobra.ExactArgs(1), Short: "Evaluate a rule without mutating", RunE: runAutomationDryRun}
+	explain := &cobra.Command{Use: "explain <NAME>", Args: cobra.ExactArgs(1), Short: "Explain why a rule does or does not match", RunE: runAutomationExplain}
+	for _, sub := range []*cobra.Command{list, view, create, edit, remove, dryRun, explain} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	for _, sub := range []*cobra.Command{create, edit} {
+		sub.Flags().StringArray("on", nil, "Trigger event types")
+		sub.Flags().String("project", "", "Only match this project")
+		sub.Flags().String("status", "", "Only match this ticket status")
+		sub.Flags().String("type", "", "Only match this ticket type")
+		sub.Flags().String("assignee", "", "Only match this assignee")
+		sub.Flags().String("reviewer", "", "Only match this reviewer")
+		sub.Flags().String("review-state", "", "Only match this review state")
+		sub.Flags().StringArray("label", nil, "Require a label")
+		sub.Flags().StringArray("action", nil, "Action definition: comment:body, move:status, request_review, notify:message")
+		sub.Flags().Bool("disabled", false, "Create the rule disabled")
+	}
+	for _, sub := range []*cobra.Command{dryRun, explain} {
+		sub.Flags().String("ticket", "", "Ticket to evaluate against")
+		sub.Flags().String("event-type", "", "Synthetic triggering event type")
+		sub.Flags().String("actor", "human:owner", "Actor that emitted the triggering event")
+	}
+	cmd.AddCommand(list, view, create, edit, remove, dryRun, explain)
 	return cmd
 }
 
@@ -523,13 +559,25 @@ func addMutationFlags(cmd *cobra.Command, flags *mutationFlags) {
 }
 
 func executeArgs(args []string) error {
+	return executeArgsWithSurface(args, contracts.EventSurfaceCLI)
+}
+
+func executeArgsWithSurface(args []string, surface contracts.EventSurface) error {
 	root := NewRootCommand()
+	root.SetContext(service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: surface}))
 	root.SetArgs(args)
 	return root.Execute()
 }
 
+func commandContext(cmd *cobra.Command) context.Context {
+	if cmd != nil && cmd.Context() != nil {
+		return cmd.Context()
+	}
+	return context.Background()
+}
+
 func runTicketCreate(cmd *cobra.Command, _ []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -670,7 +718,7 @@ func runTicketView(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketEdit(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -733,7 +781,7 @@ func runTicketEdit(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketDelete(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -782,7 +830,7 @@ func runTicketList(cmd *cobra.Command, _ []string) error {
 }
 
 func runTicketMove(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -838,7 +886,7 @@ func runTicketLabelRemove(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketFieldUpdate(cmd *cobra.Command, ticketID string, mutate func(*contracts.TicketSnapshot), message string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -858,7 +906,7 @@ func runTicketFieldUpdate(cmd *cobra.Command, ticketID string, mutate func(*cont
 }
 
 func runTicketLink(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -903,7 +951,7 @@ func runTicketLink(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketUnlink(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -919,7 +967,7 @@ func runTicketUnlink(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketComment(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -956,7 +1004,7 @@ func runTicketHistory(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketClaim(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -977,7 +1025,7 @@ func runTicketClaim(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketRelease(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -997,7 +1045,7 @@ func runTicketRelease(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketHeartbeat(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -1018,7 +1066,7 @@ func runTicketHeartbeat(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketRequestReview(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -1038,7 +1086,7 @@ func runTicketRequestReview(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketApprove(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -1058,7 +1106,7 @@ func runTicketApprove(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketReject(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -1078,7 +1126,7 @@ func runTicketReject(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketComplete(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -1115,7 +1163,7 @@ func runTicketPolicyGet(cmd *cobra.Command, args []string) error {
 }
 
 func runTicketPolicySet(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -1159,7 +1207,7 @@ func runProjectPolicyGet(cmd *cobra.Command, args []string) error {
 }
 
 func runProjectPolicySet(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -1422,7 +1470,7 @@ func runWho(cmd *cobra.Command, _ []string) error {
 }
 
 func runSweep(cmd *cobra.Command, _ []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
@@ -1539,6 +1587,235 @@ func runNext(cmd *cobra.Command, _ []string) error {
 		pretty += fmt.Sprintf("- %s [%s] %s -> %s\n", item.Entry.Ticket.ID, item.Category, item.Entry.Ticket.Title, item.Entry.Reason)
 	}
 	return writeCommandOutput(cmd, nextView, markdown, pretty)
+}
+
+func runAutomationList(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	rules, err := workspace.actions.Automation.ListRules()
+	if err != nil {
+		return err
+	}
+	md := "## Automation Rules\n\n"
+	pretty := "automation rules:\n"
+	for _, rule := range rules {
+		state := "enabled"
+		if !rule.Enabled {
+			state = "disabled"
+		}
+		md += fmt.Sprintf("- %s (%s)\n", rule.Name, state)
+		pretty += fmt.Sprintf("- %s [%s]\n", rule.Name, state)
+	}
+	return writeCommandOutput(cmd, rules, md, pretty)
+}
+
+func runAutomationView(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	rule, err := workspace.actions.Automation.LoadRule(args[0])
+	if err != nil {
+		return err
+	}
+	md := fmt.Sprintf("## %s\n\n- Enabled: %t\n- Triggers: %v\n- Actions: %d\n", rule.Name, rule.Enabled, rule.Trigger.EventTypes, len(rule.Actions))
+	pretty := fmt.Sprintf("automation %s [%t]", rule.Name, rule.Enabled)
+	return writeCommandOutput(cmd, rule, md, pretty)
+}
+
+func runAutomationCreate(cmd *cobra.Command, args []string) error {
+	return saveAutomationRule(cmd, args[0], false)
+}
+
+func runAutomationEdit(cmd *cobra.Command, args []string) error {
+	return saveAutomationRule(cmd, args[0], true)
+}
+
+func saveAutomationRule(cmd *cobra.Command, name string, mustExist bool) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	_, loadErr := workspace.actions.Automation.LoadRule(name)
+	switch {
+	case mustExist && loadErr != nil && (errors.Is(loadErr, os.ErrNotExist) || apperr.CodeOf(loadErr) == apperr.CodeNotFound):
+		return apperr.New(apperr.CodeNotFound, fmt.Sprintf("automation %s not found", name))
+	case !mustExist && loadErr == nil:
+		return apperr.New(apperr.CodeConflict, fmt.Sprintf("automation %s already exists", name))
+	case loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) && apperr.CodeOf(loadErr) != apperr.CodeNotFound:
+		return loadErr
+	}
+	rule, err := buildAutomationRuleFromFlags(cmd, name)
+	if err != nil {
+		return err
+	}
+	if err := workspace.withWriteLock(commandContext(cmd), "save automation rule", func(_ context.Context) error {
+		return workspace.actions.Automation.SaveRule(rule)
+	}); err != nil {
+		return err
+	}
+	md := fmt.Sprintf("## %s\n\nsaved\n", rule.Name)
+	pretty := fmt.Sprintf("saved automation %s", rule.Name)
+	return writeCommandOutput(cmd, rule, md, pretty)
+}
+
+func runAutomationDelete(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	if err := workspace.withWriteLock(commandContext(cmd), "delete automation rule", func(_ context.Context) error {
+		return workspace.actions.Automation.DeleteRule(args[0])
+	}); err != nil {
+		return err
+	}
+	result := map[string]any{"ok": true, "name": args[0]}
+	return writeCommandOutput(cmd, result, fmt.Sprintf("## %s\n\ndeleted\n", args[0]), fmt.Sprintf("deleted automation %s", args[0]))
+}
+
+func runAutomationDryRun(cmd *cobra.Command, args []string) error {
+	return evaluateAutomationRule(cmd, args[0], true)
+}
+
+func runAutomationExplain(cmd *cobra.Command, args []string) error {
+	return evaluateAutomationRule(cmd, args[0], false)
+}
+
+func evaluateAutomationRule(cmd *cobra.Command, name string, dryRun bool) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	rule, err := workspace.actions.Automation.LoadRule(name)
+	if err != nil {
+		return err
+	}
+	event, ticketID, err := automationEventFromFlags(cmd)
+	if err != nil {
+		return err
+	}
+	var result service.AutomationResult
+	if dryRun {
+		result, err = workspace.actions.Automation.DryRun(ctx, workspace.queries, rule, event, ticketID)
+	} else {
+		result, err = workspace.actions.Automation.Explain(ctx, workspace.queries, rule, event, ticketID)
+	}
+	if err != nil {
+		return err
+	}
+	md := fmt.Sprintf("## %s\n\n- Matched: %t\n", rule.Name, result.Matched)
+	for _, reason := range result.Reasons {
+		md += fmt.Sprintf("- %s\n", reason)
+	}
+	pretty := fmt.Sprintf("automation %s matched=%t", rule.Name, result.Matched)
+	return writeCommandOutput(cmd, result, md, pretty)
+}
+
+func automationEventFromFlags(cmd *cobra.Command) (contracts.Event, string, error) {
+	ticketID, _ := cmd.Flags().GetString("ticket")
+	eventTypeRaw, _ := cmd.Flags().GetString("event-type")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	eventType := contracts.EventType(strings.TrimSpace(eventTypeRaw))
+	if !eventType.IsValid() {
+		return contracts.Event{}, "", fmt.Errorf("invalid event type: %s", eventTypeRaw)
+	}
+	actor := contracts.Actor(strings.TrimSpace(actorRaw))
+	if !actor.IsValid() {
+		return contracts.Event{}, "", fmt.Errorf("invalid actor: %s", actorRaw)
+	}
+	project := ""
+	if strings.TrimSpace(ticketID) != "" {
+		parts := strings.SplitN(ticketID, "-", 2)
+		project = parts[0]
+	}
+	event := contracts.Event{
+		EventID:       1,
+		Timestamp:     defaultNow(),
+		Actor:         actor,
+		Type:          eventType,
+		Project:       project,
+		TicketID:      strings.TrimSpace(ticketID),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+		Metadata: contracts.EventMetadata{
+			CorrelationID: "dry-run",
+			MutationID:    "dry-run",
+			Surface:       contracts.EventSurfaceCLI,
+			RootActor:     actor,
+		},
+	}
+	return event, strings.TrimSpace(ticketID), nil
+}
+
+func buildAutomationRuleFromFlags(cmd *cobra.Command, name string) (contracts.AutomationRule, error) {
+	eventTypesRaw, _ := cmd.Flags().GetStringArray("on")
+	actionDefs, _ := cmd.Flags().GetStringArray("action")
+	project, _ := cmd.Flags().GetString("project")
+	statusRaw, _ := cmd.Flags().GetString("status")
+	typeRaw, _ := cmd.Flags().GetString("type")
+	assigneeRaw, _ := cmd.Flags().GetString("assignee")
+	reviewerRaw, _ := cmd.Flags().GetString("reviewer")
+	reviewStateRaw, _ := cmd.Flags().GetString("review-state")
+	labels, _ := cmd.Flags().GetStringArray("label")
+	disabled, _ := cmd.Flags().GetBool("disabled")
+	if len(eventTypesRaw) == 0 {
+		return contracts.AutomationRule{}, fmt.Errorf("at least one --on trigger is required")
+	}
+	trigger := contracts.AutomationTrigger{EventTypes: make([]contracts.EventType, 0, len(eventTypesRaw))}
+	for _, raw := range eventTypesRaw {
+		eventType := contracts.EventType(strings.TrimSpace(raw))
+		if !eventType.IsValid() {
+			return contracts.AutomationRule{}, fmt.Errorf("invalid event type: %s", raw)
+		}
+		trigger.EventTypes = append(trigger.EventTypes, eventType)
+	}
+	actions := make([]contracts.AutomationAction, 0, len(actionDefs))
+	for _, raw := range actionDefs {
+		action, err := parseAutomationAction(raw)
+		if err != nil {
+			return contracts.AutomationRule{}, err
+		}
+		actions = append(actions, action)
+	}
+	rule := contracts.AutomationRule{
+		Name:    name,
+		Enabled: !disabled,
+		Trigger: trigger,
+		Conditions: contracts.AutomationCondition{
+			Project:     strings.TrimSpace(project),
+			Status:      contracts.Status(strings.TrimSpace(statusRaw)),
+			Type:        contracts.TicketType(strings.TrimSpace(typeRaw)),
+			Assignee:    contracts.Actor(strings.TrimSpace(assigneeRaw)),
+			Reviewer:    contracts.Actor(strings.TrimSpace(reviewerRaw)),
+			ReviewState: contracts.ReviewState(strings.TrimSpace(reviewStateRaw)),
+			Labels:      labels,
+		},
+		Actions: actions,
+	}
+	return rule, rule.Validate()
+}
+
+func parseAutomationAction(raw string) (contracts.AutomationAction, error) {
+	raw = strings.TrimSpace(raw)
+	switch {
+	case strings.EqualFold(raw, "request_review"):
+		return contracts.AutomationAction{Kind: contracts.AutomationActionRequestReview}, nil
+	case strings.HasPrefix(raw, "comment:"):
+		return contracts.AutomationAction{Kind: contracts.AutomationActionComment, Body: strings.TrimSpace(strings.TrimPrefix(raw, "comment:"))}, nil
+	case strings.HasPrefix(raw, "move:"):
+		return contracts.AutomationAction{Kind: contracts.AutomationActionMove, Status: contracts.Status(strings.TrimSpace(strings.TrimPrefix(raw, "move:")))}, nil
+	case strings.HasPrefix(raw, "notify:"):
+		return contracts.AutomationAction{Kind: contracts.AutomationActionNotify, Message: strings.TrimSpace(strings.TrimPrefix(raw, "notify:"))}, nil
+	default:
+		return contracts.AutomationAction{}, fmt.Errorf("unsupported automation action: %s", raw)
+	}
 }
 
 func runTemplatesList(cmd *cobra.Command, _ []string) error {

@@ -190,7 +190,8 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		return model{}, err
 	}
 	locks := service.FileLockManager{Root: root}
-	actions := service.NewActionService(root, projectStore, ticketStore, eventLog, projection, clock, locks, notifier)
+	automation := &service.AutomationEngine{Store: service.AutomationStore{Root: root}, Notifier: notifier}
+	actions := service.NewActionService(root, projectStore, ticketStore, eventLog, projection, clock, locks, notifier, automation)
 	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, clock)
 	km := keyMap{
 		Left:          key.NewBinding(key.WithKeys("left", "shift+tab"), key.WithHelp("←/shift+tab", "prev tab")),
