@@ -59,6 +59,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newNotifyCommand())
 	root.AddCommand(newGitCommand())
 	root.AddCommand(newViewsCommand())
+	root.AddCommand(newWatchCommand())
+	root.AddCommand(newUnwatchCommand())
 	root.AddCommand(newTemplatesCommand())
 	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
@@ -608,6 +610,50 @@ func newViewsCommand() *cobra.Command {
 	_ = save.MarkFlagRequired("kind")
 	run.Flags().String("actor", "", "Actor override for queue/next views")
 	cmd.AddCommand(list, view, save, remove, run)
+	return cmd
+}
+
+func newWatchCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "watch", Short: "Manage notification watchers"}
+	list := &cobra.Command{Use: "list", Short: "List watcher rules", RunE: runWatchList}
+	list.Flags().String("actor", "", "Only show watchers for this actor")
+	addReadOutputFlags(list, &outputFlags{})
+	cmd.AddCommand(list)
+	for _, spec := range []struct {
+		use        string
+		short      string
+		targetKind contracts.SubscriptionTargetKind
+		run        func(*cobra.Command, []string) error
+	}{
+		{use: "ticket <ID>", short: "Watch one ticket", targetKind: contracts.SubscriptionTargetTicket, run: runWatchTicket},
+		{use: "project <KEY>", short: "Watch one project", targetKind: contracts.SubscriptionTargetProject, run: runWatchProject},
+		{use: "view <NAME>", short: "Watch one saved view", targetKind: contracts.SubscriptionTargetSavedView, run: runWatchView},
+	} {
+		sub := &cobra.Command{Use: spec.use, Args: cobra.ExactArgs(1), Short: spec.short, RunE: spec.run}
+		sub.Flags().String("actor", "", "Watcher actor")
+		sub.Flags().StringArray("event", nil, "Only notify on these event types")
+		addReadOutputFlags(sub, &outputFlags{})
+		cmd.AddCommand(sub)
+	}
+	return cmd
+}
+
+func newUnwatchCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "unwatch", Short: "Remove notification watchers"}
+	for _, spec := range []struct {
+		use   string
+		short string
+		run   func(*cobra.Command, []string) error
+	}{
+		{use: "ticket <ID>", short: "Unwatch one ticket", run: runUnwatchTicket},
+		{use: "project <KEY>", short: "Unwatch one project", run: runUnwatchProject},
+		{use: "view <NAME>", short: "Unwatch one saved view", run: runUnwatchView},
+	} {
+		sub := &cobra.Command{Use: spec.use, Args: cobra.ExactArgs(1), Short: spec.short, RunE: spec.run}
+		sub.Flags().String("actor", "", "Watcher actor")
+		addReadOutputFlags(sub, &outputFlags{})
+		cmd.AddCommand(sub)
+	}
 	return cmd
 }
 
@@ -2022,7 +2068,10 @@ func runNotifySend(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	notifier, err := service.BuildNotifier(workspace.root, cfg, cmd.ErrOrStderr())
+	notifier, err := service.BuildNotifier(workspace.root, cfg, cmd.ErrOrStderr(), service.SubscriptionResolver{
+		Store:   service.SubscriptionStore{Root: workspace.root},
+		Queries: workspace.queries,
+	})
 	if err != nil {
 		return err
 	}
@@ -2411,6 +2460,157 @@ func runViewsRun(cmd *cobra.Command, args []string) error {
 	default:
 		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unsupported saved view kind: %s", result.View.Kind))
 	}
+}
+
+func runWatchList(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	var actor contracts.Actor
+	if strings.TrimSpace(actorRaw) != "" {
+		actor, err = workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+		if err != nil {
+			return err
+		}
+	}
+	subscriptions, err := workspace.queries.ListSubscriptions(actor)
+	if err != nil {
+		return err
+	}
+	md := "## Watchers\n\n"
+	pretty := "watchers:\n"
+	for _, subscription := range subscriptions {
+		events := "all notify-worthy events"
+		if len(subscription.EventTypes) > 0 {
+			events = strings.Join(eventTypesToStrings(subscription.EventTypes), ", ")
+		}
+		md += fmt.Sprintf("- %s watches %s `%s` (%s)\n", subscription.Actor, subscription.TargetKind, subscription.Target, events)
+		pretty += fmt.Sprintf("- %s -> %s %s [%s]\n", subscription.Actor, subscription.TargetKind, subscription.Target, events)
+	}
+	return writeCommandOutput(cmd, subscriptions, md, pretty)
+}
+
+func runWatchTicket(cmd *cobra.Command, args []string) error {
+	return saveSubscription(cmd, contracts.SubscriptionTargetTicket, args[0])
+}
+
+func runWatchProject(cmd *cobra.Command, args []string) error {
+	return saveSubscription(cmd, contracts.SubscriptionTargetProject, args[0])
+}
+
+func runWatchView(cmd *cobra.Command, args []string) error {
+	return saveSubscription(cmd, contracts.SubscriptionTargetSavedView, args[0])
+}
+
+func saveSubscription(cmd *cobra.Command, kind contracts.SubscriptionTargetKind, target string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	subscription, err := buildSubscriptionFromFlags(ctx, workspace, kind, target, cmd)
+	if err != nil {
+		return err
+	}
+	store := service.SubscriptionStore{Root: workspace.root}
+	if err := workspace.withWriteLock(ctx, "save watcher", func(_ context.Context) error {
+		return store.SaveSubscription(subscription)
+	}); err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("%s watches %s %s", subscription.Actor, subscription.TargetKind, subscription.Target)
+	md := fmt.Sprintf("## Watcher Saved\n\n- Actor: %s\n- Target: %s %s\n", subscription.Actor, subscription.TargetKind, subscription.Target)
+	return writeCommandOutput(cmd, subscription, md, pretty)
+}
+
+func runUnwatchTicket(cmd *cobra.Command, args []string) error {
+	return deleteSubscription(cmd, contracts.SubscriptionTargetTicket, args[0])
+}
+
+func runUnwatchProject(cmd *cobra.Command, args []string) error {
+	return deleteSubscription(cmd, contracts.SubscriptionTargetProject, args[0])
+}
+
+func runUnwatchView(cmd *cobra.Command, args []string) error {
+	return deleteSubscription(cmd, contracts.SubscriptionTargetSavedView, args[0])
+}
+
+func deleteSubscription(cmd *cobra.Command, kind contracts.SubscriptionTargetKind, target string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	subscription := contracts.Subscription{
+		Actor:      actor,
+		TargetKind: kind,
+		Target:     strings.TrimSpace(target),
+	}
+	store := service.SubscriptionStore{Root: workspace.root}
+	if err := workspace.withWriteLock(ctx, "delete watcher", func(_ context.Context) error {
+		return store.DeleteSubscription(subscription)
+	}); err != nil {
+		return err
+	}
+	payload := map[string]any{"ok": true, "actor": subscription.Actor, "target_kind": subscription.TargetKind, "target": subscription.Target}
+	return writeCommandOutput(cmd, payload, fmt.Sprintf("## Watcher Removed\n\n- Actor: %s\n- Target: %s %s\n", subscription.Actor, subscription.TargetKind, subscription.Target), fmt.Sprintf("removed watcher %s %s %s", subscription.Actor, subscription.TargetKind, subscription.Target))
+}
+
+func buildSubscriptionFromFlags(ctx context.Context, workspace *workspace, kind contracts.SubscriptionTargetKind, target string, cmd *cobra.Command) (contracts.Subscription, error) {
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return contracts.Subscription{}, err
+	}
+	if kind == contracts.SubscriptionTargetSavedView {
+		if _, err := workspace.queries.SavedView(strings.TrimSpace(target)); err != nil {
+			return contracts.Subscription{}, err
+		}
+	}
+	if kind == contracts.SubscriptionTargetTicket {
+		if _, err := workspace.ticket.GetTicket(ctx, strings.TrimSpace(target)); err != nil {
+			return contracts.Subscription{}, err
+		}
+	}
+	if kind == contracts.SubscriptionTargetProject {
+		if _, err := workspace.project.GetProject(ctx, strings.TrimSpace(target)); err != nil {
+			return contracts.Subscription{}, err
+		}
+	}
+	eventTypesRaw, _ := cmd.Flags().GetStringArray("event")
+	subscription := contracts.Subscription{
+		Actor:      actor,
+		TargetKind: kind,
+		Target:     strings.TrimSpace(target),
+		EventTypes: make([]contracts.EventType, 0, len(eventTypesRaw)),
+	}
+	for _, raw := range eventTypesRaw {
+		eventType := contracts.EventType(strings.TrimSpace(raw))
+		if !eventType.IsValid() {
+			return contracts.Subscription{}, fmt.Errorf("invalid event type: %s", raw)
+		}
+		subscription.EventTypes = append(subscription.EventTypes, eventType)
+	}
+	return subscription, subscription.Validate()
+}
+
+func eventTypesToStrings(values []contracts.EventType) []string {
+	items := make([]string, 0, len(values))
+	for _, value := range values {
+		items = append(items, string(value))
+	}
+	return items
 }
 
 func runRender(cmd *cobra.Command, args []string) error {

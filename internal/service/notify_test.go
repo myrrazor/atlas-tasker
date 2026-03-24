@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
 func TestBuildNotifierWritesTerminalAndFile(t *testing.T) {
@@ -29,7 +30,7 @@ func TestBuildNotifierWritesTerminalAndFile(t *testing.T) {
 			DeliveryLogPath:       ".tracker/delivery.log",
 			DeadLetterPath:        ".tracker/dead.log",
 		},
-	}, &stderr)
+	}, &stderr, SubscriptionResolver{Store: SubscriptionStore{Root: root}})
 	if err != nil {
 		t.Fatalf("build notifier: %v", err)
 	}
@@ -88,7 +89,7 @@ func TestBuildNotifierRetriesWebhookAndWritesDeadLetter(t *testing.T) {
 			DeliveryLogPath:       ".tracker/delivery.log",
 			DeadLetterPath:        ".tracker/dead.log",
 		},
-	}, nil)
+	}, nil, SubscriptionResolver{Store: SubscriptionStore{Root: root}})
 	if err != nil {
 		t.Fatalf("build notifier: %v", err)
 	}
@@ -142,7 +143,7 @@ func TestBuildNotifierWebhookPayload(t *testing.T) {
 			DeliveryLogPath:       ".tracker/delivery.log",
 			DeadLetterPath:        ".tracker/dead.log",
 		},
-	}, nil)
+	}, nil, SubscriptionResolver{Store: SubscriptionStore{Root: root}})
 	if err != nil {
 		t.Fatalf("build notifier: %v", err)
 	}
@@ -160,5 +161,123 @@ func TestBuildNotifierWebhookPayload(t *testing.T) {
 	}
 	if payload.Event.TicketID != "APP-1" || payload.Event.Type != contracts.EventTicketApproved || payload.DeliveredAt.IsZero() {
 		t.Fatalf("unexpected webhook payload: %#v", payload)
+	}
+}
+
+func TestBuildNotifierGatesDeliveryWhenWatchersExist(t *testing.T) {
+	root := t.TempDir()
+	store := SubscriptionStore{Root: root}
+	subscription := contracts.Subscription{
+		Actor:      contracts.Actor("agent:builder-1"),
+		TargetKind: contracts.SubscriptionTargetTicket,
+		Target:     "APP-1",
+	}
+	if err := store.SaveSubscription(subscription); err != nil {
+		t.Fatalf("save subscription: %v", err)
+	}
+
+	notifier, err := BuildNotifier(root, contracts.TrackerConfig{
+		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
+		Notifications: contracts.NotificationsConfig{
+			FileEnabled:     true,
+			FilePath:        ".tracker/test-notify.log",
+			DeliveryLogPath: ".tracker/delivery.log",
+			DeadLetterPath:  ".tracker/dead.log",
+		},
+	}, nil, SubscriptionResolver{Store: store})
+	if err != nil {
+		t.Fatalf("build notifier: %v", err)
+	}
+
+	unmatched := contracts.Event{
+		EventID:       1,
+		Timestamp:     time.Date(2026, 3, 24, 5, 0, 0, 0, time.UTC),
+		Actor:         contracts.Actor("human:owner"),
+		Type:          contracts.EventTicketCommented,
+		Project:       "APP",
+		TicketID:      "APP-2",
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := notifier.Notify(context.Background(), unmatched); err != nil {
+		t.Fatalf("notify unmatched: %v", err)
+	}
+	deliveries, err := ReadNotificationLog(root, contracts.TrackerConfig{
+		Notifications: contracts.NotificationsConfig{
+			DeliveryLogPath: ".tracker/delivery.log",
+			DeadLetterPath:  ".tracker/dead.log",
+		},
+	})
+	if err != nil {
+		t.Fatalf("read delivery log: %v", err)
+	}
+	if len(deliveries) != 0 {
+		t.Fatalf("expected no deliveries for unmatched watcher event, got %#v", deliveries)
+	}
+
+	matched := unmatched
+	matched.EventID = 2
+	matched.TicketID = "APP-1"
+	if err := notifier.Notify(context.Background(), matched); err != nil {
+		t.Fatalf("notify matched: %v", err)
+	}
+	deliveries, err = ReadNotificationLog(root, contracts.TrackerConfig{
+		Notifications: contracts.NotificationsConfig{
+			DeliveryLogPath: ".tracker/delivery.log",
+			DeadLetterPath:  ".tracker/dead.log",
+		},
+	})
+	if err != nil {
+		t.Fatalf("read delivery log after match: %v", err)
+	}
+	if len(deliveries) != 1 || len(deliveries[0].Recipients) != 1 || deliveries[0].Recipients[0] != contracts.Actor("agent:builder-1") {
+		t.Fatalf("unexpected watcher delivery records: %#v", deliveries)
+	}
+}
+
+func TestBuildNotifierGracefullyDegradesOnResolverErrorForLegacyEvents(t *testing.T) {
+	root := t.TempDir()
+	subscriptionsPath := storage.SubscriptionsDir(root)
+	if err := os.MkdirAll(filepath.Dir(subscriptionsPath), 0o755); err != nil {
+		t.Fatalf("create tracker dir: %v", err)
+	}
+	if err := os.WriteFile(subscriptionsPath, []byte("not-a-dir"), 0o644); err != nil {
+		t.Fatalf("write blocking subscriptions file: %v", err)
+	}
+
+	notifier, err := BuildNotifier(root, contracts.TrackerConfig{
+		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
+		Notifications: contracts.NotificationsConfig{
+			FileEnabled:     true,
+			FilePath:        ".tracker/test-notify.log",
+			DeliveryLogPath: ".tracker/delivery.log",
+			DeadLetterPath:  ".tracker/dead.log",
+		},
+	}, nil, SubscriptionResolver{Store: SubscriptionStore{Root: root}})
+	if err != nil {
+		t.Fatalf("build notifier: %v", err)
+	}
+	event := contracts.Event{
+		EventID:       1,
+		Timestamp:     time.Date(2026, 3, 24, 5, 30, 0, 0, time.UTC),
+		Actor:         contracts.Actor("human:owner"),
+		Type:          contracts.EventTicketApproved,
+		Project:       "APP",
+		TicketID:      "APP-1",
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := notifier.Notify(context.Background(), event); err != nil {
+		t.Fatalf("expected legacy delivery to ignore resolver error, got %v", err)
+	}
+	deliveries, err := ReadNotificationLog(root, contracts.TrackerConfig{
+		Notifications: contracts.NotificationsConfig{
+			DeliveryLogPath: ".tracker/delivery.log",
+			DeadLetterPath:  ".tracker/dead.log",
+		},
+	})
+	if err != nil {
+		t.Fatalf("read delivery log: %v", err)
+	}
+	if len(deliveries) != 1 || len(deliveries[0].Recipients) != 0 {
+		t.Fatalf("unexpected fallback delivery records: %#v", deliveries)
 	}
 }

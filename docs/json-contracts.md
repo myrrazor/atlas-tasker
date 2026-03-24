@@ -32,11 +32,20 @@ Success payload is an array of delivery records with:
 - `delivered`
 - `error` when delivery failed
 - `event`
+- `recipients`
+- `targets`
 - `sink`
 - `timestamp`
 
 ## `tracker notify dead-letter --json`
 Success payload matches `notify log`, but only includes final failed deliveries.
+
+## `tracker watch list --json`
+Success payload is an array of watcher rules with:
+- `actor`
+- `target_kind`
+- `target`
+- `event_types`
 
 ## `tracker views run <NAME> --json`
 Success payload includes:

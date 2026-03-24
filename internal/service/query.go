@@ -53,6 +53,23 @@ func (s *QueryService) SavedView(name string) (contracts.SavedView, error) {
 	return s.Views.LoadView(name)
 }
 
+func (s *QueryService) ListSubscriptions(actor contracts.Actor) ([]contracts.Subscription, error) {
+	subscriptions, err := SubscriptionStore{Root: s.Root}.ListSubscriptions()
+	if err != nil {
+		return nil, err
+	}
+	if actor == "" {
+		return subscriptions, nil
+	}
+	filtered := make([]contracts.Subscription, 0, len(subscriptions))
+	for _, subscription := range subscriptions {
+		if subscription.Actor == actor {
+			filtered = append(filtered, subscription)
+		}
+	}
+	return filtered, nil
+}
+
 func (s *QueryService) History(ctx context.Context, ticketID string) (HistoryView, error) {
 	events, err := s.Projection.QueryHistory(ctx, ticketID)
 	if err != nil {

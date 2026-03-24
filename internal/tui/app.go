@@ -185,14 +185,17 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 	if err != nil {
 		return model{}, err
 	}
-	notifier, err := service.BuildNotifier(root, cfg, os.Stderr)
+	locks := service.FileLockManager{Root: root}
+	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, clock)
+	notifier, err := service.BuildNotifier(root, cfg, os.Stderr, service.SubscriptionResolver{
+		Store:   service.SubscriptionStore{Root: root},
+		Queries: queries,
+	})
 	if err != nil {
 		return model{}, err
 	}
-	locks := service.FileLockManager{Root: root}
 	automation := &service.AutomationEngine{Store: service.AutomationStore{Root: root}, Notifier: notifier}
 	actions := service.NewActionService(root, projectStore, ticketStore, eventLog, projection, clock, locks, notifier, automation)
-	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, clock)
 	km := keyMap{
 		Left:          key.NewBinding(key.WithKeys("left", "shift+tab"), key.WithHelp("←/shift+tab", "prev tab")),
 		Right:         key.NewBinding(key.WithKeys("right", "tab"), key.WithHelp("→/tab", "next tab")),
