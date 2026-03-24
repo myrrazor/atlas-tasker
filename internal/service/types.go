@@ -177,9 +177,32 @@ type GitCommitView struct {
 	Subject    string    `json:"subject"`
 }
 
+type GitHubCapabilityView struct {
+	Authenticated bool   `json:"authenticated"`
+	Installed     bool   `json:"installed"`
+	Repo          string `json:"repo,omitempty"`
+}
+
+type GitHubPRView struct {
+	BaseRef string `json:"base_ref,omitempty"`
+	Draft   bool   `json:"draft"`
+	Number  int    `json:"number"`
+	HeadRef string `json:"head_ref,omitempty"`
+	State   string `json:"state,omitempty"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+}
+
+type GitHubContextView struct {
+	Capability     GitHubCapabilityView `json:"capability"`
+	PullRequests   []GitHubPRView       `json:"pull_requests,omitempty"`
+	SuggestedTitle string               `json:"suggested_title,omitempty"`
+}
+
 type GitContextView struct {
-	CurrentBranchMatches bool            `json:"current_branch_matches"`
-	Repo                 GitRepoView     `json:"repo"`
-	SuggestedBranch      string          `json:"suggested_branch,omitempty"`
-	Refs                 []GitCommitView `json:"refs,omitempty"`
+	CurrentBranchMatches bool              `json:"current_branch_matches"`
+	GitHub               GitHubContextView `json:"github,omitempty"`
+	Repo                 GitRepoView       `json:"repo"`
+	SuggestedBranch      string            `json:"suggested_branch,omitempty"`
+	Refs                 []GitCommitView   `json:"refs,omitempty"`
 }

@@ -1040,20 +1040,36 @@ func detailWithGit(detail service.TicketDetailView) string {
 	gitLines := []string{"Git Context:"}
 	if !detail.Git.Repo.Present {
 		gitLines = append(gitLines, "- repo: not detected")
-		return body + "\n\n" + strings.Join(gitLines, "\n")
-	}
-	gitLines = append(gitLines,
-		fmt.Sprintf("- branch: %s", optionalString(detail.Git.Repo.Branch, "detached")),
-		fmt.Sprintf("- dirty: %t", detail.Git.Repo.Dirty),
-		fmt.Sprintf("- suggested: %s", optionalString(detail.Git.SuggestedBranch, "n/a")),
-		fmt.Sprintf("- current matches ticket: %t", detail.Git.CurrentBranchMatches),
-	)
-	if len(detail.Git.Refs) == 0 {
-		gitLines = append(gitLines, "- refs: none")
 	} else {
-		gitLines = append(gitLines, "- refs:")
-		for _, ref := range detail.Git.Refs {
-			gitLines = append(gitLines, fmt.Sprintf("  - %s %s", shortHash(ref.Hash), ref.Subject))
+		gitLines = append(gitLines,
+			fmt.Sprintf("- branch: %s", optionalString(detail.Git.Repo.Branch, "detached")),
+			fmt.Sprintf("- dirty: %t", detail.Git.Repo.Dirty),
+			fmt.Sprintf("- suggested: %s", optionalString(detail.Git.SuggestedBranch, "n/a")),
+			fmt.Sprintf("- current matches ticket: %t", detail.Git.CurrentBranchMatches),
+		)
+		if len(detail.Git.Refs) == 0 {
+			gitLines = append(gitLines, "- refs: none")
+		} else {
+			gitLines = append(gitLines, "- refs:")
+			for _, ref := range detail.Git.Refs {
+				gitLines = append(gitLines, fmt.Sprintf("  - %s %s", shortHash(ref.Hash), ref.Subject))
+			}
+		}
+	}
+	if !detail.Git.GitHub.Capability.Installed {
+		gitLines = append(gitLines, "- github: gh CLI not installed")
+	} else if !detail.Git.GitHub.Capability.Authenticated {
+		gitLines = append(gitLines, "- github: gh CLI not authenticated")
+	} else {
+		gitLines = append(gitLines, fmt.Sprintf("- github repo: %s", optionalString(detail.Git.GitHub.Capability.Repo, "connected")))
+		gitLines = append(gitLines, fmt.Sprintf("- github suggested title: %s", optionalString(detail.Git.GitHub.SuggestedTitle, "n/a")))
+		if len(detail.Git.GitHub.PullRequests) == 0 {
+			gitLines = append(gitLines, "- github prs: none")
+		} else {
+			gitLines = append(gitLines, "- github prs:")
+			for _, pr := range detail.Git.GitHub.PullRequests {
+				gitLines = append(gitLines, fmt.Sprintf("  - #%d [%s] %s", pr.Number, pr.State, pr.Title))
+			}
 		}
 	}
 	return body + "\n\n" + strings.Join(gitLines, "\n")
