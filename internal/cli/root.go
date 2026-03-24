@@ -56,6 +56,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newSweepCommand())
 	root.AddCommand(newInspectCommand())
 	root.AddCommand(newAutomationCommand())
+	root.AddCommand(newNotifyCommand())
 	root.AddCommand(newTemplatesCommand())
 	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
@@ -231,6 +232,29 @@ func newAutomationCommand() *cobra.Command {
 		sub.Flags().String("actor", "human:owner", "Actor that emitted the triggering event")
 	}
 	cmd.AddCommand(list, view, create, edit, remove, dryRun, explain)
+	return cmd
+}
+
+func newNotifyCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "notify", Short: "Debug and inspect notifier delivery"}
+	send := &cobra.Command{Use: "send", Short: "Send a synthetic notification event", RunE: runNotifySend}
+	send.Flags().String("event-type", "", "Event type to send")
+	send.Flags().String("ticket", "", "Ticket id for the event")
+	send.Flags().String("project", "", "Project key when no ticket id is provided")
+	send.Flags().String("actor", "human:owner", "Actor for the synthetic event")
+	send.Flags().String("reason", "", "Reason/message for the synthetic event")
+	_ = send.MarkFlagRequired("event-type")
+	addReadOutputFlags(send, &outputFlags{})
+
+	logCmd := &cobra.Command{Use: "log", Short: "Read notification delivery attempts", RunE: runNotifyLog}
+	logCmd.Flags().Int("limit", 20, "Maximum number of log entries to show")
+	addReadOutputFlags(logCmd, &outputFlags{})
+
+	dead := &cobra.Command{Use: "dead-letter", Short: "Read notification dead letters", RunE: runNotifyDeadLetter}
+	dead.Flags().Int("limit", 20, "Maximum number of dead letters to show")
+	addReadOutputFlags(dead, &outputFlags{})
+
+	cmd.AddCommand(send, logCmd, dead)
 	return cmd
 }
 
@@ -1816,6 +1840,126 @@ func parseAutomationAction(raw string) (contracts.AutomationAction, error) {
 	default:
 		return contracts.AutomationAction{}, fmt.Errorf("unsupported automation action: %s", raw)
 	}
+}
+
+func runNotifySend(cmd *cobra.Command, _ []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	cfg, err := config.Load(workspace.root)
+	if err != nil {
+		return err
+	}
+	notifier, err := service.BuildNotifier(workspace.root, cfg, cmd.ErrOrStderr())
+	if err != nil {
+		return err
+	}
+	if notifier == nil {
+		return apperr.New(apperr.CodeNotFound, "no notifier sinks are configured")
+	}
+	event, err := notifyEventFromFlags(cmd)
+	if err != nil {
+		return err
+	}
+	if err := notifier.Notify(ctx, event); err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("notified %s via configured sinks", event.Type)
+	md := fmt.Sprintf("## Notification Sent\n\n- Event: %s\n- Ticket: %s\n- Project: %s\n", event.Type, event.TicketID, event.Project)
+	return writeCommandOutput(cmd, event, md, pretty)
+}
+
+func runNotifyLog(cmd *cobra.Command, _ []string) error {
+	return runNotifyRecords(cmd, false)
+}
+
+func runNotifyDeadLetter(cmd *cobra.Command, _ []string) error {
+	return runNotifyRecords(cmd, true)
+}
+
+func runNotifyRecords(cmd *cobra.Command, deadLetters bool) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	cfg, err := config.Load(workspace.root)
+	if err != nil {
+		return err
+	}
+	var records []service.NotificationDelivery
+	if deadLetters {
+		records, err = service.ReadDeadLetters(workspace.root, cfg)
+	} else {
+		records, err = service.ReadNotificationLog(workspace.root, cfg)
+	}
+	if err != nil {
+		return err
+	}
+	limit, _ := cmd.Flags().GetInt("limit")
+	if limit > 0 && len(records) > limit {
+		records = records[len(records)-limit:]
+	}
+	title := "Notification Log"
+	if deadLetters {
+		title = "Notification Dead Letters"
+	}
+	md := fmt.Sprintf("## %s\n\n", title)
+	pretty := strings.ToLower(title) + ":\n"
+	for _, record := range records {
+		state := "ok"
+		if !record.Delivered {
+			state = "failed"
+		}
+		md += fmt.Sprintf("- %s %s %s (%s)\n", record.Timestamp.Format(timeRFC3339), record.Sink, record.Event.Type, state)
+		pretty += fmt.Sprintf("- %s %s %s [%s]\n", record.Timestamp.Format(timeRFC3339), record.Sink, record.Event.Type, state)
+	}
+	return writeCommandOutput(cmd, records, md, pretty)
+}
+
+func notifyEventFromFlags(cmd *cobra.Command) (contracts.Event, error) {
+	eventTypeRaw, _ := cmd.Flags().GetString("event-type")
+	ticketID, _ := cmd.Flags().GetString("ticket")
+	project, _ := cmd.Flags().GetString("project")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	eventType := contracts.EventType(strings.TrimSpace(eventTypeRaw))
+	if !eventType.IsValid() {
+		return contracts.Event{}, fmt.Errorf("invalid event type: %s", eventTypeRaw)
+	}
+	actor := normalizeActor(actorRaw)
+	if !actor.IsValid() {
+		return contracts.Event{}, fmt.Errorf("invalid actor: %s", actorRaw)
+	}
+	ticketID = strings.TrimSpace(ticketID)
+	project = strings.TrimSpace(project)
+	if ticketID != "" {
+		parts := strings.SplitN(ticketID, "-", 2)
+		project = parts[0]
+	}
+	if project == "" {
+		return contracts.Event{}, fmt.Errorf("project is required when ticket is omitted")
+	}
+	event := contracts.Event{
+		EventID:       1,
+		Timestamp:     defaultNow(),
+		Actor:         actor,
+		Reason:        strings.TrimSpace(reason),
+		Type:          eventType,
+		Project:       project,
+		TicketID:      ticketID,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+		Metadata: contracts.EventMetadata{
+			CorrelationID: "notify-debug",
+			MutationID:    "notify-debug",
+			Surface:       contracts.EventSurfaceCLI,
+			RootActor:     actor,
+		},
+	}
+	return event, event.Validate()
 }
 
 func runTemplatesList(cmd *cobra.Command, _ []string) error {
