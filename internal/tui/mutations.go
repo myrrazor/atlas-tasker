@@ -12,13 +12,20 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/slashcmd"
 )
 
+func (m model) now() time.Time {
+	if m.actions != nil && m.actions.Clock != nil {
+		return m.actions.Clock().UTC()
+	}
+	return time.Now().UTC()
+}
+
 func (m model) toggleClaimSelected() tea.Cmd {
 	ticket, ok := m.selectedTicket()
 	if !ok {
 		return nil
 	}
 	return m.runMutation(ticket.ID, func(ctx context.Context, actor contracts.Actor) (string, error) {
-		if ticket.Lease.Actor == actor && ticket.Lease.Active(time.Now().UTC()) {
+		if ticket.Lease.Actor == actor && ticket.Lease.Active(m.now()) {
 			_, err := m.actions.ReleaseTicket(ctx, ticket.ID, actor, "released from TUI")
 			return fmt.Sprintf("released %s", ticket.ID), err
 		}
@@ -139,7 +146,7 @@ func (m model) runFormMutation(dialog dialogState) tea.Cmd {
 			return failMutation(fmt.Errorf("invalid ticket type: %s", values["type"]))
 		}
 		return m.runMutation("", func(ctx context.Context, actor contracts.Actor) (string, error) {
-			now := time.Now().UTC()
+			now := m.now()
 			ticket := contracts.TicketSnapshot{
 				Project:            values["project"],
 				Title:              values["title"],
@@ -168,7 +175,7 @@ func (m model) runFormMutation(dialog dialogState) tea.Cmd {
 			ticket.Title = values["title"]
 			ticket.Summary = values["title"]
 			ticket.Description = values["description"]
-			ticket.UpdatedAt = time.Now().UTC()
+			ticket.UpdatedAt = m.now()
 			_, err = m.actions.SaveTrackedTicket(ctx, ticket, actor, "edited from TUI")
 			if err != nil {
 				return "", err
@@ -347,7 +354,7 @@ func (m model) executeSlash(ctx context.Context, args []string, actor contracts.
 		if project == "" || title == "" || !typeValue.IsValid() {
 			return "", fmt.Errorf("usage: /ticket create --project <KEY> --title <TEXT> --type <TYPE> [--description <TEXT>]")
 		}
-		now := time.Now().UTC()
+		now := m.now()
 		ticket := contracts.TicketSnapshot{Project: project, Title: title, Summary: title, Description: description, Type: typeValue, Status: contracts.StatusBacklog, Priority: contracts.PriorityMedium, CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion, AcceptanceCriteria: []string{}}
 		created, err := m.actions.CreateTrackedTicket(ctx, ticket, actor, reason)
 		if err != nil {
@@ -369,7 +376,7 @@ func (m model) executeSlash(ctx context.Context, args []string, actor contracts.
 		if flags["description"] != nil {
 			ticket.Description = firstFlag(flags, "description")
 		}
-		ticket.UpdatedAt = time.Now().UTC()
+		ticket.UpdatedAt = m.now()
 		updated, err := m.actions.SaveTrackedTicket(ctx, ticket, actor, reason)
 		if err != nil {
 			return "", err

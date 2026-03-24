@@ -173,7 +173,8 @@ func Run(root string, explicitActor contracts.Actor) error {
 }
 
 func newModel(root string, explicitActor contracts.Actor) (model, error) {
-	ticketStore := mdstore.TicketStore{RootDir: root}
+	clock := func() time.Time { return time.Now().UTC() }
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: clock}
 	eventLog := &eventstore.Log{RootDir: root}
 	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
 	if err != nil {
@@ -188,8 +189,9 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 	if err != nil {
 		return model{}, err
 	}
-	actions := service.NewActionService(root, projectStore, ticketStore, eventLog, projection, time.Now, notifier)
-	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, time.Now)
+	locks := service.FileLockManager{Root: root}
+	actions := service.NewActionService(root, projectStore, ticketStore, eventLog, projection, clock, locks, notifier)
+	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, clock)
 	km := keyMap{
 		Left:          key.NewBinding(key.WithKeys("left", "shift+tab"), key.WithHelp("←/shift+tab", "prev tab")),
 		Right:         key.NewBinding(key.WithKeys("right", "tab"), key.WithHelp("→/tab", "next tab")),

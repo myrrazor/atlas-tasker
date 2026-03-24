@@ -31,8 +31,10 @@ type mutationFlags struct {
 
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:   "tracker",
-		Short: "Local-first markdown issue tracker for AI coding agents",
+		Use:           "tracker",
+		Short:         "Local-first markdown issue tracker for AI coding agents",
+		SilenceErrors: true,
+		SilenceUsage:  true,
 	}
 
 	root.AddCommand(newInitCommand())
@@ -145,11 +147,14 @@ func newConfigCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(2),
 		Short: "Set config values",
 		RunE: func(_ *cobra.Command, args []string) error {
-			rootDir, err := os.Getwd()
+			workspace, err := openWorkspace()
 			if err != nil {
 				return err
 			}
-			if err := config.Set(rootDir, args[0], args[1]); err != nil {
+			defer workspace.close()
+			if err := workspace.withWriteLock(context.Background(), "config set", func(_ context.Context) error {
+				return config.Set(workspace.root, args[0], args[1])
+			}); err != nil {
 				return err
 			}
 			fmt.Fprintf(os.Stdout, "ok\n")
@@ -207,8 +212,12 @@ func newProjectCommand() *cobra.Command {
 			}
 			defer workspace.close()
 
-			project := contracts.Project{Key: strings.TrimSpace(args[0]), Name: strings.TrimSpace(args[1]), CreatedAt: defaultNow()}
-			if err := workspace.project.CreateProject(ctx, project); err != nil {
+			now := defaultNow()
+			if workspace.actions.Clock != nil {
+				now = workspace.actions.Clock().UTC()
+			}
+			project := contracts.Project{Key: strings.TrimSpace(args[0]), Name: strings.TrimSpace(args[1]), CreatedAt: now}
+			if err := workspace.actions.CreateProject(ctx, project); err != nil {
 				return err
 			}
 			return writeCommandOutput(command, project, fmt.Sprintf("# %s\n\n%s", project.Key, project.Name), fmt.Sprintf("created project %s", project.Key))
@@ -553,10 +562,6 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 	}
-	existing, err := workspace.ticket.ListTickets(ctx, contracts.TicketListOptions{Project: project, IncludeArchived: true})
-	if err != nil {
-		return err
-	}
 	if strings.TrimSpace(typeValue) == "" && template.Type != "" {
 		typeValue = string(template.Type)
 	}
@@ -578,10 +583,11 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	if !actor.IsValid() {
 		return fmt.Errorf("invalid actor: %s", actorRaw)
 	}
-	id := nextTicketID(project, existing)
 	now := defaultNow()
+	if workspace.actions.Clock != nil {
+		now = workspace.actions.Clock().UTC()
+	}
 	ticket := contracts.TicketSnapshot{
-		ID:                 id,
 		Project:            project,
 		Title:              title,
 		Type:               ticketType,
@@ -672,57 +678,54 @@ func runTicketEdit(cmd *cobra.Command, args []string) error {
 	defer workspace.close()
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
-	ticket, err := workspace.ticket.GetTicket(ctx, args[0])
-	if err != nil {
-		return err
-	}
-	if cmd.Flags().Changed("title") {
-		title, _ := cmd.Flags().GetString("title")
-		ticket.Title = title
-		ticket.Summary = title
-	}
-	if cmd.Flags().Changed("description") {
-		description, _ := cmd.Flags().GetString("description")
-		ticket.Description = description
-	}
-	if cmd.Flags().Changed("acceptance") {
-		acceptance, _ := cmd.Flags().GetStringArray("acceptance")
-		ticket.AcceptanceCriteria = acceptance
-	}
-	if cmd.Flags().Changed("priority") {
-		priority, _ := cmd.Flags().GetString("priority")
-		ticketPriority := contracts.Priority(priority)
-		if !ticketPriority.IsValid() {
-			return fmt.Errorf("invalid priority: %s", priority)
+	ticket, err := workspace.actions.MutateTrackedTicket(ctx, args[0], normalizeActor(actorRaw), reason, "edit ticket", func(ticket *contracts.TicketSnapshot) error {
+		if cmd.Flags().Changed("title") {
+			title, _ := cmd.Flags().GetString("title")
+			ticket.Title = title
+			ticket.Summary = title
 		}
-		ticket.Priority = ticketPriority
-	}
-	if cmd.Flags().Changed("labels") {
-		labels, _ := cmd.Flags().GetString("labels")
-		ticket.Labels = parseLabels(labels)
-	}
-	if cmd.Flags().Changed("assignee") {
-		assignee, _ := cmd.Flags().GetString("assignee")
-		ticket.Assignee = normalizeActor(assignee)
-		if assignee != "" && !ticket.Assignee.IsValid() {
-			return fmt.Errorf("invalid assignee actor: %s", assignee)
+		if cmd.Flags().Changed("description") {
+			description, _ := cmd.Flags().GetString("description")
+			ticket.Description = description
 		}
-		if assignee == "" {
-			ticket.Assignee = ""
+		if cmd.Flags().Changed("acceptance") {
+			acceptance, _ := cmd.Flags().GetStringArray("acceptance")
+			ticket.AcceptanceCriteria = acceptance
 		}
-	}
-	if cmd.Flags().Changed("reviewer") {
-		reviewer, _ := cmd.Flags().GetString("reviewer")
-		ticket.Reviewer = normalizeActor(reviewer)
-		if reviewer != "" && !ticket.Reviewer.IsValid() {
-			return fmt.Errorf("invalid reviewer actor: %s", reviewer)
+		if cmd.Flags().Changed("priority") {
+			priority, _ := cmd.Flags().GetString("priority")
+			ticketPriority := contracts.Priority(priority)
+			if !ticketPriority.IsValid() {
+				return fmt.Errorf("invalid priority: %s", priority)
+			}
+			ticket.Priority = ticketPriority
 		}
-		if reviewer == "" {
-			ticket.Reviewer = ""
+		if cmd.Flags().Changed("labels") {
+			labels, _ := cmd.Flags().GetString("labels")
+			ticket.Labels = parseLabels(labels)
 		}
-	}
-	ticket.UpdatedAt = defaultNow()
-	ticket, err = workspace.actions.SaveTrackedTicket(ctx, ticket, normalizeActor(actorRaw), reason)
+		if cmd.Flags().Changed("assignee") {
+			assignee, _ := cmd.Flags().GetString("assignee")
+			ticket.Assignee = normalizeActor(assignee)
+			if assignee != "" && !ticket.Assignee.IsValid() {
+				return fmt.Errorf("invalid assignee actor: %s", assignee)
+			}
+			if assignee == "" {
+				ticket.Assignee = ""
+			}
+		}
+		if cmd.Flags().Changed("reviewer") {
+			reviewer, _ := cmd.Flags().GetString("reviewer")
+			ticket.Reviewer = normalizeActor(reviewer)
+			if reviewer != "" && !ticket.Reviewer.IsValid() {
+				return fmt.Errorf("invalid reviewer actor: %s", reviewer)
+			}
+			if reviewer == "" {
+				ticket.Reviewer = ""
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return err
 	}
@@ -739,19 +742,8 @@ func runTicketDelete(cmd *cobra.Command, args []string) error {
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	actor := normalizeActor(actorRaw)
-	if err := workspace.ticket.SoftDeleteTicket(ctx, args[0], actor, reason); err != nil {
-		return err
-	}
-	ticket, err := workspace.ticket.GetTicket(ctx, args[0])
+	ticket, err := workspace.actions.DeleteTrackedTicket(ctx, args[0], actor, reason)
 	if err != nil {
-		return err
-	}
-	eventID, err := workspace.nextEventID(ctx, ticket.Project)
-	if err != nil {
-		return err
-	}
-	event := contracts.Event{EventID: eventID, Timestamp: defaultNow(), Actor: actor, Reason: reason, Type: contracts.EventTicketClosed, Project: ticket.Project, TicketID: ticket.ID, Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion}
-	if err := workspace.appendAndProject(ctx, event); err != nil {
 		return err
 	}
 	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\narchived", ticket.ID), fmt.Sprintf("archived %s", ticket.ID))
@@ -855,13 +847,11 @@ func runTicketFieldUpdate(cmd *cobra.Command, ticketID string, mutate func(*cont
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	actor := normalizeActor(actorRaw)
-	ticket, err := workspace.ticket.GetTicket(ctx, ticketID)
+	ticket, err := workspace.actions.MutateTrackedTicket(ctx, ticketID, actor, reason, message, func(ticket *contracts.TicketSnapshot) error {
+		mutate(ticket)
+		return nil
+	})
 	if err != nil {
-		return err
-	}
-	mutate(&ticket)
-	ticket.UpdatedAt = defaultNow()
-	if _, err := workspace.actions.SaveTrackedTicket(ctx, ticket, actor, reason); err != nil {
 		return err
 	}
 	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s", ticket.ID, message), fmt.Sprintf("%s: %s", message, ticket.ID))
@@ -1252,13 +1242,17 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		if !repair {
 			return err
 		}
-		if rebuildErr := workspace.projection.Rebuild(ctx, ""); rebuildErr != nil {
+		if rebuildErr := workspace.withWriteLock(ctx, "doctor repair", func(ctx context.Context) error {
+			return workspace.projection.Rebuild(ctx, "")
+		}); rebuildErr != nil {
 			return rebuildErr
 		}
 	} else {
 		repair, _ := cmd.Flags().GetBool("repair")
 		if repair {
-			if err := workspace.projection.Rebuild(ctx, ""); err != nil {
+			if err := workspace.withWriteLock(ctx, "doctor repair", func(ctx context.Context) error {
+				return workspace.projection.Rebuild(ctx, "")
+			}); err != nil {
 				return err
 			}
 		}
@@ -1272,6 +1266,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"tickets":        len(tickets),
 		"repair_ran":     repair,
 		"config":         cfg,
+		"issue_codes":    []string{},
 		"issues": map[string]any{
 			"project_issues": projectIssues,
 			"ticket_issues":  ticketIssues,
@@ -1311,7 +1306,9 @@ func runReindex(cmd *cobra.Command, _ []string) error {
 	if _, err := config.Load(workspace.root); err != nil {
 		return err
 	}
-	if err := workspace.projection.Rebuild(ctx, ""); err != nil {
+	if err := workspace.withWriteLock(ctx, "reindex projection", func(ctx context.Context) error {
+		return workspace.projection.Rebuild(ctx, "")
+	}); err != nil {
 		return err
 	}
 	message := "reindex complete"
@@ -1396,6 +1393,9 @@ func runWho(cmd *cobra.Command, _ []string) error {
 	}
 	md := "## Claimed Tickets\n\n"
 	now := defaultNow()
+	if workspace.queries.Clock != nil {
+		now = workspace.queries.Clock().UTC()
+	}
 	for _, ticket := range tickets {
 		state := "active"
 		if !ticket.Lease.Active(now) {

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +26,7 @@ type workspace struct {
 	ticket     mdstore.TicketStore
 	events     *eventstore.Log
 	projection *sqlitestore.Store
+	locks      service.WriteLockManager
 	actions    *service.ActionService
 	queries    *service.QueryService
 }
@@ -36,7 +36,7 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	ticketStore := mdstore.TicketStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
 	eventLog := &eventstore.Log{RootDir: root}
 	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
 	if err != nil {
@@ -57,8 +57,9 @@ func openWorkspace() (*workspace, error) {
 		ticket:     ticketStore,
 		events:     eventLog,
 		projection: projection,
+		locks:      service.FileLockManager{Root: root},
 	}
-	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, notifier)
+	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier)
 	w.queries = service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
 	return w, nil
 }
@@ -67,6 +68,10 @@ func (w *workspace) close() {
 	if w.projection != nil {
 		_ = w.projection.Close()
 	}
+}
+
+func (w *workspace) withWriteLock(ctx context.Context, purpose string, fn func(context.Context) error) error {
+	return service.WithWriteLock(ctx, w.locks, purpose, fn)
 }
 
 func (w *workspace) nextEventID(ctx context.Context, project string) (int64, error) {
@@ -109,22 +114,6 @@ func parseLabels(raw string) []string {
 		}
 	}
 	return labels
-}
-
-func nextTicketID(project string, existing []contracts.TicketSnapshot) string {
-	max := 0
-	prefix := project + "-"
-	for _, ticket := range existing {
-		if !strings.HasPrefix(ticket.ID, prefix) {
-			continue
-		}
-		raw := strings.TrimPrefix(ticket.ID, prefix)
-		n, err := strconv.Atoi(raw)
-		if err == nil && n > max {
-			max = n
-		}
-	}
-	return fmt.Sprintf("%s-%d", project, max+1)
 }
 
 func listTicketEvents(ctx context.Context, w *workspace, ticketID string) ([]contracts.Event, error) {
