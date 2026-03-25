@@ -47,6 +47,21 @@
 - `tracker config get [KEY]`
 - `tracker config set <KEY> <VALUE>`
 
+## Agents
+
+- `tracker agent list`
+- `tracker agent view <AGENT-ID>`
+- `tracker agent create <AGENT-ID> --name <NAME> --provider <PROVIDER> [flags]`
+- `tracker agent edit <AGENT-ID> [flags]`
+- `tracker agent enable <AGENT-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker agent disable <AGENT-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker agent eligible <TICKET-ID>`
+
+Behavior:
+- agent profiles live under `.tracker/agents/`
+- eligibility is deterministic and returns the same ranking order used later by dispatch
+- disabled agents and capability mismatches are reported explicitly in JSON mode
+
 ## Project
 
 - `tracker project create <KEY> <NAME>`
