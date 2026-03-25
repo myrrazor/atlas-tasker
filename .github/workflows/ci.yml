@@ -23,3 +23,13 @@ jobs:
         run: sh -n scripts/install.sh
       - name: Run tests
         run: go test ./...
+
+  stability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run stabilization smoke lane
+        run: sh scripts/stability-smoke.sh
