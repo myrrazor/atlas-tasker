@@ -24,6 +24,7 @@ const ticketSelectColumns = `
 
 // Store is a SQLite-backed projection and query engine.
 type Store struct {
+	Path         string
 	DB           *sql.DB
 	TicketSource contracts.TicketStore
 	EventSource  contracts.EventLog
@@ -35,11 +36,23 @@ func Open(path string, ticketSource contracts.TicketStore, eventSource contracts
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create sqlite dir: %w", err)
 	}
+	db, err := openDB(path)
+	if err != nil {
+		return nil, err
+	}
+	store := &Store{Path: path, DB: db, TicketSource: ticketSource, EventSource: eventSource}
+	if err := store.migrate(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+func openDB(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	store := &Store{DB: db, TicketSource: ticketSource, EventSource: eventSource}
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("set journal mode: %w", err)
@@ -48,11 +61,7 @@ func Open(path string, ticketSource contracts.TicketStore, eventSource contracts
 		_ = db.Close()
 		return nil, fmt.Errorf("set sync mode: %w", err)
 	}
-	if err := store.migrate(); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	return store, nil
+	return db, nil
 }
 
 func (s *Store) Close() error {
@@ -193,6 +202,13 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 }
 
 func (s *Store) Rebuild(ctx context.Context, project string) error {
+	if project == "" && s.Path != "" {
+		return s.rebuildBySwap(ctx)
+	}
+	return s.rebuildInPlace(ctx, project)
+}
+
+func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 	if s.TicketSource == nil || s.EventSource == nil {
 		return fmt.Errorf("rebuild requires ticket and event sources")
 	}
@@ -238,6 +254,47 @@ func (s *Store) Rebuild(ctx context.Context, project string) error {
 	}
 
 	return nil
+}
+
+func (s *Store) rebuildBySwap(ctx context.Context) error {
+	if s.TicketSource == nil || s.EventSource == nil {
+		return fmt.Errorf("rebuild requires ticket and event sources")
+	}
+	tempPath := s.Path + ".rebuild"
+	for _, candidate := range []string{tempPath, tempPath + "-wal", tempPath + "-shm"} {
+		_ = os.Remove(candidate)
+	}
+	tempStore, err := Open(tempPath, s.TicketSource, s.EventSource)
+	if err != nil {
+		return err
+	}
+	if err := tempStore.rebuildInPlace(ctx, ""); err != nil {
+		_ = tempStore.Close()
+		return err
+	}
+	if err := tempStore.Close(); err != nil {
+		return fmt.Errorf("close rebuilt temp projection: %w", err)
+	}
+	if err := s.Close(); err != nil {
+		return fmt.Errorf("close existing projection: %w", err)
+	}
+	for _, candidate := range []string{s.Path, s.Path + "-wal", s.Path + "-shm"} {
+		_ = os.Remove(candidate)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		src := tempPath + suffix
+		if _, err := os.Stat(src); err == nil {
+			if err := os.Rename(src, s.Path+suffix); err != nil {
+				return fmt.Errorf("swap projection file %s: %w", filepath.Base(src), err)
+			}
+		}
+	}
+	db, err := openDB(s.Path)
+	if err != nil {
+		return err
+	}
+	s.DB = db
+	return s.migrate()
 }
 
 func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions) (contracts.BoardView, error) {

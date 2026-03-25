@@ -19,6 +19,10 @@ func EventsDir(root string) string {
 	return filepath.Join(TrackerDir(root), "events")
 }
 
+func MutationsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "mutations")
+}
+
 func ProjectDir(root string, key string) string {
 	return filepath.Join(ProjectsDir(root), key)
 }
