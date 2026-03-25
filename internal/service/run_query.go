@@ -35,7 +35,21 @@ func (s *QueryService) RunDetail(ctx context.Context, runID string) (RunDetailVi
 	if err != nil {
 		return RunDetailView{}, err
 	}
-	return RunDetailView{Run: run, Ticket: ticket, GeneratedAt: s.now()}, nil
+	evidence, err := s.Evidence.ListEvidence(ctx, runID)
+	if err != nil {
+		return RunDetailView{}, err
+	}
+	handoffs, err := s.Handoffs.ListHandoffs(ctx, run.TicketID)
+	if err != nil {
+		return RunDetailView{}, err
+	}
+	filteredHandoffs := make([]contracts.HandoffPacket, 0, len(handoffs))
+	for _, handoff := range handoffs {
+		if handoff.SourceRunID == runID {
+			filteredHandoffs = append(filteredHandoffs, handoff)
+		}
+	}
+	return RunDetailView{Run: run, Ticket: ticket, Evidence: evidence, Handoffs: filteredHandoffs, GeneratedAt: s.now()}, nil
 }
 
 func (s *QueryService) WorktreeDetail(ctx context.Context, runID string) (WorktreeStatusView, error) {

@@ -48,6 +48,33 @@ func newRunCommand() *cobra.Command {
 	addMutationFlags(complete, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(complete, &outputFlags{})
 
+	checkpoint := &cobra.Command{Use: "checkpoint <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Record a checkpoint note for a run", RunE: runRunCheckpoint}
+	checkpoint.Flags().String("title", "", "Checkpoint title")
+	checkpoint.Flags().String("body", "", "Checkpoint body")
+	addMutationFlags(checkpoint, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(checkpoint, &outputFlags{})
+
+	evidence := &cobra.Command{Use: "evidence", Short: "Attach evidence to a run"}
+	evidenceAdd := &cobra.Command{Use: "add <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Add evidence to a run", RunE: runRunEvidenceAdd}
+	evidenceAdd.Flags().String("type", "", "Evidence type")
+	evidenceAdd.Flags().String("title", "", "Evidence title")
+	evidenceAdd.Flags().String("body", "", "Evidence body")
+	evidenceAdd.Flags().String("artifact", "", "Path to an artifact file to copy into the evidence bundle")
+	evidenceAdd.Flags().String("supersedes", "", "Prior evidence id this entry supersedes")
+	_ = evidenceAdd.MarkFlagRequired("type")
+	addMutationFlags(evidenceAdd, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(evidenceAdd, &outputFlags{})
+	evidence.AddCommand(evidenceAdd)
+
+	handoff := &cobra.Command{Use: "handoff <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Generate a handoff packet for a run", RunE: runRunHandoff}
+	handoff.Flags().StringArray("open-question", nil, "Open question to include in the packet")
+	handoff.Flags().StringArray("risk", nil, "Risk to include in the packet")
+	handoff.Flags().String("next-actor", "", "Suggested next actor")
+	handoff.Flags().String("next-gate", "", "Suggested next gate")
+	handoff.Flags().String("next-status", "", "Suggested next ticket status")
+	addMutationFlags(handoff, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(handoff, &outputFlags{})
+
 	fail := &cobra.Command{Use: "fail <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Fail a run", RunE: runRunFail}
 	fail.Flags().String("summary", "", "Failure summary")
 	addMutationFlags(fail, &mutationFlags{Actor: "human:owner"})
@@ -63,7 +90,7 @@ func newRunCommand() *cobra.Command {
 	addMutationFlags(cleanup, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(cleanup, &outputFlags{})
 
-	cmd.AddCommand(list, view, dispatch, start, attach, complete, fail, abort, cleanup)
+	cmd.AddCommand(list, view, dispatch, start, attach, checkpoint, evidence, handoff, complete, fail, abort, cleanup)
 	return cmd
 }
 
@@ -161,6 +188,82 @@ func runRunComplete(cmd *cobra.Command, args []string) error {
 		run, err := workspace.actions.CompleteRun(ctx, args[0], actor, reason, summary)
 		return run, fmt.Sprintf("completed %s", run.RunID), err
 	})
+}
+
+func runRunCheckpoint(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	title, _ := cmd.Flags().GetString("title")
+	body, _ := cmd.Flags().GetString("body")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	item, err := workspace.actions.CheckpointRun(ctx, args[0], normalizeActor(actorRaw), reason, title, body)
+	if err != nil {
+		return err
+	}
+	pretty := formatEvidenceDetail(item)
+	data := map[string]any{"kind": "evidence_detail", "generated_at": item.CreatedAt, "payload": item}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runRunEvidenceAdd(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	typeRaw, _ := cmd.Flags().GetString("type")
+	title, _ := cmd.Flags().GetString("title")
+	body, _ := cmd.Flags().GetString("body")
+	artifact, _ := cmd.Flags().GetString("artifact")
+	supersedes, _ := cmd.Flags().GetString("supersedes")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	item, err := workspace.actions.AddEvidence(ctx, args[0], contracts.EvidenceType(strings.TrimSpace(typeRaw)), title, body, artifact, supersedes, normalizeActor(actorRaw), reason, contracts.EventRunEvidenceAdded)
+	if err != nil {
+		return err
+	}
+	pretty := formatEvidenceDetail(item)
+	data := map[string]any{"kind": "evidence_detail", "generated_at": item.CreatedAt, "payload": item}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runRunHandoff(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	openQuestions, _ := cmd.Flags().GetStringArray("open-question")
+	risks, _ := cmd.Flags().GetStringArray("risk")
+	nextActor, _ := cmd.Flags().GetString("next-actor")
+	nextGateRaw, _ := cmd.Flags().GetString("next-gate")
+	nextStatusRaw, _ := cmd.Flags().GetString("next-status")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	packet, err := workspace.actions.CreateHandoff(
+		ctx,
+		args[0],
+		normalizeActor(actorRaw),
+		reason,
+		openQuestions,
+		risks,
+		nextActor,
+		contracts.GateKind(strings.TrimSpace(nextGateRaw)),
+		contracts.Status(strings.TrimSpace(nextStatusRaw)),
+	)
+	if err != nil {
+		return err
+	}
+	pretty := service.RenderHandoffMarkdown(packet)
+	data := map[string]any{"kind": "handoff_detail", "generated_at": packet.GeneratedAt, "payload": packet}
+	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
 func runRunFail(cmd *cobra.Command, args []string) error {
@@ -324,6 +427,58 @@ func formatRunDetail(detail service.RunDetailView) string {
 	}
 	if detail.Run.Summary != "" {
 		lines = append(lines, "", detail.Run.Summary)
+	}
+	if len(detail.Evidence) > 0 {
+		lines = append(lines, "", fmt.Sprintf("evidence=%d", len(detail.Evidence)))
+		for _, item := range detail.Evidence {
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.EvidenceID, item.Type, item.Title))
+		}
+	}
+	if len(detail.Handoffs) > 0 {
+		lines = append(lines, "", fmt.Sprintf("handoffs=%d", len(detail.Handoffs)))
+		for _, item := range detail.Handoffs {
+			lines = append(lines, fmt.Sprintf("- %s next_actor=%s next_gate=%s", item.HandoffID, item.SuggestedNextActor, item.SuggestedNextGate))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatEvidenceList(items []contracts.EvidenceItem) string {
+	if len(items) == 0 {
+		return "no evidence"
+	}
+	lines := make([]string, 0, len(items)+1)
+	lines = append(lines, "evidence:")
+	for _, item := range items {
+		line := fmt.Sprintf("- %s [%s]", item.EvidenceID, item.Type)
+		if item.Title != "" {
+			line += " " + item.Title
+		}
+		if item.ArtifactPath != "" {
+			line += " artifact=" + item.ArtifactPath
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatEvidenceDetail(item contracts.EvidenceItem) string {
+	lines := []string{
+		fmt.Sprintf("evidence %s", item.EvidenceID),
+		fmt.Sprintf("run=%s ticket=%s type=%s", item.RunID, item.TicketID, item.Type),
+		fmt.Sprintf("actor=%s created_at=%s", item.Actor, item.CreatedAt.UTC().Format(time.RFC3339)),
+	}
+	if item.Title != "" {
+		lines = append(lines, "title="+item.Title)
+	}
+	if item.SupersedesEvidenceID != "" {
+		lines = append(lines, "supersedes="+item.SupersedesEvidenceID)
+	}
+	if item.ArtifactPath != "" {
+		lines = append(lines, "artifact="+item.ArtifactPath)
+	}
+	if item.Body != "" {
+		lines = append(lines, "", item.Body)
 	}
 	return strings.Join(lines, "\n")
 }

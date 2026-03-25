@@ -15,8 +15,10 @@ import (
 )
 
 type runMutationPayload struct {
-	Run    contracts.RunSnapshot    `json:"run"`
-	Ticket contracts.TicketSnapshot `json:"ticket,omitempty"`
+	Run      contracts.RunSnapshot    `json:"run"`
+	Ticket   contracts.TicketSnapshot `json:"ticket,omitempty"`
+	Evidence contracts.EvidenceItem   `json:"evidence,omitempty"`
+	Handoff  contracts.HandoffPacket  `json:"handoff,omitempty"`
 }
 
 func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentID string, kind contracts.RunKind, actor contracts.Actor, reason string) (DispatchResult, error) {

@@ -63,6 +63,10 @@
 - `tracker dispatch queue`
 - `tracker dispatch run <TICKET-ID> [--agent <AGENT-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker dispatch bulk [--ticket <ID>]... [--view <NAME>] [--agent <AGENT-ID>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker evidence list <RUN-ID>`
+- `tracker evidence view <EVIDENCE-ID>`
+- `tracker handoff view <HANDOFF-ID>`
+- `tracker handoff export <HANDOFF-ID>`
 
 ## Agents
 
@@ -86,6 +90,9 @@ Behavior:
 - `tracker run dispatch <TICKET-ID> --agent <AGENT-ID> [--kind <work|review|qa|release>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run start <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run attach <RUN-ID> --provider <PROVIDER> --session-ref <REF> [--replace] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run checkpoint <RUN-ID> [--title <TEXT>] [--body <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run evidence add <RUN-ID> --type <TYPE> [--title <TEXT>] [--body <TEXT>] [--artifact <PATH>] [--supersedes <EVIDENCE-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run handoff <RUN-ID> [--open-question <TEXT>]... [--risk <TEXT>]... [--next-actor <ACTOR>] [--next-gate <KIND>] [--next-status <STATUS>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run complete <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run fail <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run abort <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
@@ -97,6 +104,8 @@ Rules:
 - one active run per ticket is the default; parallel dispatch requires `allow_parallel_runs=true`
 - `run attach` is idempotent for the same provider/session pair
 - cleanup is explicit and only allowed after `completed`, `failed`, or `aborted`
+- checkpoints and evidence mutate only the run snapshot/evidence bundle; they do not change ticket status by themselves
+- handoff packets are immutable markdown snapshots stored under `.tracker/handoffs/`
 
 ## Worktrees
 
@@ -125,6 +134,31 @@ Rules:
 - `dispatch run` auto-routes only when exactly one agent is eligible; otherwise it requires `--agent`
 - bulk dispatch preserves the exact saved-view order and still re-checks eligibility at apply time
 - runbook resolution order is ticket override, agent default, project mapping, then built-in default
+
+## Evidence
+
+- `tracker evidence list <RUN-ID>`
+- `tracker evidence view <EVIDENCE-ID>`
+- `tracker run checkpoint <RUN-ID> [--title <TEXT>] [--body <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run evidence add <RUN-ID> --type <TYPE> [--title <TEXT>] [--body <TEXT>] [--artifact <PATH>] [--supersedes <EVIDENCE-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+
+Rules:
+
+- evidence is immutable in v1.4; supersession creates a new evidence item instead of rewriting history
+- artifact files are copied into `.tracker/evidence/<run-id>/` with normalized filenames
+- evidence survives `run cleanup`
+
+## Handoffs
+
+- `tracker run handoff <RUN-ID> [--open-question <TEXT>]... [--risk <TEXT>]... [--next-actor <ACTOR>] [--next-gate <KIND>] [--next-status <STATUS>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker handoff view <HANDOFF-ID>`
+- `tracker handoff export <HANDOFF-ID>`
+
+Rules:
+
+- handoff export uses deterministic markdown derived from the stored packet
+- handoffs survive `run cleanup`
+- handoff creation does not auto-open gates in PR-405; that comes with PR-406
 
 ## Project
 

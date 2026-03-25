@@ -19,6 +19,8 @@ type QueryService struct {
 	Agents     contracts.AgentStore
 	Runs       contracts.RunStore
 	Runbooks   contracts.RunbookStore
+	Evidence   contracts.EvidenceStore
+	Handoffs   contracts.HandoffStore
 	Events     contracts.EventLog
 	Projection contracts.ProjectionStore
 	Views      ViewStore
@@ -26,7 +28,7 @@ type QueryService struct {
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
-	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
+	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
 }
 
 func (s *QueryService) now() time.Time {
