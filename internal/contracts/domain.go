@@ -259,16 +259,16 @@ func (c NotificationsConfig) Validate() error {
 
 // ProjectDefaults captures project-level policy defaults introduced in v1.2.
 type ProjectDefaults struct {
-	CompletionMode   CompletionMode `json:"completion_mode,omitempty"`
-	LeaseTTLMinutes  int            `json:"lease_ttl_minutes,omitempty"`
-	AllowedWorkers   []Actor        `json:"allowed_workers,omitempty"`
-	RequiredReviewer Actor          `json:"required_reviewer,omitempty"`
-	TemplatesPath    string         `json:"templates_path,omitempty"`
-	HooksEnabled     bool           `json:"hooks_enabled,omitempty"`
-	Worktrees        WorktreeConfig `json:"worktrees,omitempty"`
-	RunbookMappings  []RunbookMap   `json:"runbook_mappings,omitempty"`
-	RoutingHints     []RoutingHint  `json:"routing_hints,omitempty"`
-	GateTemplates    []GateTemplate `json:"gate_templates,omitempty"`
+	CompletionMode   CompletionMode  `json:"completion_mode,omitempty"`
+	LeaseTTLMinutes  int             `json:"lease_ttl_minutes,omitempty"`
+	AllowedWorkers   []Actor         `json:"allowed_workers,omitempty"`
+	RequiredReviewer Actor           `json:"required_reviewer,omitempty"`
+	TemplatesPath    string          `json:"templates_path,omitempty"`
+	HooksEnabled     bool            `json:"hooks_enabled,omitempty"`
+	Worktrees        WorktreeConfig  `json:"worktrees,omitempty"`
+	RunbookMappings  []RunbookMap    `json:"runbook_mappings,omitempty"`
+	RoutingHints     []RoutingHint   `json:"routing_hints,omitempty"`
+	GateTemplates    []GateTemplate  `json:"gate_templates,omitempty"`
 	ExecutionSafety  ExecutionSafety `json:"execution_safety,omitempty"`
 }
 
@@ -408,37 +408,37 @@ func (p ProgressSummary) Validate() error {
 
 // TicketSnapshot mirrors v1 ticket markdown frontmatter plus body sections.
 type TicketSnapshot struct {
-	ID            string          `json:"id"`
-	Project       string          `json:"project"`
-	Title         string          `json:"title"`
-	Type          TicketType      `json:"type"`
-	Status        Status          `json:"status"`
-	Priority      Priority        `json:"priority"`
-	Parent        string          `json:"parent,omitempty"`
-	Labels        []string        `json:"labels"`
-	Assignee      Actor           `json:"assignee,omitempty"`
-	Reviewer      Actor           `json:"reviewer,omitempty"`
-	BlockedBy     []string        `json:"blocked_by"`
-	Blocks        []string        `json:"blocks"`
-	CreatedAt     time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
-	SchemaVersion int             `json:"schema_version"`
-	Archived      bool            `json:"archived"`
-	Policy        TicketPolicy    `json:"policy,omitempty"`
-	ReviewState   ReviewState     `json:"review_state,omitempty"`
-	Lease         LeaseState      `json:"lease,omitempty"`
-	Template      string          `json:"template,omitempty"`
-	SkillHint     string          `json:"skill_hint,omitempty"`
-	Blueprint     string          `json:"blueprint,omitempty"`
-	Progress      ProgressSummary `json:"progress,omitempty"`
-	RequiredCapabilities []string       `json:"required_capabilities,omitempty"`
-	DispatchMode         DispatchMode   `json:"dispatch_mode,omitempty"`
-	AllowParallelRuns    bool           `json:"allow_parallel_runs,omitempty"`
-	Runbook              string         `json:"runbook,omitempty"`
-	LatestRunID          string         `json:"latest_run_id,omitempty"`
-	LatestHandoffID      string         `json:"latest_handoff_id,omitempty"`
-	OpenGateIDs          []string       `json:"open_gate_ids,omitempty"`
-	LastDispatchAt       time.Time      `json:"last_dispatch_at,omitempty"`
+	ID                   string          `json:"id"`
+	Project              string          `json:"project"`
+	Title                string          `json:"title"`
+	Type                 TicketType      `json:"type"`
+	Status               Status          `json:"status"`
+	Priority             Priority        `json:"priority"`
+	Parent               string          `json:"parent,omitempty"`
+	Labels               []string        `json:"labels"`
+	Assignee             Actor           `json:"assignee,omitempty"`
+	Reviewer             Actor           `json:"reviewer,omitempty"`
+	BlockedBy            []string        `json:"blocked_by"`
+	Blocks               []string        `json:"blocks"`
+	CreatedAt            time.Time       `json:"created_at"`
+	UpdatedAt            time.Time       `json:"updated_at"`
+	SchemaVersion        int             `json:"schema_version"`
+	Archived             bool            `json:"archived"`
+	Policy               TicketPolicy    `json:"policy,omitempty"`
+	ReviewState          ReviewState     `json:"review_state,omitempty"`
+	Lease                LeaseState      `json:"lease,omitempty"`
+	Template             string          `json:"template,omitempty"`
+	SkillHint            string          `json:"skill_hint,omitempty"`
+	Blueprint            string          `json:"blueprint,omitempty"`
+	Progress             ProgressSummary `json:"progress,omitempty"`
+	RequiredCapabilities []string        `json:"required_capabilities,omitempty"`
+	DispatchMode         DispatchMode    `json:"dispatch_mode,omitempty"`
+	AllowParallelRuns    bool            `json:"allow_parallel_runs,omitempty"`
+	Runbook              string          `json:"runbook,omitempty"`
+	LatestRunID          string          `json:"latest_run_id,omitempty"`
+	LatestHandoffID      string          `json:"latest_handoff_id,omitempty"`
+	OpenGateIDs          []string        `json:"open_gate_ids,omitempty"`
+	LastDispatchAt       time.Time       `json:"last_dispatch_at,omitempty"`
 
 	Summary            string   `json:"summary,omitempty"`
 	Description        string   `json:"description,omitempty"`

@@ -1,4 +1,4 @@
-# Atlas Tasker v1.3 Command Reference
+# Atlas Tasker v1.4 Command Reference
 
 ## Top-Level
 
@@ -46,6 +46,19 @@
 - `tracker tui [--actor <ACTOR>]`
 - `tracker config get [KEY]`
 - `tracker config set <KEY> <VALUE>`
+- `tracker run list [--ticket <ID>] [--agent <AGENT-ID>] [--status <STATUS>]`
+- `tracker run view <RUN-ID>`
+- `tracker run dispatch <TICKET-ID> --agent <AGENT-ID> [--kind <work|review|qa|release>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run start <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run attach <RUN-ID> --provider <PROVIDER> --session-ref <REF> [--replace] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run complete <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run fail <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run abort <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run cleanup <RUN-ID> [--force] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker worktree list`
+- `tracker worktree view <RUN-ID>`
+- `tracker worktree repair`
+- `tracker worktree prune`
 
 ## Agents
 
@@ -61,6 +74,39 @@ Behavior:
 - agent profiles live under `.tracker/agents/`
 - eligibility is deterministic and returns the same ranking order used later by dispatch
 - disabled agents and capability mismatches are reported explicitly in JSON mode
+
+## Runs
+
+- `tracker run list [--ticket <ID>] [--agent <AGENT-ID>] [--status <STATUS>]`
+- `tracker run view <RUN-ID>`
+- `tracker run dispatch <TICKET-ID> --agent <AGENT-ID> [--kind <work|review|qa|release>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run start <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run attach <RUN-ID> --provider <PROVIDER> --session-ref <REF> [--replace] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run complete <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run fail <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run abort <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run cleanup <RUN-ID> [--force] [--actor <ACTOR>] [--reason <TEXT>]`
+
+Rules:
+
+- dispatch creates a run snapshot first, then the managed worktree and runtime directory
+- one active run per ticket is the default; parallel dispatch requires `allow_parallel_runs=true`
+- `run attach` is idempotent for the same provider/session pair
+- cleanup is explicit and only allowed after `completed`, `failed`, or `aborted`
+
+## Worktrees
+
+- `tracker worktree list`
+- `tracker worktree view <RUN-ID>`
+- `tracker worktree repair`
+- `tracker worktree prune`
+
+Rules:
+
+- managed worktrees are execution isolation only, never source of truth
+- `reindex` and `doctor --repair` will not recreate missing worktrees or runtime artifacts
+- dirty worktrees require `run cleanup --force`
+- the clean-main check ignores Atlas-managed workspace files and only blocks on non-Atlas repo changes
 
 ## Project
 
