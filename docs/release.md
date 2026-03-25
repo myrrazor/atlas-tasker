@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 Optional overrides:
 
 ```bash
-VERSION=v1.2.0 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
+VERSION=v1.3.0 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
 
 ## Manual Install
