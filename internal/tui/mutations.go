@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/domain"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/slashcmd"
 )
 
@@ -202,7 +203,7 @@ func (m model) runSlashMutation(input string) tea.Cmd {
 
 func (m model) runMutation(fallbackSelectedID string, fn func(context.Context, contracts.Actor) (string, error)) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx := service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: contracts.EventSurfaceTUI})
 		actor, err := m.queries.ResolveActor(ctx, m.actor)
 		if err != nil {
 			return loadedMsg{err: err}

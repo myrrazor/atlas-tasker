@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,14 +9,21 @@ import (
 	"strings"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 )
 
 // Execute runs the CLI and returns the process exit code.
 func Execute(args []string, stdout io.Writer, stderr io.Writer) int {
+	return executeWithSurface(args, stdout, stderr, contracts.EventSurfaceCLI)
+}
+
+func executeWithSurface(args []string, stdout io.Writer, stderr io.Writer, surface contracts.EventSurface) int {
 	root := NewRootCommand()
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	root.SetArgs(args)
+	root.SetContext(service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: surface}))
 	if err := root.Execute(); err != nil {
 		if wantsJSON(args) {
 			raw, marshalErr := json.MarshalIndent(apperr.Envelope(err), "", "  ")

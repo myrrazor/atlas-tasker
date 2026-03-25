@@ -7,9 +7,24 @@ Success payload includes:
 - `projects`
 - `tickets`
 - `repair_ran`
+- `repair_actions`
+- `repair_pending`
 - `config`
 - `issue_codes`
 - `issues`
+
+## `tracker automation dry-run --json`
+Success payload includes:
+- `rule`
+- `matched`
+- `reasons`
+- `actions`
+- `dry_run`
+- `ticket` when `--ticket` is provided
+- `event_type`
+
+## `tracker automation explain --json`
+Success payload matches `dry-run`, but `dry_run` is `false`.
 
 ## Error payloads
 Commands invoked with `--json` emit the standard error envelope on stderr.

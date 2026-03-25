@@ -50,7 +50,7 @@ func TestActionServiceClaimHeartbeatReleaseSweep(t *testing.T) {
 	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
 		t.Fatalf("create ticket: %v", err)
 	}
-	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil)
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
 	createdEvent := contracts.Event{EventID: 1, Timestamp: now, Actor: contracts.Actor("human:owner"), Type: contracts.EventTicketCreated, Project: "APP", TicketID: ticket.ID, Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion}
 	if err := actions.AppendAndProject(ctx, createdEvent); err != nil {
 		t.Fatalf("append create event: %v", err)
@@ -130,7 +130,7 @@ func TestActionServiceReviewAndPolicyFlow(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 
-	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil)
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
 	updatedProject, err := actions.SetProjectPolicy(ctx, "APP", contracts.ProjectDefaults{
 		CompletionMode:   contracts.CompletionModeDualGate,
 		LeaseTTLMinutes:  45,
@@ -252,7 +252,7 @@ func TestActionServiceCreateEditCommentAndLinks(t *testing.T) {
 	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil)
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
 
 	created, err := actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
 		Project:       "APP",
@@ -358,7 +358,7 @@ func TestActionServiceSerializesConcurrentClaims(t *testing.T) {
 	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
 		t.Fatalf("create ticket: %v", err)
 	}
-	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil)
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
 	if err := actions.AppendAndProject(ctx, contracts.Event{EventID: 1, Timestamp: now, Actor: contracts.Actor("human:owner"), Type: contracts.EventTicketCreated, Project: "APP", TicketID: ticket.ID, Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
 		t.Fatalf("append create event: %v", err)
 	}
@@ -409,7 +409,7 @@ func TestActionServiceMutateAndDeleteTrackedTicket(t *testing.T) {
 	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil)
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
 	created, err := actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
 		Project:       "APP",
 		Title:         "Edit me",
