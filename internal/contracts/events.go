@@ -57,6 +57,28 @@ const (
 	EventOwnerAttentionCleared EventType = "ticket.owner_attention_cleared"
 	EventProjectPolicyUpdated  EventType = "project.policy_updated"
 	EventConfigChanged         EventType = "config.changed"
+	EventAgentCreated          EventType = "agent.created"
+	EventAgentUpdated          EventType = "agent.updated"
+	EventAgentEnabled          EventType = "agent.enabled"
+	EventAgentDisabled         EventType = "agent.disabled"
+	EventRunCreated            EventType = "run.created"
+	EventRunDispatched         EventType = "run.dispatched"
+	EventRunStarted            EventType = "run.started"
+	EventRunAttached           EventType = "run.attached"
+	EventRunCheckpointed       EventType = "run.checkpointed"
+	EventRunEvidenceAdded      EventType = "run.evidence_added"
+	EventRunHandoffRequested   EventType = "run.handoff_requested"
+	EventRunCompleted          EventType = "run.completed"
+	EventRunFailed             EventType = "run.failed"
+	EventRunAborted            EventType = "run.aborted"
+	EventRunCleanedUp          EventType = "run.cleaned_up"
+	EventWorktreeCreated       EventType = "worktree.created"
+	EventWorktreePruned        EventType = "worktree.pruned"
+	EventWorktreeRepaired      EventType = "worktree.repaired"
+	EventGateOpened            EventType = "gate.opened"
+	EventGateApproved          EventType = "gate.approved"
+	EventGateRejected          EventType = "gate.rejected"
+	EventGateWaived            EventType = "gate.waived"
 )
 
 var validEventTypes = map[EventType]struct{}{
@@ -80,6 +102,28 @@ var validEventTypes = map[EventType]struct{}{
 	EventOwnerAttentionCleared: {},
 	EventProjectPolicyUpdated:  {},
 	EventConfigChanged:         {},
+	EventAgentCreated:          {},
+	EventAgentUpdated:          {},
+	EventAgentEnabled:          {},
+	EventAgentDisabled:         {},
+	EventRunCreated:            {},
+	EventRunDispatched:         {},
+	EventRunStarted:            {},
+	EventRunAttached:           {},
+	EventRunCheckpointed:       {},
+	EventRunEvidenceAdded:      {},
+	EventRunHandoffRequested:   {},
+	EventRunCompleted:          {},
+	EventRunFailed:             {},
+	EventRunAborted:            {},
+	EventRunCleanedUp:          {},
+	EventWorktreeCreated:       {},
+	EventWorktreePruned:        {},
+	EventWorktreeRepaired:      {},
+	EventGateOpened:            {},
+	EventGateApproved:          {},
+	EventGateRejected:          {},
+	EventGateWaived:            {},
 }
 
 func (t EventType) IsValid() bool {

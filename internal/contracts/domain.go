@@ -10,7 +10,8 @@ import (
 const (
 	SchemaVersionV1      = 1
 	SchemaVersionV2      = 2
-	CurrentSchemaVersion = SchemaVersionV2
+	SchemaVersionV3      = 3
+	CurrentSchemaVersion = SchemaVersionV3
 	DefaultLeaseTTL      = 60 * time.Minute
 )
 
@@ -164,7 +165,7 @@ func (p Project) Validate() error {
 	if strings.TrimSpace(p.Name) == "" {
 		return fmt.Errorf("project name is required")
 	}
-	if p.SchemaVersion != 0 && p.SchemaVersion != SchemaVersionV1 && p.SchemaVersion != SchemaVersionV2 {
+	if p.SchemaVersion != 0 && p.SchemaVersion != SchemaVersionV1 && p.SchemaVersion != SchemaVersionV2 && p.SchemaVersion != SchemaVersionV3 {
 		return fmt.Errorf("invalid project schema version: %d", p.SchemaVersion)
 	}
 	if err := p.Defaults.Validate(); err != nil {
@@ -264,6 +265,11 @@ type ProjectDefaults struct {
 	RequiredReviewer Actor          `json:"required_reviewer,omitempty"`
 	TemplatesPath    string         `json:"templates_path,omitempty"`
 	HooksEnabled     bool           `json:"hooks_enabled,omitempty"`
+	Worktrees        WorktreeConfig `json:"worktrees,omitempty"`
+	RunbookMappings  []RunbookMap   `json:"runbook_mappings,omitempty"`
+	RoutingHints     []RoutingHint  `json:"routing_hints,omitempty"`
+	GateTemplates    []GateTemplate `json:"gate_templates,omitempty"`
+	ExecutionSafety  ExecutionSafety `json:"execution_safety,omitempty"`
 }
 
 func (p ProjectDefaults) Validate() error {
@@ -278,6 +284,27 @@ func (p ProjectDefaults) Validate() error {
 	}
 	if p.RequiredReviewer != "" && !p.RequiredReviewer.IsValid() {
 		return fmt.Errorf("invalid required reviewer: %s", p.RequiredReviewer)
+	}
+	if err := p.Worktrees.Validate(); err != nil {
+		return err
+	}
+	for _, mapping := range p.RunbookMappings {
+		if err := mapping.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, hint := range p.RoutingHints {
+		if err := hint.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, template := range p.GateTemplates {
+		if err := template.Validate(); err != nil {
+			return err
+		}
+	}
+	if err := p.ExecutionSafety.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -404,6 +431,14 @@ type TicketSnapshot struct {
 	SkillHint     string          `json:"skill_hint,omitempty"`
 	Blueprint     string          `json:"blueprint,omitempty"`
 	Progress      ProgressSummary `json:"progress,omitempty"`
+	RequiredCapabilities []string       `json:"required_capabilities,omitempty"`
+	DispatchMode         DispatchMode   `json:"dispatch_mode,omitempty"`
+	AllowParallelRuns    bool           `json:"allow_parallel_runs,omitempty"`
+	Runbook              string         `json:"runbook,omitempty"`
+	LatestRunID          string         `json:"latest_run_id,omitempty"`
+	LatestHandoffID      string         `json:"latest_handoff_id,omitempty"`
+	OpenGateIDs          []string       `json:"open_gate_ids,omitempty"`
+	LastDispatchAt       time.Time      `json:"last_dispatch_at,omitempty"`
 
 	Summary            string   `json:"summary,omitempty"`
 	Description        string   `json:"description,omitempty"`
@@ -458,6 +493,14 @@ func (t TicketSnapshot) ValidateForCreate() error {
 	if err := t.Progress.Validate(); err != nil {
 		return err
 	}
+	if t.DispatchMode != "" && !t.DispatchMode.IsValid() {
+		return fmt.Errorf("invalid dispatch mode: %s", t.DispatchMode)
+	}
+	for _, capability := range t.RequiredCapabilities {
+		if strings.TrimSpace(capability) == "" {
+			return fmt.Errorf("required_capabilities cannot contain blanks")
+		}
+	}
 	return nil
 }
 
@@ -485,6 +528,9 @@ func NormalizeProject(project Project) Project {
 	if project.Defaults.LeaseTTLMinutes == 0 {
 		project.Defaults.LeaseTTLMinutes = int(DefaultLeaseTTL / time.Minute)
 	}
+	if project.Defaults.Worktrees.DefaultMode == "" {
+		project.Defaults.Worktrees.DefaultMode = WorktreeModePerRun
+	}
 	if project.SchemaVersion == 0 {
 		project.SchemaVersion = SchemaVersionV1
 	}
@@ -510,8 +556,17 @@ func NormalizeTicketSnapshot(ticket TicketSnapshot) TicketSnapshot {
 	if ticket.AcceptanceCriteria == nil {
 		ticket.AcceptanceCriteria = []string{}
 	}
+	if ticket.RequiredCapabilities == nil {
+		ticket.RequiredCapabilities = []string{}
+	}
+	if ticket.OpenGateIDs == nil {
+		ticket.OpenGateIDs = []string{}
+	}
 	if ticket.ReviewState == "" {
 		ticket.ReviewState = ReviewStateNone
+	}
+	if ticket.DispatchMode == "" {
+		ticket.DispatchMode = DispatchModeManual
 	}
 	if ticket.SchemaVersion < SchemaVersionV2 && !ticket.Policy.HasOverrides() {
 		ticket.Policy.Inherit = true

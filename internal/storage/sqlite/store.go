@@ -19,7 +19,9 @@ const ticketSelectColumns = `
 	blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
 	summary, description, acceptance_json, notes, policy_json, review_state,
 	lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
-	template, skill_hint, blueprint, progress_json
+	template, skill_hint, blueprint, progress_json,
+	required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
+	latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at
 `
 
 // Store is a SQLite-backed projection and query engine.
@@ -104,13 +106,106 @@ func (s *Store) migrate() error {
 			template TEXT,
 			skill_hint TEXT,
 			blueprint TEXT,
-			progress_json TEXT NOT NULL DEFAULT '{}'
+			progress_json TEXT NOT NULL DEFAULT '{}',
+			required_capabilities_json TEXT NOT NULL DEFAULT '[]',
+			dispatch_mode TEXT NOT NULL DEFAULT 'manual',
+			allow_parallel_runs INTEGER NOT NULL DEFAULT 0,
+			runbook TEXT,
+			latest_run_id TEXT,
+			latest_handoff_id TEXT,
+			open_gate_ids_json TEXT NOT NULL DEFAULT '[]',
+			last_dispatch_at TEXT
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_project_status ON tickets(project, status);`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_project_updated ON tickets(project, updated_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_assignee ON tickets(assignee);`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_review_state ON tickets(review_state);`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_lease_expires ON tickets(lease_expires_at);`,
+		`CREATE TABLE IF NOT EXISTS agents (
+			agent_id TEXT PRIMARY KEY,
+			display_name TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			capabilities_json TEXT NOT NULL DEFAULT '[]',
+			allowed_ticket_types_json TEXT NOT NULL DEFAULT '[]',
+			default_runbook TEXT,
+			max_active_runs INTEGER NOT NULL DEFAULT 0,
+			preferred_roles_json TEXT NOT NULL DEFAULT '[]',
+			routing_weight INTEGER NOT NULL DEFAULT 0,
+			instruction_profile TEXT,
+			launch_target TEXT,
+			integration_template TEXT,
+			notes TEXT
+		);`,
+		`CREATE TABLE IF NOT EXISTS runs (
+			run_id TEXT PRIMARY KEY,
+			ticket_id TEXT NOT NULL,
+			project TEXT NOT NULL,
+			agent_id TEXT,
+			provider TEXT,
+			status TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			blueprint_stage TEXT,
+			worktree_path TEXT,
+			branch_name TEXT,
+			created_at TEXT NOT NULL,
+			started_at TEXT,
+			completed_at TEXT,
+			last_heartbeat_at TEXT,
+			result TEXT,
+			summary TEXT,
+			handoff_to TEXT,
+			supersedes_run_id TEXT,
+			evidence_count INTEGER NOT NULL DEFAULT 0,
+			session_provider TEXT,
+			session_ref TEXT,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_runs_ticket_status ON runs(ticket_id, status);`,
+		`CREATE INDEX IF NOT EXISTS idx_runs_agent_status ON runs(agent_id, status);`,
+		`CREATE TABLE IF NOT EXISTS gates (
+			gate_id TEXT PRIMARY KEY,
+			ticket_id TEXT NOT NULL,
+			run_id TEXT,
+			kind TEXT NOT NULL,
+			state TEXT NOT NULL,
+			required_role TEXT,
+			required_agent_id TEXT,
+			created_by TEXT NOT NULL,
+			decided_by TEXT,
+			decision_reason TEXT,
+			evidence_requirements_json TEXT NOT NULL DEFAULT '[]',
+			related_run_ids_json TEXT NOT NULL DEFAULT '[]',
+			replaces_gate_id TEXT,
+			created_at TEXT NOT NULL,
+			decided_at TEXT,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_gates_ticket_state ON gates(ticket_id, state);`,
+		`CREATE TABLE IF NOT EXISTS evidence (
+			evidence_id TEXT PRIMARY KEY,
+			run_id TEXT NOT NULL,
+			ticket_id TEXT NOT NULL,
+			type TEXT NOT NULL,
+			title TEXT,
+			body TEXT,
+			artifact_path TEXT,
+			supersedes_evidence_id TEXT,
+			actor TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_evidence_run_created ON evidence(run_id, created_at);`,
+		`CREATE TABLE IF NOT EXISTS handoffs (
+			handoff_id TEXT PRIMARY KEY,
+			source_run_id TEXT NOT NULL,
+			ticket_id TEXT NOT NULL,
+			actor TEXT NOT NULL,
+			payload_json TEXT NOT NULL,
+			generated_at TEXT NOT NULL,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_handoffs_ticket_generated ON handoffs(ticket_id, generated_at);`,
 		`CREATE TABLE IF NOT EXISTS events (
 			project TEXT NOT NULL,
 			event_id INTEGER NOT NULL,
@@ -147,6 +242,14 @@ func (s *Store) migrate() error {
 		{name: "skill_hint", definition: `TEXT`},
 		{name: "blueprint", definition: `TEXT`},
 		{name: "progress_json", definition: `TEXT NOT NULL DEFAULT '{}'`},
+		{name: "required_capabilities_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
+		{name: "dispatch_mode", definition: `TEXT NOT NULL DEFAULT 'manual'`},
+		{name: "allow_parallel_runs", definition: `INTEGER NOT NULL DEFAULT 0`},
+		{name: "runbook", definition: `TEXT`},
+		{name: "latest_run_id", definition: `TEXT`},
+		{name: "latest_handoff_id", definition: `TEXT`},
+		{name: "open_gate_ids_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
+		{name: "last_dispatch_at", definition: `TEXT`},
 	}
 	for _, column := range columns {
 		if err := s.ensureTicketColumn(column.name, column.definition); err != nil {
@@ -483,7 +586,7 @@ func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.
 
 func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapshot) error {
 	ticket = contracts.NormalizeTicketSnapshot(ticket)
-	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, err := marshalTicketJSON(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, err := marshalTicketJSON(ticket)
 	if err != nil {
 		return err
 	}
@@ -493,8 +596,10 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 			blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
 			summary, description, acceptance_json, notes, policy_json, review_state,
 			lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
-			template, skill_hint, blueprint, progress_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			template, skill_hint, blueprint, progress_json,
+			required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
+			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title=excluded.title,
 			type=excluded.type,
@@ -523,7 +628,15 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 			template=excluded.template,
 			skill_hint=excluded.skill_hint,
 			blueprint=excluded.blueprint,
-			progress_json=excluded.progress_json
+			progress_json=excluded.progress_json,
+			required_capabilities_json=excluded.required_capabilities_json,
+			dispatch_mode=excluded.dispatch_mode,
+			allow_parallel_runs=excluded.allow_parallel_runs,
+			runbook=excluded.runbook,
+			latest_run_id=excluded.latest_run_id,
+			latest_handoff_id=excluded.latest_handoff_id,
+			open_gate_ids_json=excluded.open_gate_ids_json,
+			last_dispatch_at=excluded.last_dispatch_at
 	`,
 		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
 		labelsJSON, nullable(string(ticket.Assignee)), nullable(string(ticket.Reviewer)), blockedByJSON, blocksJSON,
@@ -531,6 +644,8 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 		nullable(ticket.Summary), nullable(ticket.Description), acceptanceJSON, nullable(ticket.Notes), policyJSON, string(ticket.ReviewState),
 		nullable(string(ticket.Lease.Actor)), nullable(string(ticket.Lease.Kind)), nullableTime(ticket.Lease.AcquiredAt), nullableTime(ticket.Lease.ExpiresAt), nullableTime(ticket.Lease.LastHeartbeatAt),
 		nullable(ticket.Template), nullable(ticket.SkillHint), nullable(ticket.Blueprint), progressJSON,
+		requiredCapabilitiesJSON, string(ticket.DispatchMode), boolToInt(ticket.AllowParallelRuns), nullable(ticket.Runbook),
+		nullable(ticket.LatestRunID), nullable(ticket.LatestHandoffID), openGateIDsJSON, nullableTime(ticket.LastDispatchAt),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert ticket %s: %w", ticket.ID, err)
@@ -540,7 +655,7 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 
 func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.TicketSnapshot) error {
 	ticket = contracts.NormalizeTicketSnapshot(ticket)
-	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, err := marshalTicketJSON(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, err := marshalTicketJSON(ticket)
 	if err != nil {
 		return err
 	}
@@ -550,8 +665,10 @@ func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.Tick
 			blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
 			summary, description, acceptance_json, notes, policy_json, review_state,
 			lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
-			template, skill_hint, blueprint, progress_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			template, skill_hint, blueprint, progress_json,
+			required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
+			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
 	`,
 		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
@@ -560,6 +677,8 @@ func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.Tick
 		nullable(ticket.Summary), nullable(ticket.Description), acceptanceJSON, nullable(ticket.Notes), policyJSON, string(ticket.ReviewState),
 		nullable(string(ticket.Lease.Actor)), nullable(string(ticket.Lease.Kind)), nullableTime(ticket.Lease.AcquiredAt), nullableTime(ticket.Lease.ExpiresAt), nullableTime(ticket.Lease.LastHeartbeatAt),
 		nullable(ticket.Template), nullable(ticket.SkillHint), nullable(ticket.Blueprint), progressJSON,
+		requiredCapabilitiesJSON, string(ticket.DispatchMode), boolToInt(ticket.AllowParallelRuns), nullable(ticket.Runbook),
+		nullable(ticket.LatestRunID), nullable(ticket.LatestHandoffID), openGateIDsJSON, nullableTime(ticket.LastDispatchAt),
 	)
 	if err != nil {
 		return fmt.Errorf("insert missing ticket %s: %w", ticket.ID, err)
@@ -612,6 +731,14 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 		acceptanceJSON   string
 		policyJSON       string
 		progressJSON     string
+		requiredCapabilitiesJSON string
+		dispatchMode     sql.NullString
+		allowParallelRuns int
+		runbook          sql.NullString
+		latestRunID      sql.NullString
+		latestHandoffID  sql.NullString
+		openGateIDsJSON  string
+		lastDispatchAt   sql.NullString
 		parent           sql.NullString
 		assignee         sql.NullString
 		reviewer         sql.NullString
@@ -660,6 +787,14 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 		&skillHint,
 		&blueprint,
 		&progressJSON,
+		&requiredCapabilitiesJSON,
+		&dispatchMode,
+		&allowParallelRuns,
+		&runbook,
+		&latestRunID,
+		&latestHandoffID,
+		&openGateIDsJSON,
+		&lastDispatchAt,
 	); err != nil {
 		return contracts.TicketSnapshot{}, err
 	}
@@ -695,9 +830,25 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 	if err := json.Unmarshal([]byte(progressJSON), &ticket.Progress); err != nil {
 		return contracts.TicketSnapshot{}, err
 	}
+	if strings.TrimSpace(requiredCapabilitiesJSON) == "" {
+		requiredCapabilitiesJSON = `[]`
+	}
+	if err := json.Unmarshal([]byte(requiredCapabilitiesJSON), &ticket.RequiredCapabilities); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if strings.TrimSpace(openGateIDsJSON) == "" {
+		openGateIDsJSON = `[]`
+	}
+	if err := json.Unmarshal([]byte(openGateIDsJSON), &ticket.OpenGateIDs); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
 	ticket.Type = contracts.TicketType(typeValue)
 	ticket.Status = contracts.Status(statusValue)
 	ticket.Priority = contracts.Priority(priorityValue)
+	if dispatchMode.Valid {
+		ticket.DispatchMode = contracts.DispatchMode(dispatchMode.String)
+	}
+	ticket.AllowParallelRuns = allowParallelRuns == 1
 	ticket.CreatedAt = parsedCreatedAt
 	ticket.UpdatedAt = parsedUpdatedAt
 	ticket.Archived = archived == 1
@@ -755,35 +906,58 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 	if blueprint.Valid {
 		ticket.Blueprint = blueprint.String
 	}
+	if runbook.Valid {
+		ticket.Runbook = runbook.String
+	}
+	if latestRunID.Valid {
+		ticket.LatestRunID = latestRunID.String
+	}
+	if latestHandoffID.Valid {
+		ticket.LatestHandoffID = latestHandoffID.String
+	}
+	if lastDispatchAt.Valid {
+		ticket.LastDispatchAt, err = time.Parse(time.RFC3339Nano, lastDispatchAt.String)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+	}
 	return contracts.NormalizeTicketSnapshot(ticket), nil
 }
 
-func marshalTicketJSON(ticket contracts.TicketSnapshot) (labelsJSON string, blockedByJSON string, blocksJSON string, acceptanceJSON string, policyJSON string, progressJSON string, err error) {
+func marshalTicketJSON(ticket contracts.TicketSnapshot) (labelsJSON string, blockedByJSON string, blocksJSON string, acceptanceJSON string, policyJSON string, progressJSON string, requiredCapabilitiesJSON string, openGateIDsJSON string, err error) {
 	labelsRaw, err := json.Marshal(ticket.Labels)
 	if err != nil {
-		return "", "", "", "", "", "", fmt.Errorf("marshal labels: %w", err)
+		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal labels: %w", err)
 	}
 	blockedByRaw, err := json.Marshal(ticket.BlockedBy)
 	if err != nil {
-		return "", "", "", "", "", "", fmt.Errorf("marshal blocked_by: %w", err)
+		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocked_by: %w", err)
 	}
 	blocksRaw, err := json.Marshal(ticket.Blocks)
 	if err != nil {
-		return "", "", "", "", "", "", fmt.Errorf("marshal blocks: %w", err)
+		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocks: %w", err)
 	}
 	acceptanceRaw, err := json.Marshal(ticket.AcceptanceCriteria)
 	if err != nil {
-		return "", "", "", "", "", "", fmt.Errorf("marshal acceptance criteria: %w", err)
+		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal acceptance criteria: %w", err)
 	}
 	policyRaw, err := json.Marshal(ticket.Policy)
 	if err != nil {
-		return "", "", "", "", "", "", fmt.Errorf("marshal policy: %w", err)
+		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal policy: %w", err)
 	}
 	progressRaw, err := json.Marshal(ticket.Progress)
 	if err != nil {
-		return "", "", "", "", "", "", fmt.Errorf("marshal progress: %w", err)
+		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal progress: %w", err)
 	}
-	return string(labelsRaw), string(blockedByRaw), string(blocksRaw), string(acceptanceRaw), string(policyRaw), string(progressRaw), nil
+	requiredCapabilitiesRaw, err := json.Marshal(ticket.RequiredCapabilities)
+	if err != nil {
+		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal required capabilities: %w", err)
+	}
+	openGateIDsRaw, err := json.Marshal(ticket.OpenGateIDs)
+	if err != nil {
+		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal open gate ids: %w", err)
+	}
+	return string(labelsRaw), string(blockedByRaw), string(blocksRaw), string(acceptanceRaw), string(policyRaw), string(progressRaw), string(requiredCapabilitiesRaw), string(openGateIDsRaw), nil
 }
 
 func extractTicketSnapshots(payload any) []contracts.TicketSnapshot {
