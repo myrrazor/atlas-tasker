@@ -38,16 +38,19 @@ git commit -m init
 
 tracker init
 tracker project create APP "App Project"
-tracker ticket create --project APP --title "Upgrade smoke" --type task --actor human:owner
+tracker ticket create --project APP --title "Upgrade smoke" --type task --reviewer agent:reviewer-1 --actor human:owner
 tracker ticket move APP-1 ready --actor human:owner
 tracker agent create builder-1 --name "Builder One" --provider codex --capability go --actor human:owner
 tracker run dispatch APP-1 --agent builder-1 --actor human:owner
 tracker run launch <RUN-ID> --actor human:owner
+tracker run start <RUN-ID> --actor human:owner
 tracker ticket move APP-1 in_progress --actor human:owner
+tracker run checkpoint <RUN-ID> --title "Upgrade checkpoint" --body "runtime + worktree ready" --actor human:owner
+tracker run evidence add <RUN-ID> --type note --title "Upgrade evidence" --body "orchestration proof" --actor human:owner
 tracker run handoff <RUN-ID> --next-actor agent:reviewer-1 --next-gate review --actor human:owner
 tracker approvals --json
 tracker gate approve <GATE-ID> --actor agent:reviewer-1 --reason "upgrade smoke"
-tracker run complete <RUN-ID> --actor human:owner
+tracker run complete <RUN-ID> --actor human:owner --summary "upgrade smoke complete"
 tracker ticket request-review APP-1 --actor agent:builder-1
 tracker ticket approve APP-1 --actor agent:reviewer-1
 tracker ticket complete APP-1 --actor human:owner
