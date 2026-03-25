@@ -1,6 +1,6 @@
 # Atlas Tasker Release Guide
 
-Atlas Tasker v1.3 ships prebuilt macOS and Linux binaries plus a one-line install script.
+Atlas Tasker v1.4 ships prebuilt macOS and Linux binaries plus a one-line install script.
 
 ## Artifacts
 
@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 Optional overrides:
 
 ```bash
-VERSION=v1.3.0 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
+VERSION=v1.4.0 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
 
 ## Manual Install
@@ -54,11 +54,32 @@ Before cutting a real release:
 Suggested smoke flow:
 
 ```bash
+git init -b main
+git config user.email atlas@example.com
+git config user.name Atlas
+printf '# atlas\n' > README.md
+git add README.md
+git commit -m init
+
 tracker init
 tracker project create APP "App Project"
 tracker ticket create --project APP --title "Smoke" --type task --actor human:owner
 tracker ticket move APP-1 ready --actor human:owner
-tracker queue --actor human:owner
+tracker agent create builder-1 --name "Builder One" --provider codex --capability go --actor human:owner
+tracker run dispatch APP-1 --agent builder-1 --actor human:owner
+tracker run launch <RUN-ID> --actor human:owner
+tracker run start <RUN-ID> --actor human:owner
+tracker ticket move APP-1 in_progress --actor human:owner
+tracker run checkpoint <RUN-ID> --title "Smoke checkpoint" --body "runtime + worktree ready" --actor human:owner
+tracker run handoff <RUN-ID> --next-actor agent:reviewer-1 --next-gate review --actor human:owner
+tracker approvals --json
+tracker gate approve <GATE-ID> --actor agent:reviewer-1 --reason "release smoke"
+tracker run complete <RUN-ID> --actor human:owner
+tracker ticket request-review APP-1 --actor agent:builder-1
+tracker ticket approve APP-1 --actor agent:reviewer-1
+tracker ticket complete APP-1 --actor human:owner
+tracker run cleanup <RUN-ID> --actor human:owner
+tracker inspect APP-1 --actor human:owner --json
 tracker tui --actor human:owner
 ```
 
@@ -86,7 +107,7 @@ Record the proof here for the actual release:
 For a local dry run before you cut the real prerelease:
 
 ```bash
-VERSION=v1.3.0-rc1 ./scripts/release-rehearsal.sh
+VERSION=v1.4.0-rc1 ./scripts/release-rehearsal.sh
 sh scripts/stability-smoke.sh
 ```
 
@@ -96,7 +117,7 @@ That script:
 2. packages it with the same archive naming shape as the release workflow
 3. serves the archive from a local HTTP server
 4. installs it through `scripts/install.sh`
-5. runs the smoke flow with the installed binary in a clean temp workspace
+5. runs the orchestration smoke flow with the installed binary in a clean temp workspace
 
 `scripts/stability-smoke.sh` is the short stabilization lane used in CI. It runs the
 targeted race suite plus short fuzzers for slash parsing, query parsing, markdown

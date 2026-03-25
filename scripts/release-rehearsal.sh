@@ -2,7 +2,7 @@
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
-VERSION="${VERSION:-v1.3.0-rc1}"
+VERSION="${VERSION:-v1.4.0-rc1}"
 VERSION_NO_V="${VERSION#v}"
 BIN_NAME="tracker"
 DIST_DIR="${DIST_DIR:-$(mktemp -d)}"
@@ -63,10 +63,37 @@ PORT="$(cat "$PORT_FILE")"
 RELEASE_BASE_URL="http://127.0.0.1:$PORT" VERSION="$VERSION" BIN_DIR="$INSTALL_DIR" sh "$ROOT_DIR/scripts/install.sh"
 
 cd "$WORK_DIR"
+git init -b main >/dev/null
+git config user.email atlas@example.com
+git config user.name Atlas
+printf '# atlas\n' > README.md
+git add README.md
+git commit -m init >/dev/null
 "$INSTALL_DIR/$BIN_NAME" init
 "$INSTALL_DIR/$BIN_NAME" project create APP "App Project"
-"$INSTALL_DIR/$BIN_NAME" ticket create --project APP --title "Smoke" --type task --actor human:owner
+"$INSTALL_DIR/$BIN_NAME" ticket create --project APP --title "Smoke" --type task --reviewer agent:reviewer-1 --actor human:owner
 "$INSTALL_DIR/$BIN_NAME" ticket move APP-1 ready --actor human:owner
-"$INSTALL_DIR/$BIN_NAME" queue --actor human:owner
+"$INSTALL_DIR/$BIN_NAME" agent create builder-1 --name "Builder One" --provider codex --capability go --actor human:owner
+DISPATCH_JSON="$("$INSTALL_DIR/$BIN_NAME" run dispatch APP-1 --agent builder-1 --actor human:owner --json)"
+RUN_ID="$(printf '%s' "$DISPATCH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["run_id"])')"
+"$INSTALL_DIR/$BIN_NAME" run launch "$RUN_ID" --actor human:owner
+"$INSTALL_DIR/$BIN_NAME" run start "$RUN_ID" --actor human:owner
+"$INSTALL_DIR/$BIN_NAME" ticket move APP-1 in_progress --actor human:owner
+"$INSTALL_DIR/$BIN_NAME" run checkpoint "$RUN_ID" --title "Smoke checkpoint" --body "runtime + worktree ready" --actor human:owner
+"$INSTALL_DIR/$BIN_NAME" run evidence add "$RUN_ID" --type note --title "Smoke evidence" --body "packaged rehearsal" --actor human:owner
+"$INSTALL_DIR/$BIN_NAME" run handoff "$RUN_ID" --next-actor agent:reviewer-1 --next-gate review --actor human:owner
+APPROVALS_JSON="$("$INSTALL_DIR/$BIN_NAME" approvals --json)"
+GATE_ID="$(printf '%s' "$APPROVALS_JSON" | python3 -c 'import json,sys; items=json.load(sys.stdin)["items"]; print(items[0]["gate"]["gate_id"] if items else "")')"
+if [ -z "$GATE_ID" ]; then
+  echo "failed to find review gate during rehearsal" >&2
+  exit 1
+fi
+"$INSTALL_DIR/$BIN_NAME" gate approve "$GATE_ID" --actor agent:reviewer-1 --reason "packaged rehearsal"
+"$INSTALL_DIR/$BIN_NAME" run complete "$RUN_ID" --actor human:owner --summary "smoke complete"
+"$INSTALL_DIR/$BIN_NAME" ticket request-review APP-1 --actor agent:builder-1
+"$INSTALL_DIR/$BIN_NAME" ticket approve APP-1 --actor agent:reviewer-1
+"$INSTALL_DIR/$BIN_NAME" ticket complete APP-1 --actor human:owner
+"$INSTALL_DIR/$BIN_NAME" run cleanup "$RUN_ID" --actor human:owner
+"$INSTALL_DIR/$BIN_NAME" inspect APP-1 --actor human:owner --json >/dev/null
 
 echo "release rehearsal ok: version=$VERSION archive=$ARCHIVE install_dir=$INSTALL_DIR work_dir=$WORK_DIR"
