@@ -198,13 +198,42 @@ func copyEvidenceArtifact(root string, runID string, evidenceID string, source s
 		return "", fmt.Errorf("open artifact: %w", err)
 	}
 	defer in.Close()
-	out, err := os.Create(target)
+	temp, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".tmp-*")
 	if err != nil {
 		return "", fmt.Errorf("create artifact copy: %w", err)
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, in); err != nil {
-		return "", fmt.Errorf("copy artifact: %w", err)
+	defer func() {
+		_ = temp.Close()
+		_ = os.Remove(temp.Name())
+	}()
+	buf := make([]byte, 32*1024)
+	var copied int64
+	for {
+		n, readErr := in.Read(buf)
+		if n > 0 {
+			written, writeErr := temp.Write(buf[:n])
+			copied += int64(written)
+			if writeErr != nil {
+				return "", fmt.Errorf("copy artifact: %w", writeErr)
+			}
+			if testEvidenceArtifactCopyHook != nil {
+				if err := testEvidenceArtifactCopyHook(target, copied); err != nil {
+					return "", err
+				}
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return "", fmt.Errorf("copy artifact: %w", readErr)
+		}
+	}
+	if err := temp.Close(); err != nil {
+		return "", fmt.Errorf("close artifact copy: %w", err)
+	}
+	if err := os.Rename(temp.Name(), target); err != nil {
+		return "", fmt.Errorf("finalize artifact copy: %w", err)
 	}
 	return target, nil
 }
