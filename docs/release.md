@@ -63,3 +63,19 @@ tracker tui --actor human:owner
 ```
 
 Release is not done until that flow works against the real published artifacts.
+
+## Local Rehearsal
+
+For a local dry run before you cut the real prerelease:
+
+```bash
+VERSION=v1.3.0-rc1 ./scripts/release-rehearsal.sh
+```
+
+That script:
+
+1. builds the current `tracker` binary
+2. packages it with the same archive naming shape as the release workflow
+3. serves the archive from a local HTTP server
+4. installs it through `scripts/install.sh`
+5. runs the smoke flow with the installed binary in a clean temp workspace
