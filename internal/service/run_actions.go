@@ -79,6 +79,14 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 		if err != nil {
 			return DispatchResult{}, err
 		}
+		runbook, stage, err := NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock).resolveRunbookForAgent(ctx, ticket, agent)
+		if err != nil {
+			return DispatchResult{}, err
+		}
+		run.BlueprintStage = stage
+		if strings.TrimSpace(ticket.Runbook) == "" {
+			ticket.Runbook = runbook.Name
+		}
 		ticket.LatestRunID = run.RunID
 		ticket.LastDispatchAt = s.now()
 		payload := runMutationPayload{Run: run, Ticket: ticket}
@@ -127,7 +135,7 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 		}); err != nil {
 			return DispatchResult{}, err
 		}
-		return DispatchResult{TicketID: ticket.ID, RunID: run.RunID, AgentID: agent.AgentID, WorktreePath: run.WorktreePath, GeneratedAt: s.now()}, nil
+		return DispatchResult{TicketID: ticket.ID, RunID: run.RunID, AgentID: agent.AgentID, Runbook: ticket.Runbook, Stage: run.BlueprintStage, WorktreePath: run.WorktreePath, GeneratedAt: s.now()}, nil
 	})
 }
 

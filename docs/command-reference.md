@@ -59,6 +59,10 @@
 - `tracker worktree view <RUN-ID>`
 - `tracker worktree repair`
 - `tracker worktree prune`
+- `tracker dispatch suggest <TICKET-ID>`
+- `tracker dispatch queue`
+- `tracker dispatch run <TICKET-ID> [--agent <AGENT-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker dispatch bulk [--ticket <ID>]... [--view <NAME>] [--agent <AGENT-ID>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
 
 ## Agents
 
@@ -107,6 +111,20 @@ Rules:
 - `reindex` and `doctor --repair` will not recreate missing worktrees or runtime artifacts
 - dirty worktrees require `run cleanup --force`
 - the clean-main check ignores Atlas-managed workspace files and only blocks on non-Atlas repo changes
+
+## Dispatch
+
+- `tracker dispatch suggest <TICKET-ID>`
+- `tracker dispatch queue`
+- `tracker dispatch run <TICKET-ID> [--agent <AGENT-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker dispatch bulk [--ticket <ID>]... [--view <NAME>] [--agent <AGENT-ID>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+
+Rules:
+
+- dispatch suggestion and queue surfaces reuse the same eligibility and runbook resolution logic used by live dispatch
+- `dispatch run` auto-routes only when exactly one agent is eligible; otherwise it requires `--agent`
+- bulk dispatch preserves the exact saved-view order and still re-checks eligibility at apply time
+- runbook resolution order is ticket override, agent default, project mapping, then built-in default
 
 ## Project
 

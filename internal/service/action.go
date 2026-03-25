@@ -18,6 +18,7 @@ type ActionService struct {
 	Tickets     contracts.TicketStore
 	Agents      contracts.AgentStore
 	Runs        contracts.RunStore
+	Runbooks    contracts.RunbookStore
 	Events      contracts.EventLog
 	Projection  contracts.ProjectionStore
 	Clock       func() time.Time
@@ -35,7 +36,7 @@ func NewActionService(root string, projects contracts.ProjectStore, tickets cont
 		fm.Root = canonicalRoot
 		locks = fm
 	}
-	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
+	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
 }
 
 func (s *ActionService) now() time.Time {
