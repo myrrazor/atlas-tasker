@@ -12,6 +12,13 @@ type AgentDetailView struct {
 	GeneratedAt time.Time              `json:"generated_at"`
 }
 
+type ApprovalItemView struct {
+	Gate        contracts.GateSnapshot   `json:"gate"`
+	Ticket      contracts.TicketSnapshot `json:"ticket"`
+	Summary     string                   `json:"summary"`
+	GeneratedAt time.Time                `json:"generated_at"`
+}
+
 type AgentEligibilityEntry struct {
 	Agent       contracts.AgentProfile `json:"agent"`
 	Eligible    bool                   `json:"eligible"`
@@ -82,7 +89,17 @@ type InboxItemView struct {
 	TicketID    string    `json:"ticket_id"`
 	RunID       string    `json:"run_id,omitempty"`
 	GateID      string    `json:"gate_id,omitempty"`
+	HandoffID   string    `json:"handoff_id,omitempty"`
 	Summary     string    `json:"summary"`
 	State       string    `json:"state"`
 	GeneratedAt time.Time `json:"generated_at"`
+}
+
+type InboxDetailView struct {
+	Item      InboxItemView            `json:"item"`
+	Ticket    contracts.TicketSnapshot `json:"ticket,omitempty"`
+	Run       contracts.RunSnapshot    `json:"run,omitempty"`
+	Gate      contracts.GateSnapshot   `json:"gate,omitempty"`
+	Handoff   contracts.HandoffPacket  `json:"handoff,omitempty"`
+	Generated time.Time                `json:"generated_at"`
 }

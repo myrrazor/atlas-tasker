@@ -55,6 +55,7 @@ type TicketDetailView struct {
 	Ticket          contracts.TicketSnapshot `json:"ticket"`
 	Comments        []string                 `json:"comments"`
 	History         []contracts.Event        `json:"history"`
+	Gates           []contracts.GateSnapshot `json:"gates,omitempty"`
 	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
 	Git             GitContextView           `json:"git"`
 }
@@ -70,6 +71,7 @@ type InspectView struct {
 	LeaseActive     bool                     `json:"lease_active"`
 	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
 	History         []contracts.Event        `json:"history"`
+	Gates           []contracts.GateSnapshot `json:"gates,omitempty"`
 	Git             GitContextView           `json:"git"`
 	QueueCategories []QueueCategory          `json:"queue_categories,omitempty"`
 }

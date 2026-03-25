@@ -346,6 +346,11 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 			return err
 		}
 	}
+	for _, gate := range extractGateSnapshots(event.Payload) {
+		if err := s.upsertGate(ctx, gate); err != nil {
+			return err
+		}
+	}
 	for _, evidence := range extractEvidenceItems(event.Payload) {
 		if err := s.upsertEvidence(ctx, evidence); err != nil {
 			return err
@@ -421,6 +426,11 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 		}
 		for _, run := range extractRunSnapshots(event.Payload) {
 			if err := s.upsertRun(ctx, run); err != nil {
+				return err
+			}
+		}
+		for _, gate := range extractGateSnapshots(event.Payload) {
+			if err := s.upsertGate(ctx, gate); err != nil {
 				return err
 			}
 		}
@@ -872,6 +882,64 @@ func (s *Store) upsertRun(ctx context.Context, run contracts.RunSnapshot) error 
 	return nil
 }
 
+func (s *Store) upsertGate(ctx context.Context, gate contracts.GateSnapshot) error {
+	if err := gate.Validate(); err != nil {
+		return err
+	}
+	evidenceRequirementsJSON, err := json.Marshal(gate.EvidenceRequirements)
+	if err != nil {
+		return fmt.Errorf("marshal gate evidence requirements: %w", err)
+	}
+	relatedRunIDsJSON, err := json.Marshal(gate.RelatedRunIDs)
+	if err != nil {
+		return fmt.Errorf("marshal gate related runs: %w", err)
+	}
+	_, err = s.DB.ExecContext(ctx, `
+		INSERT INTO gates (
+			gate_id, ticket_id, run_id, kind, state, required_role, required_agent_id,
+			created_by, decided_by, decision_reason, evidence_requirements_json,
+			related_run_ids_json, replaces_gate_id, created_at, decided_at, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(gate_id) DO UPDATE SET
+			ticket_id=excluded.ticket_id,
+			run_id=excluded.run_id,
+			kind=excluded.kind,
+			state=excluded.state,
+			required_role=excluded.required_role,
+			required_agent_id=excluded.required_agent_id,
+			created_by=excluded.created_by,
+			decided_by=excluded.decided_by,
+			decision_reason=excluded.decision_reason,
+			evidence_requirements_json=excluded.evidence_requirements_json,
+			related_run_ids_json=excluded.related_run_ids_json,
+			replaces_gate_id=excluded.replaces_gate_id,
+			created_at=excluded.created_at,
+			decided_at=excluded.decided_at,
+			schema_version=excluded.schema_version
+	`,
+		gate.GateID,
+		gate.TicketID,
+		nullable(gate.RunID),
+		string(gate.Kind),
+		string(gate.State),
+		nullable(string(gate.RequiredRole)),
+		nullable(gate.RequiredAgentID),
+		string(gate.CreatedBy),
+		nullable(string(gate.DecidedBy)),
+		nullable(gate.DecisionReason),
+		string(evidenceRequirementsJSON),
+		string(relatedRunIDsJSON),
+		nullable(gate.ReplacesGateID),
+		gate.CreatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTime(gate.DecidedAt),
+		gate.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert gate %s: %w", gate.GateID, err)
+	}
+	return nil
+}
+
 func (s *Store) upsertEvidence(ctx context.Context, evidence contracts.EvidenceItem) error {
 	if err := evidence.Validate(); err != nil {
 		return err
@@ -1295,6 +1363,39 @@ func extractRunSnapshots(payload any) []contracts.RunSnapshot {
 	}
 
 	return result
+}
+
+func extractGateSnapshots(payload any) []contracts.GateSnapshot {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	var wrapped struct {
+		Gate  contracts.GateSnapshot   `json:"gate"`
+		Gates []contracts.GateSnapshot `json:"gates"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		items := make([]contracts.GateSnapshot, 0, 1+len(wrapped.Gates))
+		if wrapped.Gate.Validate() == nil {
+			items = append(items, wrapped.Gate)
+		}
+		for _, gate := range wrapped.Gates {
+			if gate.Validate() == nil {
+				items = append(items, gate)
+			}
+		}
+		if len(items) > 0 {
+			return items
+		}
+	}
+	var gate contracts.GateSnapshot
+	if err := json.Unmarshal(raw, &gate); err == nil && gate.Validate() == nil {
+		return []contracts.GateSnapshot{gate}
+	}
+	return nil
 }
 
 func extractEvidenceItems(payload any) []contracts.EvidenceItem {

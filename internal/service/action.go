@@ -19,6 +19,7 @@ type ActionService struct {
 	Agents      contracts.AgentStore
 	Runs        contracts.RunStore
 	Runbooks    contracts.RunbookStore
+	Gates       contracts.GateStore
 	Evidence    contracts.EvidenceStore
 	Handoffs    contracts.HandoffStore
 	Events      contracts.EventLog
@@ -38,7 +39,7 @@ func NewActionService(root string, projects contracts.ProjectStore, tickets cont
 		fm.Root = canonicalRoot
 		locks = fm
 	}
-	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
+	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Gates: GateStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
 }
 
 func (s *ActionService) now() time.Time {
@@ -783,6 +784,9 @@ func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, act
 		}
 		if ticket.ReviewState != contracts.ReviewStateApproved {
 			return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be approved before completion", ticket.ID))
+		}
+		if len(ticket.OpenGateIDs) > 0 {
+			return contracts.TicketSnapshot{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("ticket %s cannot complete while gates are open", ticket.ID))
 		}
 		if err := domain.CheckCompletionPermission(policy.CompletionMode, actor, ticket.Reviewer); err != nil {
 			return contracts.TicketSnapshot{}, &apperr.Error{Code: apperr.CodePermissionDenied, Message: err.Error(), Cause: err}

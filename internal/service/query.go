@@ -19,6 +19,7 @@ type QueryService struct {
 	Agents     contracts.AgentStore
 	Runs       contracts.RunStore
 	Runbooks   contracts.RunbookStore
+	Gates      contracts.GateStore
 	Evidence   contracts.EvidenceStore
 	Handoffs   contracts.HandoffStore
 	Events     contracts.EventLog
@@ -28,7 +29,7 @@ type QueryService struct {
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
-	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
+	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Gates: GateStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
 }
 
 func (s *QueryService) now() time.Time {
@@ -331,6 +332,10 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
+	gates, err := s.Gates.ListGates(ctx, ticket.ID)
+	if err != nil {
+		return TicketDetailView{}, err
+	}
 	ticket, err = s.withProgress(ctx, ticket)
 	if err != nil {
 		return TicketDetailView{}, err
@@ -339,7 +344,7 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
-	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, EffectivePolicy: policy, Git: gitView}, nil
+	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, Gates: gates, EffectivePolicy: policy, Git: gitView}, nil
 }
 
 func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor contracts.Actor) (InspectView, error) {
@@ -353,6 +358,7 @@ func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor
 		LeaseActive:     detail.Ticket.Lease.Active(s.now()),
 		EffectivePolicy: detail.EffectivePolicy,
 		History:         detail.History,
+		Gates:           detail.Gates,
 		Git:             detail.Git,
 	}
 	if actor == "" {
