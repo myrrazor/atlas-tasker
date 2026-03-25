@@ -33,6 +33,14 @@ type ticketFrontmatter struct {
 	SkillHint     string                    `yaml:"skill_hint,omitempty"`
 	Blueprint     string                    `yaml:"blueprint,omitempty"`
 	Progress      contracts.ProgressSummary `yaml:"progress,omitempty"`
+	RequiredCapabilities []string                `yaml:"required_capabilities,omitempty"`
+	DispatchMode         contracts.DispatchMode  `yaml:"dispatch_mode,omitempty"`
+	AllowParallelRuns    bool                    `yaml:"allow_parallel_runs,omitempty"`
+	Runbook              string                  `yaml:"runbook,omitempty"`
+	LatestRunID          string                  `yaml:"latest_run_id,omitempty"`
+	LatestHandoffID      string                  `yaml:"latest_handoff_id,omitempty"`
+	OpenGateIDs          []string                `yaml:"open_gate_ids,omitempty"`
+	LastDispatchAt       time.Time               `yaml:"last_dispatch_at,omitempty"`
 }
 
 func EncodeTicketMarkdown(ticket contracts.TicketSnapshot) (string, error) {
@@ -61,6 +69,14 @@ func EncodeTicketMarkdown(ticket contracts.TicketSnapshot) (string, error) {
 		SkillHint:     ticket.SkillHint,
 		Blueprint:     ticket.Blueprint,
 		Progress:      ticket.Progress,
+		RequiredCapabilities: ticket.RequiredCapabilities,
+		DispatchMode:         ticket.DispatchMode,
+		AllowParallelRuns:    ticket.AllowParallelRuns,
+		Runbook:              ticket.Runbook,
+		LatestRunID:          ticket.LatestRunID,
+		LatestHandoffID:      ticket.LatestHandoffID,
+		OpenGateIDs:          ticket.OpenGateIDs,
+		LastDispatchAt:       ticket.LastDispatchAt,
 	}
 	rawFM, err := yaml.Marshal(fm)
 	if err != nil {
@@ -140,6 +156,14 @@ func DecodeTicketMarkdown(doc string) (contracts.TicketSnapshot, error) {
 		SkillHint:          strings.TrimSpace(fm.SkillHint),
 		Blueprint:          strings.TrimSpace(fm.Blueprint),
 		Progress:           fm.Progress,
+		RequiredCapabilities: fm.RequiredCapabilities,
+		DispatchMode:         fm.DispatchMode,
+		AllowParallelRuns:    fm.AllowParallelRuns,
+		Runbook:              strings.TrimSpace(fm.Runbook),
+		LatestRunID:          strings.TrimSpace(fm.LatestRunID),
+		LatestHandoffID:      strings.TrimSpace(fm.LatestHandoffID),
+		OpenGateIDs:          fm.OpenGateIDs,
+		LastDispatchAt:       fm.LastDispatchAt,
 		Summary:            summary,
 		Description:        description,
 		AcceptanceCriteria: acceptance,
