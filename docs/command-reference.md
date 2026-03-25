@@ -17,6 +17,10 @@
 - `tracker notify send --event-type <TYPE> [--ticket <ID>] [--project <KEY>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker notify log [--limit <N>]`
 - `tracker notify dead-letter [--limit <N>]`
+- `tracker git status`
+- `tracker git branch-name <ID>`
+- `tracker git refs <ID>`
+- `tracker git commit <ID> --message <TEXT>`
 - `tracker templates list`
 - `tracker templates view <NAME>`
 - `tracker integrations install codex [--force]`
@@ -94,6 +98,13 @@
 - `tracker notify send --event-type <TYPE> [--ticket <ID>] [--project <KEY>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker notify log [--limit <N>]`
 - `tracker notify dead-letter [--limit <N>]`
+
+## Git
+
+- `tracker git status`
+- `tracker git branch-name <ID>`
+- `tracker git refs <ID>`
+- `tracker git commit <ID> --message <TEXT>`
 
 ## Automation
 

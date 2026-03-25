@@ -83,7 +83,11 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
-	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, EffectivePolicy: policy}, nil
+	gitView, err := SCMService{Root: s.Root}.ContextForTicket(ctx, ticket)
+	if err != nil {
+		return TicketDetailView{}, err
+	}
+	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, EffectivePolicy: policy, Git: gitView}, nil
 }
 
 func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor contracts.Actor) (InspectView, error) {
@@ -97,6 +101,7 @@ func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor
 		LeaseActive:     detail.Ticket.Lease.Active(s.now()),
 		EffectivePolicy: detail.EffectivePolicy,
 		History:         detail.History,
+		Git:             detail.Git,
 	}
 	if actor == "" {
 		return view, nil
@@ -136,6 +141,10 @@ func (s *QueryService) Queue(ctx context.Context, actor contracts.Actor) (QueueV
 		return QueueView{}, err
 	}
 	now := s.now()
+	repo, err := SCMService{Root: s.Root}.RepoStatus(ctx)
+	if err != nil {
+		return QueueView{}, err
+	}
 	view := QueueView{Actor: actor, GeneratedAt: now, Categories: map[QueueCategory][]QueueEntry{}}
 	for _, ticket := range tickets {
 		policy, err := s.EffectivePolicy(ctx, ticket)
@@ -145,27 +154,46 @@ func (s *QueryService) Queue(ctx context.Context, actor contracts.Actor) (QueueV
 		if len(policy.AllowedWorkers) > 0 && !actorInList(actor, policy.AllowedWorkers) {
 			view.Categories[QueuePolicyViolations] = append(view.Categories[QueuePolicyViolations], QueueEntry{Ticket: ticket, Reason: "actor not allowed by effective policy"})
 		}
+		entryHint := queueGitHint(repo, ticket, SCMService{Root: s.Root}.SuggestedBranch(ticket))
 		switch {
 		case ticket.Lease.Actor != "" && !ticket.Lease.ExpiresAt.IsZero() && !ticket.Lease.Active(now):
-			view.Categories[QueueStaleClaims] = append(view.Categories[QueueStaleClaims], QueueEntry{Ticket: ticket, Reason: "lease expired"})
+			view.Categories[QueueStaleClaims] = append(view.Categories[QueueStaleClaims], QueueEntry{Ticket: ticket, Reason: "lease expired", GitHint: entryHint})
 		case ticket.Lease.Active(now) && ticket.Lease.Actor == actor:
-			view.Categories[QueueClaimedByMe] = append(view.Categories[QueueClaimedByMe], QueueEntry{Ticket: ticket, Reason: "active lease owned by actor"})
+			view.Categories[QueueClaimedByMe] = append(view.Categories[QueueClaimedByMe], QueueEntry{Ticket: ticket, Reason: "active lease owned by actor", GitHint: entryHint})
 		case ticket.Status == contracts.StatusReady && (ticket.Assignee == "" || ticket.Assignee == actor):
-			view.Categories[QueueReadyForMe] = append(view.Categories[QueueReadyForMe], QueueEntry{Ticket: ticket, Reason: "ready and assignable"})
+			view.Categories[QueueReadyForMe] = append(view.Categories[QueueReadyForMe], QueueEntry{Ticket: ticket, Reason: "ready and assignable", GitHint: entryHint})
 		case contracts.BoardStatus(ticket) == contracts.StatusBlocked && (ticket.Assignee == "" || ticket.Assignee == actor):
-			view.Categories[QueueBlockedForMe] = append(view.Categories[QueueBlockedForMe], QueueEntry{Ticket: ticket, Reason: "ticket is blocked"})
+			view.Categories[QueueBlockedForMe] = append(view.Categories[QueueBlockedForMe], QueueEntry{Ticket: ticket, Reason: "ticket is blocked", GitHint: entryHint})
 		}
 		if ticket.Status == contracts.StatusInReview && (ticket.Reviewer == actor || actor == contracts.Actor("human:owner")) {
-			view.Categories[QueueNeedsReview] = append(view.Categories[QueueNeedsReview], QueueEntry{Ticket: ticket, Reason: "waiting for review"})
+			view.Categories[QueueNeedsReview] = append(view.Categories[QueueNeedsReview], QueueEntry{Ticket: ticket, Reason: "waiting for review", GitHint: entryHint})
 		}
 		if policy.CompletionMode == contracts.CompletionModeDualGate && ticket.ReviewState == contracts.ReviewStateApproved {
-			view.Categories[QueueAwaitingOwner] = append(view.Categories[QueueAwaitingOwner], QueueEntry{Ticket: ticket, Reason: "approved and waiting for owner completion"})
+			view.Categories[QueueAwaitingOwner] = append(view.Categories[QueueAwaitingOwner], QueueEntry{Ticket: ticket, Reason: "approved and waiting for owner completion", GitHint: entryHint})
 		}
 	}
 	for category := range view.Categories {
 		sortQueueEntries(view.Categories[category])
 	}
 	return view, nil
+}
+
+func queueGitHint(repo GitRepoView, ticket contracts.TicketSnapshot, suggested string) string {
+	if !repo.Present {
+		return ""
+	}
+	branch := strings.ToLower(strings.TrimSpace(repo.Branch))
+	id := strings.ToLower(ticket.ID)
+	switch {
+	case branch != "" && strings.Contains(branch, id) && repo.Dirty:
+		return "current branch matches ticket; repo has uncommitted changes"
+	case branch != "" && strings.Contains(branch, id):
+		return "current branch matches ticket"
+	case repo.Dirty:
+		return fmt.Sprintf("suggested branch %s; repo has uncommitted changes", suggested)
+	default:
+		return fmt.Sprintf("suggested branch %s", suggested)
+	}
 }
 
 func (s *QueryService) Who(ctx context.Context) ([]contracts.TicketSnapshot, error) {

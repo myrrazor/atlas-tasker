@@ -36,8 +36,9 @@ const (
 )
 
 type QueueEntry struct {
-	Ticket contracts.TicketSnapshot `json:"ticket"`
-	Reason string                   `json:"reason"`
+	Ticket  contracts.TicketSnapshot `json:"ticket"`
+	Reason  string                   `json:"reason"`
+	GitHint string                   `json:"git_hint,omitempty"`
 }
 
 type QueueView struct {
@@ -55,6 +56,7 @@ type TicketDetailView struct {
 	Comments        []string                 `json:"comments"`
 	History         []contracts.Event        `json:"history"`
 	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
+	Git             GitContextView           `json:"git"`
 }
 
 type HistoryView struct {
@@ -68,6 +70,7 @@ type InspectView struct {
 	LeaseActive     bool                     `json:"lease_active"`
 	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
 	History         []contracts.Event        `json:"history"`
+	Git             GitContextView           `json:"git"`
 	QueueCategories []QueueCategory          `json:"queue_categories,omitempty"`
 }
 
@@ -93,4 +96,24 @@ type NextEntry struct {
 type NextView struct {
 	Actor   contracts.Actor `json:"actor"`
 	Entries []NextEntry     `json:"entries"`
+}
+
+type GitRepoView struct {
+	Branch  string `json:"branch,omitempty"`
+	Dirty   bool   `json:"dirty"`
+	Present bool   `json:"present"`
+	Root    string `json:"root,omitempty"`
+}
+
+type GitCommitView struct {
+	AuthorDate time.Time `json:"author_date"`
+	Hash       string    `json:"hash"`
+	Subject    string    `json:"subject"`
+}
+
+type GitContextView struct {
+	CurrentBranchMatches bool            `json:"current_branch_matches"`
+	Repo                 GitRepoView     `json:"repo"`
+	SuggestedBranch      string          `json:"suggested_branch,omitempty"`
+	Refs                 []GitCommitView `json:"refs,omitempty"`
 }
