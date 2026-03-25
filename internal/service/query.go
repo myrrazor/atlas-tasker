@@ -137,21 +137,53 @@ func (s *QueryService) SavedView(name string) (contracts.SavedView, error) {
 	return s.Views.LoadView(name)
 }
 
-func (s *QueryService) ListSubscriptions(actor contracts.Actor) ([]contracts.Subscription, error) {
+func (s *QueryService) ListSubscriptions(ctx context.Context, actor contracts.Actor) ([]SubscriptionView, error) {
 	subscriptions, err := SubscriptionStore{Root: s.Root}.ListSubscriptions()
 	if err != nil {
 		return nil, err
 	}
+	items := make([]SubscriptionView, 0, len(subscriptions))
 	if actor == "" {
-		return subscriptions, nil
+		for _, subscription := range subscriptions {
+			items = append(items, s.subscriptionView(ctx, subscription))
+		}
+		return items, nil
 	}
-	filtered := make([]contracts.Subscription, 0, len(subscriptions))
 	for _, subscription := range subscriptions {
-		if subscription.Actor == actor {
-			filtered = append(filtered, subscription)
+		if subscription.Actor != actor {
+			continue
+		}
+		items = append(items, s.subscriptionView(ctx, subscription))
+	}
+	return items, nil
+}
+
+func (s *QueryService) subscriptionView(ctx context.Context, subscription contracts.Subscription) SubscriptionView {
+	view := SubscriptionView{Subscription: subscription, Active: true}
+	switch subscription.TargetKind {
+	case contracts.SubscriptionTargetTicket:
+		ticket, err := s.Tickets.GetTicket(ctx, subscription.Target)
+		if err != nil {
+			view.Active = false
+			view.InactiveReason = "missing_ticket"
+			return view
+		}
+		if ticket.Archived || ticket.Status == contracts.StatusCanceled {
+			view.Active = false
+			view.InactiveReason = "ticket_inactive"
+		}
+	case contracts.SubscriptionTargetProject:
+		if _, err := s.Projects.GetProject(ctx, subscription.Target); err != nil {
+			view.Active = false
+			view.InactiveReason = "missing_project"
+		}
+	case contracts.SubscriptionTargetSavedView:
+		if _, err := s.Views.LoadView(subscription.Target); err != nil {
+			view.Active = false
+			view.InactiveReason = "missing_saved_view"
 		}
 	}
-	return filtered, nil
+	return view
 }
 
 func (s *QueryService) History(ctx context.Context, ticketID string) (HistoryView, error) {

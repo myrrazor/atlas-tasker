@@ -124,6 +124,12 @@
 - `tracker unwatch project <KEY> [--actor <ACTOR>]`
 - `tracker unwatch view <NAME> [--actor <ACTOR>]`
 
+Rules:
+
+- watchers stay stored even if the target ticket, project, or saved view disappears
+- `watch list` marks unresolved targets as inactive instead of dropping them
+- inactive watchers are ignored during notification audience resolution
+
 ## Bulk Operations
 
 - `tracker bulk move <STATUS> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
@@ -138,7 +144,7 @@ Rules:
 - `--dry-run` previews the batch without mutating anything
 - live bulk mutations require `--yes`
 - `--ticket` may be repeated
-- `--view` expands any saved board/search/queue/next view into ticket IDs
+- `--view` expands any saved board/search/queue/next view into ticket IDs in the same order the view returns them
 - duplicate ticket IDs are deduplicated before the batch runs
 - every committed per-ticket event carries the same `metadata.batch_id`
 
@@ -160,6 +166,14 @@ Rules:
 - `tracker git branch-name <ID>`
 - `tracker git refs <ID>`
 - `tracker git commit <ID> --message <TEXT>`
+
+Rules:
+
+- `tracker git commit` only commits already staged files
+- it never auto-stages changes
+- it fails in detached HEAD
+- it fails when no staged files exist
+- it rejects nested repo ambiguity under the workspace root
 
 ## Automation
 

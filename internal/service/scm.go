@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -95,6 +97,16 @@ func (s SCMService) Commit(ctx context.Context, ticket contracts.TicketSnapshot,
 	if message == "" {
 		return "", fmt.Errorf("commit message is required")
 	}
+	branch, err := s.currentBranch(ctx)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(branch) == "" {
+		return "", fmt.Errorf("git commit requires a checked-out branch")
+	}
+	if err := s.ensureNoNestedRepoAmbiguity(repo.Root); err != nil {
+		return "", err
+	}
 	if !strings.HasPrefix(message, ticket.ID+":") {
 		message = fmt.Sprintf("%s: %s", ticket.ID, message)
 	}
@@ -113,6 +125,17 @@ func (s SCMService) Commit(ctx context.Context, ticket contracts.TicketSnapshot,
 		return "", err
 	}
 	return strings.TrimSpace(head), nil
+}
+
+func (s SCMService) currentBranch(ctx context.Context) (string, error) {
+	branch, err := s.gitOutput(ctx, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "not a git repository") {
+			return "", err
+		}
+		return "", nil
+	}
+	return strings.TrimSpace(branch), nil
 }
 
 func (s SCMService) ContextForTicket(ctx context.Context, ticket contracts.TicketSnapshot) (GitContextView, error) {
@@ -156,6 +179,47 @@ func (s SCMService) gitOutput(ctx context.Context, args ...string) (string, erro
 		return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), msg)
 	}
 	return stdout.String(), nil
+}
+
+func (s SCMService) ensureNoNestedRepoAmbiguity(repoRoot string) error {
+	root := canonicalPath(filepath.Clean(s.Root))
+	repoGitDir := filepath.Join(canonicalPath(filepath.Clean(repoRoot)), ".git")
+	var nested string
+	walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == filepath.Join(root, ".tracker") && entry.IsDir() {
+			return filepath.SkipDir
+		}
+		if entry.Name() != ".git" {
+			return nil
+		}
+		if filepath.Clean(path) == repoGitDir {
+			return nil
+		}
+		nested = path
+		return fs.SkipAll
+	})
+	if walkErr != nil && walkErr != fs.SkipAll {
+		return fmt.Errorf("scan nested git repos: %w", walkErr)
+	}
+	if nested != "" {
+		rel, err := filepath.Rel(root, nested)
+		if err != nil {
+			rel = nested
+		}
+		return fmt.Errorf("nested git repo detected at %s; commit from the repo containing the workspace root", rel)
+	}
+	return nil
+}
+
+func canonicalPath(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path
+	}
+	return filepath.Clean(resolved)
 }
 
 var slugPattern = regexp.MustCompile(`[^a-z0-9]+`)

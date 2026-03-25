@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
@@ -122,7 +121,6 @@ func uniqueTicketIDs(ticketIDs []string) []string {
 		seen[trimmed] = struct{}{}
 		normalized = append(normalized, trimmed)
 	}
-	slices.Sort(normalized)
 	return normalized
 }
 
