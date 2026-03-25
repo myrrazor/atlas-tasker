@@ -27,38 +27,47 @@ func (fn notifierFunc) Notify(ctx context.Context, event contracts.Event) error 
 }
 
 type NotificationDelivery struct {
-	Attempt   int             `json:"attempt"`
-	Delivered bool            `json:"delivered"`
-	Error     string          `json:"error,omitempty"`
-	Event     contracts.Event `json:"event"`
-	Sink      string          `json:"sink"`
-	Timestamp time.Time       `json:"timestamp"`
+	Attempt    int               `json:"attempt"`
+	Delivered  bool              `json:"delivered"`
+	Error      string            `json:"error,omitempty"`
+	Event      contracts.Event   `json:"event"`
+	Recipients []contracts.Actor `json:"recipients,omitempty"`
+	Targets    []string          `json:"targets,omitempty"`
+	Sink       string            `json:"sink"`
+	Timestamp  time.Time         `json:"timestamp"`
 }
 
 type notificationPayload struct {
-	Event       contracts.Event `json:"event"`
-	DeliveredAt time.Time       `json:"delivered_at"`
+	Event       contracts.Event   `json:"event"`
+	DeliveredAt time.Time         `json:"delivered_at"`
+	Recipients  []contracts.Actor `json:"recipients,omitempty"`
+	Targets     []string          `json:"targets,omitempty"`
 }
 
 type deliverySink struct {
 	name    string
 	retries int
-	deliver func(context.Context, contracts.Event) error
+	deliver func(context.Context, notificationPayload) error
 }
 
 type deliveryNotifier struct {
 	deadLetterPath string
 	logPath        string
+	resolver       SubscriptionResolver
 	sinks          []deliverySink
 }
 
-func BuildNotifier(root string, cfg contracts.TrackerConfig, stderr io.Writer) (Notifier, error) {
+func BuildNotifier(root string, cfg contracts.TrackerConfig, stderr io.Writer, resolver SubscriptionResolver) (Notifier, error) {
 	sinks := make([]deliverySink, 0, 3)
 	if cfg.Notifications.Terminal && stderr != nil {
 		sinks = append(sinks, deliverySink{
 			name: "terminal",
-			deliver: func(_ context.Context, event contracts.Event) error {
-				_, err := fmt.Fprintf(stderr, "[tracker] %s %s %s\n", event.Type, event.TicketID, strings.TrimSpace(event.Reason))
+			deliver: func(_ context.Context, payload notificationPayload) error {
+				recipients := ""
+				if len(payload.Recipients) > 0 {
+					recipients = fmt.Sprintf(" -> %s", strings.Join(actorsToStrings(payload.Recipients), ","))
+				}
+				_, err := fmt.Fprintf(stderr, "[tracker]%s %s %s %s\n", recipients, payload.Event.Type, payload.Event.TicketID, strings.TrimSpace(payload.Event.Reason))
 				return err
 			},
 		})
@@ -67,7 +76,7 @@ func BuildNotifier(root string, cfg contracts.TrackerConfig, stderr io.Writer) (
 		path := resolveNotifyPath(root, cfg.Notifications.FilePath)
 		sinks = append(sinks, deliverySink{
 			name: "file",
-			deliver: func(_ context.Context, event contracts.Event) error {
+			deliver: func(_ context.Context, payload notificationPayload) error {
 				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 					return err
 				}
@@ -76,7 +85,7 @@ func BuildNotifier(root string, cfg contracts.TrackerConfig, stderr io.Writer) (
 					return err
 				}
 				defer file.Close()
-				raw, err := json.Marshal(event)
+				raw, err := json.Marshal(payload.Event)
 				if err != nil {
 					return err
 				}
@@ -93,8 +102,7 @@ func BuildNotifier(root string, cfg contracts.TrackerConfig, stderr io.Writer) (
 		sinks = append(sinks, deliverySink{
 			name:    "webhook",
 			retries: cfg.Notifications.WebhookRetries,
-			deliver: func(ctx context.Context, event contracts.Event) error {
-				payload := notificationPayload{Event: event, DeliveredAt: time.Now().UTC()}
+			deliver: func(ctx context.Context, payload notificationPayload) error {
 				raw, err := json.Marshal(payload)
 				if err != nil {
 					return err
@@ -126,12 +134,26 @@ func BuildNotifier(root string, cfg contracts.TrackerConfig, stderr io.Writer) (
 		sinks:          sinks,
 		logPath:        resolveNotifyPath(root, cfg.Notifications.DeliveryLogPath),
 		deadLetterPath: resolveNotifyPath(root, cfg.Notifications.DeadLetterPath),
+		resolver:       resolver,
 	}, nil
 }
 
 func (n deliveryNotifier) Notify(ctx context.Context, event contracts.Event) error {
-	if !shouldNotify(event.Type) {
+	audience, err := n.resolver.Audience(ctx, event)
+	if err != nil {
+		if !shouldNotify(event.Type) {
+			return nil
+		}
+		audience = SubscriptionAudience{}
+	}
+	if !shouldDeliver(event.Type, audience) {
 		return nil
+	}
+	payload := notificationPayload{
+		Event:       event,
+		DeliveredAt: time.Now().UTC(),
+		Recipients:  audience.Recipients,
+		Targets:     audience.Targets,
 	}
 	var errs []error
 	for _, sink := range n.sinks {
@@ -141,14 +163,16 @@ func (n deliveryNotifier) Notify(ctx context.Context, event contracts.Event) err
 		}
 		var lastErr error
 		for attempt := 1; attempt <= attempts; attempt++ {
-			lastErr = sink.deliver(ctx, event)
+			lastErr = sink.deliver(ctx, payload)
 			record := NotificationDelivery{
-				Attempt:   attempt,
-				Delivered: lastErr == nil,
-				Error:     errorString(lastErr),
-				Event:     event,
-				Sink:      sink.name,
-				Timestamp: time.Now().UTC(),
+				Attempt:    attempt,
+				Delivered:  lastErr == nil,
+				Error:      errorString(lastErr),
+				Event:      event,
+				Recipients: audience.Recipients,
+				Targets:    audience.Targets,
+				Sink:       sink.name,
+				Timestamp:  time.Now().UTC(),
 			}
 			_ = appendNotificationRecord(n.logPath, record)
 			if lastErr == nil {
@@ -158,12 +182,14 @@ func (n deliveryNotifier) Notify(ctx context.Context, event contracts.Event) err
 		if lastErr != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", sink.name, lastErr))
 			_ = appendNotificationRecord(n.deadLetterPath, NotificationDelivery{
-				Attempt:   attempts,
-				Delivered: false,
-				Error:     lastErr.Error(),
-				Event:     event,
-				Sink:      sink.name,
-				Timestamp: time.Now().UTC(),
+				Attempt:    attempts,
+				Delivered:  false,
+				Error:      lastErr.Error(),
+				Event:      event,
+				Recipients: audience.Recipients,
+				Targets:    audience.Targets,
+				Sink:       sink.name,
+				Timestamp:  time.Now().UTC(),
 			})
 		}
 	}
@@ -239,6 +265,10 @@ func errorString(err error) string {
 	return err.Error()
 }
 
+func shouldDeliver(kind contracts.EventType, audience SubscriptionAudience) bool {
+	return shouldNotify(kind) || len(audience.Recipients) > 0
+}
+
 func shouldNotify(kind contracts.EventType) bool {
 	switch kind {
 	case contracts.EventTicketLeaseExpired,
@@ -253,4 +283,12 @@ func shouldNotify(kind contracts.EventType) bool {
 	default:
 		return false
 	}
+}
+
+func actorsToStrings(values []contracts.Actor) []string {
+	items := make([]string, 0, len(values))
+	for _, value := range values {
+		items = append(items, string(value))
+	}
+	return items
 }

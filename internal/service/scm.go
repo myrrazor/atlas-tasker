@@ -121,10 +121,18 @@ func (s SCMService) ContextForTicket(ctx context.Context, ticket contracts.Ticke
 		return GitContextView{}, err
 	}
 	if !repo.Present {
-		return GitContextView{}, nil
+		ghView, err := GHService{Root: s.Root}.ContextForTicket(ctx, ticket, "")
+		if err != nil {
+			return GitContextView{}, err
+		}
+		return GitContextView{GitHub: ghView}, nil
 	}
 	suggested := s.SuggestedBranch(ticket)
 	refs, err := s.TicketRefs(ctx, ticket.ID)
+	if err != nil {
+		return GitContextView{}, err
+	}
+	ghView, err := GHService{Root: s.Root}.ContextForTicket(ctx, ticket, suggested)
 	if err != nil {
 		return GitContextView{}, err
 	}
@@ -135,6 +143,7 @@ func (s SCMService) ContextForTicket(ctx context.Context, ticket contracts.Ticke
 		SuggestedBranch:      suggested,
 		CurrentBranchMatches: branch != "" && strings.Contains(branch, id),
 		Refs:                 refs,
+		GitHub:               ghView,
 	}, nil
 }
 

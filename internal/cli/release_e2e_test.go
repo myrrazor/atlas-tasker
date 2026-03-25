@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
 	"github.com/myrrazor/atlas-tasker/internal/testutil"
 )
@@ -184,6 +185,76 @@ func TestFixtureUpgradeRepairReindexAndIntegrations(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "CLAUDE.md")); err != nil {
 		t.Fatalf("expected CLAUDE.md after install: %v", err)
+	}
+}
+
+func TestDoctorRepairIsIdempotentAfterJournalReplayAndProjectionCorruption(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Repair me", "--type", "task", "--actor", "human:owner")
+
+	root := mustGetwd(t)
+	store := mdstore.TicketStore{RootDir: root}
+	ticket, err := store.GetTicket(context.Background(), "APP-1")
+	if err != nil {
+		t.Fatalf("load ticket: %v", err)
+	}
+	now := time.Now().UTC()
+	ticket.Status = contracts.StatusReady
+	ticket.UpdatedAt = now
+	if err := store.UpdateTicket(context.Background(), ticket); err != nil {
+		t.Fatalf("update ticket: %v", err)
+	}
+	journal := service.MutationJournal{Root: root, Clock: func() time.Time { return now }}
+	entry := service.MutationJournalEntry{
+		Purpose:       "repair replay",
+		CanonicalKind: "ticket_snapshot",
+		Event: contracts.Event{
+			EventID:       2,
+			Timestamp:     now,
+			Actor:         contracts.Actor("human:owner"),
+			Type:          contracts.EventTicketUpdated,
+			Project:       "APP",
+			TicketID:      "APP-1",
+			Payload:       ticket,
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		},
+		Stage: service.MutationStageCanonicalWritten,
+	}
+	if err := testutil.SeedPendingMutationJournal(root, journal, entry); err != nil {
+		t.Fatalf("seed pending journal: %v", err)
+	}
+	if err := testutil.CorruptProjection(root); err != nil {
+		t.Fatalf("corrupt projection: %v", err)
+	}
+
+	first := must("doctor", "--repair", "--json")
+	second := must("doctor", "--repair", "--json")
+	if !strings.Contains(first, "\"repair_pending\": 1") {
+		t.Fatalf("expected first repair to see one pending journal entry: %s", first)
+	}
+	if !strings.Contains(second, "\"repair_pending\": 0") {
+		t.Fatalf("expected second repair to be idempotent: %s", second)
+	}
+
+	history := must("ticket", "history", "APP-1", "--json")
+	if strings.Count(history, "\"event_id\": 2") != 1 {
+		t.Fatalf("expected replayed event to exist exactly once: %s", history)
+	}
+	board := must("board", "--pretty")
+	if !strings.Contains(board, "APP-1") {
+		t.Fatalf("expected board to recover after repair: %s", board)
 	}
 }
 

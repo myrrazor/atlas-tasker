@@ -98,6 +98,72 @@ type NextView struct {
 	Entries []NextEntry     `json:"entries"`
 }
 
+type SavedViewResult struct {
+	View    contracts.SavedView        `json:"view"`
+	Actor   contracts.Actor            `json:"actor,omitempty"`
+	Board   *BoardViewModel            `json:"board,omitempty"`
+	Queue   *QueueView                 `json:"queue,omitempty"`
+	Next    *NextView                  `json:"next,omitempty"`
+	Tickets []contracts.TicketSnapshot `json:"tickets,omitempty"`
+}
+
+type BulkOperationKind string
+
+const (
+	BulkOperationMove          BulkOperationKind = "move"
+	BulkOperationAssign        BulkOperationKind = "assign"
+	BulkOperationRequestReview BulkOperationKind = "request_review"
+	BulkOperationComplete      BulkOperationKind = "complete"
+	BulkOperationClaim         BulkOperationKind = "claim"
+	BulkOperationRelease       BulkOperationKind = "release"
+)
+
+type BulkOperation struct {
+	Kind      BulkOperationKind `json:"kind"`
+	Actor     contracts.Actor   `json:"actor"`
+	Assignee  contracts.Actor   `json:"assignee,omitempty"`
+	Status    contracts.Status  `json:"status,omitempty"`
+	Reason    string            `json:"reason,omitempty"`
+	TicketIDs []string          `json:"ticket_ids"`
+	DryRun    bool              `json:"dry_run"`
+	Confirm   bool              `json:"confirm"`
+	BatchID   string            `json:"batch_id,omitempty"`
+}
+
+type BulkPreview struct {
+	Kind        BulkOperationKind `json:"kind"`
+	Actor       contracts.Actor   `json:"actor"`
+	Assignee    contracts.Actor   `json:"assignee,omitempty"`
+	Status      contracts.Status  `json:"status,omitempty"`
+	TicketIDs   []string          `json:"ticket_ids"`
+	TicketCount int               `json:"ticket_count"`
+	DryRun      bool              `json:"dry_run"`
+}
+
+type BulkTicketResult struct {
+	TicketID string                    `json:"ticket_id"`
+	OK       bool                      `json:"ok"`
+	DryRun   bool                      `json:"dry_run"`
+	Code     string                    `json:"code,omitempty"`
+	Error    string                    `json:"error,omitempty"`
+	Reason   string                    `json:"reason,omitempty"`
+	Ticket   *contracts.TicketSnapshot `json:"ticket,omitempty"`
+}
+
+type BulkSummary struct {
+	Succeeded int `json:"succeeded"`
+	Failed    int `json:"failed"`
+	Skipped   int `json:"skipped"`
+	Total     int `json:"total"`
+}
+
+type BulkOperationResult struct {
+	BatchID string             `json:"batch_id"`
+	Preview BulkPreview        `json:"preview"`
+	Summary BulkSummary        `json:"summary"`
+	Results []BulkTicketResult `json:"results"`
+}
+
 type GitRepoView struct {
 	Branch  string `json:"branch,omitempty"`
 	Dirty   bool   `json:"dirty"`
@@ -111,9 +177,32 @@ type GitCommitView struct {
 	Subject    string    `json:"subject"`
 }
 
+type GitHubCapabilityView struct {
+	Authenticated bool   `json:"authenticated"`
+	Installed     bool   `json:"installed"`
+	Repo          string `json:"repo,omitempty"`
+}
+
+type GitHubPRView struct {
+	BaseRef string `json:"base_ref,omitempty"`
+	Draft   bool   `json:"draft"`
+	Number  int    `json:"number"`
+	HeadRef string `json:"head_ref,omitempty"`
+	State   string `json:"state,omitempty"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+}
+
+type GitHubContextView struct {
+	Capability     GitHubCapabilityView `json:"capability"`
+	PullRequests   []GitHubPRView       `json:"pull_requests,omitempty"`
+	SuggestedTitle string               `json:"suggested_title,omitempty"`
+}
+
 type GitContextView struct {
-	CurrentBranchMatches bool            `json:"current_branch_matches"`
-	Repo                 GitRepoView     `json:"repo"`
-	SuggestedBranch      string          `json:"suggested_branch,omitempty"`
-	Refs                 []GitCommitView `json:"refs,omitempty"`
+	CurrentBranchMatches bool              `json:"current_branch_matches"`
+	GitHub               GitHubContextView `json:"github,omitempty"`
+	Repo                 GitRepoView       `json:"repo"`
+	SuggestedBranch      string            `json:"suggested_branch,omitempty"`
+	Refs                 []GitCommitView   `json:"refs,omitempty"`
 }
