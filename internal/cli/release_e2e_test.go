@@ -268,7 +268,7 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 	distDir := t.TempDir()
 	workDir := t.TempDir()
 	binDir := t.TempDir()
-	version := "v1.3.0-rc1"
+	version := "v1.4.0-rc1"
 	archive := filepath.Join(distDir, packagedArchiveName(version))
 
 	build := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(distDir, "tracker"), "./cmd/tracker")
@@ -306,13 +306,174 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 		return string(output)
 	}
 
+	gitRunInDir(t, workDir, "init", "-b", "main")
+	gitRunInDir(t, workDir, "config", "user.email", "atlas@example.com")
+	gitRunInDir(t, workDir, "config", "user.name", "Atlas")
+	if err := os.WriteFile(filepath.Join(workDir, "README.md"), []byte("# atlas\n"), 0o644); err != nil {
+		t.Fatalf("write readme: %v", err)
+	}
+	gitRunInDir(t, workDir, "add", "README.md")
+	gitRunInDir(t, workDir, "commit", "-m", "init")
+
 	runInstalled("init")
 	runInstalled("project", "create", "APP", "App Project")
-	runInstalled("ticket", "create", "--project", "APP", "--title", "Smoke", "--type", "task", "--actor", "human:owner")
+	runInstalled("ticket", "create", "--project", "APP", "--title", "Smoke", "--type", "task", "--reviewer", "agent:reviewer-1", "--actor", "human:owner")
 	runInstalled("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
-	queue := runInstalled("queue", "--actor", "human:owner", "--json")
-	if !strings.Contains(queue, "APP-1") {
-		t.Fatalf("expected packaged queue output to include APP-1: %s", queue)
+	runInstalled("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")
+
+	dispatchJSON := runInstalled("run", "dispatch", "APP-1", "--agent", "builder-1", "--actor", "human:owner", "--json")
+	var dispatch struct {
+		Payload struct {
+			RunID string `json:"run_id"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(dispatchJSON), &dispatch); err != nil {
+		t.Fatalf("parse packaged dispatch: %v\n%s", err, dispatchJSON)
+	}
+	runID := dispatch.Payload.RunID
+	runInstalled("run", "launch", runID, "--actor", "human:owner")
+	runInstalled("run", "start", runID, "--actor", "human:owner")
+	runInstalled("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
+	runInstalled("run", "checkpoint", runID, "--title", "Smoke checkpoint", "--body", "runtime + worktree ready", "--actor", "human:owner")
+	runInstalled("run", "evidence", "add", runID, "--type", "note", "--title", "Smoke evidence", "--body", "packaged rehearsal", "--actor", "human:owner")
+	runInstalled("run", "handoff", runID, "--next-actor", "agent:reviewer-1", "--next-gate", "review", "--actor", "human:owner")
+
+	approvalsJSON := runInstalled("approvals", "--json")
+	var approvals struct {
+		Items []struct {
+			Gate struct {
+				GateID string `json:"gate_id"`
+			} `json:"gate"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(approvalsJSON), &approvals); err != nil {
+		t.Fatalf("parse packaged approvals: %v\n%s", err, approvalsJSON)
+	}
+	if len(approvals.Items) == 0 {
+		t.Fatalf("expected packaged approval gate, got %s", approvalsJSON)
+	}
+	gateID := approvals.Items[0].Gate.GateID
+	runInstalled("gate", "approve", gateID, "--actor", "agent:reviewer-1", "--reason", "packaged rehearsal")
+	runInstalled("run", "complete", runID, "--actor", "human:owner", "--summary", "smoke complete")
+	runInstalled("ticket", "request-review", "APP-1", "--actor", "agent:builder-1")
+	runInstalled("ticket", "approve", "APP-1", "--actor", "agent:reviewer-1")
+	runInstalled("ticket", "complete", "APP-1", "--actor", "human:owner")
+	runInstalled("run", "cleanup", runID, "--actor", "human:owner")
+
+	inspect := runInstalled("inspect", "APP-1", "--actor", "human:owner", "--json")
+	if !strings.Contains(inspect, "\"status\": \"done\"") {
+		t.Fatalf("expected packaged inspect to show done: %s", inspect)
+	}
+	if _, err := os.Stat(filepath.Join(workDir, ".tracker", "runtime", runID)); !os.IsNotExist(err) {
+		t.Fatalf("expected packaged cleanup to remove runtime dir, err=%v", err)
+	}
+}
+
+func TestOrchestrationFlowSurvivesReindexAndMatchesReadSurfaces(t *testing.T) {
+	withTempWorkspace(t)
+	gitRunCLI(t, "init", "-b", "main")
+	gitRunCLI(t, "config", "user.email", "atlas@example.com")
+	gitRunCLI(t, "config", "user.name", "Atlas")
+	writeGitFile(t, "README.md", "# atlas\n")
+	gitRunCLI(t, "add", "README.md")
+	gitRunCLI(t, "commit", "-m", "init")
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Orchestrate", "--type", "task", "--reviewer", "agent:reviewer-1", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")
+
+	dispatchJSON := must("run", "dispatch", "APP-1", "--agent", "builder-1", "--actor", "human:owner", "--json")
+	var dispatch struct {
+		Payload struct {
+			RunID string `json:"run_id"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(dispatchJSON), &dispatch); err != nil {
+		t.Fatalf("parse dispatch: %v\n%s", err, dispatchJSON)
+	}
+	runID := dispatch.Payload.RunID
+
+	must("run", "launch", runID, "--actor", "human:owner")
+	must("run", "start", runID, "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
+	must("run", "checkpoint", runID, "--title", "Checkpoint", "--body", "worktree ready", "--actor", "human:owner")
+	must("run", "evidence", "add", runID, "--type", "note", "--title", "Implementation note", "--body", "orchestration proof", "--actor", "human:owner")
+	must("run", "handoff", runID, "--next-actor", "agent:reviewer-1", "--next-gate", "review", "--next-status", "in_review", "--actor", "human:owner")
+
+	approvalsJSON := must("approvals", "--json")
+	inboxJSON := must("inbox", "--json")
+	runViewJSON := must("run", "view", runID, "--json")
+	inspectJSON := must("inspect", "APP-1", "--actor", "human:owner", "--json")
+	evidenceJSON := must("evidence", "list", runID, "--json")
+	if !strings.Contains(approvalsJSON, "gate_") || !strings.Contains(inboxJSON, "gate:") {
+		t.Fatalf("expected gate to appear in approvals and inbox\napprovals=%s\ninbox=%s", approvalsJSON, inboxJSON)
+	}
+	if !strings.Contains(runViewJSON, runID) || !strings.Contains(evidenceJSON, "Implementation note") || !strings.Contains(inspectJSON, "APP-1") {
+		t.Fatalf("expected orchestration surfaces to agree\nrun=%s\nevidence=%s\ninspect=%s", runViewJSON, evidenceJSON, inspectJSON)
+	}
+
+	var approvals struct {
+		Items []struct {
+			Gate struct {
+				GateID string `json:"gate_id"`
+			} `json:"gate"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(approvalsJSON), &approvals); err != nil {
+		t.Fatalf("parse approvals: %v\n%s", err, approvalsJSON)
+	}
+	if len(approvals.Items) == 0 {
+		t.Fatalf("expected approval items: %s", approvalsJSON)
+	}
+	gateID := approvals.Items[0].Gate.GateID
+
+	var runView struct {
+		Payload struct {
+			Handoffs []struct {
+				HandoffID string `json:"handoff_id"`
+			} `json:"handoffs"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(runViewJSON), &runView); err != nil {
+		t.Fatalf("parse run view: %v\n%s", err, runViewJSON)
+	}
+	if len(runView.Payload.Handoffs) == 0 {
+		t.Fatalf("expected handoff in run detail: %s", runViewJSON)
+	}
+	handoffID := runView.Payload.Handoffs[0].HandoffID
+
+	must("gate", "approve", gateID, "--actor", "agent:reviewer-1", "--reason", "looks good")
+	must("run", "complete", runID, "--actor", "human:owner", "--summary", "implemented")
+	must("ticket", "request-review", "APP-1", "--actor", "agent:builder-1")
+	must("ticket", "approve", "APP-1", "--actor", "agent:reviewer-1")
+	must("ticket", "complete", "APP-1", "--actor", "human:owner")
+	must("run", "cleanup", runID, "--actor", "human:owner")
+	must("reindex")
+
+	postRun := must("run", "view", runID, "--json")
+	postEvidence := must("evidence", "list", runID, "--json")
+	postHandoff := must("handoff", "view", handoffID, "--json")
+	postWorktree := must("worktree", "view", runID, "--json")
+	postInspect := must("inspect", "APP-1", "--actor", "human:owner", "--json")
+	if !strings.Contains(postRun, "\"status\": \"cleaned_up\"") || !strings.Contains(postInspect, "\"status\": \"done\"") {
+		t.Fatalf("expected final run/ticket states to survive reindex\nrun=%s\ninspect=%s", postRun, postInspect)
+	}
+	if !strings.Contains(postEvidence, "Implementation note") || !strings.Contains(postHandoff, handoffID) {
+		t.Fatalf("expected evidence and handoff history to survive reindex\nevidence=%s\nhandoff=%s", postEvidence, postHandoff)
+	}
+	if !strings.Contains(postWorktree, "\"present\": false") {
+		t.Fatalf("expected cleaned worktree to stay absent after reindex: %s", postWorktree)
 	}
 }
 
@@ -562,5 +723,15 @@ func runtimeArch(arch string) string {
 		return "arm64"
 	default:
 		return arch
+	}
+}
+
+func gitRunInDir(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, output)
 	}
 }
