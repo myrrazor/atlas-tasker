@@ -69,3 +69,7 @@ func randomID() string {
 	}
 	return hex.EncodeToString(raw[:])
 }
+
+func NewOpaqueID() string {
+	return randomID()
+}
