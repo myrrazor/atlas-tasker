@@ -393,6 +393,154 @@ func TestLongSessionSoakKeepsReadSurfacesConsistent(t *testing.T) {
 	}
 }
 
+func TestReindexDoesNotRerunAutomation(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Replay safe", "--type", "task", "--actor", "human:owner")
+	must("automation", "create", "comment-on-comment", "--on", "ticket.commented", "--action", "comment:automation follow-up")
+	must("ticket", "comment", "APP-1", "--body", "seed", "--actor", "agent:builder-1")
+
+	historyBefore := must("ticket", "history", "APP-1", "--json")
+	if strings.Count(historyBefore, "\"type\": \"ticket.commented\"") != 2 {
+		t.Fatalf("expected one human comment and one automation comment before reindex: %s", historyBefore)
+	}
+
+	must("reindex")
+
+	historyAfter := must("ticket", "history", "APP-1", "--json")
+	if strings.Count(historyAfter, "\"type\": \"ticket.commented\"") != 2 {
+		t.Fatalf("expected reindex to avoid rerunning automation: %s", historyAfter)
+	}
+}
+
+func TestDoctorRepairDoesNotDuplicateNotificationsAndUsesWorkspaceLock(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("config", "set", "notifications.file_enabled", "true")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Repair without spam", "--type", "task", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
+	must("ticket", "request-review", "APP-1", "--actor", "human:owner")
+
+	root := mustGetwd(t)
+	before := must("notify", "log", "--json")
+
+	store := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
+	ticket, err := store.GetTicket(context.Background(), "APP-1")
+	if err != nil {
+		t.Fatalf("load ticket: %v", err)
+	}
+	now := time.Now().UTC()
+	ticket.Status = contracts.StatusReady
+	ticket.UpdatedAt = now
+	if err := store.UpdateTicket(context.Background(), ticket); err != nil {
+		t.Fatalf("update ticket: %v", err)
+	}
+	journal := service.MutationJournal{Root: root, Clock: func() time.Time { return now }}
+	entry := service.MutationJournalEntry{
+		Purpose:       "repair replay",
+		CanonicalKind: "ticket_snapshot",
+		Event: contracts.Event{
+			EventID:       3,
+			Timestamp:     now,
+			Actor:         contracts.Actor("human:owner"),
+			Type:          contracts.EventTicketUpdated,
+			Project:       "APP",
+			TicketID:      "APP-1",
+			Payload:       ticket,
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		},
+		Stage: service.MutationStageCanonicalWritten,
+	}
+	if err := testutil.SeedPendingMutationJournal(root, journal, entry); err != nil {
+		t.Fatalf("seed pending journal: %v", err)
+	}
+	if err := testutil.CorruptProjection(root); err != nil {
+		t.Fatalf("corrupt projection: %v", err)
+	}
+
+	locks := service.FileLockManager{Root: root, Wait: time.Second, RetryEvery: 10 * time.Millisecond}
+	unlock, err := locks.Acquire(context.Background(), "hold doctor repair lock")
+	if err != nil {
+		t.Fatalf("acquire lock: %v", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = unlock()
+		close(done)
+	}()
+	start := time.Now()
+	must("doctor", "--repair", "--json")
+	<-done
+	if time.Since(start) < 100*time.Millisecond {
+		t.Fatalf("expected doctor --repair to wait on the workspace lock")
+	}
+	must("doctor", "--repair", "--json")
+
+	after := must("notify", "log", "--json")
+	if before != after {
+		t.Fatalf("expected repair to avoid duplicate notifications\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+func TestReindexUsesWorkspaceLock(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+
+	root := mustGetwd(t)
+	locks := service.FileLockManager{Root: root, Wait: time.Second, RetryEvery: 10 * time.Millisecond}
+	unlock, err := locks.Acquire(context.Background(), "hold reindex lock")
+	if err != nil {
+		t.Fatalf("acquire lock: %v", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = unlock()
+		close(done)
+	}()
+	start := time.Now()
+	must("reindex")
+	<-done
+	if time.Since(start) < 100*time.Millisecond {
+		t.Fatalf("expected reindex to wait on the workspace lock")
+	}
+}
+
 func mustGetwd(t *testing.T) string {
 	t.Helper()
 	cwd, err := os.Getwd()
