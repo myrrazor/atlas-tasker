@@ -12,5 +12,5 @@ ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/testutil	0.148s
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	0.526s
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	0.140s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	0.486s

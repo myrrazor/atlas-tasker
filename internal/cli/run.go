@@ -43,6 +43,14 @@ func newRunCommand() *cobra.Command {
 	addMutationFlags(attach, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(attach, &outputFlags{})
 
+	open := &cobra.Command{Use: "open <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Show runtime artifact paths for a run", RunE: runRunOpen}
+	addReadOutputFlags(open, &outputFlags{})
+
+	launch := &cobra.Command{Use: "launch <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Write runtime launch artifacts for a run", RunE: runRunLaunch}
+	launch.Flags().Bool("refresh", false, "Regenerate runtime files even if they already exist")
+	addMutationFlags(launch, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(launch, &outputFlags{})
+
 	complete := &cobra.Command{Use: "complete <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Complete a run", RunE: runRunComplete}
 	complete.Flags().String("summary", "", "Completion summary")
 	addMutationFlags(complete, &mutationFlags{Actor: "human:owner"})
@@ -90,7 +98,7 @@ func newRunCommand() *cobra.Command {
 	addMutationFlags(cleanup, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(cleanup, &outputFlags{})
 
-	cmd.AddCommand(list, view, dispatch, start, attach, checkpoint, evidence, handoff, complete, fail, abort, cleanup)
+	cmd.AddCommand(list, view, dispatch, start, attach, open, launch, checkpoint, evidence, handoff, complete, fail, abort, cleanup)
 	return cmd
 }
 
@@ -180,6 +188,38 @@ func runRunAttach(cmd *cobra.Command, args []string) error {
 		replace, _ := cmd.Flags().GetBool("replace")
 		return workspace.actions.AttachRun(ctx, args[0], contracts.AgentProvider(strings.TrimSpace(providerRaw)), sessionRef, replace, actor, reason)
 	})
+}
+
+func runRunOpen(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.RunOpen(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatRunLaunchManifest(view)
+	data := map[string]any{"kind": "run_launch_manifest", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runRunLaunch(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	refresh, _ := cmd.Flags().GetBool("refresh")
+	view, err := workspace.actions.LaunchRun(ctx, args[0], refresh)
+	if err != nil {
+		return err
+	}
+	pretty := formatRunLaunchManifest(view)
+	data := map[string]any{"kind": "run_launch_manifest", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
 func runRunComplete(cmd *cobra.Command, args []string) error {
@@ -503,4 +543,36 @@ func formatWorktreeList(items []service.WorktreeStatusView) string {
 
 func formatWorktreeDetail(item service.WorktreeStatusView) string {
 	return fmt.Sprintf("run=%s\npresent=%t\ndirty=%t\npath=%s\nbranch=%s", item.RunID, item.Present, item.Dirty, item.Path, item.BranchName)
+}
+
+func formatRunLaunchManifest(view service.RunLaunchManifestView) string {
+	lines := []string{
+		fmt.Sprintf("run=%s", view.RunID),
+		fmt.Sprintf("ticket=%s", view.TicketID),
+		fmt.Sprintf("agent=%s", view.AgentID),
+		fmt.Sprintf("runtime_dir=%s", view.RuntimeDir),
+		fmt.Sprintf("brief=%s", view.BriefPath),
+		fmt.Sprintf("context=%s", view.ContextPath),
+		fmt.Sprintf("codex_launch=%s", view.CodexLaunchPath),
+		fmt.Sprintf("claude_launch=%s", view.ClaudeLaunchPath),
+	}
+	if view.WorktreePath != "" {
+		lines = append(lines, "worktree="+view.WorktreePath)
+	}
+	if view.EvidenceDir != "" {
+		lines = append(lines, "evidence_dir="+view.EvidenceDir)
+	}
+	if len(view.Created) > 0 {
+		lines = append(lines, "", "created:")
+		for _, path := range view.Created {
+			lines = append(lines, "- "+path)
+		}
+	}
+	if len(view.Updated) > 0 {
+		lines = append(lines, "", "updated:")
+		for _, path := range view.Updated {
+			lines = append(lines, "- "+path)
+		}
+	}
+	return strings.Join(lines, "\n")
 }

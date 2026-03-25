@@ -51,6 +51,8 @@
 - `tracker run dispatch <TICKET-ID> --agent <AGENT-ID> [--kind <work|review|qa|release>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run start <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run attach <RUN-ID> --provider <PROVIDER> --session-ref <REF> [--replace] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run open <RUN-ID>`
+- `tracker run launch <RUN-ID> [--refresh] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run complete <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run fail <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run abort <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
@@ -98,6 +100,8 @@ Behavior:
 - `tracker run dispatch <TICKET-ID> --agent <AGENT-ID> [--kind <work|review|qa|release>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run start <RUN-ID> [--summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run attach <RUN-ID> --provider <PROVIDER> --session-ref <REF> [--replace] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run open <RUN-ID>`
+- `tracker run launch <RUN-ID> [--refresh] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run checkpoint <RUN-ID> [--title <TEXT>] [--body <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run evidence add <RUN-ID> --type <TYPE> [--title <TEXT>] [--body <TEXT>] [--artifact <PATH>] [--supersedes <EVIDENCE-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run handoff <RUN-ID> [--open-question <TEXT>]... [--risk <TEXT>]... [--next-actor <ACTOR>] [--next-gate <KIND>] [--next-status <STATUS>] [--actor <ACTOR>] [--reason <TEXT>]`
@@ -111,6 +115,9 @@ Rules:
 - dispatch creates a run snapshot first, then the managed worktree and runtime directory
 - one active run per ticket is the default; parallel dispatch requires `allow_parallel_runs=true`
 - `run attach` is idempotent for the same provider/session pair
+- `run open` is read-only and only reports the canonical runtime, evidence, and worktree paths
+- `run launch` writes `brief.md`, `context.json`, `launch.codex.txt`, and `launch.claude.txt` under `.tracker/runtime/<run-id>/`
+- `run launch` is idempotent by default; `--refresh` rewrites stale runtime artifacts
 - cleanup is explicit and only allowed after `completed`, `failed`, or `aborted`
 - checkpoints and evidence mutate only the run snapshot/evidence bundle; they do not change ticket status by themselves
 - handoff packets are immutable markdown snapshots stored under `.tracker/handoffs/`
