@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
 
 func TestAcceptanceFlowWithRecovery(t *testing.T) {
@@ -68,7 +71,7 @@ func TestAcceptanceFlowWithRecovery(t *testing.T) {
 	}
 }
 
-func TestSlashParityForCoreCommands(t *testing.T) {
+func TestShellParityForCoreCommands(t *testing.T) {
 	withTempWorkspace(t)
 	if _, err := runCLI(t, "init"); err != nil {
 		t.Fatalf("init failed: %v", err)
@@ -82,12 +85,162 @@ func TestSlashParityForCoreCommands(t *testing.T) {
 		"/ticket history APP-1",
 	}
 	for _, slash := range commands {
-		args, err := ParseSlashCommand(slash)
+		runSlashShell(t, slash)
+	}
+}
+
+func TestShellParityForOrchestrationCommands(t *testing.T) {
+	withTempWorkspace(t)
+	gitRunCLI(t, "init", "-b", "main")
+	gitRunCLI(t, "config", "user.email", "atlas@example.com")
+	gitRunCLI(t, "config", "user.name", "Atlas")
+	writeGitFile(t, "README.md", "# atlas\n")
+	gitRunCLI(t, "add", "README.md")
+	gitRunCLI(t, "commit", "-m", "init")
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
 		if err != nil {
-			t.Fatalf("parse slash command failed: %v", err)
+			t.Fatalf("command failed %v: %v\noutput=%s", args, err, out)
 		}
-		if err := executeArgs(args); err != nil {
-			t.Fatalf("execute parsed slash args failed for %q: %v", slash, err)
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Shell runner", "--type", "task", "--reviewer", "agent:reviewer-1", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+
+	runSlashShell(t, `/agent create builder-1 --name "Builder One" --provider codex --capability go --actor human:owner`)
+	runSlashShell(t, `/agent list`)
+	runSlashShell(t, `/agent view builder-1`)
+	runSlashShell(t, `/agent eligible APP-1`)
+	runSlashShell(t, `/dispatch suggest APP-1`)
+	runSlashShell(t, `/dispatch queue`)
+	runSlashShell(t, `/dispatch run APP-1 --agent builder-1 --actor human:owner`)
+
+	runListOut := must("run", "list", "--json")
+	var runList struct {
+		Items []struct {
+			RunID string `json:"run_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(runListOut), &runList); err != nil {
+		t.Fatalf("parse run list: %v\nraw=%s", err, runListOut)
+	}
+	if len(runList.Items) != 1 || runList.Items[0].RunID == "" {
+		t.Fatalf("expected one dispatched run, got %#v", runList.Items)
+	}
+	runID := runList.Items[0].RunID
+
+	if err := os.WriteFile("proof.log", []byte("shell proof\n"), 0o644); err != nil {
+		t.Fatalf("write proof artifact: %v", err)
+	}
+
+	runSlashShell(t, "/run view "+runID)
+	runSlashShell(t, "/run start "+runID+" --actor human:owner")
+	runSlashShell(t, "/run attach "+runID+" --provider codex --session-ref sess-1 --actor human:owner")
+	runSlashShell(t, "/run open "+runID)
+	runSlashShell(t, "/run launch "+runID+" --actor human:owner")
+	runSlashShell(t, `/run checkpoint `+runID+` --title "shell checkpoint" --body "runtime ready" --actor human:owner`)
+	runSlashShell(t, `/run evidence add `+runID+` --type note --title "shell evidence" --body "captured from slash shell" --artifact proof.log --actor human:owner`)
+	runSlashShell(t, `/evidence list `+runID)
+
+	evidenceListOut := must("evidence", "list", runID, "--json")
+	var evidenceList struct {
+		Items []struct {
+			EvidenceID string `json:"evidence_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(evidenceListOut), &evidenceList); err != nil {
+		t.Fatalf("parse evidence list: %v\nraw=%s", err, evidenceListOut)
+	}
+	if len(evidenceList.Items) < 2 || evidenceList.Items[0].EvidenceID == "" {
+		t.Fatalf("expected evidence items, got %#v", evidenceList.Items)
+	}
+	evidenceID := evidenceList.Items[0].EvidenceID
+	runSlashShell(t, "/evidence view "+evidenceID)
+
+	runSlashShell(t, `/run handoff `+runID+` --next-actor agent:reviewer-1 --next-gate review --actor human:owner`)
+	runSlashShell(t, `/approvals`)
+	runSlashShell(t, `/inbox`)
+
+	approvalsOut := must("approvals", "--json")
+	var approvals struct {
+		Items []struct {
+			Gate struct {
+				GateID string `json:"gate_id"`
+			} `json:"gate"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(approvalsOut), &approvals); err != nil {
+		t.Fatalf("parse approvals: %v\nraw=%s", err, approvalsOut)
+	}
+	if len(approvals.Items) != 1 || approvals.Items[0].Gate.GateID == "" {
+		t.Fatalf("expected one approval gate, got %#v", approvals.Items)
+	}
+	gateID := approvals.Items[0].Gate.GateID
+
+	runViewOut := must("run", "view", runID, "--json")
+	var runView struct {
+		Payload struct {
+			Handoffs []struct {
+				HandoffID string `json:"handoff_id"`
+			} `json:"handoffs"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(runViewOut), &runView); err != nil {
+		t.Fatalf("parse run view: %v\nraw=%s", err, runViewOut)
+	}
+	if len(runView.Payload.Handoffs) != 1 || runView.Payload.Handoffs[0].HandoffID == "" {
+		t.Fatalf("expected one handoff, got %#v", runView.Payload.Handoffs)
+	}
+	handoffID := runView.Payload.Handoffs[0].HandoffID
+
+	runSlashShell(t, "/gate view "+gateID)
+	runSlashShell(t, "/inbox view gate:"+gateID)
+	runSlashShell(t, "/handoff view "+handoffID)
+	runSlashShell(t, "/handoff export "+handoffID)
+	runSlashShell(t, "/gate approve "+gateID+" --actor agent:reviewer-1")
+	runSlashShell(t, "/run complete "+runID+` --summary "shell done" --actor human:owner`)
+	runSlashShell(t, "/worktree view "+runID)
+	runSlashShell(t, "/worktree list")
+	runSlashShell(t, "/run cleanup "+runID+" --actor human:owner")
+	runSlashShell(t, "/worktree repair")
+	runSlashShell(t, "/worktree prune")
+
+	historyOut := must("ticket", "history", "APP-1", "--json")
+	var history struct {
+		Events []struct {
+			Type     string `json:"type"`
+			Metadata struct {
+				Surface contracts.EventSurface `json:"surface"`
+			} `json:"metadata"`
+		} `json:"events"`
+	}
+	if err := json.Unmarshal([]byte(historyOut), &history); err != nil {
+		t.Fatalf("parse ticket history: %v\nraw=%s", err, historyOut)
+	}
+	var sawShellRun bool
+	for _, event := range history.Events {
+		if event.Metadata.Surface == contracts.EventSurfaceShell && strings.HasPrefix(event.Type, "run.") {
+			sawShellRun = true
+			break
 		}
+	}
+	if !sawShellRun {
+		t.Fatalf("expected slash shell mutations to persist shell surface metadata on run events, got %s", historyOut)
+	}
+}
+
+func runSlashShell(t *testing.T, slash string) {
+	t.Helper()
+	args, err := ParseSlashCommand(slash)
+	if err != nil {
+		t.Fatalf("parse slash command %q failed: %v", slash, err)
+	}
+	if err := executeArgsWithSurface(args, contracts.EventSurfaceShell); err != nil {
+		t.Fatalf("execute slash command %q failed: %v", slash, err)
 	}
 }

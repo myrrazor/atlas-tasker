@@ -376,6 +376,15 @@ Slash command examples:
 - `/ticket move APP-1 in_review --actor agent:builder-1`
 - `/ticket history APP-1`
 - `/board`
+- `/agent eligible APP-1`
+- `/dispatch queue`
+- `/dispatch run APP-1 --agent builder-1 --actor human:owner`
+- `/run launch <RUN-ID> --actor human:owner`
+- `/worktree view <RUN-ID>`
+- `/approvals`
+- `/inbox view gate:<GATE-ID>`
+- `/handoff export <HANDOFF-ID>`
+- `/evidence view <EVIDENCE-ID>`
 
 ## TUI Shortcuts
 
