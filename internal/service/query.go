@@ -18,6 +18,7 @@ type QueryService struct {
 	Tickets    contracts.TicketStore
 	Agents     contracts.AgentStore
 	Runs       contracts.RunStore
+	Runbooks   contracts.RunbookStore
 	Events     contracts.EventLog
 	Projection contracts.ProjectionStore
 	Views      ViewStore
@@ -25,7 +26,7 @@ type QueryService struct {
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
-	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, Runs: RunStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
+	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
 }
 
 func (s *QueryService) now() time.Time {
@@ -127,6 +128,13 @@ func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (A
 		if missing := missingCapabilities(profile.Capabilities, ticket.RequiredCapabilities); len(missing) > 0 {
 			entry.Eligible = false
 			entry.ReasonCodes = append(entry.ReasonCodes, "missing_capability")
+		}
+		if runbook, stage, runbookErr := s.resolveRunbookForAgent(ctx, ticket, profile); runbookErr == nil {
+			entry.Runbook = runbook.Name
+			entry.Stage = stage
+		} else {
+			entry.Eligible = false
+			entry.ReasonCodes = append(entry.ReasonCodes, "runbook_requirement_unsatisfied")
 		}
 		if hasActiveRun && !ticket.AllowParallelRuns {
 			entry.Eligible = false

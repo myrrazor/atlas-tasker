@@ -17,6 +17,8 @@ type AgentEligibilityEntry struct {
 	Eligible    bool                   `json:"eligible"`
 	ReasonCodes []string               `json:"reason_codes,omitempty"`
 	ActiveRuns  int                    `json:"active_runs"`
+	Runbook     string                 `json:"runbook,omitempty"`
+	Stage       string                 `json:"stage,omitempty"`
 	Rank        int                    `json:"rank,omitempty"`
 }
 
@@ -36,15 +38,29 @@ type RunDetailView struct {
 }
 
 type DispatchSuggestion struct {
-	TicketID    string                  `json:"ticket_id"`
-	GeneratedAt time.Time               `json:"generated_at"`
-	Suggestions []AgentEligibilityEntry `json:"suggestions"`
+	TicketID         string                  `json:"ticket_id"`
+	GeneratedAt      time.Time               `json:"generated_at"`
+	AutoRouteAgentID string                  `json:"auto_route_agent_id,omitempty"`
+	Suggestions      []AgentEligibilityEntry `json:"suggestions"`
+}
+
+type DispatchQueueEntry struct {
+	Ticket      contracts.TicketSnapshot `json:"ticket"`
+	Suggestion  DispatchSuggestion       `json:"suggestion"`
+	GeneratedAt time.Time                `json:"generated_at"`
+}
+
+type DispatchQueueView struct {
+	GeneratedAt time.Time            `json:"generated_at"`
+	Entries     []DispatchQueueEntry `json:"entries"`
 }
 
 type DispatchResult struct {
 	TicketID     string    `json:"ticket_id"`
 	RunID        string    `json:"run_id,omitempty"`
 	AgentID      string    `json:"agent_id,omitempty"`
+	Runbook      string    `json:"runbook,omitempty"`
+	Stage        string    `json:"stage,omitempty"`
 	ReasonCodes  []string  `json:"reason_codes,omitempty"`
 	WorktreePath string    `json:"worktree_path,omitempty"`
 	GeneratedAt  time.Time `json:"generated_at"`
