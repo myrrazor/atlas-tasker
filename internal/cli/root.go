@@ -14,6 +14,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/domain"
 	"github.com/myrrazor/atlas-tasker/internal/integrations"
+	"github.com/myrrazor/atlas-tasker/internal/mcp"
 	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
@@ -63,6 +64,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newNotifyCommand())
 	root.AddCommand(newGitCommand())
 	root.AddCommand(newGitHubCommand())
+	root.AddCommand(newMCPCommand())
 	root.AddCommand(newViewsCommand())
 	root.AddCommand(newWatchCommand())
 	root.AddCommand(newUnwatchCommand())
@@ -301,6 +303,15 @@ func newGitHubCommand() *cobra.Command {
 		addReadOutputFlags(sub, &outputFlags{})
 	}
 	cmd.AddCommand(status, prs, createPR, importURL)
+	return cmd
+}
+
+func newMCPCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "mcp", Short: "Thin MCP adapter over Atlas services"}
+	schema := &cobra.Command{Use: "schema", Short: "Print the exported MCP tools", RunE: runMCPSchema}
+	addReadOutputFlags(schema, &outputFlags{})
+	serve := &cobra.Command{Use: "serve", Short: "Serve Atlas tools over stdio", RunE: runMCPServe}
+	cmd.AddCommand(schema, serve)
 	return cmd
 }
 
@@ -2423,6 +2434,30 @@ func runGHImportURL(cmd *cobra.Command, args []string) error {
 	}
 	payload := map[string]string{"ticket_id": args[0], "url": validated}
 	return writeCommandOutput(cmd, payload, fmt.Sprintf("## GitHub Reference Imported\n\n- Ticket: %s\n- URL: %s\n", args[0], validated), fmt.Sprintf("imported github ref for %s", args[0]))
+}
+
+func runMCPSchema(cmd *cobra.Command, _ []string) error {
+	payload := map[string]any{"tools": (mcp.Server{}).Tools()}
+	md := "## MCP Tools\n\n"
+	pretty := "mcp tools:\n"
+	for _, tool := range (mcp.Server{}).Tools() {
+		md += fmt.Sprintf("- `%s`: %s\n", tool.Name, tool.Description)
+		pretty += fmt.Sprintf("- %s\n", tool.Name)
+	}
+	return writeCommandOutput(cmd, payload, md, pretty)
+}
+
+func runMCPServe(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	server := mcp.Server{
+		Actions: workspace.actions,
+		Queries: workspace.queries,
+	}
+	return server.Serve(commandContext(cmd), cmd.InOrStdin(), cmd.OutOrStdout())
 }
 
 func runTemplatesList(cmd *cobra.Command, _ []string) error {

@@ -25,6 +25,8 @@
 - `tracker gh prs <ID>`
 - `tracker gh create-pr <ID> [--title <TEXT>] [--body <TEXT>] [--base <BRANCH>] [--draft] [--actor <ACTOR>]`
 - `tracker gh import-url <ID> --url <URL> [--actor <ACTOR>]`
+- `tracker mcp schema`
+- `tracker mcp serve`
 - `tracker views list`
 - `tracker views view <NAME>`
 - `tracker views save <NAME> --kind <board|search|queue|next> [flags]`
@@ -178,6 +180,17 @@ Notes:
 - `tracker gh prs` is best-effort and returns no PRs when GitHub context is unavailable for the current workspace
 - `tracker gh create-pr` requires a local git repo and a working `gh` session, then writes the created PR URL back into ticket history as a comment
 - `tracker gh import-url` accepts GitHub issue and pull request URLs only, and records the reference in ticket history as a comment
+
+## MCP
+
+- `tracker mcp schema`
+- `tracker mcp serve`
+
+Notes:
+
+- `tracker mcp schema` prints the exported tool list and input schemas
+- `tracker mcp serve` runs a thin stdio adapter over the existing Atlas query/action services
+- the adapter stays best-effort and local-first; it does not add a second source of truth or any MCP-only workflow state
 
 ## Automation
 
