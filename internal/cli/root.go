@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -15,7 +16,10 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/integrations"
 	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
+	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
+	sqlitestore "github.com/myrrazor/atlas-tasker/internal/storage/sqlite"
 	"github.com/myrrazor/atlas-tasker/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -1377,27 +1381,49 @@ func runProjectPolicySet(cmd *cobra.Command, args []string) error {
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
-	workspace, err := openWorkspace()
+	root, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	defer workspace.close()
-	cfg, err := config.Load(workspace.root)
+	repair, _ := cmd.Flags().GetBool("repair")
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
+	eventLog := &eventstore.Log{RootDir: root}
+	cfg, err := config.Load(root)
 	if err != nil {
 		return err
 	}
-	events, err := workspace.events.StreamEvents(ctx, "", 0)
+	events, err := eventLog.StreamEvents(ctx, "", 0)
 	if err != nil {
 		return err
 	}
-	projects, err := workspace.project.ListProjects(ctx)
+	projects, err := projectStore.ListProjects(ctx)
 	if err != nil {
 		return err
 	}
-	tickets, err := workspace.ticket.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	tickets, err := ticketStore.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
 	if err != nil {
 		return err
 	}
+	projectionPath := filepath.Join(storage.TrackerDir(root), "index.sqlite")
+	projection, err := sqlitestore.Open(projectionPath, ticketStore, eventLog)
+	repairActions := make([]string, 0)
+	if err != nil {
+		if !repair {
+			return err
+		}
+		for _, candidate := range []string{projectionPath, projectionPath + "-wal", projectionPath + "-shm"} {
+			if removeErr := os.Remove(candidate); removeErr != nil && !os.IsNotExist(removeErr) {
+				return removeErr
+			}
+		}
+		projection, err = sqlitestore.Open(projectionPath, ticketStore, eventLog)
+		if err != nil {
+			return err
+		}
+		repairActions = append(repairActions, "reset corrupted projection")
+	}
+	defer func() { _ = projection.Close() }()
 	projectIssues := 0
 	for _, project := range projects {
 		if err := project.Validate(); err != nil {
@@ -1427,31 +1453,28 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	repairReport := service.RepairReport{}
-	if _, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
-		repair, _ := cmd.Flags().GetBool("repair")
+	if _, err := projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
 		if !repair {
 			return err
 		}
-		if rebuildErr := workspace.withWriteLock(ctx, "doctor repair", func(ctx context.Context) error {
+		if rebuildErr := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 			var err error
-			repairReport, err = service.RepairWorkspace(ctx, workspace.root, workspace.actions.Clock, workspace.events, workspace.projection)
+			repairReport, err = service.RepairWorkspace(ctx, root, defaultNow, eventLog, projection)
 			return err
 		}); rebuildErr != nil {
 			return rebuildErr
 		}
 	} else {
-		repair, _ := cmd.Flags().GetBool("repair")
 		if repair {
-			if err := workspace.withWriteLock(ctx, "doctor repair", func(ctx context.Context) error {
+			if err := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 				var err error
-				repairReport, err = service.RepairWorkspace(ctx, workspace.root, workspace.actions.Clock, workspace.events, workspace.projection)
+				repairReport, err = service.RepairWorkspace(ctx, root, defaultNow, eventLog, projection)
 				return err
 			}); err != nil {
 				return err
 			}
 		}
 	}
-	repair, _ := cmd.Flags().GetBool("repair")
 	message := fmt.Sprintf("doctor ok: %d events scanned, %d projects, %d tickets", len(events), len(projects), len(tickets))
 	payload := map[string]any{
 		"ok":             true,
@@ -1459,7 +1482,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"projects":       len(projects),
 		"tickets":        len(tickets),
 		"repair_ran":     repair,
-		"repair_actions": append([]string{}, repairReport.Actions...),
+		"repair_actions": append(append([]string{}, repairActions...), repairReport.Actions...),
 		"repair_pending": repairReport.Pending,
 		"config":         cfg,
 		"issue_codes":    []string{},
