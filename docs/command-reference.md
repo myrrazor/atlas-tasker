@@ -195,6 +195,8 @@ Slash command examples:
 Once `tracker tui` is running:
 
 - `/` opens the slash command palette
+- `b` previews a bulk action against the current ticket list
+- `y` applies the last bulk preview
 - `n` opens the create-ticket form
 - `e` edits the selected ticket
 - `m` opens the move prompt
@@ -211,6 +213,18 @@ Once `tracker tui` is running:
 - `j` / `k` or arrow keys move the list cursor
 - `enter` opens detail or submits the active dialog
 - `esc` cancels the active dialog
+
+TUI tabs:
+
+- `Board`
+- `Queues`
+- `Detail`
+- `Search`
+- `Review`
+- `Owner`
+- `Inbox`
+- `Views`
+- `Ops`
 
 ## Common Flags
 
