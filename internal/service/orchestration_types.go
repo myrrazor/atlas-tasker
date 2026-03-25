@@ -73,6 +73,22 @@ type DispatchResult struct {
 	GeneratedAt  time.Time `json:"generated_at"`
 }
 
+type RunLaunchManifestView struct {
+	RunID            string    `json:"run_id"`
+	TicketID         string    `json:"ticket_id"`
+	AgentID          string    `json:"agent_id"`
+	RuntimeDir       string    `json:"runtime_dir"`
+	WorktreePath     string    `json:"worktree_path,omitempty"`
+	EvidenceDir      string    `json:"evidence_dir"`
+	BriefPath        string    `json:"brief_path"`
+	ContextPath      string    `json:"context_path"`
+	CodexLaunchPath  string    `json:"codex_launch_path"`
+	ClaudeLaunchPath string    `json:"claude_launch_path"`
+	Created          []string  `json:"created,omitempty"`
+	Updated          []string  `json:"updated,omitempty"`
+	GeneratedAt      time.Time `json:"generated_at"`
+}
+
 type WorktreeStatusView struct {
 	RunID         string    `json:"run_id"`
 	TicketID      string    `json:"ticket_id,omitempty"`

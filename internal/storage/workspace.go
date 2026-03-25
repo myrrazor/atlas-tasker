@@ -87,6 +87,18 @@ func RuntimeDir(root string, runID string) string {
 	return filepath.Join(TrackerDir(root), "runtime", runID)
 }
 
+func RuntimeBriefFile(root string, runID string) string {
+	return filepath.Join(RuntimeDir(root, runID), "brief.md")
+}
+
+func RuntimeContextFile(root string, runID string) string {
+	return filepath.Join(RuntimeDir(root, runID), "context.json")
+}
+
+func RuntimeLaunchFile(root string, runID string, provider string) string {
+	return filepath.Join(RuntimeDir(root, runID), "launch."+provider+".txt")
+}
+
 func ProjectDir(root string, key string) string {
 	return filepath.Join(ProjectsDir(root), key)
 }
