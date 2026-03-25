@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/config"
@@ -48,6 +49,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newReindexCommand())
 	root.AddCommand(newConfigCommand())
 	root.AddCommand(newProjectCommand())
+	root.AddCommand(newAgentCommand())
 	root.AddCommand(newTicketCommand())
 	root.AddCommand(newBoardCommand())
 	root.AddCommand(newBacklogCommand())
@@ -212,6 +214,43 @@ func newIntegrationsCommand() *cobra.Command {
 		install.AddCommand(targetCmd)
 	}
 	cmd.AddCommand(install)
+	return cmd
+}
+
+func newAgentCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "agent", Short: "Manage Atlas worker profiles"}
+	list := &cobra.Command{Use: "list", Short: "List agent profiles", RunE: runAgentList}
+	view := &cobra.Command{Use: "view <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Show one agent profile", RunE: runAgentView}
+	create := &cobra.Command{Use: "create <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Create an agent profile", RunE: runAgentCreate}
+	edit := &cobra.Command{Use: "edit <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Edit an agent profile", RunE: runAgentEdit}
+	enable := &cobra.Command{Use: "enable <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Enable an agent profile", RunE: runAgentEnable}
+	disable := &cobra.Command{Use: "disable <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Disable an agent profile", RunE: runAgentDisable}
+	eligible := &cobra.Command{Use: "eligible <TICKET-ID>", Args: cobra.ExactArgs(1), Short: "Show eligibility for one ticket across enabled agents", RunE: runAgentEligible}
+	for _, sub := range []*cobra.Command{list, view, create, edit, enable, disable, eligible} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	for _, sub := range []*cobra.Command{create, edit} {
+		sub.Flags().String("name", "", "Display name")
+		sub.Flags().String("provider", "", "Provider: codex, claude, human, custom")
+		sub.Flags().StringArray("capability", nil, "Capability tag")
+		sub.Flags().StringArray("ticket-type", nil, "Allowed ticket type")
+		sub.Flags().String("default-runbook", "", "Default runbook")
+		sub.Flags().Int("max-active-runs", 0, "Maximum concurrent active runs")
+		sub.Flags().StringArray("role", nil, "Preferred role")
+		sub.Flags().Int("routing-weight", 0, "Routing weight")
+		sub.Flags().String("instruction-profile", "", "Instruction profile")
+		sub.Flags().String("launch-target", "", "Default launch target")
+		sub.Flags().String("integration-template", "", "Integration template")
+		sub.Flags().String("notes", "", "Operator notes")
+		sub.Flags().Bool("enabled", true, "Whether the agent starts enabled")
+	}
+	for _, sub := range []*cobra.Command{create, edit, enable, disable} {
+		sub.Flags().String("actor", "", "Mutation actor")
+		sub.Flags().String("reason", "", "Mutation reason")
+	}
+	_ = create.MarkFlagRequired("name")
+	_ = create.MarkFlagRequired("provider")
+	cmd.AddCommand(list, view, create, edit, enable, disable, eligible)
 	return cmd
 }
 
@@ -2986,6 +3025,223 @@ func parseActors(raw string) ([]contracts.Actor, error) {
 		actors = append(actors, actor)
 	}
 	return actors, nil
+}
+
+func runAgentList(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	items, err := workspace.queries.ListAgents(commandContext(cmd))
+	if err != nil {
+		return err
+	}
+	md := "## Agents\n\n"
+	pretty := "agents"
+	for _, item := range items {
+		state := "disabled"
+		if item.Profile.Enabled {
+			state = "enabled"
+		}
+		md += fmt.Sprintf("- `%s` %s (%s)\n", item.Profile.AgentID, item.Profile.DisplayName, state)
+		pretty += fmt.Sprintf("\n- %s %s [%s]", item.Profile.AgentID, item.Profile.DisplayName, state)
+	}
+	payload := map[string]any{
+		"kind":         "agent_list",
+		"generated_at": time.Now().UTC(),
+		"items":        items,
+	}
+	return writeCommandOutput(cmd, payload, md, pretty)
+}
+
+func runAgentView(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	detail, err := workspace.queries.AgentDetail(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	md := fmt.Sprintf("## %s\n\n- Name: %s\n- Provider: %s\n- Enabled: %t\n- Max Active Runs: %d\n", detail.Profile.AgentID, detail.Profile.DisplayName, detail.Profile.Provider, detail.Profile.Enabled, detail.Profile.MaxActiveRuns)
+	if len(detail.Profile.Capabilities) > 0 {
+		md += fmt.Sprintf("- Capabilities: %s\n", strings.Join(detail.Profile.Capabilities, ", "))
+	}
+	pretty := fmt.Sprintf("%s %s (%s)", detail.Profile.AgentID, detail.Profile.DisplayName, detail.Profile.Provider)
+	payload := map[string]any{
+		"kind":         "agent_detail",
+		"generated_at": detail.GeneratedAt,
+		"payload":      detail,
+	}
+	return writeCommandOutput(cmd, payload, md, pretty)
+}
+
+func runAgentCreate(cmd *cobra.Command, args []string) error {
+	return saveAgentProfile(cmd, args[0], true)
+}
+
+func runAgentEdit(cmd *cobra.Command, args []string) error {
+	return saveAgentProfile(cmd, args[0], false)
+}
+
+func runAgentEnable(cmd *cobra.Command, args []string) error {
+	return setAgentEnabled(cmd, args[0], true)
+}
+
+func runAgentDisable(cmd *cobra.Command, args []string) error {
+	return setAgentEnabled(cmd, args[0], false)
+}
+
+func runAgentEligible(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	report, err := workspace.queries.AgentEligibility(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	md := fmt.Sprintf("## Eligibility %s\n\n", report.TicketID)
+	pretty := fmt.Sprintf("eligibility %s", report.TicketID)
+	for _, entry := range report.Entries {
+		state := "eligible"
+		if !entry.Eligible {
+			state = strings.Join(entry.ReasonCodes, ",")
+		}
+		md += fmt.Sprintf("- `%s` %s (%s)\n", entry.Agent.AgentID, entry.Agent.DisplayName, state)
+		pretty += fmt.Sprintf("\n- %s %s [%s]", entry.Agent.AgentID, entry.Agent.DisplayName, state)
+	}
+	payload := map[string]any{
+		"kind":         "agent_eligibility_report",
+		"generated_at": report.GeneratedAt,
+		"payload":      report,
+	}
+	return writeCommandOutput(cmd, payload, md, pretty)
+}
+
+func saveAgentProfile(cmd *cobra.Command, agentID string, create bool) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	ctx := commandContext(cmd)
+	var profile contracts.AgentProfile
+	if !create {
+		existing, err := workspace.queries.Agents.LoadAgent(ctx, agentID)
+		if err != nil {
+			return err
+		}
+		profile = existing
+	} else {
+		profile.AgentID = agentID
+	}
+	profile, err = agentProfileFromFlags(cmd, profile)
+	if err != nil {
+		return err
+	}
+	actor, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	saved, err := workspace.actions.SaveAgentProfile(ctx, profile, normalizeActor(actor), reason)
+	if err != nil {
+		return err
+	}
+	payload := map[string]any{
+		"kind":         "agent_detail",
+		"generated_at": time.Now().UTC(),
+		"payload":      map[string]any{"profile": saved, "active_runs": 0},
+	}
+	return writeCommandOutput(cmd, payload, fmt.Sprintf("## %s\n\nsaved\n", saved.AgentID), fmt.Sprintf("saved agent %s", saved.AgentID))
+}
+
+func setAgentEnabled(cmd *cobra.Command, agentID string, enabled bool) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actor, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	profile, err := workspace.actions.SetAgentEnabled(commandContext(cmd), agentID, enabled, normalizeActor(actor), reason)
+	if err != nil {
+		return err
+	}
+	state := "disabled"
+	if enabled {
+		state = "enabled"
+	}
+	payload := map[string]any{
+		"kind":         "agent_detail",
+		"generated_at": time.Now().UTC(),
+		"payload":      map[string]any{"profile": profile, "active_runs": 0},
+	}
+	return writeCommandOutput(cmd, payload, fmt.Sprintf("## %s\n\n%s\n", profile.AgentID, state), fmt.Sprintf("%s %s", state, profile.AgentID))
+}
+
+func agentProfileFromFlags(cmd *cobra.Command, profile contracts.AgentProfile) (contracts.AgentProfile, error) {
+	profile.AgentID = strings.TrimSpace(profile.AgentID)
+	if cmd.Flags().Changed("name") {
+		value, _ := cmd.Flags().GetString("name")
+		profile.DisplayName = strings.TrimSpace(value)
+	}
+	if cmd.Flags().Changed("provider") {
+		value, _ := cmd.Flags().GetString("provider")
+		profile.Provider = contracts.AgentProvider(strings.TrimSpace(value))
+	}
+	if cmd.Flags().Changed("capability") {
+		value, _ := cmd.Flags().GetStringArray("capability")
+		profile.Capabilities = value
+	}
+	if cmd.Flags().Changed("ticket-type") {
+		value, _ := cmd.Flags().GetStringArray("ticket-type")
+		profile.AllowedTicketTypes = make([]contracts.TicketType, 0, len(value))
+		for _, item := range value {
+			profile.AllowedTicketTypes = append(profile.AllowedTicketTypes, contracts.TicketType(strings.TrimSpace(item)))
+		}
+	}
+	if cmd.Flags().Changed("default-runbook") {
+		value, _ := cmd.Flags().GetString("default-runbook")
+		profile.DefaultRunbook = strings.TrimSpace(value)
+	}
+	if cmd.Flags().Changed("max-active-runs") {
+		value, _ := cmd.Flags().GetInt("max-active-runs")
+		profile.MaxActiveRuns = value
+	}
+	if cmd.Flags().Changed("role") {
+		value, _ := cmd.Flags().GetStringArray("role")
+		profile.PreferredRoles = make([]contracts.AgentRole, 0, len(value))
+		for _, item := range value {
+			profile.PreferredRoles = append(profile.PreferredRoles, contracts.AgentRole(strings.TrimSpace(item)))
+		}
+	}
+	if cmd.Flags().Changed("routing-weight") {
+		value, _ := cmd.Flags().GetInt("routing-weight")
+		profile.RoutingWeight = value
+	}
+	if cmd.Flags().Changed("instruction-profile") {
+		value, _ := cmd.Flags().GetString("instruction-profile")
+		profile.InstructionProfile = strings.TrimSpace(value)
+	}
+	if cmd.Flags().Changed("launch-target") {
+		value, _ := cmd.Flags().GetString("launch-target")
+		profile.LaunchTarget = strings.TrimSpace(value)
+	}
+	if cmd.Flags().Changed("integration-template") {
+		value, _ := cmd.Flags().GetString("integration-template")
+		profile.IntegrationTemplate = strings.TrimSpace(value)
+	}
+	if cmd.Flags().Changed("notes") {
+		value, _ := cmd.Flags().GetString("notes")
+		profile.Notes = strings.TrimSpace(value)
+	}
+	if cmd.Flags().Changed("enabled") {
+		value, _ := cmd.Flags().GetBool("enabled")
+		profile.Enabled = value
+	}
+	return profile, profile.Validate()
 }
 
 func ticketPolicyFromFlags(cmd *cobra.Command, policy contracts.TicketPolicy) (contracts.TicketPolicy, error) {

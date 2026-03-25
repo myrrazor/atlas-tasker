@@ -16,6 +16,7 @@ type QueryService struct {
 	Root       string
 	Projects   contracts.ProjectStore
 	Tickets    contracts.TicketStore
+	Agents     contracts.AgentStore
 	Events     contracts.EventLog
 	Projection contracts.ProjectionStore
 	Views      ViewStore
@@ -23,7 +24,7 @@ type QueryService struct {
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
-	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
+	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
 }
 
 func (s *QueryService) now() time.Time {
@@ -47,6 +48,81 @@ func (s *QueryService) Search(ctx context.Context, query contracts.SearchQuery) 
 
 func (s *QueryService) ListSavedViews() ([]contracts.SavedView, error) {
 	return s.Views.ListViews()
+}
+
+func (s *QueryService) ListAgents(ctx context.Context) ([]AgentDetailView, error) {
+	profiles, err := s.Agents.ListAgents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]AgentDetailView, 0, len(profiles))
+	for _, profile := range profiles {
+		items = append(items, AgentDetailView{
+			Profile:     profile,
+			ActiveRuns:  0,
+			GeneratedAt: s.now(),
+		})
+	}
+	return items, nil
+}
+
+func (s *QueryService) AgentDetail(ctx context.Context, agentID string) (AgentDetailView, error) {
+	profile, err := s.Agents.LoadAgent(ctx, agentID)
+	if err != nil {
+		return AgentDetailView{}, err
+	}
+	return AgentDetailView{Profile: profile, ActiveRuns: 0, GeneratedAt: s.now()}, nil
+}
+
+func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (AgentEligibilityReport, error) {
+	ticket, err := s.Tickets.GetTicket(ctx, ticketID)
+	if err != nil {
+		return AgentEligibilityReport{}, err
+	}
+	profiles, err := s.Agents.ListAgents(ctx)
+	if err != nil {
+		return AgentEligibilityReport{}, err
+	}
+	items := make([]AgentEligibilityEntry, 0, len(profiles))
+	for _, profile := range profiles {
+		activeRuns := 0
+		entry := AgentEligibilityEntry{
+			Agent:       profile,
+			Eligible:    true,
+			ReasonCodes: []string{},
+			ActiveRuns:  activeRuns,
+		}
+		if !profile.Enabled {
+			entry.Eligible = false
+			entry.ReasonCodes = append(entry.ReasonCodes, "agent_disabled")
+		}
+		if profile.MaxActiveRuns > 0 && activeRuns >= profile.MaxActiveRuns {
+			entry.Eligible = false
+			entry.ReasonCodes = append(entry.ReasonCodes, "agent_at_capacity")
+		}
+		if len(profile.AllowedTicketTypes) > 0 && !containsTicketType(profile.AllowedTicketTypes, ticket.Type) {
+			entry.Eligible = false
+			entry.ReasonCodes = append(entry.ReasonCodes, "disallowed_worker")
+		}
+		if missing := missingCapabilities(profile.Capabilities, ticket.RequiredCapabilities); len(missing) > 0 {
+			entry.Eligible = false
+			entry.ReasonCodes = append(entry.ReasonCodes, "missing_capability")
+		}
+		items = append(items, entry)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Eligible != items[j].Eligible {
+			return items[i].Eligible
+		}
+		if items[i].Agent.RoutingWeight != items[j].Agent.RoutingWeight {
+			return items[i].Agent.RoutingWeight > items[j].Agent.RoutingWeight
+		}
+		return items[i].Agent.AgentID < items[j].Agent.AgentID
+	})
+	for i := range items {
+		items[i].Rank = i + 1
+	}
+	return AgentEligibilityReport{TicketID: ticketID, GeneratedAt: s.now(), Entries: items}, nil
 }
 
 func (s *QueryService) NotificationLog(limit int) ([]NotificationDelivery, error) {
@@ -264,6 +340,40 @@ func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor
 		return view.QueueCategories[i] < view.QueueCategories[j]
 	})
 	return view, nil
+}
+
+func missingCapabilities(have []string, want []string) []string {
+	if len(want) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(have))
+	for _, capability := range have {
+		key := strings.TrimSpace(strings.ToLower(capability))
+		if key == "" {
+			continue
+		}
+		set[key] = struct{}{}
+	}
+	var missing []string
+	for _, capability := range want {
+		key := strings.TrimSpace(strings.ToLower(capability))
+		if key == "" {
+			continue
+		}
+		if _, ok := set[key]; !ok {
+			missing = append(missing, key)
+		}
+	}
+	return missing
+}
+
+func containsTicketType(items []contracts.TicketType, candidate contracts.TicketType) bool {
+	for _, item := range items {
+		if item == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *QueryService) EffectivePolicy(ctx context.Context, ticket contracts.TicketSnapshot) (EffectivePolicyView, error) {

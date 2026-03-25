@@ -16,6 +16,7 @@ type ActionService struct {
 	Root        string
 	Projects    contracts.ProjectStore
 	Tickets     contracts.TicketStore
+	Agents      contracts.AgentStore
 	Events      contracts.EventLog
 	Projection  contracts.ProjectionStore
 	Clock       func() time.Time
@@ -33,7 +34,7 @@ func NewActionService(root string, projects contracts.ProjectStore, tickets cont
 		fm.Root = canonicalRoot
 		locks = fm
 	}
-	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
+	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
 }
 
 func (s *ActionService) now() time.Time {
@@ -162,6 +163,63 @@ func (s *ActionService) UpdateProject(ctx context.Context, project contracts.Pro
 		return struct{}{}, s.Projects.UpdateProject(ctx, contracts.NormalizeProject(project))
 	})
 	return err
+}
+
+func (s *ActionService) SaveAgentProfile(ctx context.Context, profile contracts.AgentProfile, actor contracts.Actor, reason string) (contracts.AgentProfile, error) {
+	return withWriteLock(ctx, s.LockManager, "save agent profile", func(ctx context.Context) (contracts.AgentProfile, error) {
+		if !actor.IsValid() {
+			return contracts.AgentProfile{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+		}
+		profile.AgentID = sanitizeAgentID(profile.AgentID)
+		existing, err := s.Agents.LoadAgent(ctx, profile.AgentID)
+		eventType := contracts.EventAgentCreated
+		if err == nil {
+			eventType = contracts.EventAgentUpdated
+			if strings.TrimSpace(profile.DisplayName) == "" {
+				profile.DisplayName = existing.DisplayName
+			}
+		}
+		if !profile.Enabled && eventType == contracts.EventAgentCreated {
+			profile.Enabled = true
+		}
+		event, err := s.newEvent(ctx, workspaceProjectKey, s.now(), actor, reason, eventType, "", profile)
+		if err != nil {
+			return contracts.AgentProfile{}, err
+		}
+		if err := s.commitMutation(ctx, "save agent profile", "agent_profile", event, func(ctx context.Context) error {
+			return s.Agents.SaveAgent(ctx, profile)
+		}); err != nil {
+			return contracts.AgentProfile{}, err
+		}
+		return profile, nil
+	})
+}
+
+func (s *ActionService) SetAgentEnabled(ctx context.Context, agentID string, enabled bool, actor contracts.Actor, reason string) (contracts.AgentProfile, error) {
+	return withWriteLock(ctx, s.LockManager, "set agent enabled", func(ctx context.Context) (contracts.AgentProfile, error) {
+		if !actor.IsValid() {
+			return contracts.AgentProfile{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+		}
+		profile, err := s.Agents.LoadAgent(ctx, agentID)
+		if err != nil {
+			return contracts.AgentProfile{}, err
+		}
+		profile.Enabled = enabled
+		eventType := contracts.EventAgentDisabled
+		if enabled {
+			eventType = contracts.EventAgentEnabled
+		}
+		event, err := s.newEvent(ctx, workspaceProjectKey, s.now(), actor, reason, eventType, "", profile)
+		if err != nil {
+			return contracts.AgentProfile{}, err
+		}
+		if err := s.commitMutation(ctx, "set agent enabled", "agent_profile", event, func(ctx context.Context) error {
+			return s.Agents.SaveAgent(ctx, profile)
+		}); err != nil {
+			return contracts.AgentProfile{}, err
+		}
+		return profile, nil
+	})
 }
 
 func (s *ActionService) CreateTicket(ctx context.Context, ticket contracts.TicketSnapshot) error {

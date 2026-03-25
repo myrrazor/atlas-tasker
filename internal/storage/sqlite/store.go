@@ -336,6 +336,11 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 			return err
 		}
 	}
+	for _, agent := range extractAgentProfiles(event.Payload) {
+		if err := s.upsertAgent(ctx, agent); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -712,48 +717,90 @@ func (s *Store) insertEventOnly(ctx context.Context, event contracts.Event) erro
 	return nil
 }
 
+func (s *Store) upsertAgent(ctx context.Context, profile contracts.AgentProfile) error {
+	capabilitiesJSON, err := json.Marshal(profile.Capabilities)
+	if err != nil {
+		return fmt.Errorf("marshal agent capabilities: %w", err)
+	}
+	ticketTypesJSON, err := json.Marshal(profile.AllowedTicketTypes)
+	if err != nil {
+		return fmt.Errorf("marshal agent ticket types: %w", err)
+	}
+	rolesJSON, err := json.Marshal(profile.PreferredRoles)
+	if err != nil {
+		return fmt.Errorf("marshal agent preferred roles: %w", err)
+	}
+	_, err = s.DB.ExecContext(ctx, `
+		INSERT INTO agents (
+			agent_id, display_name, provider, enabled, capabilities_json, allowed_ticket_types_json,
+			default_runbook, max_active_runs, preferred_roles_json, routing_weight,
+			instruction_profile, launch_target, integration_template, notes
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(agent_id) DO UPDATE SET
+			display_name=excluded.display_name,
+			provider=excluded.provider,
+			enabled=excluded.enabled,
+			capabilities_json=excluded.capabilities_json,
+			allowed_ticket_types_json=excluded.allowed_ticket_types_json,
+			default_runbook=excluded.default_runbook,
+			max_active_runs=excluded.max_active_runs,
+			preferred_roles_json=excluded.preferred_roles_json,
+			routing_weight=excluded.routing_weight,
+			instruction_profile=excluded.instruction_profile,
+			launch_target=excluded.launch_target,
+			integration_template=excluded.integration_template,
+			notes=excluded.notes
+	`, profile.AgentID, profile.DisplayName, string(profile.Provider), boolToInt(profile.Enabled), string(capabilitiesJSON), string(ticketTypesJSON),
+		nullable(profile.DefaultRunbook), profile.MaxActiveRuns, string(rolesJSON), profile.RoutingWeight, nullable(profile.InstructionProfile),
+		nullable(profile.LaunchTarget), nullable(profile.IntegrationTemplate), nullable(profile.Notes))
+	if err != nil {
+		return fmt.Errorf("upsert agent %s: %w", profile.AgentID, err)
+	}
+	return nil
+}
+
 type ticketScanner interface {
 	Scan(dest ...any) error
 }
 
 func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 	var (
-		ticket           contracts.TicketSnapshot
-		typeValue        string
-		statusValue      string
-		priorityValue    string
-		createdAt        string
-		updatedAt        string
-		archived         int
-		labelsJSON       string
-		blockedByJSON    string
-		blocksJSON       string
-		acceptanceJSON   string
-		policyJSON       string
-		progressJSON     string
+		ticket                   contracts.TicketSnapshot
+		typeValue                string
+		statusValue              string
+		priorityValue            string
+		createdAt                string
+		updatedAt                string
+		archived                 int
+		labelsJSON               string
+		blockedByJSON            string
+		blocksJSON               string
+		acceptanceJSON           string
+		policyJSON               string
+		progressJSON             string
 		requiredCapabilitiesJSON string
-		dispatchMode     sql.NullString
-		allowParallelRuns int
-		runbook          sql.NullString
-		latestRunID      sql.NullString
-		latestHandoffID  sql.NullString
-		openGateIDsJSON  string
-		lastDispatchAt   sql.NullString
-		parent           sql.NullString
-		assignee         sql.NullString
-		reviewer         sql.NullString
-		summary          sql.NullString
-		description      sql.NullString
-		notes            sql.NullString
-		reviewState      sql.NullString
-		leaseActor       sql.NullString
-		leaseKind        sql.NullString
-		leaseAcquiredAt  sql.NullString
-		leaseExpiresAt   sql.NullString
-		leaseHeartbeatAt sql.NullString
-		template         sql.NullString
-		skillHint        sql.NullString
-		blueprint        sql.NullString
+		dispatchMode             sql.NullString
+		allowParallelRuns        int
+		runbook                  sql.NullString
+		latestRunID              sql.NullString
+		latestHandoffID          sql.NullString
+		openGateIDsJSON          string
+		lastDispatchAt           sql.NullString
+		parent                   sql.NullString
+		assignee                 sql.NullString
+		reviewer                 sql.NullString
+		summary                  sql.NullString
+		description              sql.NullString
+		notes                    sql.NullString
+		reviewState              sql.NullString
+		leaseActor               sql.NullString
+		leaseKind                sql.NullString
+		leaseAcquiredAt          sql.NullString
+		leaseExpiresAt           sql.NullString
+		leaseHeartbeatAt         sql.NullString
+		template                 sql.NullString
+		skillHint                sql.NullString
+		blueprint                sql.NullString
 	)
 	if err := scanner.Scan(
 		&ticket.ID,
@@ -998,6 +1045,24 @@ func extractTicketSnapshots(payload any) []contracts.TicketSnapshot {
 	}
 
 	return result
+}
+
+func extractAgentProfiles(payload any) []contracts.AgentProfile {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	var profile contracts.AgentProfile
+	if err := json.Unmarshal(raw, &profile); err != nil {
+		return nil
+	}
+	if profile.Validate() != nil {
+		return nil
+	}
+	return []contracts.AgentProfile{profile}
 }
 
 func nullable(value string) any {
