@@ -10,7 +10,7 @@ ok  	github.com/myrrazor/atlas-tasker/internal/service	(cached)
 ?   	github.com/myrrazor/atlas-tasker/internal/slashcmd	[no test files]
 ?   	github.com/myrrazor/atlas-tasker/internal/storage	[no test files]
 ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	0.187s
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	0.402s
-ok  	github.com/myrrazor/atlas-tasker/internal/testutil	0.250s
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	0.470s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	(cached)

@@ -21,6 +21,11 @@
 - `tracker git branch-name <ID>`
 - `tracker git refs <ID>`
 - `tracker git commit <ID> --message <TEXT>`
+- `tracker views list`
+- `tracker views view <NAME>`
+- `tracker views save <NAME> --kind <board|search|queue|next> [flags]`
+- `tracker views delete <NAME>`
+- `tracker views run <NAME> [--actor <ACTOR>]`
 - `tracker templates list`
 - `tracker templates view <NAME>`
 - `tracker integrations install codex [--force]`
@@ -76,16 +81,25 @@
 
 ## Views
 
-- `tracker board`
+- `tracker board [--view <NAME>]`
 - `tracker backlog`
-- `tracker next [--actor <ACTOR>]`
+- `tracker next [--actor <ACTOR>] [--view <NAME>]`
 - `tracker blocked`
-- `tracker queue [--actor <ACTOR>]`
+- `tracker queue [--actor <ACTOR>] [--view <NAME>]`
 - `tracker review-queue [--actor <ACTOR>]`
 - `tracker owner-queue`
 - `tracker who`
 - `tracker search <QUERY>`
+- `tracker search --view <NAME>`
 - `tracker render <ID>`
+
+## Saved Views
+
+- `tracker views list`
+- `tracker views view <NAME>`
+- `tracker views save <NAME> --kind <board|search|queue|next> [--title <TEXT>] [--project <KEY>] [--assignee <ACTOR>] [--type <TYPE>] [--actor <ACTOR>] [--query <QUERY>] [--column <STATUS>] [--queue-category <CATEGORY>]`
+- `tracker views delete <NAME>`
+- `tracker views run <NAME> [--actor <ACTOR>]`
 
 ## Maintenance
 

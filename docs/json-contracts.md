@@ -38,6 +38,16 @@ Success payload is an array of delivery records with:
 ## `tracker notify dead-letter --json`
 Success payload matches `notify log`, but only includes final failed deliveries.
 
+## `tracker views run <NAME> --json`
+Success payload includes:
+- `view`
+- one of:
+  - `board`
+  - `queue`
+  - `next`
+  - `tickets`
+- `actor` when the saved view resolves through actor-aware queue or next logic
+
 ## Error payloads
 Commands invoked with `--json` emit the standard error envelope on stderr.
 
