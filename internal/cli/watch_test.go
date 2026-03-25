@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -34,20 +33,14 @@ func TestWatchCommandsDriveNotifyRecipients(t *testing.T) {
 	must("watch", "view", "ready-search", "--actor", "human:owner", "--event", "ticket.commented")
 
 	watchList := must("watch", "list", "--json")
-	var subscriptions []map[string]any
-	if err := json.Unmarshal([]byte(watchList), &subscriptions); err != nil {
-		t.Fatalf("parse watch list json: %v\nraw=%s", err, watchList)
-	}
+	subscriptions := decodeJSONList[map[string]any](t, watchList)
 	if len(subscriptions) != 2 {
 		t.Fatalf("expected two subscriptions, got %#v", subscriptions)
 	}
 
 	must("ticket", "comment", "APP-1", "--body", "ping", "--actor", "human:owner")
 	logOut := must("notify", "log", "--json")
-	var deliveries []map[string]any
-	if err := json.Unmarshal([]byte(logOut), &deliveries); err != nil {
-		t.Fatalf("parse notify log: %v\nraw=%s", err, logOut)
-	}
+	deliveries := decodeJSONList[map[string]any](t, logOut)
 	if len(deliveries) == 0 {
 		t.Fatalf("expected notification deliveries, got %s", logOut)
 	}
@@ -61,9 +54,7 @@ func TestWatchCommandsDriveNotifyRecipients(t *testing.T) {
 	must("unwatch", "view", "ready-search", "--actor", "human:owner")
 	must("ticket", "comment", "APP-1", "--body", "still quiet", "--actor", "human:owner")
 	logOut = must("notify", "log", "--json")
-	if err := json.Unmarshal([]byte(logOut), &deliveries); err != nil {
-		t.Fatalf("parse notify log after unwatch: %v\nraw=%s", err, logOut)
-	}
+	deliveries = decodeJSONList[map[string]any](t, logOut)
 	if len(deliveries) != beforeCount {
 		t.Fatalf("expected no new delivery after unwatch, got %#v", deliveries)
 	}

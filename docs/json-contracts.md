@@ -2,6 +2,7 @@
 
 ## `tracker doctor --json`
 Success payload includes:
+- `format_version` (`v1`)
 - `ok`
 - `events_scanned`
 - `projects`
@@ -15,6 +16,7 @@ Success payload includes:
 
 ## `tracker automation dry-run --json`
 Success payload includes:
+- `format_version` (`v1`)
 - `rule`
 - `matched`
 - `reasons`
@@ -24,10 +26,10 @@ Success payload includes:
 - `event_type`
 
 ## `tracker automation explain --json`
-Success payload matches `dry-run`, but `dry_run` is `false`.
+Success payload matches `dry-run`, but `dry_run` is `false` and still includes `format_version`.
 
 ## `tracker notify log --json`
-Success payload is an array of delivery records with:
+Success payload is an object with `format_version` and `items`, where each item is a delivery record with:
 - `attempt`
 - `delivered`
 - `error` when delivery failed
@@ -41,7 +43,7 @@ Success payload is an array of delivery records with:
 Success payload matches `notify log`, but only includes final failed deliveries.
 
 ## `tracker watch list --json`
-Success payload is an array of watcher rules with:
+Success payload is an object with `format_version` and `items`, where each item is a watcher rule with:
 - `actor`
 - `target_kind`
 - `target`
@@ -49,6 +51,7 @@ Success payload is an array of watcher rules with:
 
 ## `tracker views run <NAME> --json`
 Success payload includes:
+- `format_version` (`v1`)
 - `view`
 - one of:
   - `board`
@@ -59,6 +62,7 @@ Success payload includes:
 
 ## `tracker bulk * --json`
 Success payload includes:
+- `format_version` (`v1`)
 - `batch_id`
 - `preview`
   - `kind`

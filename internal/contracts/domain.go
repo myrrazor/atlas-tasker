@@ -215,6 +215,12 @@ func (c ActorConfig) Validate() error {
 }
 
 // NotificationsConfig controls the built-in v1.2 notifier sinks.
+const (
+	DefaultWebhookTimeoutSeconds = 3
+	MaxWebhookTimeoutSeconds     = 30
+	MaxWebhookRetries            = 5
+)
+
 type NotificationsConfig struct {
 	Terminal              bool   `json:"terminal"`
 	FileEnabled           bool   `json:"file_enabled,omitempty"`
@@ -235,11 +241,11 @@ func (c NotificationsConfig) Validate() error {
 			return fmt.Errorf("invalid notifications.webhook_url: %w", err)
 		}
 	}
-	if c.WebhookTimeoutSeconds < 0 {
-		return fmt.Errorf("notifications.webhook_timeout_seconds must be >= 0")
+	if c.WebhookTimeoutSeconds < 0 || c.WebhookTimeoutSeconds > MaxWebhookTimeoutSeconds {
+		return fmt.Errorf("notifications.webhook_timeout_seconds must be between 0 and %d", MaxWebhookTimeoutSeconds)
 	}
-	if c.WebhookRetries < 0 {
-		return fmt.Errorf("notifications.webhook_retries must be >= 0")
+	if c.WebhookRetries < 0 || c.WebhookRetries > MaxWebhookRetries {
+		return fmt.Errorf("notifications.webhook_retries must be between 0 and %d", MaxWebhookRetries)
 	}
 	if strings.TrimSpace(c.DeliveryLogPath) == "" {
 		return fmt.Errorf("notifications.delivery_log_path is required")

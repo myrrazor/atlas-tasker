@@ -42,17 +42,21 @@ func TestGitCommands(t *testing.T) {
 	gitRunCLI(t, "commit", "-m", "APP-1: add feature")
 
 	refsOut := must("git", "refs", "APP-1", "--json")
-	var refs []map[string]any
-	if err := json.Unmarshal([]byte(refsOut), &refs); err != nil {
-		t.Fatalf("parse refs json: %v\nraw=%s", err, refsOut)
-	}
+	refs := decodeJSONList[map[string]any](t, refsOut)
 	if len(refs) != 1 {
 		t.Fatalf("unexpected refs payload: %s", refsOut)
 	}
 
 	statusOut := must("git", "status", "--json")
-	if !strings.Contains(statusOut, "\"present\": true") {
-		t.Fatalf("unexpected git status: %s", statusOut)
+	var status struct {
+		FormatVersion string `json:"format_version"`
+		Present       bool   `json:"present"`
+	}
+	if err := json.Unmarshal([]byte(statusOut), &status); err != nil {
+		t.Fatalf("parse git status: %v\nraw=%s", err, statusOut)
+	}
+	if status.FormatVersion != jsonFormatVersion || !status.Present {
+		t.Fatalf("unexpected git status: %#v", status)
 	}
 }
 

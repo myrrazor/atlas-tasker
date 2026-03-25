@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
 
@@ -27,14 +28,15 @@ func (fn notifierFunc) Notify(ctx context.Context, event contracts.Event) error 
 }
 
 type NotificationDelivery struct {
-	Attempt    int               `json:"attempt"`
-	Delivered  bool              `json:"delivered"`
-	Error      string            `json:"error,omitempty"`
-	Event      contracts.Event   `json:"event"`
-	Recipients []contracts.Actor `json:"recipients,omitempty"`
-	Targets    []string          `json:"targets,omitempty"`
-	Sink       string            `json:"sink"`
-	Timestamp  time.Time         `json:"timestamp"`
+	Attempt      int               `json:"attempt"`
+	Delivered    bool              `json:"delivered"`
+	Error        string            `json:"error,omitempty"`
+	Event        contracts.Event   `json:"event"`
+	EventSummary string            `json:"event_summary,omitempty"`
+	Recipients   []contracts.Actor `json:"recipients,omitempty"`
+	Targets      []string          `json:"targets,omitempty"`
+	Sink         string            `json:"sink"`
+	Timestamp    time.Time         `json:"timestamp"`
 }
 
 type notificationPayload struct {
@@ -97,11 +99,14 @@ func BuildNotifier(root string, cfg contracts.TrackerConfig, stderr io.Writer, r
 	if strings.TrimSpace(cfg.Notifications.WebhookURL) != "" {
 		timeout := time.Duration(cfg.Notifications.WebhookTimeoutSeconds) * time.Second
 		if timeout <= 0 {
-			timeout = 3 * time.Second
+			timeout = time.Duration(contracts.DefaultWebhookTimeoutSeconds) * time.Second
+		}
+		if timeout > time.Duration(contracts.MaxWebhookTimeoutSeconds)*time.Second {
+			timeout = time.Duration(contracts.MaxWebhookTimeoutSeconds) * time.Second
 		}
 		sinks = append(sinks, deliverySink{
 			name:    "webhook",
-			retries: cfg.Notifications.WebhookRetries,
+			retries: clampWebhookRetries(cfg.Notifications.WebhookRetries),
 			deliver: func(ctx context.Context, payload notificationPayload) error {
 				raw, err := json.Marshal(payload)
 				if err != nil {
@@ -164,16 +169,17 @@ func (n deliveryNotifier) Notify(ctx context.Context, event contracts.Event) err
 		var lastErr error
 		for attempt := 1; attempt <= attempts; attempt++ {
 			lastErr = sink.deliver(ctx, payload)
-			record := NotificationDelivery{
-				Attempt:    attempt,
-				Delivered:  lastErr == nil,
-				Error:      errorString(lastErr),
-				Event:      event,
-				Recipients: audience.Recipients,
-				Targets:    audience.Targets,
-				Sink:       sink.name,
-				Timestamp:  time.Now().UTC(),
-			}
+			record := sanitizeNotificationDelivery(NotificationDelivery{
+				Attempt:      attempt,
+				Delivered:    lastErr == nil,
+				Error:        errorString(lastErr),
+				Event:        event,
+				EventSummary: summarizeEvent(event),
+				Recipients:   audience.Recipients,
+				Targets:      audience.Targets,
+				Sink:         sink.name,
+				Timestamp:    time.Now().UTC(),
+			})
 			_ = appendNotificationRecord(n.logPath, record)
 			if lastErr == nil {
 				break
@@ -181,16 +187,17 @@ func (n deliveryNotifier) Notify(ctx context.Context, event contracts.Event) err
 		}
 		if lastErr != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", sink.name, lastErr))
-			_ = appendNotificationRecord(n.deadLetterPath, NotificationDelivery{
-				Attempt:    attempts,
-				Delivered:  false,
-				Error:      lastErr.Error(),
-				Event:      event,
-				Recipients: audience.Recipients,
-				Targets:    audience.Targets,
-				Sink:       sink.name,
-				Timestamp:  time.Now().UTC(),
-			})
+			_ = appendNotificationRecord(n.deadLetterPath, sanitizeNotificationDelivery(NotificationDelivery{
+				Attempt:      attempts,
+				Delivered:    false,
+				Error:        lastErr.Error(),
+				Event:        event,
+				EventSummary: summarizeEvent(event),
+				Recipients:   audience.Recipients,
+				Targets:      audience.Targets,
+				Sink:         sink.name,
+				Timestamp:    time.Now().UTC(),
+			}))
 		}
 	}
 	return errors.Join(errs...)
@@ -291,4 +298,27 @@ func actorsToStrings(values []contracts.Actor) []string {
 		items = append(items, string(value))
 	}
 	return items
+}
+
+func clampWebhookRetries(retries int) int {
+	if retries < 0 {
+		return 0
+	}
+	if retries > contracts.MaxWebhookRetries {
+		return contracts.MaxWebhookRetries
+	}
+	return retries
+}
+
+func sanitizeNotificationDelivery(record NotificationDelivery) NotificationDelivery {
+	record.Error = config.MaskSecretsInText(record.Error)
+	return record
+}
+
+func summarizeEvent(event contracts.Event) string {
+	ticketID := strings.TrimSpace(event.TicketID)
+	if ticketID == "" {
+		ticketID = "workspace"
+	}
+	return fmt.Sprintf("%s %s %s", event.Type, event.Project, ticketID)
 }

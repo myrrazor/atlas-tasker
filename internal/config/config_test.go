@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -88,5 +89,34 @@ func TestNotificationsDefaultsAndSetters(t *testing.T) {
 	}
 	if err := Set(root, "notifications.dead_letter_path", ".tracker/dead.log"); err != nil {
 		t.Fatalf("set dead letter path failed: %v", err)
+	}
+}
+
+func TestGetMasksWebhookSecrets(t *testing.T) {
+	root := t.TempDir()
+	rawURL := "https://bot:secret@example.com/hook?token=abc123&mode=prod"
+	if err := Set(root, "notifications.webhook_url", rawURL); err != nil {
+		t.Fatalf("set webhook url failed: %v", err)
+	}
+	value, err := Get(root, "notifications.webhook_url")
+	if err != nil {
+		t.Fatalf("get webhook url failed: %v", err)
+	}
+	if value == rawURL {
+		t.Fatalf("expected masked webhook url, got %s", value)
+	}
+	if value != "https://bot:%2A%2A%2A@example.com/hook?mode=prod&token=%2A%2A%2A" && value != "https://bot:***@example.com/hook?mode=prod&token=***" {
+		t.Fatalf("unexpected masked webhook url: %s", value)
+	}
+}
+
+func TestMaskSecretsInTextMasksEmbeddedWebhookURL(t *testing.T) {
+	raw := "post failed for https://bot:secret@example.com/hook?token=abc123 after retry"
+	masked := MaskSecretsInText(raw)
+	if strings.Contains(masked, "secret") || strings.Contains(masked, "abc123") {
+		t.Fatalf("expected masked text, got %s", masked)
+	}
+	if !strings.Contains(masked, "example.com/hook") {
+		t.Fatalf("expected host/path to remain visible, got %s", masked)
 	}
 }
