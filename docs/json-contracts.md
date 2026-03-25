@@ -34,6 +34,7 @@ Success payload is an object with `format_version` and `items`, where each item 
 - `delivered`
 - `error` when delivery failed
 - `event`
+- `event_summary`
 - `recipients`
 - `targets`
 - `sink`
@@ -43,11 +44,14 @@ Success payload is an object with `format_version` and `items`, where each item 
 Success payload matches `notify log`, but only includes final failed deliveries.
 
 ## `tracker watch list --json`
-Success payload is an object with `format_version` and `items`, where each item is a watcher rule with:
-- `actor`
-- `target_kind`
-- `target`
-- `event_types`
+Success payload is an object with `format_version` and `items`, where each item is a watcher entry with:
+- `subscription`
+  - `actor`
+  - `target_kind`
+  - `target`
+  - `event_types`
+- `active`
+- `inactive_reason` when the watched target no longer resolves
 
 ## `tracker views run <NAME> --json`
 Success payload includes:

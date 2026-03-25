@@ -107,6 +107,12 @@ type SavedViewResult struct {
 	Tickets []contracts.TicketSnapshot `json:"tickets,omitempty"`
 }
 
+type SubscriptionView struct {
+	Subscription   contracts.Subscription `json:"subscription"`
+	Active         bool                   `json:"active"`
+	InactiveReason string                 `json:"inactive_reason,omitempty"`
+}
+
 type BulkOperationKind string
 
 const (

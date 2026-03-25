@@ -2533,19 +2533,30 @@ func runWatchList(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 	}
-	subscriptions, err := workspace.queries.ListSubscriptions(actor)
+	subscriptions, err := workspace.queries.ListSubscriptions(ctx, actor)
 	if err != nil {
 		return err
 	}
 	md := "## Watchers\n\n"
 	pretty := "watchers:\n"
-	for _, subscription := range subscriptions {
+	for _, item := range subscriptions {
+		subscription := item.Subscription
 		events := "all notify-worthy events"
 		if len(subscription.EventTypes) > 0 {
 			events = strings.Join(eventTypesToStrings(subscription.EventTypes), ", ")
 		}
-		md += fmt.Sprintf("- %s watches %s `%s` (%s)\n", subscription.Actor, subscription.TargetKind, subscription.Target, events)
-		pretty += fmt.Sprintf("- %s -> %s %s [%s]\n", subscription.Actor, subscription.TargetKind, subscription.Target, events)
+		status := "active"
+		if !item.Active {
+			status = "inactive"
+		}
+		md += fmt.Sprintf("- %s watches %s `%s` (%s, %s)", subscription.Actor, subscription.TargetKind, subscription.Target, events, status)
+		pretty += fmt.Sprintf("- %s -> %s %s [%s] (%s)", subscription.Actor, subscription.TargetKind, subscription.Target, events, status)
+		if item.InactiveReason != "" {
+			md += fmt.Sprintf(" - %s", item.InactiveReason)
+			pretty += fmt.Sprintf(" - %s", item.InactiveReason)
+		}
+		md += "\n"
+		pretty += "\n"
 	}
 	return writeCommandOutput(cmd, subscriptions, md, pretty)
 }
@@ -2761,7 +2772,6 @@ func uniqueStrings(values []string) []string {
 		seen[trimmed] = struct{}{}
 		normalized = append(normalized, trimmed)
 	}
-	sort.Strings(normalized)
 	return normalized
 }
 
