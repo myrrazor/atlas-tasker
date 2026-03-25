@@ -26,6 +26,18 @@ Success payload includes:
 ## `tracker automation explain --json`
 Success payload matches `dry-run`, but `dry_run` is `false`.
 
+## `tracker notify log --json`
+Success payload is an array of delivery records with:
+- `attempt`
+- `delivered`
+- `error` when delivery failed
+- `event`
+- `sink`
+- `timestamp`
+
+## `tracker notify dead-letter --json`
+Success payload matches `notify log`, but only includes final failed deliveries.
+
 ## Error payloads
 Commands invoked with `--json` emit the standard error envelope on stderr.
 

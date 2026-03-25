@@ -14,6 +14,9 @@
 - `tracker automation delete <NAME>`
 - `tracker automation dry-run <NAME> [--ticket <ID>] [--event-type <TYPE>] [--actor <ACTOR>]`
 - `tracker automation explain <NAME> [--ticket <ID>] [--event-type <TYPE>] [--actor <ACTOR>]`
+- `tracker notify send --event-type <TYPE> [--ticket <ID>] [--project <KEY>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker notify log [--limit <N>]`
+- `tracker notify dead-letter [--limit <N>]`
 - `tracker templates list`
 - `tracker templates view <NAME>`
 - `tracker integrations install codex [--force]`
@@ -86,6 +89,12 @@
 - `tracker doctor --repair`
 - `tracker inspect <ID>`
 
+## Notify
+
+- `tracker notify send --event-type <TYPE> [--ticket <ID>] [--project <KEY>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker notify log [--limit <N>]`
+- `tracker notify dead-letter [--limit <N>]`
+
 ## Automation
 
 - `tracker automation list`
@@ -157,3 +166,8 @@ Useful config keys:
 - `notifications.terminal`
 - `notifications.file_enabled`
 - `notifications.file_path`
+- `notifications.webhook_url`
+- `notifications.webhook_timeout_seconds`
+- `notifications.webhook_retries`
+- `notifications.delivery_log_path`
+- `notifications.dead_letter_path`

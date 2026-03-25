@@ -58,6 +58,10 @@ func TestTrackerConfigValidate(t *testing.T) {
 		Workflow: WorkflowConfig{
 			CompletionMode: CompletionModeOwnerGate,
 		},
+		Notifications: NotificationsConfig{
+			DeliveryLogPath: ".tracker/delivery.log",
+			DeadLetterPath:  ".tracker/dead.log",
+		},
 	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected valid config, got %v", err)

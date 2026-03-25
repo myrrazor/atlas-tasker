@@ -61,6 +61,9 @@ func TestNotificationsDefaultsAndSetters(t *testing.T) {
 	if !cfg.Notifications.Terminal {
 		t.Fatal("expected terminal notifications to default on")
 	}
+	if cfg.Notifications.DeliveryLogPath == "" || cfg.Notifications.DeadLetterPath == "" {
+		t.Fatalf("expected delivery log defaults, got %#v", cfg.Notifications)
+	}
 	if err := Set(root, "notifications.file_enabled", "true"); err != nil {
 		t.Fatalf("enable file notifications failed: %v", err)
 	}
@@ -73,5 +76,17 @@ func TestNotificationsDefaultsAndSetters(t *testing.T) {
 	}
 	if value != ".tracker/custom-notify.log" {
 		t.Fatalf("unexpected notifications.file_path: %s", value)
+	}
+	if err := Set(root, "notifications.webhook_timeout_seconds", "9"); err != nil {
+		t.Fatalf("set webhook timeout failed: %v", err)
+	}
+	if err := Set(root, "notifications.webhook_retries", "4"); err != nil {
+		t.Fatalf("set webhook retries failed: %v", err)
+	}
+	if err := Set(root, "notifications.delivery_log_path", ".tracker/delivery.log"); err != nil {
+		t.Fatalf("set delivery log path failed: %v", err)
+	}
+	if err := Set(root, "notifications.dead_letter_path", ".tracker/dead.log"); err != nil {
+		t.Fatalf("set dead letter path failed: %v", err)
 	}
 }
