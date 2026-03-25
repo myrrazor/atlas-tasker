@@ -13,6 +13,11 @@ import (
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
 )
 
+type jsonListEnvelope[T any] struct {
+	FormatVersion string `json:"format_version"`
+	Items         []T    `json:"items"`
+}
+
 func runCLI(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	root := NewRootCommand()
@@ -26,6 +31,18 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 		out.WriteString(errOut.String())
 	}
 	return out.String(), err
+}
+
+func decodeJSONList[T any](t *testing.T, raw string) []T {
+	t.Helper()
+	var payload jsonListEnvelope[T]
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("parse versioned json list: %v\nraw=%s", err, raw)
+	}
+	if payload.FormatVersion != jsonFormatVersion {
+		t.Fatalf("unexpected format version %q in %s", payload.FormatVersion, raw)
+	}
+	return payload.Items
 }
 
 func withTempWorkspace(t *testing.T) {
@@ -67,11 +84,15 @@ func TestTicketLifecycleAndHistory(t *testing.T) {
 		t.Fatalf("ticket history failed: %v", err)
 	}
 	var payload struct {
-		TicketID string           `json:"ticket_id"`
-		Events   []map[string]any `json:"events"`
+		FormatVersion string           `json:"format_version"`
+		TicketID      string           `json:"ticket_id"`
+		Events        []map[string]any `json:"events"`
 	}
 	if err := json.Unmarshal([]byte(historyJSON), &payload); err != nil {
 		t.Fatalf("history json parse failed: %v\nraw=%s", err, historyJSON)
+	}
+	if payload.FormatVersion != jsonFormatVersion {
+		t.Fatalf("unexpected format version: %s", payload.FormatVersion)
 	}
 	if payload.TicketID != "APP-1" {
 		t.Fatalf("unexpected history ticket id: %s", payload.TicketID)
