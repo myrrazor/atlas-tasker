@@ -139,6 +139,14 @@ type model struct {
 	queue             service.QueueView
 	review            service.QueueView
 	owner             service.QueueView
+	runs              []contracts.RunSnapshot
+	runDetail         service.RunDetailView
+	runLaunch         service.RunLaunchManifestView
+	agents            []service.AgentDetailView
+	approvals         []service.ApprovalItemView
+	operatorInbox     []service.InboxItemView
+	dispatchQueue     service.DispatchQueueView
+	worktrees         []service.WorktreeStatusView
 	inbox             []service.NotificationDelivery
 	deadLetters       []service.NotificationDelivery
 	savedViews        []contracts.SavedView
@@ -161,6 +169,14 @@ type loadedMsg struct {
 	queue             service.QueueView
 	review            service.QueueView
 	owner             service.QueueView
+	runs              []contracts.RunSnapshot
+	runDetail         service.RunDetailView
+	runLaunch         service.RunLaunchManifestView
+	agents            []service.AgentDetailView
+	approvals         []service.ApprovalItemView
+	operatorInbox     []service.InboxItemView
+	dispatchQueue     service.DispatchQueueView
+	worktrees         []service.WorktreeStatusView
 	inbox             []service.NotificationDelivery
 	deadLetters       []service.NotificationDelivery
 	savedViews        []contracts.SavedView
@@ -293,6 +309,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.owner.Categories != nil {
 			m.owner = msg.owner
+		}
+		if msg.runs != nil {
+			m.runs = msg.runs
+		}
+		if msg.runDetail.GeneratedAt != (time.Time{}) {
+			m.runDetail = msg.runDetail
+		}
+		if msg.runLaunch.GeneratedAt != (time.Time{}) {
+			m.runLaunch = msg.runLaunch
+		}
+		if msg.agents != nil {
+			m.agents = msg.agents
+		}
+		if msg.approvals != nil {
+			m.approvals = msg.approvals
+		}
+		if msg.operatorInbox != nil {
+			m.operatorInbox = msg.operatorInbox
+		}
+		if msg.dispatchQueue.GeneratedAt != (time.Time{}) || msg.dispatchQueue.Entries != nil {
+			m.dispatchQueue = msg.dispatchQueue
+		}
+		if msg.worktrees != nil {
+			m.worktrees = msg.worktrees
 		}
 		if msg.inbox != nil {
 			m.inbox = msg.inbox
@@ -511,7 +551,7 @@ func (m model) bodyView() string {
 		if m.detail.Ticket.ID == "" {
 			return render.EmptyState("Detail", "No ticket selected yet.")
 		}
-		return detailWithGit(m.detail)
+		return detailWithOrchestration(m.detail, m.runs, m.runDetail, m.runLaunch)
 	case screenSearch:
 		body := m.search.View() + "\n\n"
 		if len(m.searchHits) == 0 {
@@ -526,11 +566,11 @@ func (m model) bodyView() string {
 	case screenOwner:
 		return ticketsListView("Owner Attention", m.itemsForScreen(), m.cursor)
 	case screenInbox:
-		return inboxView(m.inbox, m.deadLetters)
+		return attentionView(m.approvals, m.operatorInbox, m.inbox, m.deadLetters)
 	case screenViews:
 		return savedViewsPanel(m.savedViews, m.selectedViewName(), m.cursor)
 	case screenOps:
-		return opsView(m.automations, m.automationExplain, m.lastBulk, m.pendingBulk)
+		return opsView(m.agents, m.dispatchQueue, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk)
 	default:
 		return ""
 	}
@@ -559,6 +599,14 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		}
 		queue := service.QueueView{}
 		review := service.QueueView{}
+		runs := []contracts.RunSnapshot{}
+		runDetail := service.RunDetailView{GeneratedAt: m.now()}
+		runLaunch := service.RunLaunchManifestView{GeneratedAt: m.now()}
+		agents := []service.AgentDetailView{}
+		approvals := []service.ApprovalItemView{}
+		operatorInbox := []service.InboxItemView{}
+		dispatchQueue := service.DispatchQueueView{}
+		worktrees := []service.WorktreeStatusView{}
 		owner, err := m.queries.Queue(ctx, contracts.Actor("human:owner"))
 		if err != nil {
 			return loadedMsg{err: err}
@@ -584,6 +632,30 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			}
 		}
 		detail := service.TicketDetailView{}
+		runs, err = m.queries.ListRuns(ctx, "", "", "")
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		agents, err = m.queries.ListAgents(ctx)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		approvals, err = m.queries.Approvals(ctx)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		operatorInbox, err = m.queries.Inbox(ctx)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		dispatchQueue, err = m.queries.DispatchQueue(ctx)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		worktrees, err = m.queries.WorktreeList(ctx)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
 		if selectedID == "" {
 			selectedID = firstBoardTicketID(board)
 		}
@@ -591,6 +663,16 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			detail, err = m.queries.TicketDetail(ctx, selectedID)
 			if err != nil {
 				return loadedMsg{err: err}
+			}
+			if focusRunID := focusRunIDForTicket(detail.Ticket, runs); focusRunID != "" {
+				runDetail, err = m.queries.RunDetail(ctx, focusRunID)
+				if err != nil {
+					return loadedMsg{err: err}
+				}
+				runLaunch, err = m.queries.RunOpen(ctx, focusRunID)
+				if err != nil {
+					return loadedMsg{err: err}
+				}
 			}
 		}
 		inbox, err := m.queries.NotificationLog(12)
@@ -620,7 +702,32 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		if selectedView == "" && len(savedViews) > 0 {
 			selectedView = savedViews[0].Name
 		}
-		return loadedMsg{board: board, queue: queue, review: review, owner: owner, inbox: inbox, deadLetters: deadLetters, savedViews: savedViews, automations: automations, automationExplain: automationExplain, detail: detail, searchHits: searchHits, selectedID: selectedID, selectedView: selectedView, actor: actor, actorErr: actorErr, status: status}
+		return loadedMsg{
+			board:             board,
+			queue:             queue,
+			review:            review,
+			owner:             owner,
+			runs:              runs,
+			runDetail:         runDetail,
+			runLaunch:         runLaunch,
+			agents:            agents,
+			approvals:         approvals,
+			operatorInbox:     operatorInbox,
+			dispatchQueue:     dispatchQueue,
+			worktrees:         worktrees,
+			inbox:             inbox,
+			deadLetters:       deadLetters,
+			savedViews:        savedViews,
+			automations:       automations,
+			automationExplain: automationExplain,
+			detail:            detail,
+			searchHits:        searchHits,
+			selectedID:        selectedID,
+			selectedView:      selectedView,
+			actor:             actor,
+			actorErr:          actorErr,
+			status:            status,
+		}
 	}
 }
 
@@ -1035,35 +1142,85 @@ func nextTickets(next service.NextView) []contracts.TicketSnapshot {
 	return items
 }
 
-func detailWithGit(detail service.TicketDetailView) string {
+func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.RunSnapshot, runDetail service.RunDetailView, launch service.RunLaunchManifestView) string {
 	body := render.TicketPretty(detail.Ticket, detail.Comments)
 	gitLines := []string{"Git Context:"}
 	if !detail.Git.Repo.Present {
 		gitLines = append(gitLines, "- repo: not detected")
-		return body + "\n\n" + strings.Join(gitLines, "\n")
-	}
-	gitLines = append(gitLines,
-		fmt.Sprintf("- branch: %s", optionalString(detail.Git.Repo.Branch, "detached")),
-		fmt.Sprintf("- dirty: %t", detail.Git.Repo.Dirty),
-		fmt.Sprintf("- suggested: %s", optionalString(detail.Git.SuggestedBranch, "n/a")),
-		fmt.Sprintf("- current matches ticket: %t", detail.Git.CurrentBranchMatches),
-	)
-	if len(detail.Git.Refs) == 0 {
-		gitLines = append(gitLines, "- refs: none")
 	} else {
-		gitLines = append(gitLines, "- refs:")
-		for _, ref := range detail.Git.Refs {
-			gitLines = append(gitLines, fmt.Sprintf("  - %s %s", shortHash(ref.Hash), ref.Subject))
+		gitLines = append(gitLines,
+			fmt.Sprintf("- branch: %s", optionalString(detail.Git.Repo.Branch, "detached")),
+			fmt.Sprintf("- dirty: %t", detail.Git.Repo.Dirty),
+			fmt.Sprintf("- suggested: %s", optionalString(detail.Git.SuggestedBranch, "n/a")),
+			fmt.Sprintf("- current matches ticket: %t", detail.Git.CurrentBranchMatches),
+		)
+		if len(detail.Git.Refs) == 0 {
+			gitLines = append(gitLines, "- refs: none")
+		} else {
+			gitLines = append(gitLines, "- refs:")
+			for _, ref := range detail.Git.Refs {
+				gitLines = append(gitLines, fmt.Sprintf("  - %s %s", shortHash(ref.Hash), ref.Subject))
+			}
 		}
 	}
-	return body + "\n\n" + strings.Join(gitLines, "\n")
+	runLines := []string{"Runs:"}
+	ticketRuns := runsForTicket(detail.Ticket.ID, runs)
+	if len(ticketRuns) == 0 {
+		runLines = append(runLines, "- none")
+	} else {
+		for _, run := range ticketRuns {
+			runLines = append(runLines, fmt.Sprintf("- %s [%s/%s] agent=%s", run.RunID, run.Status, run.Kind, optionalString(run.AgentID, "unassigned")))
+		}
+	}
+	evidenceLines := []string{"Evidence:"}
+	if len(runDetail.Evidence) == 0 {
+		evidenceLines = append(evidenceLines, "- none")
+	} else {
+		for _, item := range runDetail.Evidence {
+			evidenceLines = append(evidenceLines, fmt.Sprintf("- %s [%s] %s", item.EvidenceID, item.Type, optionalString(item.Title, "(untitled)")))
+		}
+	}
+	handoffLines := []string{"Handoffs:"}
+	if len(runDetail.Handoffs) == 0 {
+		handoffLines = append(handoffLines, "- none")
+	} else {
+		for _, item := range runDetail.Handoffs {
+			handoffLines = append(handoffLines, fmt.Sprintf("- %s next=%s gate=%s", item.HandoffID, optionalString(item.SuggestedNextActor, "n/a"), optionalString(string(item.SuggestedNextGate), "n/a")))
+		}
+	}
+	runtimeLines := []string{"Runtime:"}
+	if launch.RunID == "" {
+		runtimeLines = append(runtimeLines, "- none")
+	} else {
+		runtimeLines = append(runtimeLines,
+			"- dir: "+launch.RuntimeDir,
+			"- brief: "+launch.BriefPath,
+			"- context: "+launch.ContextPath,
+			"- codex: "+launch.CodexLaunchPath,
+			"- claude: "+launch.ClaudeLaunchPath,
+		)
+	}
+	return body + "\n\n" + strings.Join(gitLines, "\n") + "\n\n" + strings.Join(runLines, "\n") + "\n\n" + strings.Join(evidenceLines, "\n") + "\n\n" + strings.Join(handoffLines, "\n") + "\n\n" + strings.Join(runtimeLines, "\n")
 }
 
-func inboxView(records []service.NotificationDelivery, deadLetters []service.NotificationDelivery) string {
-	if len(records) == 0 && len(deadLetters) == 0 {
-		return render.EmptyState("Inbox", "No notification traffic yet.")
+func attentionView(approvals []service.ApprovalItemView, items []service.InboxItemView, records []service.NotificationDelivery, deadLetters []service.NotificationDelivery) string {
+	lines := []string{"Approvals:"}
+	if len(approvals) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range approvals {
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.Gate.GateID, item.Gate.Kind, item.Summary))
+		}
 	}
-	lines := []string{"Recent Deliveries:"}
+	lines = append(lines, "", "Human Inbox:")
+	if len(items) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range items {
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.ID, item.State, item.Summary))
+		}
+	}
+	lines = append(lines, "", "Recent Deliveries:")
 	if len(records) == 0 {
 		lines = append(lines, "- none")
 	} else {
@@ -1104,8 +1261,37 @@ func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) s
 	return strings.Join(lines, "\n")
 }
 
-func opsView(rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation) string {
-	lines := []string{"Automation Rules:"}
+func opsView(agents []service.AgentDetailView, dispatch service.DispatchQueueView, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation) string {
+	lines := []string{"Agents:"}
+	if len(agents) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, agent := range agents {
+			state := "disabled"
+			if agent.Profile.Enabled {
+				state = "enabled"
+			}
+			lines = append(lines, fmt.Sprintf("- %s [%s] active=%d", agent.Profile.AgentID, state, agent.ActiveRuns))
+		}
+	}
+	lines = append(lines, "", "Dispatch Queue:")
+	if len(dispatch.Entries) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, entry := range dispatch.Entries {
+			auto := optionalString(entry.Suggestion.AutoRouteAgentID, "manual")
+			lines = append(lines, fmt.Sprintf("- %s auto=%s", entry.Ticket.ID, auto))
+		}
+	}
+	lines = append(lines, "", "Worktrees:")
+	if len(worktrees) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range worktrees {
+			lines = append(lines, fmt.Sprintf("- %s present=%t dirty=%t", item.RunID, item.Present, item.Dirty))
+		}
+	}
+	lines = append(lines, "", "Automation Rules:")
 	if len(rules) == 0 {
 		lines = append(lines, "- none")
 	} else {
@@ -1195,6 +1381,27 @@ func firstBoardTicketID(board service.BoardViewModel) string {
 		}
 	}
 	return ""
+}
+
+func focusRunIDForTicket(ticket contracts.TicketSnapshot, runs []contracts.RunSnapshot) string {
+	if strings.TrimSpace(ticket.LatestRunID) != "" {
+		return ticket.LatestRunID
+	}
+	items := runsForTicket(ticket.ID, runs)
+	if len(items) == 0 {
+		return ""
+	}
+	return items[0].RunID
+}
+
+func runsForTicket(ticketID string, runs []contracts.RunSnapshot) []contracts.RunSnapshot {
+	items := make([]contracts.RunSnapshot, 0)
+	for _, run := range runs {
+		if run.TicketID == ticketID {
+			items = append(items, run)
+		}
+	}
+	return items
 }
 
 func minInt(a int, b int) int {

@@ -202,6 +202,24 @@ Rules:
 - handoffs survive `run cleanup`
 - handoff creation does not auto-open gates in PR-405; that comes with PR-406
 
+## TUI
+
+- `tracker tui [--actor <ACTOR>]`
+
+Panels:
+
+- `Detail` now includes run, evidence, handoff, and runtime panels for the selected ticket
+- `Inbox` includes approvals, derived human inbox items, notification deliveries, and dead letters
+- `Ops` includes agents, dispatch queue, worktrees, automation explain, and bulk preview state
+
+Palette shortcuts:
+
+- `/ticket ...`
+- `/run open <RUN-ID>`
+- `/run launch <RUN-ID> [--refresh]`
+- `/bulk ...`
+- `/views run <NAME>`
+
 ## Project
 
 - `tracker project create <KEY> <NAME>`
