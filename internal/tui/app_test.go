@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -269,6 +271,98 @@ func TestDetailViewIncludesGitContext(t *testing.T) {
 	if !strings.Contains(view, "Git Context:") {
 		t.Fatalf("expected git context in detail view, got %s", view)
 	}
+	if !strings.Contains(view, "Runs:") || !strings.Contains(view, "Evidence:") || !strings.Contains(view, "Handoffs:") || !strings.Contains(view, "Runtime:") {
+		t.Fatalf("expected orchestration panels in detail view, got %s", view)
+	}
+}
+
+func TestInboxViewShowsApprovalsAndHumanInboxPanels(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	now := time.Date(2026, 3, 23, 11, 0, 0, 0, time.UTC)
+	if err := (service.GateStore{Root: root}).SaveGate(context.Background(), contracts.GateSnapshot{
+		GateID:          "gate_1",
+		TicketID:        "APP-1",
+		Kind:            contracts.GateKindReview,
+		State:           contracts.GateStateOpen,
+		RequiredRole:    contracts.AgentRoleReviewer,
+		RequiredAgentID: "agent:reviewer-1",
+		CreatedBy:       contracts.Actor("human:owner"),
+		CreatedAt:       now,
+		SchemaVersion:   contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save gate: %v", err)
+	}
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	defer m.close()
+	updated, _ := m.Update(m.refresh()().(loadedMsg))
+	m = updated.(model)
+	m.screen = screenInbox
+	view := m.View()
+	if !strings.Contains(view, "Approvals:") || !strings.Contains(view, "Human Inbox:") {
+		t.Fatalf("expected approvals and inbox panels, got %s", view)
+	}
+	if !strings.Contains(view, "gate_1") {
+		t.Fatalf("expected open gate to appear in inbox view, got %s", view)
+	}
+}
+
+func TestOpsViewShowsAgentsDispatchAndWorktreesPanels(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	if err := (service.AgentStore{Root: root}).SaveAgent(context.Background(), contracts.AgentProfile{
+		AgentID:       "builder-1",
+		DisplayName:   "Builder One",
+		Provider:      contracts.AgentProviderCodex,
+		Enabled:       true,
+		Capabilities:  []string{"go"},
+		MaxActiveRuns: 1,
+	}); err != nil {
+		t.Fatalf("save agent: %v", err)
+	}
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	defer m.close()
+	updated, _ := m.Update(m.refresh()().(loadedMsg))
+	m = updated.(model)
+	m.screen = screenOps
+	view := m.View()
+	if !strings.Contains(view, "Agents:") || !strings.Contains(view, "Dispatch Queue:") || !strings.Contains(view, "Worktrees:") {
+		t.Fatalf("expected ops panels in view, got %s", view)
+	}
+	if !strings.Contains(view, "builder-1") || !strings.Contains(view, "APP-1") {
+		t.Fatalf("expected populated agent/dispatch content, got %s", view)
+	}
+}
+
+func TestPaletteRunLaunchWritesRuntimeArtifacts(t *testing.T) {
+	root, runID := seededTUIRunWorkspace(t)
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	defer m.close()
+	updated, _ := m.Update(m.refresh()().(loadedMsg))
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(model)
+	m.dialog.Input.SetValue("/run launch " + runID)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("expected launch command from palette submit")
+	}
+	updated, _ = m.Update(cmd().(loadedMsg))
+	m = updated.(model)
+	if _, err := os.Stat(filepath.Join(root, ".tracker", "runtime", runID, "brief.md")); err != nil {
+		t.Fatalf("expected runtime brief to exist: %v", err)
+	}
+	if !strings.Contains(m.status, "launched runtime artifacts") {
+		t.Fatalf("expected launch status, got %s", m.status)
+	}
 }
 
 func seededTUIWorkspace(t *testing.T) string {
@@ -278,6 +372,45 @@ func seededTUIWorkspace(t *testing.T) string {
 		t.Fatalf(format, args...)
 	})
 	return root
+}
+
+func seededTUIRunWorkspace(t *testing.T) (string, string) {
+	t.Helper()
+	root := seededTUIWorkspace(t)
+	gitMustRun(t, root, "init", "-b", "main")
+	gitMustRun(t, root, "config", "user.email", "atlas@example.com")
+	gitMustRun(t, root, "config", "user.name", "Atlas")
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("# atlas\n"), 0o644); err != nil {
+		t.Fatalf("write readme: %v", err)
+	}
+	gitMustRun(t, root, "add", "README.md")
+	gitMustRun(t, root, "commit", "-m", "init")
+
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	defer m.close()
+	ctx := service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: contracts.EventSurfaceTUI})
+	actor, err := m.queries.ResolveActor(ctx, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("resolve actor: %v", err)
+	}
+	if _, err := m.actions.SaveAgentProfile(ctx, contracts.AgentProfile{
+		AgentID:       "builder-1",
+		DisplayName:   "Builder One",
+		Provider:      contracts.AgentProviderCodex,
+		Enabled:       true,
+		Capabilities:  []string{"go"},
+		MaxActiveRuns: 1,
+	}, actor, "seed agent"); err != nil {
+		t.Fatalf("save agent: %v", err)
+	}
+	result, err := m.actions.DispatchRun(ctx, "APP-1", "builder-1", contracts.RunKindWork, actor, "seed run")
+	if err != nil {
+		t.Fatalf("dispatch run: %v", err)
+	}
+	return root, result.RunID
 }
 
 func seededTUIWorkspaceAt(root string, fail func(string, ...any)) {
@@ -307,5 +440,14 @@ func seededTUIWorkspaceAt(root string, fail func(string, ...any)) {
 	}
 	if err := projection.ApplyEvent(ctx, event); err != nil {
 		fail("apply event: %v", err)
+	}
+}
+
+func gitMustRun(t *testing.T, root string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, string(out))
 	}
 }
