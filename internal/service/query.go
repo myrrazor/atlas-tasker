@@ -17,6 +17,7 @@ type QueryService struct {
 	Projects   contracts.ProjectStore
 	Tickets    contracts.TicketStore
 	Agents     contracts.AgentStore
+	Runs       contracts.RunStore
 	Events     contracts.EventLog
 	Projection contracts.ProjectionStore
 	Views      ViewStore
@@ -24,7 +25,7 @@ type QueryService struct {
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
-	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
+	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, Runs: RunStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
 }
 
 func (s *QueryService) now() time.Time {
@@ -55,11 +56,16 @@ func (s *QueryService) ListAgents(ctx context.Context) ([]AgentDetailView, error
 	if err != nil {
 		return nil, err
 	}
+	runs, err := s.Runs.ListRuns(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	activeCounts := activeRunCountsByAgent(runs)
 	items := make([]AgentDetailView, 0, len(profiles))
 	for _, profile := range profiles {
 		items = append(items, AgentDetailView{
 			Profile:     profile,
-			ActiveRuns:  0,
+			ActiveRuns:  activeCounts[profile.AgentID],
 			GeneratedAt: s.now(),
 		})
 	}
@@ -71,7 +77,11 @@ func (s *QueryService) AgentDetail(ctx context.Context, agentID string) (AgentDe
 	if err != nil {
 		return AgentDetailView{}, err
 	}
-	return AgentDetailView{Profile: profile, ActiveRuns: 0, GeneratedAt: s.now()}, nil
+	runs, err := s.Runs.ListRuns(ctx, "")
+	if err != nil {
+		return AgentDetailView{}, err
+	}
+	return AgentDetailView{Profile: profile, ActiveRuns: activeRunCountsByAgent(runs)[profile.AgentID], GeneratedAt: s.now()}, nil
 }
 
 func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (AgentEligibilityReport, error) {
@@ -83,9 +93,19 @@ func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (A
 	if err != nil {
 		return AgentEligibilityReport{}, err
 	}
+	runs, err := s.Runs.ListRuns(ctx, "")
+	if err != nil {
+		return AgentEligibilityReport{}, err
+	}
+	activeCounts := activeRunCountsByAgent(runs)
+	ticketRuns, err := s.Runs.ListRuns(ctx, ticket.ID)
+	if err != nil {
+		return AgentEligibilityReport{}, err
+	}
+	hasActiveRun := activeRunCountForTicket(ticketRuns) > 0
 	items := make([]AgentEligibilityEntry, 0, len(profiles))
 	for _, profile := range profiles {
-		activeRuns := 0
+		activeRuns := activeCounts[profile.AgentID]
 		entry := AgentEligibilityEntry{
 			Agent:       profile,
 			Eligible:    true,
@@ -107,6 +127,10 @@ func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (A
 		if missing := missingCapabilities(profile.Capabilities, ticket.RequiredCapabilities); len(missing) > 0 {
 			entry.Eligible = false
 			entry.ReasonCodes = append(entry.ReasonCodes, "missing_capability")
+		}
+		if hasActiveRun && !ticket.AllowParallelRuns {
+			entry.Eligible = false
+			entry.ReasonCodes = append(entry.ReasonCodes, "parallel_runs_disabled")
 		}
 		items = append(items, entry)
 	}

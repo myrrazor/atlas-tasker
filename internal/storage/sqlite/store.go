@@ -341,6 +341,11 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 			return err
 		}
 	}
+	for _, run := range extractRunSnapshots(event.Payload) {
+		if err := s.upsertRun(ctx, run); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -358,6 +363,21 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 	if project == "" {
 		if _, err := s.DB.ExecContext(ctx, `DELETE FROM tickets`); err != nil {
 			return fmt.Errorf("clear tickets: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM agents`); err != nil {
+			return fmt.Errorf("clear agents: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM runs`); err != nil {
+			return fmt.Errorf("clear runs: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM gates`); err != nil {
+			return fmt.Errorf("clear gates: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM evidence`); err != nil {
+			return fmt.Errorf("clear evidence: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM handoffs`); err != nil {
+			return fmt.Errorf("clear handoffs: %w", err)
 		}
 		if _, err := s.DB.ExecContext(ctx, `DELETE FROM events`); err != nil {
 			return fmt.Errorf("clear events: %w", err)
@@ -381,6 +401,16 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 		}
 		for _, ticket := range extractTicketSnapshots(event.Payload) {
 			if err := s.upsertTicket(ctx, ticket); err != nil {
+				return err
+			}
+		}
+		for _, agent := range extractAgentProfiles(event.Payload) {
+			if err := s.upsertAgent(ctx, agent); err != nil {
+				return err
+			}
+		}
+		for _, run := range extractRunSnapshots(event.Payload) {
+			if err := s.upsertRun(ctx, run); err != nil {
 				return err
 			}
 		}
@@ -759,6 +789,69 @@ func (s *Store) upsertAgent(ctx context.Context, profile contracts.AgentProfile)
 	return nil
 }
 
+func (s *Store) upsertRun(ctx context.Context, run contracts.RunSnapshot) error {
+	if err := run.Validate(); err != nil {
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `
+		INSERT INTO runs (
+			run_id, ticket_id, project, agent_id, provider, status, kind, blueprint_stage,
+			worktree_path, branch_name, created_at, started_at, completed_at, last_heartbeat_at,
+			result, summary, handoff_to, supersedes_run_id, evidence_count, session_provider,
+			session_ref, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(run_id) DO UPDATE SET
+			ticket_id=excluded.ticket_id,
+			project=excluded.project,
+			agent_id=excluded.agent_id,
+			provider=excluded.provider,
+			status=excluded.status,
+			kind=excluded.kind,
+			blueprint_stage=excluded.blueprint_stage,
+			worktree_path=excluded.worktree_path,
+			branch_name=excluded.branch_name,
+			created_at=excluded.created_at,
+			started_at=excluded.started_at,
+			completed_at=excluded.completed_at,
+			last_heartbeat_at=excluded.last_heartbeat_at,
+			result=excluded.result,
+			summary=excluded.summary,
+			handoff_to=excluded.handoff_to,
+			supersedes_run_id=excluded.supersedes_run_id,
+			evidence_count=excluded.evidence_count,
+			session_provider=excluded.session_provider,
+			session_ref=excluded.session_ref,
+			schema_version=excluded.schema_version
+	`,
+		run.RunID,
+		run.TicketID,
+		run.Project,
+		nullable(run.AgentID),
+		nullable(string(run.Provider)),
+		string(run.Status),
+		string(run.Kind),
+		nullable(run.BlueprintStage),
+		nullable(run.WorktreePath),
+		nullable(run.BranchName),
+		run.CreatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTime(run.StartedAt),
+		nullableTime(run.CompletedAt),
+		nullableTime(run.LastHeartbeatAt),
+		nullable(run.Result),
+		nullable(run.Summary),
+		nullable(run.HandoffTo),
+		nullable(run.SupersedesRunID),
+		run.EvidenceCount,
+		nullable(string(run.SessionProvider)),
+		nullable(run.SessionRef),
+		run.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert run %s: %w", run.RunID, err)
+	}
+	return nil
+}
+
 type ticketScanner interface {
 	Scan(dest ...any) error
 }
@@ -1063,6 +1156,52 @@ func extractAgentProfiles(payload any) []contracts.AgentProfile {
 		return nil
 	}
 	return []contracts.AgentProfile{profile}
+}
+
+func extractRunSnapshots(payload any) []contracts.RunSnapshot {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+
+	result := make([]contracts.RunSnapshot, 0, 1)
+	seen := map[string]struct{}{}
+	appendRun := func(run contracts.RunSnapshot) {
+		if run.SchemaVersion == 0 {
+			run.SchemaVersion = contracts.CurrentSchemaVersion
+		}
+		if run.Status == "" {
+			run.Status = contracts.RunStatusPlanned
+		}
+		if run.Kind == "" {
+			run.Kind = contracts.RunKindWork
+		}
+		if run.Validate() != nil {
+			return
+		}
+		if _, ok := seen[run.RunID]; ok {
+			return
+		}
+		seen[run.RunID] = struct{}{}
+		result = append(result, run)
+	}
+
+	var wrapped struct {
+		Run contracts.RunSnapshot `json:"run"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		appendRun(wrapped.Run)
+	}
+
+	var run contracts.RunSnapshot
+	if err := json.Unmarshal(raw, &run); err == nil {
+		appendRun(run)
+	}
+
+	return result
 }
 
 func nullable(value string) any {
