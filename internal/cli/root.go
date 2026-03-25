@@ -53,6 +53,9 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newRunCommand())
 	root.AddCommand(newWorktreeCommand())
 	root.AddCommand(newDispatchCommand())
+	root.AddCommand(newApprovalsCommand())
+	root.AddCommand(newGateCommand())
+	root.AddCommand(newInboxCommand())
 	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())
@@ -905,8 +908,14 @@ func runTicketView(cmd *cobra.Command, args []string) error {
 			rawMD += "- " + comment + "\n"
 		}
 	}
-	pretty := fmt.Sprintf("%s [%s] %s", detail.Ticket.ID, detail.Ticket.Status, detail.Ticket.Title)
-	payload := map[string]any{"ticket": detail.Ticket, "comments": detail.Comments, "effective_policy": detail.EffectivePolicy}
+	if len(detail.Gates) > 0 {
+		rawMD += "\n## Gates\n\n"
+		for _, gate := range detail.Gates {
+			rawMD += fmt.Sprintf("- %s [%s/%s]\n", gate.GateID, gate.Kind, gate.State)
+		}
+	}
+	pretty := fmt.Sprintf("%s [%s] %s open_gates=%d", detail.Ticket.ID, detail.Ticket.Status, detail.Ticket.Title, len(detail.Ticket.OpenGateIDs))
+	payload := map[string]any{"ticket": detail.Ticket, "comments": detail.Comments, "gates": detail.Gates, "effective_policy": detail.EffectivePolicy}
 	return writeCommandOutput(cmd, payload, rawMD, pretty)
 }
 
@@ -1562,8 +1571,8 @@ func runInspect(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Lease Active: %t\n- Completion: %s\n", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode)
-	pretty := fmt.Sprintf("inspect %s -> board=%s lease_active=%t completion=%s", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode)
+	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Lease Active: %t\n- Completion: %s\n- Open Gates: %d\n", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs))
+	pretty := fmt.Sprintf("inspect %s -> board=%s lease_active=%t completion=%s open_gates=%d", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs))
 	return writeCommandOutput(cmd, view, md, pretty)
 }
 

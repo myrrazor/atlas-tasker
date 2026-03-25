@@ -17,6 +17,8 @@ import (
 type runMutationPayload struct {
 	Run      contracts.RunSnapshot    `json:"run"`
 	Ticket   contracts.TicketSnapshot `json:"ticket,omitempty"`
+	Gate     contracts.GateSnapshot   `json:"gate,omitempty"`
+	Gates    []contracts.GateSnapshot `json:"gates,omitempty"`
 	Evidence contracts.EvidenceItem   `json:"evidence,omitempty"`
 	Handoff  contracts.HandoffPacket  `json:"handoff,omitempty"`
 }
@@ -250,6 +252,15 @@ func (s *ActionService) transitionRun(ctx context.Context, runID string, actor c
 		if err != nil {
 			return contracts.RunSnapshot{}, err
 		}
+		if next == contracts.RunStatusActive {
+			ticket, err := s.Tickets.GetTicket(ctx, run.TicketID)
+			if err != nil {
+				return contracts.RunSnapshot{}, err
+			}
+			if len(ticket.OpenGateIDs) > 0 {
+				return contracts.RunSnapshot{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("run %s cannot resume while gates are open", run.RunID))
+			}
+		}
 		if run.Status != next && !run.Status.Allows(next) {
 			return contracts.RunSnapshot{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("run %s cannot move from %s to %s", run.RunID, run.Status, next))
 		}
@@ -271,12 +282,27 @@ func (s *ActionService) transitionRun(ctx context.Context, runID string, actor c
 }
 
 func (s *ActionService) finishRun(ctx context.Context, runID string, actor contracts.Actor, reason string, eventType contracts.EventType, next contracts.RunStatus, result string, summary string) (contracts.RunSnapshot, error) {
-	return s.transitionRun(ctx, runID, actor, reason, eventType, next, func(run *contracts.RunSnapshot) {
-		run.CompletedAt = s.now()
-		run.Result = result
-		if strings.TrimSpace(summary) != "" {
-			run.Summary = strings.TrimSpace(summary)
+	return withWriteLock(ctx, s.LockManager, "finish run", func(ctx context.Context) (contracts.RunSnapshot, error) {
+		run, err := s.Runs.LoadRun(ctx, runID)
+		if err != nil {
+			return contracts.RunSnapshot{}, err
 		}
+		if next == contracts.RunStatusCompleted {
+			ticket, err := s.Tickets.GetTicket(ctx, run.TicketID)
+			if err != nil {
+				return contracts.RunSnapshot{}, err
+			}
+			if len(ticket.OpenGateIDs) > 0 {
+				return contracts.RunSnapshot{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("run %s cannot complete while gates are open", run.RunID))
+			}
+		}
+		return s.transitionRun(ctx, runID, actor, reason, eventType, next, func(run *contracts.RunSnapshot) {
+			run.CompletedAt = s.now()
+			run.Result = result
+			if strings.TrimSpace(summary) != "" {
+				run.Summary = strings.TrimSpace(summary)
+			}
+		})
 	})
 }
 

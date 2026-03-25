@@ -428,6 +428,12 @@ func formatRunDetail(detail service.RunDetailView) string {
 	if detail.Run.Summary != "" {
 		lines = append(lines, "", detail.Run.Summary)
 	}
+	if len(detail.Gates) > 0 {
+		lines = append(lines, "", fmt.Sprintf("gates=%d", len(detail.Gates)))
+		for _, gate := range detail.Gates {
+			lines = append(lines, fmt.Sprintf("- %s [%s/%s]", gate.GateID, gate.Kind, gate.State))
+		}
+	}
 	if len(detail.Evidence) > 0 {
 		lines = append(lines, "", fmt.Sprintf("evidence=%d", len(detail.Evidence)))
 		for _, item := range detail.Evidence {

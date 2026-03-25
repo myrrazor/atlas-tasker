@@ -63,6 +63,14 @@
 - `tracker dispatch queue`
 - `tracker dispatch run <TICKET-ID> [--agent <AGENT-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker dispatch bulk [--ticket <ID>]... [--view <NAME>] [--agent <AGENT-ID>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker approvals`
+- `tracker gate list [--ticket <ID>] [--run <RUN-ID>] [--state <STATE>]`
+- `tracker gate view <GATE-ID>`
+- `tracker gate approve <GATE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker gate reject <GATE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker gate waive <GATE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker inbox`
+- `tracker inbox view <ITEM-ID>`
 - `tracker evidence list <RUN-ID>`
 - `tracker evidence view <EVIDENCE-ID>`
 - `tracker handoff view <HANDOFF-ID>`
@@ -134,6 +142,33 @@ Rules:
 - `dispatch run` auto-routes only when exactly one agent is eligible; otherwise it requires `--agent`
 - bulk dispatch preserves the exact saved-view order and still re-checks eligibility at apply time
 - runbook resolution order is ticket override, agent default, project mapping, then built-in default
+
+## Approvals
+
+- `tracker approvals`
+- `tracker gate list [--ticket <ID>] [--run <RUN-ID>] [--state <STATE>]`
+- `tracker gate view <GATE-ID>`
+- `tracker gate approve <GATE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker gate reject <GATE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker gate waive <GATE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+
+Rules:
+
+- `run handoff` opens any required runbook gates for the run and can also open an explicit `--next-gate`
+- rejecting a run-scoped gate sends the run back to `active`
+- approving or waiving the last open run-scoped gate relaxes the run back to `handoff_ready`
+- open gates block dispatch, `run complete`, and `ticket complete`
+
+## Inbox
+
+- `tracker inbox`
+- `tracker inbox view <ITEM-ID>`
+
+Rules:
+
+- inbox items are derived, not stored
+- open gates surface as `gate:<gate-id>` items
+- handoff-ready runs surface as `handoff:<handoff-id>` items
 
 ## Evidence
 

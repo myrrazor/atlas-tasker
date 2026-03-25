@@ -127,23 +127,41 @@ func (s *ActionService) CreateHandoff(ctx context.Context, runID string, actor c
 		if err != nil {
 			return contracts.HandoffPacket{}, err
 		}
+		openedGates, nextTicket, nextRun, err := s.ensureGatesForHandoff(ctx, run, ticket, actor, nextActor, nextGate)
+		if err != nil {
+			return contracts.HandoffPacket{}, err
+		}
+		ticket = nextTicket
+		run = nextRun
 		ticket.LatestHandoffID = packet.HandoffID
 		run.HandoffTo = strings.TrimSpace(nextActor)
-		payload := runMutationPayload{Run: run, Ticket: ticket, Handoff: packet}
+		payload := runMutationPayload{Run: run, Ticket: ticket, Handoff: packet, Gates: openedGates}
 		event, err := s.newEvent(ctx, run.Project, s.now(), actor, reason, contracts.EventRunHandoffRequested, run.TicketID, payload)
 		if err != nil {
 			return contracts.HandoffPacket{}, err
 		}
 		if err := s.commitMutation(ctx, "create handoff", "handoff", event, func(ctx context.Context) error {
+			rollback := func() {
+				_ = os.Remove(storage.HandoffFile(s.Root, packet.HandoffID))
+				for _, gate := range openedGates {
+					_ = os.Remove(storage.GateFile(s.Root, gate.GateID))
+				}
+			}
 			if err := s.Handoffs.SaveHandoff(ctx, packet); err != nil {
 				return err
 			}
+			for _, gate := range openedGates {
+				if err := s.Gates.SaveGate(ctx, gate); err != nil {
+					rollback()
+					return err
+				}
+			}
 			if err := s.Runs.SaveRun(ctx, run); err != nil {
-				_ = os.Remove(storage.HandoffFile(s.Root, packet.HandoffID))
+				rollback()
 				return err
 			}
 			if err := s.UpdateTicket(ctx, ticket); err != nil {
-				_ = os.Remove(storage.HandoffFile(s.Root, packet.HandoffID))
+				rollback()
 				return err
 			}
 			return nil
