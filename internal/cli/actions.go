@@ -47,14 +47,6 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	notifier, err := service.BuildNotifier(root, cfg, os.Stderr)
-	if err != nil {
-		return nil, err
-	}
-	automation := &service.AutomationEngine{
-		Store:    service.AutomationStore{Root: root},
-		Notifier: notifier,
-	}
 	w := &workspace{
 		root:       root,
 		project:    projectStore,
@@ -63,8 +55,19 @@ func openWorkspace() (*workspace, error) {
 		projection: projection,
 		locks:      service.FileLockManager{Root: root},
 	}
-	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
 	w.queries = service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
+	notifier, err := service.BuildNotifier(root, cfg, os.Stderr, service.SubscriptionResolver{
+		Store:   service.SubscriptionStore{Root: root},
+		Queries: w.queries,
+	})
+	if err != nil {
+		return nil, err
+	}
+	automation := &service.AutomationEngine{
+		Store:    service.AutomationStore{Root: root},
+		Notifier: notifier,
+	}
+	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
 	return w, nil
 }
 
@@ -155,6 +158,9 @@ func ensureInitArtifacts(root string) error {
 		return err
 	}
 	if err := os.MkdirAll(storage.ViewsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.SubscriptionsDir(root), 0o755); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "templates"), 0o755); err != nil {

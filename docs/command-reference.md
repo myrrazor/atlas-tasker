@@ -26,6 +26,13 @@
 - `tracker views save <NAME> --kind <board|search|queue|next> [flags]`
 - `tracker views delete <NAME>`
 - `tracker views run <NAME> [--actor <ACTOR>]`
+- `tracker watch list [--actor <ACTOR>]`
+- `tracker watch ticket <ID> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker watch project <KEY> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker watch view <NAME> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker unwatch ticket <ID> [--actor <ACTOR>]`
+- `tracker unwatch project <KEY> [--actor <ACTOR>]`
+- `tracker unwatch view <NAME> [--actor <ACTOR>]`
 - `tracker templates list`
 - `tracker templates view <NAME>`
 - `tracker integrations install codex [--force]`
@@ -100,6 +107,16 @@
 - `tracker views save <NAME> --kind <board|search|queue|next> [--title <TEXT>] [--project <KEY>] [--assignee <ACTOR>] [--type <TYPE>] [--actor <ACTOR>] [--query <QUERY>] [--column <STATUS>] [--queue-category <CATEGORY>]`
 - `tracker views delete <NAME>`
 - `tracker views run <NAME> [--actor <ACTOR>]`
+
+## Watchers
+
+- `tracker watch list [--actor <ACTOR>]`
+- `tracker watch ticket <ID> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker watch project <KEY> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker watch view <NAME> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker unwatch ticket <ID> [--actor <ACTOR>]`
+- `tracker unwatch project <KEY> [--actor <ACTOR>]`
+- `tracker unwatch view <NAME> [--actor <ACTOR>]`
 
 ## Maintenance
 

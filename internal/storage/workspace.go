@@ -31,6 +31,10 @@ func ViewsDir(root string) string {
 	return filepath.Join(TrackerDir(root), "views")
 }
 
+func SubscriptionsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "subscriptions")
+}
+
 func ProjectDir(root string, key string) string {
 	return filepath.Join(ProjectsDir(root), key)
 }
