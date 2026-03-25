@@ -346,6 +346,16 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 			return err
 		}
 	}
+	for _, evidence := range extractEvidenceItems(event.Payload) {
+		if err := s.upsertEvidence(ctx, evidence); err != nil {
+			return err
+		}
+	}
+	for _, handoff := range extractHandoffPackets(event.Payload) {
+		if err := s.upsertHandoff(ctx, handoff); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -411,6 +421,16 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 		}
 		for _, run := range extractRunSnapshots(event.Payload) {
 			if err := s.upsertRun(ctx, run); err != nil {
+				return err
+			}
+		}
+		for _, evidence := range extractEvidenceItems(event.Payload) {
+			if err := s.upsertEvidence(ctx, evidence); err != nil {
+				return err
+			}
+		}
+		for _, handoff := range extractHandoffPackets(event.Payload) {
+			if err := s.upsertHandoff(ctx, handoff); err != nil {
 				return err
 			}
 		}
@@ -852,6 +872,79 @@ func (s *Store) upsertRun(ctx context.Context, run contracts.RunSnapshot) error 
 	return nil
 }
 
+func (s *Store) upsertEvidence(ctx context.Context, evidence contracts.EvidenceItem) error {
+	if err := evidence.Validate(); err != nil {
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `
+		INSERT INTO evidence (
+			evidence_id, run_id, ticket_id, type, title, body, artifact_path,
+			supersedes_evidence_id, actor, created_at, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(evidence_id) DO UPDATE SET
+			run_id=excluded.run_id,
+			ticket_id=excluded.ticket_id,
+			type=excluded.type,
+			title=excluded.title,
+			body=excluded.body,
+			artifact_path=excluded.artifact_path,
+			supersedes_evidence_id=excluded.supersedes_evidence_id,
+			actor=excluded.actor,
+			created_at=excluded.created_at,
+			schema_version=excluded.schema_version
+	`,
+		evidence.EvidenceID,
+		evidence.RunID,
+		evidence.TicketID,
+		string(evidence.Type),
+		nullable(evidence.Title),
+		nullable(evidence.Body),
+		nullable(evidence.ArtifactPath),
+		nullable(evidence.SupersedesEvidenceID),
+		string(evidence.Actor),
+		evidence.CreatedAt.UTC().Format(time.RFC3339Nano),
+		evidence.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert evidence %s: %w", evidence.EvidenceID, err)
+	}
+	return nil
+}
+
+func (s *Store) upsertHandoff(ctx context.Context, handoff contracts.HandoffPacket) error {
+	if err := handoff.Validate(); err != nil {
+		return err
+	}
+	payloadJSON, err := json.Marshal(handoff)
+	if err != nil {
+		return fmt.Errorf("marshal handoff payload: %w", err)
+	}
+	_, err = s.DB.ExecContext(ctx, `
+		INSERT INTO handoffs (
+			handoff_id, source_run_id, ticket_id, actor, payload_json, generated_at, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(handoff_id) DO UPDATE SET
+			source_run_id=excluded.source_run_id,
+			ticket_id=excluded.ticket_id,
+			actor=excluded.actor,
+			payload_json=excluded.payload_json,
+			generated_at=excluded.generated_at,
+			schema_version=excluded.schema_version
+	`,
+		handoff.HandoffID,
+		handoff.SourceRunID,
+		handoff.TicketID,
+		string(handoff.Actor),
+		string(payloadJSON),
+		handoff.GeneratedAt.UTC().Format(time.RFC3339Nano),
+		handoff.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert handoff %s: %w", handoff.HandoffID, err)
+	}
+	return nil
+}
+
 type ticketScanner interface {
 	Scan(dest ...any) error
 }
@@ -1202,6 +1295,48 @@ func extractRunSnapshots(payload any) []contracts.RunSnapshot {
 	}
 
 	return result
+}
+
+func extractEvidenceItems(payload any) []contracts.EvidenceItem {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	var wrapped struct {
+		Evidence contracts.EvidenceItem `json:"evidence"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil && wrapped.Evidence.Validate() == nil {
+		return []contracts.EvidenceItem{wrapped.Evidence}
+	}
+	var evidence contracts.EvidenceItem
+	if err := json.Unmarshal(raw, &evidence); err == nil && evidence.Validate() == nil {
+		return []contracts.EvidenceItem{evidence}
+	}
+	return nil
+}
+
+func extractHandoffPackets(payload any) []contracts.HandoffPacket {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	var wrapped struct {
+		Handoff contracts.HandoffPacket `json:"handoff"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil && wrapped.Handoff.Validate() == nil {
+		return []contracts.HandoffPacket{wrapped.Handoff}
+	}
+	var handoff contracts.HandoffPacket
+	if err := json.Unmarshal(raw, &handoff); err == nil && handoff.Validate() == nil {
+		return []contracts.HandoffPacket{handoff}
+	}
+	return nil
 }
 
 func nullable(value string) any {

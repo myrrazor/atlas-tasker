@@ -5,7 +5,7 @@ import "testing"
 func TestRootCommandIncludesRequiredTopLevelCommands(t *testing.T) {
 	root := NewRootCommand()
 	required := []string{
-		"init", "doctor", "reindex", "config", "project", "agent", "run", "worktree", "dispatch", "ticket",
+		"init", "doctor", "reindex", "config", "project", "agent", "run", "worktree", "dispatch", "evidence", "handoff", "ticket",
 		"board", "backlog", "next", "blocked", "queue", "review-queue", "owner-queue",
 		"who", "sweep", "inspect", "automation", "notify", "git", "views", "watch", "unwatch", "bulk", "templates", "integrations", "search", "render", "shell", "tui",
 	}

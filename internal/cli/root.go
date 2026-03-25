@@ -53,6 +53,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newRunCommand())
 	root.AddCommand(newWorktreeCommand())
 	root.AddCommand(newDispatchCommand())
+	root.AddCommand(newEvidenceCommand())
+	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())
 	root.AddCommand(newBoardCommand())
 	root.AddCommand(newBacklogCommand())
