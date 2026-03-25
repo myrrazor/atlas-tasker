@@ -64,12 +64,30 @@ tracker tui --actor human:owner
 
 Release is not done until that flow works against the real published artifacts.
 
+## Release Manager Checklist
+
+- [ ] Prerelease tag created
+- [ ] GitHub release artifacts published
+- [ ] `checksums.txt` downloaded and verified against the chosen archive
+- [ ] install script run against the published artifacts in a clean temp directory
+- [ ] installed binary completed the smoke flow
+- [ ] any failures captured below before retrying
+
+Record the proof here for the actual release:
+
+- prerelease tag:
+- artifact URLs:
+- checksum verification:
+- smoke-flow result:
+- notes:
+
 ## Local Rehearsal
 
 For a local dry run before you cut the real prerelease:
 
 ```bash
 VERSION=v1.3.0-rc1 ./scripts/release-rehearsal.sh
+sh scripts/stability-smoke.sh
 ```
 
 That script:
@@ -79,3 +97,7 @@ That script:
 3. serves the archive from a local HTTP server
 4. installs it through `scripts/install.sh`
 5. runs the smoke flow with the installed binary in a clean temp workspace
+
+`scripts/stability-smoke.sh` is the short stabilization lane used in CI. It runs the
+targeted race suite plus short fuzzers for slash parsing, query parsing, markdown
+frontmatter parsing, automation TOML parsing, and event entry parsing.
