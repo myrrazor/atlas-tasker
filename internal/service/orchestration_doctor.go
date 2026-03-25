@@ -10,7 +10,6 @@ import (
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
-	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
 )
 
 type OrchestrationDoctorReport struct {
@@ -27,12 +26,12 @@ func (r OrchestrationDoctorReport) TotalIssues() int {
 	return r.RunIssues + r.GateIssues + r.HandoffIssues + r.EvidenceIssues + r.RuntimeIssues + r.WorktreeIssues
 }
 
-func AuditOrchestration(ctx context.Context, root string) (OrchestrationDoctorReport, error) {
+func AuditOrchestration(ctx context.Context, root string, tickets contracts.TicketStore) (OrchestrationDoctorReport, error) {
 	canonicalRoot, err := CanonicalWorkspaceRoot(root)
 	if err == nil {
 		root = canonicalRoot
 	}
-	tickets, err := mdstore.TicketStore{RootDir: root}.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	allTickets, err := tickets.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
 	if err != nil {
 		return OrchestrationDoctorReport{}, err
 	}
@@ -59,8 +58,8 @@ func AuditOrchestration(ctx context.Context, root string) (OrchestrationDoctorRe
 		issueCodes[code] = struct{}{}
 	}
 
-	ticketsByID := make(map[string]contracts.TicketSnapshot, len(tickets))
-	for _, ticket := range tickets {
+	ticketsByID := make(map[string]contracts.TicketSnapshot, len(allTickets))
+	for _, ticket := range allTickets {
 		ticketsByID[ticket.ID] = ticket
 	}
 	runsByID := make(map[string]contracts.RunSnapshot, len(runs))

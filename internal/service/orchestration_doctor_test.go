@@ -125,7 +125,7 @@ func TestAuditOrchestrationReportsDriftAndBrokenArtifacts(t *testing.T) {
 		t.Fatalf("save handoff: %v", err)
 	}
 
-	report, err := AuditOrchestration(ctx, root)
+	report, err := AuditOrchestration(ctx, root, ticketStore)
 	if err != nil {
 		t.Fatalf("audit orchestration: %v", err)
 	}
