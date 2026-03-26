@@ -1536,6 +1536,21 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			}
 		}
 	}
+	orchestrationRepairActions := []string{}
+	if repair {
+		if err := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair orchestration", func(ctx context.Context) error {
+			var err error
+			orchestrationRepairActions, err = service.RepairOrchestration(ctx, root)
+			return err
+		}); err != nil {
+			return err
+		}
+	}
+	orchestrationReport, err := service.AuditOrchestration(ctx, root)
+	if err != nil {
+		return err
+	}
+	issueCodes := append([]string{}, orchestrationReport.IssueCodes...)
 	message := fmt.Sprintf("doctor ok: %d events scanned, %d projects, %d tickets", len(events), len(projects), len(tickets))
 	payload := map[string]any{
 		"ok":             true,
@@ -1543,13 +1558,14 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"projects":       len(projects),
 		"tickets":        len(tickets),
 		"repair_ran":     repair,
-		"repair_actions": append(append([]string{}, repairActions...), repairReport.Actions...),
+		"repair_actions": append(append(append([]string{}, repairActions...), repairReport.Actions...), orchestrationRepairActions...),
 		"repair_pending": repairReport.Pending,
 		"config":         config.MaskTrackerConfig(cfg),
-		"issue_codes":    []string{},
+		"issue_codes":    issueCodes,
 		"issues": map[string]any{
 			"project_issues": projectIssues,
 			"ticket_issues":  ticketIssues,
+			"orchestration":  orchestrationReport,
 		},
 	}
 	return writeCommandOutput(cmd, payload, message, message)

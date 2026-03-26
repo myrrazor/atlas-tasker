@@ -327,6 +327,12 @@ Rules:
 - `tracker doctor --repair`
 - `tracker inspect <ID>`
 
+Rules:
+
+- `doctor` audits orchestration snapshots and derived state in addition to tickets and projection health
+- `doctor --json` reports run, gate, handoff, evidence, runtime, and worktree issue counts under `issues.orchestration`
+- `doctor --repair` may rebuild projection state and reconcile Git worktree metadata, but it will not recreate missing worktrees, runtime artifacts, or evidence artifacts
+
 ## Notify
 
 - `tracker notify send --event-type <TYPE> [--ticket <ID>] [--project <KEY>] [--actor <ACTOR>] [--reason <TEXT>]`

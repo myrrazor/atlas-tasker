@@ -125,7 +125,24 @@ func TestReindexAndRepairDoNotRecreateWorktrees(t *testing.T) {
 	}
 
 	must("reindex")
-	must("doctor", "--repair")
+	doctorOut := must("doctor", "--repair", "--json")
+	var doctor struct {
+		IssueCodes    []string `json:"issue_codes"`
+		RepairActions []string `json:"repair_actions"`
+	}
+	if err := json.Unmarshal([]byte(doctorOut), &doctor); err != nil {
+		t.Fatalf("parse doctor output: %v\nraw=%s", err, doctorOut)
+	}
+	for _, code := range []string{"worktree_missing", "runtime_dir_missing"} {
+		if !strings.Contains(strings.Join(doctor.IssueCodes, ","), code) {
+			t.Fatalf("expected doctor issue code %s in %#v", code, doctor.IssueCodes)
+		}
+	}
+	for _, action := range []string{"repaired tracked worktree metadata", "pruned stale worktree metadata"} {
+		if !strings.Contains(strings.Join(doctor.RepairActions, ","), action) {
+			t.Fatalf("expected doctor repair action %q in %#v", action, doctor.RepairActions)
+		}
+	}
 
 	worktreeOut := must("worktree", "view", dispatch.Payload.RunID, "--json")
 	var detail struct {
