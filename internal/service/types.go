@@ -56,6 +56,8 @@ type TicketDetailView struct {
 	Comments        []string                 `json:"comments"`
 	History         []contracts.Event        `json:"history"`
 	Gates           []contracts.GateSnapshot `json:"gates,omitempty"`
+	Changes         []contracts.ChangeRef    `json:"changes,omitempty"`
+	Checks          []contracts.CheckResult  `json:"checks,omitempty"`
 	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
 	Git             GitContextView           `json:"git"`
 }
@@ -72,8 +74,24 @@ type InspectView struct {
 	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
 	History         []contracts.Event        `json:"history"`
 	Gates           []contracts.GateSnapshot `json:"gates,omitempty"`
+	Changes         []contracts.ChangeRef    `json:"changes,omitempty"`
+	Checks          []contracts.CheckResult  `json:"checks,omitempty"`
 	Git             GitContextView           `json:"git"`
 	QueueCategories []QueueCategory          `json:"queue_categories,omitempty"`
+}
+
+type ChangeDetailView struct {
+	Change      contracts.ChangeRef      `json:"change"`
+	Ticket      contracts.TicketSnapshot `json:"ticket,omitempty"`
+	Checks      []contracts.CheckResult  `json:"checks,omitempty"`
+	GeneratedAt time.Time                `json:"generated_at"`
+}
+
+type HandoffContextView struct {
+	Handoff     contracts.HandoffPacket `json:"handoff"`
+	Changes     []contracts.ChangeRef   `json:"changes,omitempty"`
+	Checks      []contracts.CheckResult `json:"checks,omitempty"`
+	GeneratedAt time.Time               `json:"generated_at"`
 }
 
 type TemplateView struct {

@@ -445,6 +445,16 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 			return err
 		}
 	}
+	for _, change := range extractChangeRefs(event.Payload) {
+		if err := s.upsertChange(ctx, change); err != nil {
+			return err
+		}
+	}
+	for _, check := range extractCheckResults(event.Payload) {
+		if err := s.upsertCheck(ctx, check); err != nil {
+			return err
+		}
+	}
 	for _, gate := range extractGateSnapshots(event.Payload) {
 		if err := s.upsertGate(ctx, gate); err != nil {
 			return err
@@ -483,6 +493,12 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 		}
 		if _, err := s.DB.ExecContext(ctx, `DELETE FROM runs`); err != nil {
 			return fmt.Errorf("clear runs: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM changes`); err != nil {
+			return fmt.Errorf("clear changes: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM checks`); err != nil {
+			return fmt.Errorf("clear checks: %w", err)
 		}
 		if _, err := s.DB.ExecContext(ctx, `DELETE FROM gates`); err != nil {
 			return fmt.Errorf("clear gates: %w", err)
@@ -525,6 +541,16 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 		}
 		for _, run := range extractRunSnapshots(event.Payload) {
 			if err := s.upsertRun(ctx, run); err != nil {
+				return err
+			}
+		}
+		for _, change := range extractChangeRefs(event.Payload) {
+			if err := s.upsertChange(ctx, change); err != nil {
+				return err
+			}
+		}
+		for _, check := range extractCheckResults(event.Payload) {
+			if err := s.upsertCheck(ctx, check); err != nil {
 				return err
 			}
 		}
@@ -991,6 +1017,107 @@ func (s *Store) upsertRun(ctx context.Context, run contracts.RunSnapshot) error 
 	)
 	if err != nil {
 		return fmt.Errorf("upsert run %s: %w", run.RunID, err)
+	}
+	return nil
+}
+
+func (s *Store) upsertChange(ctx context.Context, change contracts.ChangeRef) error {
+	if err := change.Validate(); err != nil {
+		return err
+	}
+	reviewRequestedFromJSON, err := json.Marshal(change.ReviewRequestedFrom)
+	if err != nil {
+		return fmt.Errorf("marshal change reviewers: %w", err)
+	}
+	_, err = s.DB.ExecContext(ctx, `
+		INSERT INTO changes (
+			change_id, provider, ticket_id, run_id, branch_name, base_branch, head_ref, url,
+			external_id, status, checks_status, review_requested_from_json, review_summary,
+			created_at, updated_at, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(change_id) DO UPDATE SET
+			provider=excluded.provider,
+			ticket_id=excluded.ticket_id,
+			run_id=excluded.run_id,
+			branch_name=excluded.branch_name,
+			base_branch=excluded.base_branch,
+			head_ref=excluded.head_ref,
+			url=excluded.url,
+			external_id=excluded.external_id,
+			status=excluded.status,
+			checks_status=excluded.checks_status,
+			review_requested_from_json=excluded.review_requested_from_json,
+			review_summary=excluded.review_summary,
+			created_at=excluded.created_at,
+			updated_at=excluded.updated_at,
+			schema_version=excluded.schema_version
+	`,
+		change.ChangeID,
+		string(change.Provider),
+		change.TicketID,
+		nullable(change.RunID),
+		nullable(change.BranchName),
+		nullable(change.BaseBranch),
+		nullable(change.HeadRef),
+		nullable(change.URL),
+		nullable(change.ExternalID),
+		string(change.Status),
+		nullable(string(change.ChecksStatus)),
+		string(reviewRequestedFromJSON),
+		nullable(change.ReviewSummary),
+		change.CreatedAt.UTC().Format(time.RFC3339Nano),
+		change.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		change.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert change %s: %w", change.ChangeID, err)
+	}
+	return nil
+}
+
+func (s *Store) upsertCheck(ctx context.Context, check contracts.CheckResult) error {
+	if err := check.Validate(); err != nil {
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `
+		INSERT INTO checks (
+			check_id, source, provider, scope, scope_id, name, status, conclusion,
+			summary, url, started_at, completed_at, external_id, updated_at, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(check_id) DO UPDATE SET
+			source=excluded.source,
+			provider=excluded.provider,
+			scope=excluded.scope,
+			scope_id=excluded.scope_id,
+			name=excluded.name,
+			status=excluded.status,
+			conclusion=excluded.conclusion,
+			summary=excluded.summary,
+			url=excluded.url,
+			started_at=excluded.started_at,
+			completed_at=excluded.completed_at,
+			external_id=excluded.external_id,
+			updated_at=excluded.updated_at,
+			schema_version=excluded.schema_version
+	`,
+		check.CheckID,
+		string(check.Source),
+		nullable(string(check.Provider)),
+		string(check.Scope),
+		check.ScopeID,
+		check.Name,
+		string(check.Status),
+		string(check.Conclusion),
+		nullable(check.Summary),
+		nullable(check.URL),
+		nullableTime(check.StartedAt),
+		nullableTime(check.CompletedAt),
+		nullable(check.ExternalID),
+		check.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		check.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert check %s: %w", check.CheckID, err)
 	}
 	return nil
 }
@@ -1522,6 +1649,72 @@ func extractRunSnapshots(payload any) []contracts.RunSnapshot {
 		appendRun(run)
 	}
 
+	return result
+}
+
+func extractChangeRefs(payload any) []contracts.ChangeRef {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	result := make([]contracts.ChangeRef, 0, 1)
+	seen := map[string]struct{}{}
+	appendChange := func(change contracts.ChangeRef) {
+		if change.Validate() != nil {
+			return
+		}
+		if _, ok := seen[change.ChangeID]; ok {
+			return
+		}
+		seen[change.ChangeID] = struct{}{}
+		result = append(result, change)
+	}
+	var wrapped struct {
+		Change contracts.ChangeRef `json:"change"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		appendChange(wrapped.Change)
+	}
+	var change contracts.ChangeRef
+	if err := json.Unmarshal(raw, &change); err == nil {
+		appendChange(change)
+	}
+	return result
+}
+
+func extractCheckResults(payload any) []contracts.CheckResult {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	result := make([]contracts.CheckResult, 0, 1)
+	seen := map[string]struct{}{}
+	appendCheck := func(check contracts.CheckResult) {
+		if check.Validate() != nil {
+			return
+		}
+		if _, ok := seen[check.CheckID]; ok {
+			return
+		}
+		seen[check.CheckID] = struct{}{}
+		result = append(result, check)
+	}
+	var wrapped struct {
+		Check contracts.CheckResult `json:"check"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		appendCheck(wrapped.Check)
+	}
+	var check contracts.CheckResult
+	if err := json.Unmarshal(raw, &check); err == nil {
+		appendCheck(check)
+	}
 	return result
 }
 
