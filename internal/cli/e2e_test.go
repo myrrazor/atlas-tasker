@@ -385,6 +385,56 @@ func TestShellParityForArchiveCommands(t *testing.T) {
 	runSlashShell(t, "/archive restore "+listed.Items[0].ArchiveID+" --actor human:owner")
 }
 
+func TestShellParityForCompactCommands(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\noutput=%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Compact parity", "--type", "task", "--actor", "human:owner")
+
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	old := time.Now().UTC().AddDate(0, 0, -10)
+	run := contracts.RunSnapshot{
+		RunID:         "run_shell_compact",
+		TicketID:      "APP-1",
+		Project:       "APP",
+		Status:        contracts.RunStatusCompleted,
+		Kind:          contracts.RunKindWork,
+		CreatedAt:     old,
+		CompletedAt:   old,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := (service.RunStore{Root: root}).SaveRun(commandContext(nil), run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	for _, path := range []string{
+		storage.RuntimeBriefFile(root, run.RunID),
+		storage.RuntimeLaunchFile(root, run.RunID, "codex"),
+		storage.RuntimeLaunchFile(root, run.RunID, "claude"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir runtime dir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("runtime"), 0o644); err != nil {
+			t.Fatalf("write runtime artifact: %v", err)
+		}
+	}
+
+	runSlashShell(t, "/compact --yes --actor human:owner")
+}
+
 func runSlashShell(t *testing.T, slash string) {
 	t.Helper()
 	args, err := ParseSlashCommand(slash)
