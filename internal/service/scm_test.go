@@ -71,6 +71,22 @@ func TestSCMServiceCommitRequiresStagedChangesAndPrefixesTicketID(t *testing.T) 
 	}
 }
 
+func TestSCMServiceBranchExistsTreatsQuietMissAsFalse(t *testing.T) {
+	root := t.TempDir()
+	initGitRepo(t, root)
+	writeFile(t, filepath.Join(root, "README.md"), "# atlas\n")
+	gitRun(t, root, "add", "README.md")
+	gitRun(t, root, "commit", "-m", "init")
+
+	exists, err := (SCMService{Root: root}).BranchExists(context.Background(), "ticket/missing-branch")
+	if err != nil {
+		t.Fatalf("branch exists: %v", err)
+	}
+	if exists {
+		t.Fatal("expected missing branch to report false")
+	}
+}
+
 func TestQueryServiceQueueAndDetailIncludeGitContext(t *testing.T) {
 	root := t.TempDir()
 	initGitRepo(t, root)
