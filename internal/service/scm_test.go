@@ -183,3 +183,27 @@ func writeFile(t *testing.T, path string, body string) {
 		t.Fatalf("write %s: %v", path, err)
 	}
 }
+
+func TestSCMChangedFilesPreservesPorcelainPaths(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+
+	initGitRepo(t, root)
+	writeFile(t, filepath.Join(root, "README.md"), "# atlas\n")
+	gitRun(t, root, "add", "README.md")
+	gitRun(t, root, "commit", "-m", "init")
+
+	writeFile(t, filepath.Join(root, "README.md"), "# atlas\n\nupdated\n")
+	writeFile(t, filepath.Join(root, "notes.txt"), "untracked\n")
+
+	files, err := (SCMService{Root: root}).ChangedFiles(ctx)
+	if err != nil {
+		t.Fatalf("changed files: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected two changed files, got %#v", files)
+	}
+	if files[0] != "README.md" || files[1] != "notes.txt" {
+		t.Fatalf("unexpected changed files: %#v", files)
+	}
+}

@@ -87,6 +87,13 @@
 - `tracker checks view <CHECK-ID>`
 - `tracker checks record --scope <run|change|ticket> --id <SCOPE-ID> --name <NAME> [flags]`
 - `tracker checks sync <CHANGE-ID>`
+- `tracker permission-profile list`
+- `tracker permission-profile view <PROFILE-ID>`
+- `tracker permission-profile create <PROFILE-ID>`
+- `tracker permission-profile edit <PROFILE-ID>`
+- `tracker permission-profile bind <PROFILE-ID>`
+- `tracker permission-profile unbind <PROFILE-ID>`
+- `tracker permissions view <TARGET>`
 - `tracker evidence list <RUN-ID>`
 - `tracker evidence view <EVIDENCE-ID>`
 - `tracker handoff view <HANDOFF-ID>`
@@ -232,6 +239,25 @@ Rules:
 - change-scoped and ticket-scoped checks feed the same readiness rollup used by `ticket view` and `inspect`
 - `checks sync` is the explicit provider-read path for change-scoped checks; replay, reindex, and repair never call providers
 - run-scoped checks appear in `run view` and `handoff view`
+
+## Permission Profiles
+
+- `tracker permission-profile list`
+- `tracker permission-profile view <PROFILE-ID>`
+- `tracker permission-profile create <PROFILE-ID> [--name <TEXT>] [--priority <N>] [--workspace-default] [--project <KEY>]... [--agent <ID>]... [--runbook <NAME>]... [--allow-project <KEY>]... [--allow-ticket-type <TYPE>]... [--allow-runbook <NAME>]... [--allow-capability <CAP>]... [--allow-action <ACTION>]... [--deny-action <ACTION>]... [--allow-path <GLOB>]... [--forbid-path <GLOB>]... [--require-owner-for-sensitive-ops] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker permission-profile edit <PROFILE-ID> [same flags as create]`
+- `tracker permission-profile bind <PROFILE-ID> (--workspace | --project <KEY> | --agent <ID> | --runbook <NAME> | --ticket <ID>) [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker permission-profile unbind <PROFILE-ID> (--workspace | --project <KEY> | --agent <ID> | --runbook <NAME> | --ticket <ID>) [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker permissions view <TARGET> [--actor <ACTOR>] [--action <ACTION>]`
+
+Rules:
+
+- explicit deny beats explicit allow across every matching profile
+- matching order is workspace default, project default, agent binding, runbook binding, then direct ticket overlays
+- `permissions view` returns the ordered profile matches, the effective allow or deny decision, and stable reason codes for every blocked checkpoint
+- protected and sensitive tickets can require `human:owner`; when the owner is the actor Atlas records an explicit override event instead of silently bypassing the profile
+- path restrictions normalize to repo-root-relative slash paths and block with `unverifiable_path_scope` when Atlas cannot verify the changed-file set for the action
+- enforcement currently happens at dispatch, run launch, change create, change merge, gate open, gate approve, run completion, and ticket completion
 
 ## Evidence
 

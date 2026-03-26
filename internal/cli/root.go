@@ -58,6 +58,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newInboxCommand())
 	root.AddCommand(newChangeCommand())
 	root.AddCommand(newChecksCommand())
+	root.AddCommand(newPermissionProfileCommand())
+	root.AddCommand(newPermissionsCommand())
 	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())
@@ -438,6 +440,9 @@ func newTicketCommand() *cobra.Command {
 	create.Flags().String("reviewer", "", "Reviewer actor")
 	create.Flags().String("description", "", "Ticket description")
 	create.Flags().StringArray("acceptance", []string{}, "Acceptance criterion (repeatable)")
+	create.Flags().StringArray("permission-profile", nil, "Permission profile applied directly to this ticket")
+	create.Flags().Bool("protected", false, "Mark the ticket as protected")
+	create.Flags().Bool("sensitive", false, "Mark the ticket as sensitive")
 	_ = create.MarkFlagRequired("project")
 	_ = create.MarkFlagRequired("title")
 	cmd.AddCommand(create)
@@ -454,6 +459,9 @@ func newTicketCommand() *cobra.Command {
 	edit.Flags().String("labels", "", "Comma-separated labels")
 	edit.Flags().String("assignee", "", "Assignee actor")
 	edit.Flags().String("reviewer", "", "Reviewer actor")
+	edit.Flags().StringArray("permission-profile", nil, "Replace direct ticket permission profiles")
+	edit.Flags().Bool("protected", false, "Mark the ticket as protected")
+	edit.Flags().Bool("sensitive", false, "Mark the ticket as sensitive")
 	addMutationFlags(edit, &mutationFlags{Actor: "human:owner"})
 	cmd.AddCommand(edit)
 
@@ -794,6 +802,9 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	reviewerRaw, _ := cmd.Flags().GetString("reviewer")
 	description, _ := cmd.Flags().GetString("description")
 	acceptance, _ := cmd.Flags().GetStringArray("acceptance")
+	permissionProfiles, _ := cmd.Flags().GetStringArray("permission-profile")
+	protected, _ := cmd.Flags().GetBool("protected")
+	sensitive, _ := cmd.Flags().GetBool("sensitive")
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	actor := normalizeActor(actorRaw)
@@ -847,6 +858,9 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 		Summary:            title,
 		Description:        description,
 		AcceptanceCriteria: acceptance,
+		PermissionProfiles: append([]string{}, permissionProfiles...),
+		Protected:          protected,
+		Sensitive:          sensitive,
 		Template:           strings.TrimSpace(templateName),
 	}
 	if len(ticket.Labels) == 0 && len(template.Labels) > 0 {
@@ -987,6 +1001,18 @@ func runTicketEdit(cmd *cobra.Command, args []string) error {
 			if reviewer == "" {
 				ticket.Reviewer = ""
 			}
+		}
+		if cmd.Flags().Changed("permission-profile") {
+			profiles, _ := cmd.Flags().GetStringArray("permission-profile")
+			ticket.PermissionProfiles = append([]string{}, profiles...)
+		}
+		if cmd.Flags().Changed("protected") {
+			protected, _ := cmd.Flags().GetBool("protected")
+			ticket.Protected = protected
+		}
+		if cmd.Flags().Changed("sensitive") {
+			sensitive, _ := cmd.Flags().GetBool("sensitive")
+			ticket.Sensitive = sensitive
 		}
 		return nil
 	})
@@ -1601,8 +1627,14 @@ func runInspect(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Lease Active: %t\n- Completion: %s\n- Open Gates: %d\n- Change Ready: %s\n", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState)
-	pretty := fmt.Sprintf("inspect %s -> board=%s lease_active=%t completion=%s open_gates=%d change_ready=%s", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState)
+	blockedActions := 0
+	for _, decision := range view.Permissions {
+		if !decision.Allowed {
+			blockedActions++
+		}
+	}
+	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Lease Active: %t\n- Completion: %s\n- Open Gates: %d\n- Change Ready: %s\n- Blocked Actions: %d\n", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState, blockedActions)
+	pretty := fmt.Sprintf("inspect %s -> board=%s lease_active=%t completion=%s open_gates=%d change_ready=%s blocked_actions=%d", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState, blockedActions)
 	return writeCommandOutput(cmd, view, md, pretty)
 }
 

@@ -42,6 +42,16 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 		if !kind.IsValid() {
 			return DispatchResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid run kind: %s", kind))
 		}
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionDispatch,
+			Actor:             actor,
+			Ticket:            ticket,
+			ActorAgent:        &agent,
+			Runbook:           permissionRunbook(ticket, nil),
+			ChangedFilesKnown: false,
+		}); err != nil {
+			return DispatchResult{}, err
+		}
 		entry, err := s.agentEligibility(ctx, ticket, agent.AgentID)
 		if err != nil {
 			return DispatchResult{}, err
@@ -300,6 +310,20 @@ func (s *ActionService) finishRun(ctx context.Context, runID string, actor contr
 			}
 			if len(ticket.OpenGateIDs) > 0 {
 				return contracts.RunSnapshot{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("run %s cannot complete while gates are open", run.RunID))
+			}
+			agent, _ := s.Agents.LoadAgent(ctx, run.AgentID)
+			changedFiles, known := permissionChangedFilesForRun(ctx, s.Runs, s.Root, run)
+			if _, err := s.requirePermission(ctx, permissionEvalInput{
+				Action:            contracts.PermissionActionRunComplete,
+				Actor:             actor,
+				Ticket:            ticket,
+				Run:               &run,
+				ActorAgent:        maybeAgentProfile(agent),
+				Runbook:           permissionRunbook(ticket, &run),
+				ChangedFiles:      changedFiles,
+				ChangedFilesKnown: known,
+			}); err != nil {
+				return contracts.RunSnapshot{}, err
 			}
 		}
 		return s.transitionRun(ctx, runID, actor, reason, eventType, next, func(run *contracts.RunSnapshot) {
