@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -143,22 +144,19 @@ func (s SCMService) ContextForTicket(ctx context.Context, ticket contracts.Ticke
 	if err != nil {
 		return GitContextView{}, err
 	}
-	if !repo.Present {
-		return GitContextView{}, nil
-	}
 	suggested := s.SuggestedBranch(ticket)
-	refs, err := s.TicketRefs(ctx, ticket.ID)
-	if err != nil {
-		return GitContextView{}, err
+	view := GitContextView{SuggestedBranch: suggested, Repo: repo}
+	if repo.Present {
+		refs, err := s.TicketRefs(ctx, ticket.ID)
+		if err != nil {
+			return GitContextView{}, err
+		}
+		branch := strings.ToLower(repo.Branch)
+		id := strings.ToLower(ticket.ID)
+		view.CurrentBranchMatches = branch != "" && strings.Contains(branch, id)
+		view.Refs = refs
 	}
-	branch := strings.ToLower(repo.Branch)
-	id := strings.ToLower(ticket.ID)
-	return GitContextView{
-		Repo:                 repo,
-		SuggestedBranch:      suggested,
-		CurrentBranchMatches: branch != "" && strings.Contains(branch, id),
-		Refs:                 refs,
-	}, nil
+	return view, nil
 }
 
 func (s SCMService) gitOutput(ctx context.Context, args ...string) (string, error) {
@@ -212,6 +210,56 @@ func (s SCMService) ensureNoNestedRepoAmbiguity(repoRoot string) error {
 		return fmt.Errorf("nested git repo detected at %s; commit from the repo containing the workspace root", rel)
 	}
 	return nil
+}
+
+func (s SCMService) BranchExists(ctx context.Context, branch string) (bool, error) {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return false, nil
+	}
+	if _, err := s.gitOutput(ctx, "rev-parse", "--verify", "--quiet", branch); err != nil {
+		msg := strings.ToLower(err.Error())
+		if strings.Contains(msg, "unknown revision") || strings.Contains(msg, "needed a single revision") {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (s SCMService) ChangedFiles(ctx context.Context) ([]string, error) {
+	output, err := s.gitOutput(ctx, "status", "--porcelain", "--untracked-files=all")
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "not a git repository") {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	files := make([]string, 0)
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		path := strings.TrimSpace(line)
+		if path == "" {
+			continue
+		}
+		if len(path) > 3 {
+			path = strings.TrimSpace(path[3:])
+		}
+		if strings.Contains(path, " -> ") {
+			parts := strings.SplitN(path, " -> ", 2)
+			path = strings.TrimSpace(parts[1])
+		}
+		if path == "" || isAtlasWorkspacePath(path) {
+			continue
+		}
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		files = append(files, filepath.ToSlash(path))
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 func canonicalPath(path string) string {

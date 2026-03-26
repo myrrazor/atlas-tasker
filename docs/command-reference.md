@@ -75,11 +75,16 @@
 - `tracker inbox view <ITEM-ID>`
 - `tracker change list [--ticket <ID>]`
 - `tracker change view <CHANGE-ID>`
+- `tracker change create <RUN-ID>`
+- `tracker change status <CHANGE-ID>`
+- `tracker change sync <CHANGE-ID>`
 - `tracker change link <TICKET-ID> [flags]`
+- `tracker change import-url <TICKET-ID> --url <URL>`
 - `tracker change unlink <TICKET-ID> <CHANGE-ID>`
 - `tracker checks list [--scope <run|change|ticket>] [--id <SCOPE-ID>]`
 - `tracker checks view <CHECK-ID>`
 - `tracker checks record --scope <run|change|ticket> --id <SCOPE-ID> --name <NAME> [flags]`
+- `tracker checks sync <CHANGE-ID>`
 - `tracker evidence list <RUN-ID>`
 - `tracker evidence view <EVIDENCE-ID>`
 - `tracker handoff view <HANDOFF-ID>`
@@ -188,14 +193,23 @@ Rules:
 
 - `tracker change list [--ticket <ID>]`
 - `tracker change view <CHANGE-ID>`
+- `tracker change create <RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker change status <CHANGE-ID>`
+- `tracker change sync <CHANGE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker change link <TICKET-ID> [--change-id <CHANGE-ID>] [--provider <local|github>] [--status <STATUS>] [--run <RUN-ID>] [--branch <NAME>] [--base <NAME>] [--head <REF>] [--url <URL>] [--external-id <ID>] [--checks-status <STATE>] [--reviewer <ACTOR>]... [--review-summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker change import-url <TICKET-ID> --url <URL> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker change unlink <TICKET-ID> <CHANGE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 
 Rules:
 
+- `change create` derives the linked change from the run branch/worktree and keeps the local change snapshot canonical
+- `change status` is read-only and observes local/provider state without mutating the stored change
+- `change sync` is the explicit live operation that reconciles provider-backed status into the stored change snapshot
 - `change link` creates a new local change id when `--change-id` is omitted
+- `change import-url` currently accepts GitHub pull request URLs only; lightweight GitHub issue reference import remains part of the import/export slice
 - ticket snapshots store the active linked change ids and a deterministic change-readiness rollup
 - linked changes appear in `ticket view`, `run view`, and `handoff view`
+- `change view` includes the current local changed-file summary for the associated run worktree when available
 - unlink removes the active ticket link but keeps the change snapshot and event history intact
 
 ## Checks
@@ -203,11 +217,13 @@ Rules:
 - `tracker checks list [--scope <run|change|ticket>] [--id <SCOPE-ID>]`
 - `tracker checks view <CHECK-ID>`
 - `tracker checks record --scope <run|change|ticket> --id <SCOPE-ID> --name <NAME> [--check-id <CHECK-ID>] [--source <local|provider|manual>] [--provider <local|github>] [--status <queued|running|completed>] [--conclusion <unknown|success|failure|neutral|cancelled|timed_out|skipped>] [--summary <TEXT>] [--url <URL>] [--external-id <ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker checks sync <CHANGE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 
 Rules:
 
 - checks update in place by stable `check_id`; the audit trail lives in the event log
 - change-scoped and ticket-scoped checks feed the same readiness rollup used by `ticket view` and `inspect`
+- `checks sync` is the explicit provider-read path for change-scoped checks; replay, reindex, and repair never call providers
 - run-scoped checks appear in `run view` and `handoff view`
 
 ## Evidence
