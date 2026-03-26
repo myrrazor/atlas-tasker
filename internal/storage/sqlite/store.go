@@ -21,7 +21,9 @@ const ticketSelectColumns = `
 	lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
 	template, skill_hint, blueprint, progress_json,
 	required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
-	latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at
+	latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at,
+	change_ids_json, change_ready_state, change_ready_reasons_json, permission_profiles_json,
+	protected, sensitive
 `
 
 // Store is a SQLite-backed projection and query engine.
@@ -206,6 +208,97 @@ func (s *Store) migrate() error {
 			schema_version INTEGER NOT NULL
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_handoffs_ticket_generated ON handoffs(ticket_id, generated_at);`,
+		`CREATE TABLE IF NOT EXISTS changes (
+			change_id TEXT PRIMARY KEY,
+			provider TEXT NOT NULL,
+			ticket_id TEXT NOT NULL,
+			run_id TEXT,
+			branch_name TEXT,
+			base_branch TEXT,
+			head_ref TEXT,
+			url TEXT,
+			external_id TEXT,
+			status TEXT NOT NULL,
+			checks_status TEXT,
+			review_requested_from_json TEXT NOT NULL DEFAULT '[]',
+			review_summary TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_changes_ticket_status ON changes(ticket_id, status);`,
+		`CREATE TABLE IF NOT EXISTS checks (
+			check_id TEXT PRIMARY KEY,
+			source TEXT NOT NULL,
+			provider TEXT,
+			scope TEXT NOT NULL,
+			scope_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			status TEXT NOT NULL,
+			conclusion TEXT NOT NULL,
+			summary TEXT,
+			url TEXT,
+			started_at TEXT,
+			completed_at TEXT,
+			external_id TEXT,
+			updated_at TEXT NOT NULL,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_checks_scope ON checks(scope, scope_id);`,
+		`CREATE TABLE IF NOT EXISTS permission_profiles (
+			profile_id TEXT PRIMARY KEY,
+			display_name TEXT,
+			priority INTEGER NOT NULL DEFAULT 0,
+			workspace_default INTEGER NOT NULL DEFAULT 0,
+			projects_json TEXT NOT NULL DEFAULT '[]',
+			agents_json TEXT NOT NULL DEFAULT '[]',
+			runbooks_json TEXT NOT NULL DEFAULT '[]',
+			allowed_projects_json TEXT NOT NULL DEFAULT '[]',
+			allowed_ticket_types_json TEXT NOT NULL DEFAULT '[]',
+			allowed_runbooks_json TEXT NOT NULL DEFAULT '[]',
+			allowed_capabilities_json TEXT NOT NULL DEFAULT '[]',
+			allow_actions_json TEXT NOT NULL DEFAULT '[]',
+			deny_actions_json TEXT NOT NULL DEFAULT '[]',
+			allowed_paths_json TEXT NOT NULL DEFAULT '[]',
+			forbidden_paths_json TEXT NOT NULL DEFAULT '[]',
+			requires_owner_for_sensitive_ops INTEGER NOT NULL DEFAULT 0,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS import_jobs (
+			job_id TEXT PRIMARY KEY,
+			source_type TEXT NOT NULL,
+			status TEXT NOT NULL,
+			source_fingerprint TEXT,
+			summary TEXT,
+			warnings_json TEXT NOT NULL DEFAULT '[]',
+			errors_json TEXT NOT NULL DEFAULT '[]',
+			conflict_log_path TEXT,
+			partial_applied INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL,
+			completed_at TEXT,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS export_bundles (
+			bundle_id TEXT PRIMARY KEY,
+			scope TEXT,
+			format TEXT,
+			artifact_path TEXT,
+			manifest_path TEXT,
+			checksum_path TEXT,
+			status TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS retention_policies (
+			policy_id TEXT PRIMARY KEY,
+			target TEXT NOT NULL,
+			max_age_days INTEGER NOT NULL DEFAULT 0,
+			max_total_size_mb INTEGER NOT NULL DEFAULT 0,
+			keep_last_n INTEGER NOT NULL DEFAULT 0,
+			archive_instead_of_delete INTEGER NOT NULL DEFAULT 0,
+			requires_confirmation INTEGER NOT NULL DEFAULT 0,
+			schema_version INTEGER NOT NULL
+		);`,
 		`CREATE TABLE IF NOT EXISTS events (
 			project TEXT NOT NULL,
 			event_id INTEGER NOT NULL,
@@ -250,6 +343,12 @@ func (s *Store) migrate() error {
 		{name: "latest_handoff_id", definition: `TEXT`},
 		{name: "open_gate_ids_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
 		{name: "last_dispatch_at", definition: `TEXT`},
+		{name: "change_ids_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
+		{name: "change_ready_state", definition: `TEXT`},
+		{name: "change_ready_reasons_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
+		{name: "permission_profiles_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
+		{name: "protected", definition: `INTEGER NOT NULL DEFAULT 0`},
+		{name: "sensitive", definition: `INTEGER NOT NULL DEFAULT 0`},
 	}
 	for _, column := range columns {
 		if err := s.ensureTicketColumn(column.name, column.definition); err != nil {
@@ -651,7 +750,7 @@ func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.
 
 func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapshot) error {
 	ticket = contracts.NormalizeTicketSnapshot(ticket)
-	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, err := marshalTicketJSON(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, changeIDsJSON, changeReadyReasonsJSON, permissionProfilesJSON, err := marshalTicketJSON(ticket)
 	if err != nil {
 		return err
 	}
@@ -663,8 +762,10 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 			lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
 			template, skill_hint, blueprint, progress_json,
 			required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
-			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at,
+			change_ids_json, change_ready_state, change_ready_reasons_json, permission_profiles_json,
+			protected, sensitive
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title=excluded.title,
 			type=excluded.type,
@@ -701,7 +802,13 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 			latest_run_id=excluded.latest_run_id,
 			latest_handoff_id=excluded.latest_handoff_id,
 			open_gate_ids_json=excluded.open_gate_ids_json,
-			last_dispatch_at=excluded.last_dispatch_at
+			last_dispatch_at=excluded.last_dispatch_at,
+			change_ids_json=excluded.change_ids_json,
+			change_ready_state=excluded.change_ready_state,
+			change_ready_reasons_json=excluded.change_ready_reasons_json,
+			permission_profiles_json=excluded.permission_profiles_json,
+			protected=excluded.protected,
+			sensitive=excluded.sensitive
 	`,
 		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
 		labelsJSON, nullable(string(ticket.Assignee)), nullable(string(ticket.Reviewer)), blockedByJSON, blocksJSON,
@@ -711,6 +818,8 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 		nullable(ticket.Template), nullable(ticket.SkillHint), nullable(ticket.Blueprint), progressJSON,
 		requiredCapabilitiesJSON, string(ticket.DispatchMode), boolToInt(ticket.AllowParallelRuns), nullable(ticket.Runbook),
 		nullable(ticket.LatestRunID), nullable(ticket.LatestHandoffID), openGateIDsJSON, nullableTime(ticket.LastDispatchAt),
+		changeIDsJSON, nullable(string(ticket.ChangeReadyState)), changeReadyReasonsJSON, permissionProfilesJSON,
+		boolToInt(ticket.Protected), boolToInt(ticket.Sensitive),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert ticket %s: %w", ticket.ID, err)
@@ -720,7 +829,7 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 
 func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.TicketSnapshot) error {
 	ticket = contracts.NormalizeTicketSnapshot(ticket)
-	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, err := marshalTicketJSON(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, changeIDsJSON, changeReadyReasonsJSON, permissionProfilesJSON, err := marshalTicketJSON(ticket)
 	if err != nil {
 		return err
 	}
@@ -732,8 +841,10 @@ func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.Tick
 			lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
 			template, skill_hint, blueprint, progress_json,
 			required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
-			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at,
+			change_ids_json, change_ready_state, change_ready_reasons_json, permission_profiles_json,
+			protected, sensitive
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
 	`,
 		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
@@ -744,6 +855,8 @@ func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.Tick
 		nullable(ticket.Template), nullable(ticket.SkillHint), nullable(ticket.Blueprint), progressJSON,
 		requiredCapabilitiesJSON, string(ticket.DispatchMode), boolToInt(ticket.AllowParallelRuns), nullable(ticket.Runbook),
 		nullable(ticket.LatestRunID), nullable(ticket.LatestHandoffID), openGateIDsJSON, nullableTime(ticket.LastDispatchAt),
+		changeIDsJSON, nullable(string(ticket.ChangeReadyState)), changeReadyReasonsJSON, permissionProfilesJSON,
+		boolToInt(ticket.Protected), boolToInt(ticket.Sensitive),
 	)
 	if err != nil {
 		return fmt.Errorf("insert missing ticket %s: %w", ticket.ID, err)
@@ -1040,6 +1153,12 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 		latestHandoffID          sql.NullString
 		openGateIDsJSON          string
 		lastDispatchAt           sql.NullString
+		changeIDsJSON            string
+		changeReadyState         sql.NullString
+		changeReadyReasonsJSON   string
+		permissionProfilesJSON   string
+		protected                int
+		sensitive                int
 		parent                   sql.NullString
 		assignee                 sql.NullString
 		reviewer                 sql.NullString
@@ -1096,6 +1215,12 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 		&latestHandoffID,
 		&openGateIDsJSON,
 		&lastDispatchAt,
+		&changeIDsJSON,
+		&changeReadyState,
+		&changeReadyReasonsJSON,
+		&permissionProfilesJSON,
+		&protected,
+		&sensitive,
 	); err != nil {
 		return contracts.TicketSnapshot{}, err
 	}
@@ -1143,6 +1268,24 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 	if err := json.Unmarshal([]byte(openGateIDsJSON), &ticket.OpenGateIDs); err != nil {
 		return contracts.TicketSnapshot{}, err
 	}
+	if strings.TrimSpace(changeIDsJSON) == "" {
+		changeIDsJSON = `[]`
+	}
+	if err := json.Unmarshal([]byte(changeIDsJSON), &ticket.ChangeIDs); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if strings.TrimSpace(changeReadyReasonsJSON) == "" {
+		changeReadyReasonsJSON = `[]`
+	}
+	if err := json.Unmarshal([]byte(changeReadyReasonsJSON), &ticket.ChangeReadyReasons); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if strings.TrimSpace(permissionProfilesJSON) == "" {
+		permissionProfilesJSON = `[]`
+	}
+	if err := json.Unmarshal([]byte(permissionProfilesJSON), &ticket.PermissionProfiles); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
 	ticket.Type = contracts.TicketType(typeValue)
 	ticket.Status = contracts.Status(statusValue)
 	ticket.Priority = contracts.Priority(priorityValue)
@@ -1150,6 +1293,8 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 		ticket.DispatchMode = contracts.DispatchMode(dispatchMode.String)
 	}
 	ticket.AllowParallelRuns = allowParallelRuns == 1
+	ticket.Protected = protected == 1
+	ticket.Sensitive = sensitive == 1
 	ticket.CreatedAt = parsedCreatedAt
 	ticket.UpdatedAt = parsedUpdatedAt
 	ticket.Archived = archived == 1
@@ -1222,43 +1367,58 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 			return contracts.TicketSnapshot{}, err
 		}
 	}
+	if changeReadyState.Valid {
+		ticket.ChangeReadyState = contracts.ChangeReadyState(changeReadyState.String)
+	}
 	return contracts.NormalizeTicketSnapshot(ticket), nil
 }
 
-func marshalTicketJSON(ticket contracts.TicketSnapshot) (labelsJSON string, blockedByJSON string, blocksJSON string, acceptanceJSON string, policyJSON string, progressJSON string, requiredCapabilitiesJSON string, openGateIDsJSON string, err error) {
+func marshalTicketJSON(ticket contracts.TicketSnapshot) (labelsJSON string, blockedByJSON string, blocksJSON string, acceptanceJSON string, policyJSON string, progressJSON string, requiredCapabilitiesJSON string, openGateIDsJSON string, changeIDsJSON string, changeReadyReasonsJSON string, permissionProfilesJSON string, err error) {
 	labelsRaw, err := json.Marshal(ticket.Labels)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal labels: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal labels: %w", err)
 	}
 	blockedByRaw, err := json.Marshal(ticket.BlockedBy)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocked_by: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocked_by: %w", err)
 	}
 	blocksRaw, err := json.Marshal(ticket.Blocks)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocks: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocks: %w", err)
 	}
 	acceptanceRaw, err := json.Marshal(ticket.AcceptanceCriteria)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal acceptance criteria: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal acceptance criteria: %w", err)
 	}
 	policyRaw, err := json.Marshal(ticket.Policy)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal policy: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal policy: %w", err)
 	}
 	progressRaw, err := json.Marshal(ticket.Progress)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal progress: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal progress: %w", err)
 	}
 	requiredCapabilitiesRaw, err := json.Marshal(ticket.RequiredCapabilities)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal required capabilities: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal required capabilities: %w", err)
 	}
 	openGateIDsRaw, err := json.Marshal(ticket.OpenGateIDs)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal open gate ids: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal open gate ids: %w", err)
 	}
-	return string(labelsRaw), string(blockedByRaw), string(blocksRaw), string(acceptanceRaw), string(policyRaw), string(progressRaw), string(requiredCapabilitiesRaw), string(openGateIDsRaw), nil
+	changeIDsRaw, err := json.Marshal(ticket.ChangeIDs)
+	if err != nil {
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal change ids: %w", err)
+	}
+	changeReadyReasonsRaw, err := json.Marshal(ticket.ChangeReadyReasons)
+	if err != nil {
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal change ready reasons: %w", err)
+	}
+	permissionProfilesRaw, err := json.Marshal(ticket.PermissionProfiles)
+	if err != nil {
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal permission profiles: %w", err)
+	}
+	return string(labelsRaw), string(blockedByRaw), string(blocksRaw), string(acceptanceRaw), string(policyRaw), string(progressRaw), string(requiredCapabilitiesRaw), string(openGateIDsRaw), string(changeIDsRaw), string(changeReadyReasonsRaw), string(permissionProfilesRaw), nil
 }
 
 func extractTicketSnapshots(payload any) []contracts.TicketSnapshot {
