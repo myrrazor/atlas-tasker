@@ -93,6 +93,10 @@ func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (A
 	if err != nil {
 		return AgentEligibilityReport{}, err
 	}
+	project, err := s.Projects.GetProject(ctx, ticket.Project)
+	if err != nil {
+		project = contracts.Project{Key: ticket.Project}
+	}
 	profiles, err := s.Agents.ListAgents(ctx)
 	if err != nil {
 		return AgentEligibilityReport{}, err
@@ -107,6 +111,10 @@ func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (A
 		return AgentEligibilityReport{}, err
 	}
 	hasActiveRun := activeRunCountForTicket(ticketRuns) > 0
+	dirtyRepo, err := dispatchRepoDirtyBlocker(ctx, s.Root, project)
+	if err != nil {
+		return AgentEligibilityReport{}, err
+	}
 	items := make([]AgentEligibilityEntry, 0, len(profiles))
 	for _, profile := range profiles {
 		activeRuns := activeCounts[profile.AgentID]
@@ -141,7 +149,12 @@ func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (A
 		}
 		if hasActiveRun && !ticket.AllowParallelRuns {
 			entry.Eligible = false
+			entry.ReasonCodes = append(entry.ReasonCodes, "active_run_exists")
 			entry.ReasonCodes = append(entry.ReasonCodes, "parallel_runs_disabled")
+		}
+		if dirtyRepo {
+			entry.Eligible = false
+			entry.ReasonCodes = append(entry.ReasonCodes, "dirty_repo")
 		}
 		items = append(items, entry)
 	}

@@ -119,6 +119,12 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 			if err := s.Runs.SaveRun(ctx, run); err != nil {
 				return err
 			}
+			if testBeforeRunWorktreeCreateHook != nil {
+				if err := testBeforeRunWorktreeCreateHook(run); err != nil {
+					rollback()
+					return err
+				}
+			}
 			if err := worktrees.Create(ctx, run); err != nil {
 				rollback()
 				return err

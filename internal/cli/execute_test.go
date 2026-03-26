@@ -181,6 +181,66 @@ func TestDoctorJSONReportsOrchestrationIntegrityIssues(t *testing.T) {
 	}
 }
 
+func TestDoctorRepairReportsCorruptOrchestrationDocsWithoutFailing(t *testing.T) {
+	withTempWorkspace(t)
+
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if _, err := runCLI(t, "project", "create", "APP", "App Project"); err != nil {
+		t.Fatalf("project create failed: %v", err)
+	}
+	if _, err := runCLI(t, "ticket", "create", "--project", "APP", "--title", "Doctor corruption", "--type", "task", "--actor", "human:owner"); err != nil {
+		t.Fatalf("ticket create failed: %v", err)
+	}
+
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for _, item := range []struct {
+		path string
+		body string
+	}{
+		{storage.RunFile(root, "run_broken"), "---\nrun_id: run_broken\nstatus: [\n"},
+		{storage.GateFile(root, "gate_broken"), "---\ngate_id: gate_broken\nkind: review\nstate: [\n"},
+	} {
+		if err := os.MkdirAll(filepath.Dir(item.path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", item.path, err)
+		}
+		if err := os.WriteFile(item.path, []byte(item.body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", item.path, err)
+		}
+	}
+
+	out, err := runCLI(t, "doctor", "--repair", "--json")
+	if err != nil {
+		t.Fatalf("doctor --repair failed: %v\n%s", err, out)
+	}
+	var payload struct {
+		OK         bool     `json:"ok"`
+		IssueCodes []string `json:"issue_codes"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("parse doctor payload: %v\nraw=%s", err, out)
+	}
+	if !payload.OK {
+		t.Fatalf("expected doctor ok=true, got %#v", payload)
+	}
+	for _, code := range []string{"run_doc_corrupt", "gate_doc_corrupt"} {
+		found := false
+		for _, got := range payload.IssueCodes {
+			if got == code {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected doctor issue code %s in %v", code, payload.IssueCodes)
+		}
+	}
+}
+
 func TestExecuteHonorsJSONFalseOnErrors(t *testing.T) {
 	withTempWorkspace(t)
 

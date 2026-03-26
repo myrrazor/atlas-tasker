@@ -1546,7 +1546,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 	}
-	orchestrationReport, err := service.AuditOrchestration(ctx, root)
+	orchestrationReport, err := service.AuditOrchestration(ctx, root, ticketStore)
 	if err != nil {
 		return err
 	}
