@@ -60,6 +60,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newChecksCommand())
 	root.AddCommand(newPermissionProfileCommand())
 	root.AddCommand(newPermissionsCommand())
+	root.AddCommand(newImportCommand())
+	root.AddCommand(newExportCommand())
 	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())

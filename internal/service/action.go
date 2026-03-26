@@ -25,6 +25,8 @@ type ActionService struct {
 	Handoffs           contracts.HandoffStore
 	Changes            contracts.ChangeStore
 	Checks             contracts.CheckStore
+	ImportJobs         contracts.ImportJobStore
+	ExportBundles      contracts.ExportBundleStore
 	Events             contracts.EventLog
 	Projection         contracts.ProjectionStore
 	Clock              func() time.Time
@@ -42,7 +44,7 @@ func NewActionService(root string, projects contracts.ProjectStore, tickets cont
 		fm.Root = canonicalRoot
 		locks = fm
 	}
-	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: canonicalRoot}, PermissionProfiles: PermissionProfileStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Gates: GateStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Changes: ChangeStore{Root: canonicalRoot}, Checks: CheckStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
+	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: canonicalRoot}, PermissionProfiles: PermissionProfileStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Gates: GateStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Changes: ChangeStore{Root: canonicalRoot}, Checks: CheckStore{Root: canonicalRoot}, ImportJobs: ImportJobStore{Root: canonicalRoot}, ExportBundles: ExportBundleStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
 }
 
 func (s *ActionService) now() time.Time {
