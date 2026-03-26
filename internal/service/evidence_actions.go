@@ -189,7 +189,11 @@ func copyEvidenceArtifact(root string, runID string, evidenceID string, source s
 	if base == "" {
 		base = evidenceID
 	}
-	target := filepath.Join(storage.EvidenceDir(root, runID), base+ext)
+	artifactName := evidenceID
+	if base != evidenceID {
+		artifactName += "-" + base
+	}
+	target := filepath.Join(storage.EvidenceDir(root, runID), artifactName+ext)
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return "", fmt.Errorf("create artifact dir: %w", err)
 	}
@@ -206,6 +210,7 @@ func copyEvidenceArtifact(root string, runID string, evidenceID string, source s
 		_ = temp.Close()
 		_ = os.Remove(temp.Name())
 	}()
+	// Copy into a temp file so failed evidence writes do not leave a partial artifact behind.
 	buf := make([]byte, 32*1024)
 	var copied int64
 	for {

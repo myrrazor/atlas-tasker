@@ -56,23 +56,11 @@ func (s EvidenceStore) LoadEvidence(_ context.Context, evidenceID string) (contr
 	if err != nil || len(matches) == 0 {
 		return contracts.EvidenceItem{}, fmt.Errorf("read evidence %s: %w", evidenceID, os.ErrNotExist)
 	}
-	raw, err := os.ReadFile(matches[0])
-	if err != nil {
-		return contracts.EvidenceItem{}, fmt.Errorf("read evidence %s: %w", evidenceID, err)
-	}
-	fmRaw, body, err := splitDocument(string(raw))
-	if err != nil {
-		return contracts.EvidenceItem{}, err
-	}
-	var fm evidenceFrontmatter
-	if err := yaml.Unmarshal([]byte(fmRaw), &fm); err != nil {
-		return contracts.EvidenceItem{}, fmt.Errorf("parse evidence %s: %w", evidenceID, err)
-	}
-	evidence := fm.EvidenceItem
-	if strings.TrimSpace(evidence.Body) == "" {
-		evidence.Body = strings.TrimSpace(body)
-	}
-	return evidence, nil
+	return loadEvidenceFile(matches[0], evidenceID)
+}
+
+func (s EvidenceStore) LoadEvidenceForRun(_ context.Context, runID string, evidenceID string) (contracts.EvidenceItem, error) {
+	return loadEvidenceFile(storage.EvidenceFile(s.Root, runID, evidenceID), evidenceID)
 }
 
 func (s EvidenceStore) ListEvidence(_ context.Context, runID string) ([]contracts.EvidenceItem, error) {
@@ -89,7 +77,7 @@ func (s EvidenceStore) ListEvidence(_ context.Context, runID string) ([]contract
 			continue
 		}
 		evidenceID := strings.TrimSuffix(entry.Name(), ".md")
-		evidence, err := s.LoadEvidence(context.Background(), evidenceID)
+		evidence, err := s.LoadEvidenceForRun(context.Background(), runID, evidenceID)
 		if err != nil {
 			return nil, err
 		}
@@ -102,6 +90,26 @@ func (s EvidenceStore) ListEvidence(_ context.Context, runID string) ([]contract
 		return items[i].CreatedAt.Before(items[j].CreatedAt)
 	})
 	return items, nil
+}
+
+func loadEvidenceFile(path string, evidenceID string) (contracts.EvidenceItem, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return contracts.EvidenceItem{}, fmt.Errorf("read evidence %s: %w", evidenceID, err)
+	}
+	fmRaw, body, err := splitDocument(string(raw))
+	if err != nil {
+		return contracts.EvidenceItem{}, err
+	}
+	var fm evidenceFrontmatter
+	if err := yaml.Unmarshal([]byte(fmRaw), &fm); err != nil {
+		return contracts.EvidenceItem{}, fmt.Errorf("parse evidence %s: %w", evidenceID, err)
+	}
+	evidence := fm.EvidenceItem
+	if strings.TrimSpace(evidence.Body) == "" {
+		evidence.Body = strings.TrimSpace(body)
+	}
+	return evidence, nil
 }
 
 func (s HandoffStore) SaveHandoff(_ context.Context, handoff contracts.HandoffPacket) error {

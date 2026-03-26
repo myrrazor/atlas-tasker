@@ -31,23 +31,6 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 	if err == nil {
 		root = canonicalRoot
 	}
-	allTickets, err := tickets.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
-	if err != nil {
-		return OrchestrationDoctorReport{}, err
-	}
-	runs, err := RunStore{Root: root}.ListRuns(ctx, "")
-	if err != nil {
-		return OrchestrationDoctorReport{}, err
-	}
-	gates, err := GateStore{Root: root}.ListGates(ctx, "")
-	if err != nil {
-		return OrchestrationDoctorReport{}, err
-	}
-	handoffs, err := HandoffStore{Root: root}.ListHandoffs(ctx, "")
-	if err != nil {
-		return OrchestrationDoctorReport{}, err
-	}
-
 	report := OrchestrationDoctorReport{IssueCodes: []string{}}
 	issueCodes := map[string]struct{}{}
 	addIssue := func(code string, bucket *int) {
@@ -56,6 +39,22 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 		}
 		*bucket = *bucket + 1
 		issueCodes[code] = struct{}{}
+	}
+	allTickets, err := tickets.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
+	runs, err := auditRunDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
+	gates, err := auditGateDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
+	handoffs, err := auditHandoffDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
 	}
 
 	ticketsByID := make(map[string]contracts.TicketSnapshot, len(allTickets))
@@ -86,7 +85,7 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 		return OrchestrationDoctorReport{}, err
 	}
 	for _, run := range runs {
-		items, err := EvidenceStore{Root: root}.ListEvidence(ctx, run.RunID)
+		items, err := auditEvidenceDocs(ctx, root, run.RunID, &report, addIssue)
 		if err != nil {
 			return OrchestrationDoctorReport{}, err
 		}
@@ -155,7 +154,7 @@ func RepairOrchestration(ctx context.Context, root string) ([]string, error) {
 	if err == nil {
 		root = canonicalRoot
 	}
-	runs, err := RunStore{Root: root}.ListRuns(ctx, "")
+	runs, err := auditRunDocs(ctx, root, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -178,6 +177,7 @@ func RepairOrchestration(ctx context.Context, root string) ([]string, error) {
 		return []string{}, nil
 	}
 	worktrees := WorktreeManager{Root: root}
+	// Keep repair conservative here: reconcile Git's worktree bookkeeping, but never recreate run sandboxes.
 	if _, err := worktrees.Repair(ctx, runs); err != nil {
 		return nil, err
 	}
@@ -185,6 +185,141 @@ func RepairOrchestration(ctx context.Context, root string) ([]string, error) {
 		return nil, err
 	}
 	return []string{"repaired tracked worktree metadata", "pruned stale worktree metadata"}, nil
+}
+
+func auditRunDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.RunSnapshot, error) {
+	entries, err := os.ReadDir(storage.RunsDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.RunSnapshot{}, nil
+		}
+		return nil, fmt.Errorf("read runs dir: %w", err)
+	}
+	store := RunStore{Root: root}
+	items := make([]contracts.RunSnapshot, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		runID := strings.TrimSuffix(entry.Name(), ".md")
+		run, err := store.LoadRun(ctx, runID)
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "run_doc_corrupt", "RunIssues")
+			continue
+		}
+		items = append(items, run)
+	}
+	sortRuns(items)
+	return items, nil
+}
+
+func auditGateDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.GateSnapshot, error) {
+	entries, err := os.ReadDir(storage.GatesDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.GateSnapshot{}, nil
+		}
+		return nil, fmt.Errorf("read gates dir: %w", err)
+	}
+	store := GateStore{Root: root}
+	items := make([]contracts.GateSnapshot, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		gateID := strings.TrimSuffix(entry.Name(), ".md")
+		gate, err := store.LoadGate(ctx, gateID)
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "gate_doc_corrupt", "GateIssues")
+			continue
+		}
+		items = append(items, gate)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].GateID < items[j].GateID
+		}
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	return items, nil
+}
+
+func auditHandoffDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.HandoffPacket, error) {
+	entries, err := os.ReadDir(storage.HandoffsDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.HandoffPacket{}, nil
+		}
+		return nil, fmt.Errorf("read handoffs dir: %w", err)
+	}
+	store := HandoffStore{Root: root}
+	items := make([]contracts.HandoffPacket, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		handoffID := strings.TrimSuffix(entry.Name(), ".md")
+		handoff, err := store.LoadHandoff(ctx, handoffID)
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "handoff_doc_corrupt", "HandoffIssues")
+			continue
+		}
+		items = append(items, handoff)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].GeneratedAt.Equal(items[j].GeneratedAt) {
+			return items[i].HandoffID < items[j].HandoffID
+		}
+		return items[i].GeneratedAt.Before(items[j].GeneratedAt)
+	})
+	return items, nil
+}
+
+func auditEvidenceDocs(ctx context.Context, root string, runID string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.EvidenceItem, error) {
+	entries, err := os.ReadDir(storage.EvidenceDir(root, runID))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.EvidenceItem{}, nil
+		}
+		return nil, fmt.Errorf("read evidence dir: %w", err)
+	}
+	store := EvidenceStore{Root: root}
+	items := make([]contracts.EvidenceItem, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		evidenceID := strings.TrimSuffix(entry.Name(), ".md")
+		item, err := store.LoadEvidenceForRun(ctx, runID, evidenceID)
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "evidence_doc_corrupt", "EvidenceIssues")
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].EvidenceID < items[j].EvidenceID
+		}
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	return items, nil
+}
+
+func recordDoctorIssue(report *OrchestrationDoctorReport, addIssue func(string, *int), code string, bucket string) {
+	if report == nil || addIssue == nil {
+		return
+	}
+	switch bucket {
+	case "RunIssues":
+		addIssue(code, &report.RunIssues)
+	case "GateIssues":
+		addIssue(code, &report.GateIssues)
+	case "HandoffIssues":
+		addIssue(code, &report.HandoffIssues)
+	case "EvidenceIssues":
+		addIssue(code, &report.EvidenceIssues)
+	}
 }
 
 func auditRuntimeForRun(root string, run contracts.RunSnapshot, report *OrchestrationDoctorReport, addIssue func(string, *int)) error {

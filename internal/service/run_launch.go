@@ -115,6 +115,7 @@ func writeRuntimeArtifacts(refresh bool, files map[string]string) ([]string, []s
 		ops = append(ops, fileOp{path: path, body: []byte(body)})
 	}
 	sort.Slice(ops, func(i, j int) bool { return ops[i].path < ops[j].path })
+	// Stage every file first so a later failure does not leave a half-regenerated runtime bundle behind.
 	for i := range ops {
 		temp, err := os.CreateTemp(filepath.Dir(ops[i].path), "."+filepath.Base(ops[i].path)+".tmp-*")
 		if err != nil {
@@ -141,6 +142,7 @@ func writeRuntimeArtifacts(refresh bool, files map[string]string) ([]string, []s
 		}
 	}
 	rollback := func() {
+		// Restore the previous runtime view best-effort; launch is a derived convenience, not canonical state.
 		for i := len(applied) - 1; i >= 0; i-- {
 			item := applied[i]
 			if item.existed {
