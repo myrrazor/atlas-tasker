@@ -38,3 +38,39 @@ type HandoffStore interface {
 	LoadHandoff(ctx context.Context, handoffID string) (HandoffPacket, error)
 	ListHandoffs(ctx context.Context, ticketID string) ([]HandoffPacket, error)
 }
+
+type ChangeStore interface {
+	SaveChange(ctx context.Context, change ChangeRef) error
+	LoadChange(ctx context.Context, changeID string) (ChangeRef, error)
+	ListChanges(ctx context.Context, ticketID string) ([]ChangeRef, error)
+}
+
+type CheckStore interface {
+	SaveCheck(ctx context.Context, check CheckResult) error
+	LoadCheck(ctx context.Context, checkID string) (CheckResult, error)
+	ListChecks(ctx context.Context, scope CheckScope, scopeID string) ([]CheckResult, error)
+}
+
+type PermissionProfileStore interface {
+	SavePermissionProfile(ctx context.Context, profile PermissionProfile) error
+	LoadPermissionProfile(ctx context.Context, profileID string) (PermissionProfile, error)
+	ListPermissionProfiles(ctx context.Context) ([]PermissionProfile, error)
+}
+
+type ImportJobStore interface {
+	SaveImportJob(ctx context.Context, job ImportJob) error
+	LoadImportJob(ctx context.Context, jobID string) (ImportJob, error)
+	ListImportJobs(ctx context.Context) ([]ImportJob, error)
+}
+
+type ExportBundleStore interface {
+	SaveExportBundle(ctx context.Context, bundle ExportBundle) error
+	LoadExportBundle(ctx context.Context, bundleID string) (ExportBundle, error)
+	ListExportBundles(ctx context.Context) ([]ExportBundle, error)
+}
+
+type RetentionPolicyStore interface {
+	SaveRetentionPolicy(ctx context.Context, policy RetentionPolicy) error
+	LoadRetentionPolicy(ctx context.Context, policyID string) (RetentionPolicy, error)
+	ListRetentionPolicies(ctx context.Context) ([]RetentionPolicy, error)
+}
