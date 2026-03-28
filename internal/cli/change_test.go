@@ -429,14 +429,60 @@ func TestChangeCreateStatusSyncAndImportURLFlow(t *testing.T) {
 	if len(importedView.Payload.ChangedFiles) != 0 {
 		t.Fatalf("expected imported change without local branch to hide workspace drift, got %#v", importedView.Payload.ChangedFiles)
 	}
+
+	reviewRequestOut := must("change", "review-request", imported.Payload.Change.ChangeID, "--actor", "human:owner", "--json")
+	var reviewRequested struct {
+		Payload struct {
+			Change struct {
+				Status string `json:"status"`
+			} `json:"change"`
+			ObservedStatus string `json:"observed_status"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(reviewRequestOut), &reviewRequested); err != nil {
+		t.Fatalf("parse review-request output: %v\nraw=%s", err, reviewRequestOut)
+	}
+	if reviewRequested.Payload.Change.Status != "review_requested" || reviewRequested.Payload.ObservedStatus != "review_requested" {
+		t.Fatalf("expected imported change to move into review_requested, got %#v", reviewRequested)
+	}
+
+	if out, err := runCLI(t, "change", "merge", changeID, "--actor", "agent:builder-1", "--json"); err == nil {
+		t.Fatalf("expected non-owner merge to fail\n%s", out)
+	}
+
+	mergeOut := must("change", "merge", changeID, "--actor", "human:owner", "--json")
+	var merged struct {
+		Payload struct {
+			Change struct {
+				Status string `json:"status"`
+			} `json:"change"`
+			ObservedStatus string `json:"observed_status"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(mergeOut), &merged); err != nil {
+		t.Fatalf("parse merge output: %v\nraw=%s", err, mergeOut)
+	}
+	if merged.Payload.Change.Status != "merged" || merged.Payload.ObservedStatus != "merged" {
+		t.Fatalf("expected merged provider change, got %#v", merged)
+	}
 }
 
 func installFakeGHProviderForCLI(t *testing.T, branch string) {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "gh")
+	state42 := filepath.Join(dir, "pr42.state")
+	state43 := filepath.Join(dir, "pr43.state")
+	if err := os.WriteFile(state42, []byte("open"), 0o644); err != nil {
+		t.Fatalf("write fake pr42 state: %v", err)
+	}
+	if err := os.WriteFile(state43, []byte("draft"), 0o644); err != nil {
+		t.Fatalf("write fake pr43 state: %v", err)
+	}
 	script := `#!/bin/sh
 set -eu
+STATE_42="` + state42 + `"
+STATE_43="` + state43 + `"
 case "$1 $2" in
   "auth status")
     exit 0
@@ -450,15 +496,36 @@ case "$1 $2" in
   "pr view")
     case "$3" in
       *"/pull/42"|42)
-        echo '{"number":42,"title":"APP-1: Ship provider sync","url":"https://github.com/myrrazor/atlas-tasker/pull/42","state":"OPEN","isDraft":false,"headRefName":"` + branch + `","baseRefName":"main","reviewDecision":"APPROVED","mergeStateStatus":"CLEAN","mergedAt":""}'
+        if [ "$(cat "$STATE_42")" = "merged" ]; then
+          echo '{"number":42,"title":"APP-1: Ship provider sync","url":"https://github.com/myrrazor/atlas-tasker/pull/42","state":"CLOSED","isDraft":false,"headRefName":"` + branch + `","baseRefName":"main","reviewDecision":"APPROVED","mergeStateStatus":"MERGED","mergedAt":"2026-03-26T17:20:00Z"}'
+        else
+          echo '{"number":42,"title":"APP-1: Ship provider sync","url":"https://github.com/myrrazor/atlas-tasker/pull/42","state":"OPEN","isDraft":false,"headRefName":"` + branch + `","baseRefName":"main","reviewDecision":"APPROVED","mergeStateStatus":"CLEAN","mergedAt":""}'
+        fi
         ;;
       *)
-        echo '{"number":43,"title":"APP-2: Import provider URL","url":"https://github.com/myrrazor/atlas-tasker/pull/43","state":"OPEN","isDraft":true,"headRefName":"ticket/app-2-import-provider-url","baseRefName":"main","reviewDecision":"REVIEW_REQUIRED","mergeStateStatus":"BLOCKED","mergedAt":""}'
+        if [ "$(cat "$STATE_43")" = "ready" ]; then
+          echo '{"number":43,"title":"APP-2: Import provider URL","url":"https://github.com/myrrazor/atlas-tasker/pull/43","state":"OPEN","isDraft":false,"headRefName":"ticket/app-2-import-provider-url","baseRefName":"main","reviewDecision":"REVIEW_REQUIRED","mergeStateStatus":"BLOCKED","mergedAt":""}'
+        else
+          echo '{"number":43,"title":"APP-2: Import provider URL","url":"https://github.com/myrrazor/atlas-tasker/pull/43","state":"OPEN","isDraft":true,"headRefName":"ticket/app-2-import-provider-url","baseRefName":"main","reviewDecision":"REVIEW_REQUIRED","mergeStateStatus":"BLOCKED","mergedAt":""}'
+        fi
         ;;
     esac
     ;;
   "pr checks")
-    echo '[{"bucket":"pass","completedAt":"2026-03-26T17:15:00Z","description":"green","link":"https://github.com/myrrazor/atlas-tasker/actions/runs/1","name":"unit","startedAt":"2026-03-26T17:10:00Z","state":"SUCCESS","workflow":"ci"}]'
+    case "$3" in
+      *"/pull/42"|42)
+        echo '[{"bucket":"pass","completedAt":"2026-03-26T17:15:00Z","description":"green","link":"https://github.com/myrrazor/atlas-tasker/actions/runs/1","name":"unit","startedAt":"2026-03-26T17:10:00Z","state":"SUCCESS","workflow":"ci"}]'
+        ;;
+      *)
+        echo '[]'
+        ;;
+    esac
+    ;;
+  "pr ready")
+    echo ready > "$STATE_43"
+    ;;
+  "pr merge")
+    echo merged > "$STATE_42"
     ;;
   *)
     echo "unexpected gh args: $*" >&2

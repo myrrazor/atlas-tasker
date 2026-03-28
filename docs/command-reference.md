@@ -78,6 +78,8 @@
 - `tracker change create <RUN-ID>`
 - `tracker change status <CHANGE-ID>`
 - `tracker change sync <CHANGE-ID>`
+- `tracker change review-request <CHANGE-ID>`
+- `tracker change merge <CHANGE-ID>`
 - `tracker change link <TICKET-ID> [flags]`
 - `tracker change import-url <TICKET-ID> --url <URL>`
 - `tracker change unlink <TICKET-ID> <CHANGE-ID>`
@@ -196,6 +198,8 @@ Rules:
 - `tracker change create <RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker change status <CHANGE-ID>`
 - `tracker change sync <CHANGE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker change review-request <CHANGE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker change merge <CHANGE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker change link <TICKET-ID> [--change-id <CHANGE-ID>] [--provider <local|github>] [--status <STATUS>] [--run <RUN-ID>] [--branch <NAME>] [--base <NAME>] [--head <REF>] [--url <URL>] [--external-id <ID>] [--checks-status <STATE>] [--reviewer <ACTOR>]... [--review-summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker change import-url <TICKET-ID> --url <URL> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker change unlink <TICKET-ID> <CHANGE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
@@ -205,11 +209,14 @@ Rules:
 - `change create` derives the linked change from the run branch/worktree and keeps the local change snapshot canonical
 - `change status` is read-only and observes local/provider state without mutating the stored change
 - `change sync` is the explicit live operation that reconciles provider-backed status into the stored change snapshot
+- `change review-request` is the explicit provider-write path for moving a draft GitHub pull request into review and recording the requested review target locally
+- `change merge` is the explicit provider-write path for merging a GitHub pull request after readiness and gate checks pass
 - `change link` creates a new local change id when `--change-id` is omitted
 - `change import-url` currently accepts GitHub pull request URLs only; lightweight GitHub issue reference import remains part of the import/export slice
 - ticket snapshots store the active linked change ids and a deterministic change-readiness rollup
 - linked changes appear in `ticket view`, `run view`, and `handoff view`
 - `change view` includes the current local changed-file summary for the associated run worktree when available
+- passive read surfaces like `ticket view` and `inspect` do not call providers; provider reads and writes stay on explicit `change status|sync|review-request|merge` and `checks sync` commands
 - unlink removes the active ticket link but keeps the change snapshot and event history intact
 
 ## Checks

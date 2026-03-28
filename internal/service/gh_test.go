@@ -47,8 +47,13 @@ esac
 
 func TestGHPullRequestChecksAndImportURL(t *testing.T) {
 	root := t.TempDir()
+	state := filepath.Join(root, "pr.state")
+	if err := os.WriteFile(state, []byte("draft"), 0o644); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
 	installFakeGH(t, `#!/bin/sh
 set -eu
+STATE="`+state+`"
 case "$1 $2" in
   "auth status")
     exit 0
@@ -57,10 +62,22 @@ case "$1 $2" in
     echo '{"nameWithOwner":"myrrazor/atlas-tasker","url":"https://github.com/myrrazor/atlas-tasker"}'
     ;;
   "pr view")
-    echo '{"number":43,"title":"APP-1: tighten locks","url":"https://github.com/myrrazor/atlas-tasker/pull/43","state":"OPEN","isDraft":true,"headRefName":"ticket/app-1-tighten-locks","baseRefName":"main","reviewDecision":"REVIEW_REQUIRED","mergeStateStatus":"BLOCKED","mergedAt":""}'
+    if [ "$(cat "$STATE")" = "merged" ]; then
+      echo '{"number":43,"title":"APP-1: tighten locks","url":"https://github.com/myrrazor/atlas-tasker/pull/43","state":"CLOSED","isDraft":false,"headRefName":"ticket/app-1-tighten-locks","baseRefName":"main","reviewDecision":"APPROVED","mergeStateStatus":"MERGED","mergedAt":"2026-03-26T17:20:00Z"}'
+    elif [ "$(cat "$STATE")" = "ready" ]; then
+      echo '{"number":43,"title":"APP-1: tighten locks","url":"https://github.com/myrrazor/atlas-tasker/pull/43","state":"OPEN","isDraft":false,"headRefName":"ticket/app-1-tighten-locks","baseRefName":"main","reviewDecision":"REVIEW_REQUIRED","mergeStateStatus":"BLOCKED","mergedAt":""}'
+    else
+      echo '{"number":43,"title":"APP-1: tighten locks","url":"https://github.com/myrrazor/atlas-tasker/pull/43","state":"OPEN","isDraft":true,"headRefName":"ticket/app-1-tighten-locks","baseRefName":"main","reviewDecision":"REVIEW_REQUIRED","mergeStateStatus":"BLOCKED","mergedAt":""}'
+    fi
     ;;
   "pr checks")
     echo '[{"bucket":"pass","completedAt":"2026-03-26T17:15:00Z","description":"green","link":"https://github.com/myrrazor/atlas-tasker/actions/runs/1","name":"unit","startedAt":"2026-03-26T17:10:00Z","state":"SUCCESS","workflow":"ci"}]'
+    ;;
+  "pr ready")
+    echo ready > "$STATE"
+    ;;
+  "pr merge")
+    echo merged > "$STATE"
     ;;
   *)
     echo "unexpected gh args: $*" >&2
@@ -93,6 +110,20 @@ esac
 	}
 	if _, _, err := service.ImportPullRequestURL("https://github.com/myrrazor/atlas-tasker/issues/99"); err == nil {
 		t.Fatal("expected issue url to fail for change import")
+	}
+	readyPR, err := service.RequestPullRequestReview(context.Background(), pr.URL)
+	if err != nil {
+		t.Fatalf("request pull request review: %v", err)
+	}
+	if readyPR.Draft {
+		t.Fatalf("expected review request to move draft PR to ready state: %#v", readyPR)
+	}
+	mergedPR, err := service.MergePullRequest(context.Background(), pr.URL)
+	if err != nil {
+		t.Fatalf("merge pull request: %v", err)
+	}
+	if mergedPR.State != "closed" || mergedPR.MergedAt.IsZero() {
+		t.Fatalf("expected merged PR payload, got %#v", mergedPR)
 	}
 }
 

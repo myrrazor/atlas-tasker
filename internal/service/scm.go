@@ -219,10 +219,13 @@ func (s SCMService) BranchExists(ctx context.Context, branch string) (bool, erro
 	}
 	if _, err := s.gitOutput(ctx, "rev-parse", "--verify", "--quiet", branch); err != nil {
 		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "unknown revision") || strings.Contains(msg, "needed a single revision") {
+		if strings.Contains(msg, "not a git repository") {
+			return false, err
+		}
+		if strings.Contains(msg, "unknown revision") || strings.Contains(msg, "needed a single revision") || strings.Contains(msg, "exit status 1") {
 			return false, nil
 		}
-		return false, err
+		return false, nil
 	}
 	return true, nil
 }
