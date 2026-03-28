@@ -224,3 +224,65 @@ func TestAuditOrchestrationReportsCorruptDocsWithoutFailing(t *testing.T) {
 		t.Fatalf("expected no worktree repair actions without tracked worktrees, got %#v", actions)
 	}
 }
+
+func TestAuditOrchestrationAcceptsCompactedRuntimeWithoutLaunchFiles(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 28, 12, 0, 0, 0, time.UTC)
+
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return now }}
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket := contracts.TicketSnapshot{
+		ID:            "APP-1",
+		Project:       "APP",
+		Title:         "Compacted runtime",
+		Summary:       "Compacted runtime",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusDone,
+		Priority:      contracts.PriorityHigh,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	run := normalizeRunSnapshot(contracts.RunSnapshot{
+		RunID:         "run_compacted",
+		TicketID:      ticket.ID,
+		Project:       ticket.Project,
+		Status:        contracts.RunStatusCompleted,
+		Kind:          contracts.RunKindWork,
+		CreatedAt:     now,
+		CompletedAt:   now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	})
+	if err := (RunStore{Root: root}).SaveRun(ctx, run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	for _, item := range []struct {
+		path string
+		body string
+	}{
+		{storage.RuntimeBriefFile(root, run.RunID), "brief"},
+		{storage.RuntimeContextFile(root, run.RunID), "{}"},
+	} {
+		if err := os.MkdirAll(filepath.Dir(item.path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", item.path, err)
+		}
+		if err := os.WriteFile(item.path, []byte(item.body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", item.path, err)
+		}
+	}
+
+	report, err := AuditOrchestration(ctx, root, ticketStore)
+	if err != nil {
+		t.Fatalf("audit orchestration: %v", err)
+	}
+	if stringSliceContains(report.IssueCodes, "runtime_artifacts_partial") {
+		t.Fatalf("expected compacted runtime launch files to be acceptable, got %#v", report.IssueCodes)
+	}
+}
