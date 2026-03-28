@@ -274,6 +274,9 @@ func TestDetailViewIncludesGitContext(t *testing.T) {
 	if !strings.Contains(view, "Runs:") || !strings.Contains(view, "Evidence:") || !strings.Contains(view, "Handoffs:") || !strings.Contains(view, "Runtime:") {
 		t.Fatalf("expected orchestration panels in detail view, got %s", view)
 	}
+	if !strings.Contains(view, "Timeline:") || !strings.Contains(view, "ticket.created") {
+		t.Fatalf("expected timeline panel in detail view, got %s", view)
+	}
 }
 
 func TestInboxViewShowsApprovalsAndHumanInboxPanels(t *testing.T) {
@@ -330,10 +333,10 @@ func TestOpsViewShowsAgentsDispatchAndWorktreesPanels(t *testing.T) {
 	m = updated.(model)
 	m.screen = screenOps
 	view := m.View()
-	if !strings.Contains(view, "Agents:") || !strings.Contains(view, "Dispatch Queue:") || !strings.Contains(view, "Worktrees:") {
+	if !strings.Contains(view, "Dashboard:") || !strings.Contains(view, "Agents:") || !strings.Contains(view, "Dispatch Queue:") || !strings.Contains(view, "Worktrees:") {
 		t.Fatalf("expected ops panels in view, got %s", view)
 	}
-	if !strings.Contains(view, "builder-1") || !strings.Contains(view, "APP-1") {
+	if !strings.Contains(view, "active_runs:") || !strings.Contains(view, "builder-1") || !strings.Contains(view, "APP-1") {
 		t.Fatalf("expected populated agent/dispatch content, got %s", view)
 	}
 }

@@ -435,6 +435,27 @@ func TestShellParityForCompactCommands(t *testing.T) {
 	runSlashShell(t, "/compact --yes --actor human:owner")
 }
 
+func TestShellParityForDashboardAndTimelineCommands(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\noutput=%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Timeline parity", "--type", "task", "--actor", "human:owner")
+	must("ticket", "comment", "APP-1", "--body", "shell timeline note", "--actor", "agent:builder-1")
+
+	runSlashShell(t, "/dashboard")
+	runSlashShell(t, "/timeline APP-1")
+}
+
 func runSlashShell(t *testing.T, slash string) {
 	t.Helper()
 	args, err := ParseSlashCommand(slash)

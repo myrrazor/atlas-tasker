@@ -147,6 +147,8 @@ type model struct {
 	operatorInbox     []service.InboxItemView
 	dispatchQueue     service.DispatchQueueView
 	worktrees         []service.WorktreeStatusView
+	dashboard         service.DashboardSummaryView
+	timeline          service.TimelineView
 	inbox             []service.NotificationDelivery
 	deadLetters       []service.NotificationDelivery
 	savedViews        []contracts.SavedView
@@ -177,6 +179,8 @@ type loadedMsg struct {
 	operatorInbox     []service.InboxItemView
 	dispatchQueue     service.DispatchQueueView
 	worktrees         []service.WorktreeStatusView
+	dashboard         service.DashboardSummaryView
+	timeline          service.TimelineView
 	inbox             []service.NotificationDelivery
 	deadLetters       []service.NotificationDelivery
 	savedViews        []contracts.SavedView
@@ -333,6 +337,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.worktrees != nil {
 			m.worktrees = msg.worktrees
+		}
+		if msg.dashboard.GeneratedAt != (time.Time{}) {
+			m.dashboard = msg.dashboard
+		}
+		if msg.timeline.GeneratedAt != (time.Time{}) {
+			m.timeline = msg.timeline
 		}
 		if msg.inbox != nil {
 			m.inbox = msg.inbox
@@ -551,7 +561,7 @@ func (m model) bodyView() string {
 		if m.detail.Ticket.ID == "" {
 			return render.EmptyState("Detail", "No ticket selected yet.")
 		}
-		return detailWithOrchestration(m.detail, m.runs, m.runDetail, m.runLaunch)
+		return detailWithOrchestration(m.detail, m.runs, m.runDetail, m.runLaunch, m.timeline)
 	case screenSearch:
 		body := m.search.View() + "\n\n"
 		if len(m.searchHits) == 0 {
@@ -570,7 +580,7 @@ func (m model) bodyView() string {
 	case screenViews:
 		return savedViewsPanel(m.savedViews, m.selectedViewName(), m.cursor)
 	case screenOps:
-		return opsView(m.agents, m.dispatchQueue, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk)
+		return opsView(m.dashboard, m.agents, m.dispatchQueue, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk)
 	default:
 		return ""
 	}
@@ -607,6 +617,8 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		operatorInbox := []service.InboxItemView{}
 		dispatchQueue := service.DispatchQueueView{}
 		worktrees := []service.WorktreeStatusView{}
+		dashboard := service.DashboardSummaryView{GeneratedAt: m.now()}
+		timeline := service.TimelineView{GeneratedAt: m.now()}
 		owner, err := m.queries.Queue(ctx, contracts.Actor("human:owner"))
 		if err != nil {
 			return loadedMsg{err: err}
@@ -656,11 +668,19 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		if err != nil {
 			return loadedMsg{err: err}
 		}
+		dashboard, err = m.queries.Dashboard(ctx)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
 		if selectedID == "" {
 			selectedID = firstBoardTicketID(board)
 		}
 		if selectedID != "" {
 			detail, err = m.queries.TicketDetail(ctx, selectedID)
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+			timeline, err = m.queries.Timeline(ctx, selectedID)
 			if err != nil {
 				return loadedMsg{err: err}
 			}
@@ -715,6 +735,8 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			operatorInbox:     operatorInbox,
 			dispatchQueue:     dispatchQueue,
 			worktrees:         worktrees,
+			dashboard:         dashboard,
+			timeline:          timeline,
 			inbox:             inbox,
 			deadLetters:       deadLetters,
 			savedViews:        savedViews,
@@ -737,10 +759,7 @@ func (m model) searchCmd() tea.Cmd {
 }
 
 func (m model) loadDetail(ticketID string) tea.Cmd {
-	return func() tea.Msg {
-		detail, err := m.queries.TicketDetail(context.Background(), ticketID)
-		return detailMsg{detail: detail, err: err}
-	}
+	return m.reload(ticketID, strings.TrimSpace(m.search.Value()), "detail synced")
 }
 
 func (m model) loadSavedView(name string) tea.Cmd {
@@ -1142,7 +1161,7 @@ func nextTickets(next service.NextView) []contracts.TicketSnapshot {
 	return items
 }
 
-func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.RunSnapshot, runDetail service.RunDetailView, launch service.RunLaunchManifestView) string {
+func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.RunSnapshot, runDetail service.RunDetailView, launch service.RunLaunchManifestView, timeline service.TimelineView) string {
 	body := render.TicketPretty(detail.Ticket, detail.Comments)
 	gitLines := []string{"Git Context:"}
 	if !detail.Git.Repo.Present {
@@ -1200,7 +1219,23 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 			"- claude: "+launch.ClaudeLaunchPath,
 		)
 	}
-	return body + "\n\n" + strings.Join(gitLines, "\n") + "\n\n" + strings.Join(runLines, "\n") + "\n\n" + strings.Join(evidenceLines, "\n") + "\n\n" + strings.Join(handoffLines, "\n") + "\n\n" + strings.Join(runtimeLines, "\n")
+	timelineLines := []string{"Timeline:"}
+	if len(timeline.Entries) == 0 {
+		timelineLines = append(timelineLines, "- none")
+	} else {
+		timelineLines = append(timelineLines,
+			fmt.Sprintf("- change_ready: %s", timeline.ChangeReady),
+			fmt.Sprintf("- open_gates: %s", optionalString(strings.Join(timeline.OpenGateIDs, ","), "none")),
+		)
+		start := len(timeline.Entries) - 5
+		if start < 0 {
+			start = 0
+		}
+		for _, entry := range timeline.Entries[start:] {
+			timelineLines = append(timelineLines, fmt.Sprintf("- %s %s %s", entry.Timestamp.Format(time.RFC3339), entry.Type, entry.Summary))
+		}
+	}
+	return body + "\n\n" + strings.Join(gitLines, "\n") + "\n\n" + strings.Join(runLines, "\n") + "\n\n" + strings.Join(evidenceLines, "\n") + "\n\n" + strings.Join(handoffLines, "\n") + "\n\n" + strings.Join(runtimeLines, "\n") + "\n\n" + strings.Join(timelineLines, "\n")
 }
 
 func attentionView(approvals []service.ApprovalItemView, items []service.InboxItemView, records []service.NotificationDelivery, deadLetters []service.NotificationDelivery) string {
@@ -1261,8 +1296,19 @@ func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) s
 	return strings.Join(lines, "\n")
 }
 
-func opsView(agents []service.AgentDetailView, dispatch service.DispatchQueueView, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation) string {
-	lines := []string{"Agents:"}
+func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetailView, dispatch service.DispatchQueueView, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation) string {
+	lines := []string{
+		"Dashboard:",
+		fmt.Sprintf("- active_runs: %d", dashboard.ActiveRuns),
+		fmt.Sprintf("- awaiting_review: %d", dashboard.AwaitingReview.Count),
+		fmt.Sprintf("- awaiting_owner: %d", dashboard.AwaitingOwner.Count),
+		fmt.Sprintf("- merge_ready: %d", dashboard.MergeReady.Count),
+		fmt.Sprintf("- blocked_by_checks: %d", dashboard.BlockedByChecks.Count),
+		fmt.Sprintf("- stale_worktrees: %s", optionalString(strings.Join(dashboard.StaleWorktrees, ","), "none")),
+		fmt.Sprintf("- retention_pressure: %s", optionalString(strings.Join(dashboard.RetentionTargets, ","), "none")),
+		"",
+		"Agents:",
+	}
 	if len(agents) == 0 {
 		lines = append(lines, "- none")
 	} else {
