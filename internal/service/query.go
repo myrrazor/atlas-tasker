@@ -27,6 +27,8 @@ type QueryService struct {
 	Checks             contracts.CheckStore
 	ImportJobs         contracts.ImportJobStore
 	ExportBundles      contracts.ExportBundleStore
+	RetentionPolicies  contracts.RetentionPolicyStore
+	Archives           contracts.ArchiveRecordStore
 	Events             contracts.EventLog
 	Projection         contracts.ProjectionStore
 	Views              ViewStore
@@ -34,7 +36,7 @@ type QueryService struct {
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
-	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, PermissionProfiles: PermissionProfileStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Gates: GateStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Changes: ChangeStore{Root: root}, Checks: CheckStore{Root: root}, ImportJobs: ImportJobStore{Root: root}, ExportBundles: ExportBundleStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
+	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, PermissionProfiles: PermissionProfileStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Gates: GateStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Changes: ChangeStore{Root: root}, Checks: CheckStore{Root: root}, ImportJobs: ImportJobStore{Root: root}, ExportBundles: ExportBundleStore{Root: root}, RetentionPolicies: RetentionPolicyStore{Root: root}, Archives: ArchiveRecordStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
 }
 
 func (s *QueryService) now() time.Time {

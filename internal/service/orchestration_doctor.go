@@ -19,11 +19,14 @@ type OrchestrationDoctorReport struct {
 	EvidenceIssues int      `json:"evidence_issues"`
 	RuntimeIssues  int      `json:"runtime_issues"`
 	WorktreeIssues int      `json:"worktree_issues"`
+	ArchiveIssues  int      `json:"archive_issues"`
+	ChangeIssues   int      `json:"change_issues"`
+	CheckIssues    int      `json:"check_issues"`
 	IssueCodes     []string `json:"issue_codes"`
 }
 
 func (r OrchestrationDoctorReport) TotalIssues() int {
-	return r.RunIssues + r.GateIssues + r.HandoffIssues + r.EvidenceIssues + r.RuntimeIssues + r.WorktreeIssues
+	return r.RunIssues + r.GateIssues + r.HandoffIssues + r.EvidenceIssues + r.RuntimeIssues + r.WorktreeIssues + r.ArchiveIssues + r.ChangeIssues + r.CheckIssues
 }
 
 func AuditOrchestration(ctx context.Context, root string, tickets contracts.TicketStore) (OrchestrationDoctorReport, error) {
@@ -56,6 +59,18 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 	if err != nil {
 		return OrchestrationDoctorReport{}, err
 	}
+	archives, err := auditArchiveDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
+	changes, err := auditChangeDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
+	checks, err := auditCheckDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
 
 	ticketsByID := make(map[string]contracts.TicketSnapshot, len(allTickets))
 	for _, ticket := range allTickets {
@@ -63,6 +78,7 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 	}
 	runsByID := make(map[string]contracts.RunSnapshot, len(runs))
 	worktrees := WorktreeManager{Root: root}
+	archivedPaths := archivePathState(archives, contracts.ArchiveRecordArchived)
 	for _, run := range runs {
 		runsByID[run.RunID] = run
 		if err := run.Validate(); err != nil {
@@ -72,7 +88,7 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 		if !ok || ticket.Project != run.Project {
 			addIssue("run_ticket_missing", &report.RunIssues)
 		}
-		if err := auditRuntimeForRun(root, run, &report, addIssue); err != nil {
+		if err := auditRuntimeForRun(root, run, archivedPaths, &report, addIssue); err != nil {
 			return OrchestrationDoctorReport{}, err
 		}
 		if err := auditWorktreeForRun(ctx, worktrees, run, &report, addIssue); err != nil {
@@ -81,7 +97,7 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 	}
 
 	evidenceByID := map[string]contracts.EvidenceItem{}
-	if err := auditEvidenceDirs(root, runsByID, &report, addIssue); err != nil {
+	if err := auditEvidenceDirs(root, runsByID, archivedPaths, &report, addIssue); err != nil {
 		return OrchestrationDoctorReport{}, err
 	}
 	for _, run := range runs {
@@ -97,7 +113,7 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 			if _, ok := runsByID[item.RunID]; !ok {
 				addIssue("evidence_run_missing", &report.EvidenceIssues)
 			}
-			if code := auditEvidenceArtifact(root, item); code != "" {
+			if code := auditEvidenceArtifact(root, item, archivedPaths); code != "" {
 				addIssue(code, &report.EvidenceIssues)
 			}
 		}
@@ -143,6 +159,77 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 		}
 	}
 
+	for _, record := range archives {
+		if err := record.Validate(); err != nil {
+			addIssue("archive_invalid", &report.ArchiveIssues)
+			continue
+		}
+		if strings.TrimSpace(record.PayloadDir) == "" || !pathWithinDir(storage.ArchivesDir(root), record.PayloadDir) {
+			addIssue("archive_payload_invalid", &report.ArchiveIssues)
+			continue
+		}
+		payloadInfo, err := os.Stat(record.PayloadDir)
+		if err != nil || !payloadInfo.IsDir() {
+			addIssue("archive_payload_missing", &report.ArchiveIssues)
+		}
+		for _, path := range record.SourcePaths {
+			if strings.TrimSpace(path) == "" || filepath.IsAbs(path) || strings.HasPrefix(filepath.Clean(path), "..") {
+				addIssue("archive_source_invalid", &report.ArchiveIssues)
+				continue
+			}
+			live := filepath.Join(root, path)
+			_, liveErr := os.Stat(live)
+			if record.State == contracts.ArchiveRecordArchived && liveErr == nil {
+				addIssue("archive_live_source_stale", &report.ArchiveIssues)
+			}
+			if record.State == contracts.ArchiveRecordRestored && liveErr != nil {
+				addIssue("archive_restore_incomplete", &report.ArchiveIssues)
+			}
+		}
+	}
+
+	for _, change := range changes {
+		if err := change.Validate(); err != nil {
+			addIssue("change_invalid", &report.ChangeIssues)
+		}
+		if _, ok := ticketsByID[change.TicketID]; !ok {
+			addIssue("change_ticket_missing", &report.ChangeIssues)
+		}
+		if change.RunID != "" {
+			if _, ok := runsByID[change.RunID]; !ok {
+				addIssue("change_run_missing", &report.ChangeIssues)
+			}
+		}
+	}
+
+	changeByID := make(map[string]contracts.ChangeRef, len(changes))
+	for _, change := range changes {
+		changeByID[change.ChangeID] = change
+	}
+	for _, check := range checks {
+		if err := check.Validate(); err != nil {
+			addIssue("check_invalid", &report.CheckIssues)
+			continue
+		}
+		switch check.Scope {
+		case contracts.CheckScopeRun:
+			if _, ok := runsByID[check.ScopeID]; !ok {
+				addIssue("check_scope_missing", &report.CheckIssues)
+			}
+		case contracts.CheckScopeChange:
+			if _, ok := changeByID[check.ScopeID]; !ok {
+				addIssue("check_scope_missing", &report.CheckIssues)
+			}
+		case contracts.CheckScopeTicket:
+			if _, ok := ticketsByID[check.ScopeID]; !ok {
+				addIssue("check_scope_missing", &report.CheckIssues)
+			}
+		}
+	}
+
+	for _, code := range retentionOverdueCodes(ctx, root, allTickets) {
+		addIssue(code, &report.ArchiveIssues)
+	}
 	for _, code := range sortedIssueCodes(issueCodes) {
 		report.IssueCodes = append(report.IssueCodes, code)
 	}
@@ -177,7 +264,6 @@ func RepairOrchestration(ctx context.Context, root string) ([]string, error) {
 		return []string{}, nil
 	}
 	worktrees := WorktreeManager{Root: root}
-	// Keep repair conservative here: reconcile Git's worktree bookkeeping, but never recreate run sandboxes.
 	if _, err := worktrees.Repair(ctx, runs); err != nil {
 		return nil, err
 	}
@@ -275,6 +361,96 @@ func auditHandoffDocs(ctx context.Context, root string, report *OrchestrationDoc
 	return items, nil
 }
 
+func auditArchiveDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.ArchiveRecord, error) {
+	entries, err := os.ReadDir(storage.ArchivesDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.ArchiveRecord{}, nil
+		}
+		return nil, fmt.Errorf("read archives dir: %w", err)
+	}
+	store := ArchiveRecordStore{Root: root}
+	items := make([]contracts.ArchiveRecord, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		record, err := store.LoadArchiveRecord(ctx, strings.TrimSuffix(entry.Name(), ".md"))
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "archive_doc_corrupt", "ArchiveIssues")
+			continue
+		}
+		items = append(items, record)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].ArchiveID < items[j].ArchiveID
+		}
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	return items, nil
+}
+
+func auditChangeDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.ChangeRef, error) {
+	entries, err := os.ReadDir(storage.ChangesDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.ChangeRef{}, nil
+		}
+		return nil, fmt.Errorf("read changes dir: %w", err)
+	}
+	store := ChangeStore{Root: root}
+	items := make([]contracts.ChangeRef, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		change, err := store.LoadChange(ctx, strings.TrimSuffix(entry.Name(), ".md"))
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "change_doc_corrupt", "ChangeIssues")
+			continue
+		}
+		items = append(items, change)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].ChangeID < items[j].ChangeID
+		}
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	return items, nil
+}
+
+func auditCheckDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.CheckResult, error) {
+	entries, err := os.ReadDir(storage.ChecksDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.CheckResult{}, nil
+		}
+		return nil, fmt.Errorf("read checks dir: %w", err)
+	}
+	store := CheckStore{Root: root}
+	items := make([]contracts.CheckResult, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		check, err := store.LoadCheck(ctx, strings.TrimSuffix(entry.Name(), ".md"))
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "check_doc_corrupt", "CheckIssues")
+			continue
+		}
+		items = append(items, check)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+			return items[i].CheckID < items[j].CheckID
+		}
+		return items[i].UpdatedAt.Before(items[j].UpdatedAt)
+	})
+	return items, nil
+}
+
 func auditEvidenceDocs(ctx context.Context, root string, runID string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.EvidenceItem, error) {
 	entries, err := os.ReadDir(storage.EvidenceDir(root, runID))
 	if err != nil {
@@ -319,21 +495,33 @@ func recordDoctorIssue(report *OrchestrationDoctorReport, addIssue func(string, 
 		addIssue(code, &report.HandoffIssues)
 	case "EvidenceIssues":
 		addIssue(code, &report.EvidenceIssues)
+	case "RuntimeIssues":
+		addIssue(code, &report.RuntimeIssues)
+	case "WorktreeIssues":
+		addIssue(code, &report.WorktreeIssues)
+	case "ArchiveIssues":
+		addIssue(code, &report.ArchiveIssues)
+	case "ChangeIssues":
+		addIssue(code, &report.ChangeIssues)
+	case "CheckIssues":
+		addIssue(code, &report.CheckIssues)
 	}
 }
 
-func auditRuntimeForRun(root string, run contracts.RunSnapshot, report *OrchestrationDoctorReport, addIssue func(string, *int)) error {
-	runtimeDir := storage.RuntimeDir(root, run.RunID)
+func auditRuntimeForRun(root string, run contracts.RunSnapshot, archivedPaths map[string]struct{}, report *OrchestrationDoctorReport, addIssue func(string, *int)) error {
+	runtimeRel := filepath.Clean(filepath.Join(storage.TrackerDirName, "runtime", run.RunID))
+	runtimeDir := filepath.Join(root, runtimeRel)
 	info, err := os.Stat(runtimeDir)
 	runtimeExists := err == nil && info.IsDir()
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("stat runtime dir for %s: %w", run.RunID, err)
 	}
+	_, archived := archivedPaths[runtimeRel]
 	if run.Status == contracts.RunStatusCleanedUp {
-		if runtimeExists {
+		if runtimeExists && !archived {
 			addIssue("runtime_dir_stale", &report.RuntimeIssues)
 		}
-	} else if !runtimeExists {
+	} else if !runtimeExists && !archived {
 		addIssue("runtime_dir_missing", &report.RuntimeIssues)
 	}
 	if runtimeExists {
@@ -379,7 +567,7 @@ func auditWorktreeForRun(ctx context.Context, worktrees WorktreeManager, run con
 	return nil
 }
 
-func auditEvidenceDirs(root string, runsByID map[string]contracts.RunSnapshot, report *OrchestrationDoctorReport, addIssue func(string, *int)) error {
+func auditEvidenceDirs(root string, runsByID map[string]contracts.RunSnapshot, archivedPaths map[string]struct{}, report *OrchestrationDoctorReport, addIssue func(string, *int)) error {
 	entries, err := os.ReadDir(filepath.Join(storage.TrackerDir(root), "evidence"))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -406,6 +594,10 @@ func auditEvidenceDirs(root string, runsByID map[string]contracts.RunSnapshot, r
 		if !entry.IsDir() {
 			continue
 		}
+		rel := filepath.Clean(filepath.Join(storage.TrackerDirName, "runtime", entry.Name()))
+		if _, archived := archivedPaths[rel]; archived {
+			continue
+		}
 		if _, ok := runsByID[entry.Name()]; !ok {
 			addIssue("runtime_dir_orphaned", &report.RuntimeIssues)
 		}
@@ -413,7 +605,7 @@ func auditEvidenceDirs(root string, runsByID map[string]contracts.RunSnapshot, r
 	return nil
 }
 
-func auditEvidenceArtifact(root string, item contracts.EvidenceItem) string {
+func auditEvidenceArtifact(root string, item contracts.EvidenceItem, archivedPaths map[string]struct{}) string {
 	path := strings.TrimSpace(item.ArtifactPath)
 	if path == "" {
 		return ""
@@ -421,13 +613,20 @@ func auditEvidenceArtifact(root string, item contracts.EvidenceItem) string {
 	if !filepath.IsAbs(path) {
 		return "evidence_artifact_invalid"
 	}
-	expectedDir := storage.EvidenceDir(root, item.RunID)
-	if !pathWithinDir(expectedDir, path) {
+	rel, ok := relativeWorkspacePath(root, path)
+	if !ok {
+		return "evidence_artifact_invalid"
+	}
+	expectedPrefix := filepath.Clean(filepath.Join(storage.TrackerDirName, "evidence", item.RunID))
+	if rel != expectedPrefix && !strings.HasPrefix(rel, expectedPrefix+string(os.PathSeparator)) {
 		return "evidence_artifact_invalid"
 	}
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if _, archived := archivedPaths[rel]; archived {
+				return ""
+			}
 			return "evidence_artifact_missing"
 		}
 		return "evidence_artifact_invalid"
@@ -436,6 +635,43 @@ func auditEvidenceArtifact(root string, item contracts.EvidenceItem) string {
 		return "evidence_artifact_invalid"
 	}
 	return ""
+}
+
+func retentionOverdueCodes(ctx context.Context, root string, tickets []contracts.TicketSnapshot) []string {
+	queries := NewQueryService(root, nil, nil, nil, nil, timeNowUTC)
+	codes := map[string]struct{}{}
+	projects := map[string]struct{}{}
+	for _, ticket := range tickets {
+		projects[ticket.Project] = struct{}{}
+	}
+	for _, target := range []contracts.RetentionTarget{contracts.RetentionTargetRuntime, contracts.RetentionTargetEvidenceArtifacts, contracts.RetentionTargetExportBundles, contracts.RetentionTargetLogs} {
+		plan, err := queries.ArchivePlan(ctx, target, "")
+		if err == nil && len(plan.Items) > 0 {
+			codes["retention_overdue"] = struct{}{}
+			break
+		}
+		for projectKey := range projects {
+			plan, err := queries.ArchivePlan(ctx, target, projectKey)
+			if err == nil && len(plan.Items) > 0 {
+				codes["retention_overdue"] = struct{}{}
+				break
+			}
+		}
+	}
+	return sortedIssueCodes(codes)
+}
+
+func archivePathState(records []contracts.ArchiveRecord, state contracts.ArchiveRecordState) map[string]struct{} {
+	paths := map[string]struct{}{}
+	for _, record := range records {
+		if record.State != state {
+			continue
+		}
+		for _, path := range record.SourcePaths {
+			paths[filepath.Clean(path)] = struct{}{}
+		}
+	}
+	return paths
 }
 
 func pathWithinDir(dir string, path string) bool {

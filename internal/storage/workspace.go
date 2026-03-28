@@ -151,6 +151,14 @@ func ArchivesDir(root string) string {
 	return filepath.Join(TrackerDir(root), "archives")
 }
 
+func ArchiveRecordFile(root string, archiveID string) string {
+	return filepath.Join(ArchivesDir(root), archiveID+".md")
+}
+
+func ArchivePayloadDir(root string, archiveID string) string {
+	return filepath.Join(ArchivesDir(root), archiveID)
+}
+
 func ProjectDir(root string, key string) string {
 	return filepath.Join(ProjectsDir(root), key)
 }
