@@ -240,6 +240,74 @@ func TestShellParityForOrchestrationCommands(t *testing.T) {
 	}
 }
 
+func TestShellParityForImportExportCommands(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\noutput=%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Ship import/export", "--type", "task", "--actor", "human:owner")
+
+	runSlashShell(t, "/export create --scope workspace --actor human:owner")
+	runSlashShell(t, "/export list")
+
+	exportListOut := must("export", "list", "--json")
+	var exportList struct {
+		Items []struct {
+			BundleID string `json:"bundle_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(exportListOut), &exportList); err != nil {
+		t.Fatalf("parse export list: %v\nraw=%s", err, exportListOut)
+	}
+	if len(exportList.Items) != 1 || exportList.Items[0].BundleID == "" {
+		t.Fatalf("expected one export bundle, got %#v", exportList.Items)
+	}
+	bundleID := exportList.Items[0].BundleID
+
+	runSlashShell(t, "/export view "+bundleID)
+	runSlashShell(t, "/export verify "+bundleID+" --actor human:owner")
+
+	csvPath := filepath.Join(".", "shell-import.csv")
+	csv := "Project Key,Project Name,Issue Key,Summary,Issue Type,Status,Priority\nSHP,Shell Imports,SHP-1,Shell imported task,task,ready,medium\n"
+	if err := os.WriteFile(csvPath, []byte(csv), 0o644); err != nil {
+		t.Fatalf("write shell import csv: %v", err)
+	}
+
+	runSlashShell(t, "/import preview "+csvPath+" --actor human:owner")
+	runSlashShell(t, "/import list")
+
+	importListOut := must("import", "list", "--json")
+	var importList struct {
+		Items []struct {
+			JobID string `json:"job_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(importListOut), &importList); err != nil {
+		t.Fatalf("parse import list: %v\nraw=%s", err, importListOut)
+	}
+	if len(importList.Items) != 1 || importList.Items[0].JobID == "" {
+		t.Fatalf("expected one import job, got %#v", importList.Items)
+	}
+	jobID := importList.Items[0].JobID
+
+	runSlashShell(t, "/import view "+jobID)
+	runSlashShell(t, "/import apply "+jobID+" --actor human:owner")
+
+	ticketViewOut := must("ticket", "view", "SHP-1", "--json")
+	if !json.Valid([]byte(ticketViewOut)) {
+		t.Fatalf("expected imported ticket json view, got %s", ticketViewOut)
+	}
+}
+
 func runSlashShell(t *testing.T, slash string) {
 	t.Helper()
 	args, err := ParseSlashCommand(slash)
