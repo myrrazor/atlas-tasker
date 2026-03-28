@@ -49,6 +49,20 @@ func (s *ActionService) CreateChange(ctx context.Context, runID string, actor co
 		if strings.TrimSpace(branch) == "" {
 			return ChangeCreateResultView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("run %s does not have a checked-out branch", run.RunID))
 		}
+		agent, _ := s.Agents.LoadAgent(ctx, run.AgentID)
+		changedFiles, known := permissionChangedFilesForRun(ctx, s.Runs, s.Root, run)
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionChangeCreate,
+			Actor:             actor,
+			Ticket:            ticket,
+			Run:               &run,
+			ActorAgent:        maybeAgentProfile(agent),
+			Runbook:           permissionRunbook(ticket, &run),
+			ChangedFiles:      changedFiles,
+			ChangedFilesKnown: known,
+		}); err != nil {
+			return ChangeCreateResultView{}, err
+		}
 		existing, found, err := linkedChangeForRun(ctx, s.Changes, ticket, run.RunID)
 		if err != nil {
 			return ChangeCreateResultView{}, err
@@ -385,6 +399,34 @@ func (s *ActionService) MergeChange(ctx context.Context, changeID string, actor 
 		}
 		if observed.PullRequest == nil {
 			return ChangeStatusView{}, apperr.New(apperr.CodeConflict, "change merge blocked: provider_pull_missing")
+		}
+		var run *contracts.RunSnapshot
+		if strings.TrimSpace(change.RunID) != "" {
+			loadedRun, err := s.Runs.LoadRun(ctx, change.RunID)
+			if err == nil {
+				run = &loadedRun
+			}
+		}
+		var relevantAgent *contracts.AgentProfile
+		if run != nil {
+			loadedAgent, err := s.Agents.LoadAgent(ctx, run.AgentID)
+			if err == nil {
+				relevantAgent = &loadedAgent
+			}
+		}
+		changedFiles, known := permissionChangedFilesForChange(ctx, s.Runs, s.Root, change)
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionChangeMerge,
+			Actor:             actor,
+			Ticket:            ticket,
+			Run:               run,
+			Change:            &change,
+			ActorAgent:        relevantAgent,
+			Runbook:           permissionRunbook(ticket, run),
+			ChangedFiles:      changedFiles,
+			ChangedFilesKnown: known,
+		}); err != nil {
+			return ChangeStatusView{}, err
 		}
 		candidateTicket := ticket
 		candidateChange := change

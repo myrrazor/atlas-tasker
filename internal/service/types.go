@@ -72,6 +72,7 @@ type InspectView struct {
 	BoardStatus     contracts.Status         `json:"board_status"`
 	LeaseActive     bool                     `json:"lease_active"`
 	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
+	Permissions     []PermissionDecisionView `json:"permissions,omitempty"`
 	History         []contracts.Event        `json:"history"`
 	Gates           []contracts.GateSnapshot `json:"gates,omitempty"`
 	Changes         []contracts.ChangeRef    `json:"changes,omitempty"`
