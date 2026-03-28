@@ -82,7 +82,7 @@ func runArchiveList(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	_ = projectKey
-	items, err := workspace.queries.ListArchiveRecords(commandContext(cmd), target)
+	items, err := workspace.queries.ListArchiveRecords(commandContext(cmd), target, projectKey)
 	if err != nil {
 		return err
 	}
