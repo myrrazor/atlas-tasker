@@ -73,6 +73,13 @@
 - `tracker gate waive <GATE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker inbox`
 - `tracker inbox view <ITEM-ID>`
+- `tracker change list [--ticket <ID>]`
+- `tracker change view <CHANGE-ID>`
+- `tracker change link <TICKET-ID> [flags]`
+- `tracker change unlink <TICKET-ID> <CHANGE-ID>`
+- `tracker checks list [--scope <run|change|ticket>] [--id <SCOPE-ID>]`
+- `tracker checks view <CHECK-ID>`
+- `tracker checks record --scope <run|change|ticket> --id <SCOPE-ID> --name <NAME> [flags]`
 - `tracker evidence list <RUN-ID>`
 - `tracker evidence view <EVIDENCE-ID>`
 - `tracker handoff view <HANDOFF-ID>`
@@ -176,6 +183,32 @@ Rules:
 - inbox items are derived, not stored
 - open gates surface as `gate:<gate-id>` items
 - handoff-ready runs surface as `handoff:<handoff-id>` items
+
+## Changes
+
+- `tracker change list [--ticket <ID>]`
+- `tracker change view <CHANGE-ID>`
+- `tracker change link <TICKET-ID> [--change-id <CHANGE-ID>] [--provider <local|github>] [--status <STATUS>] [--run <RUN-ID>] [--branch <NAME>] [--base <NAME>] [--head <REF>] [--url <URL>] [--external-id <ID>] [--checks-status <STATE>] [--reviewer <ACTOR>]... [--review-summary <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker change unlink <TICKET-ID> <CHANGE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+
+Rules:
+
+- `change link` creates a new local change id when `--change-id` is omitted
+- ticket snapshots store the active linked change ids and a deterministic change-readiness rollup
+- linked changes appear in `ticket view`, `run view`, and `handoff view`
+- unlink removes the active ticket link but keeps the change snapshot and event history intact
+
+## Checks
+
+- `tracker checks list [--scope <run|change|ticket>] [--id <SCOPE-ID>]`
+- `tracker checks view <CHECK-ID>`
+- `tracker checks record --scope <run|change|ticket> --id <SCOPE-ID> --name <NAME> [--check-id <CHECK-ID>] [--source <local|provider|manual>] [--provider <local|github>] [--status <queued|running|completed>] [--conclusion <unknown|success|failure|neutral|cancelled|timed_out|skipped>] [--summary <TEXT>] [--url <URL>] [--external-id <ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+
+Rules:
+
+- checks update in place by stable `check_id`; the audit trail lives in the event log
+- change-scoped and ticket-scoped checks feed the same readiness rollup used by `ticket view` and `inspect`
+- run-scoped checks appear in `run view` and `handoff view`
 
 ## Evidence
 

@@ -56,6 +56,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newApprovalsCommand())
 	root.AddCommand(newGateCommand())
 	root.AddCommand(newInboxCommand())
+	root.AddCommand(newChangeCommand())
+	root.AddCommand(newChecksCommand())
 	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())
@@ -914,8 +916,20 @@ func runTicketView(cmd *cobra.Command, args []string) error {
 			rawMD += fmt.Sprintf("- %s [%s/%s]\n", gate.GateID, gate.Kind, gate.State)
 		}
 	}
-	pretty := fmt.Sprintf("%s [%s] %s open_gates=%d", detail.Ticket.ID, detail.Ticket.Status, detail.Ticket.Title, len(detail.Ticket.OpenGateIDs))
-	payload := map[string]any{"ticket": detail.Ticket, "comments": detail.Comments, "gates": detail.Gates, "effective_policy": detail.EffectivePolicy}
+	if len(detail.Changes) > 0 {
+		rawMD += "\n## Changes\n\n"
+		for _, change := range detail.Changes {
+			rawMD += fmt.Sprintf("- %s [%s]\n", change.ChangeID, change.Status)
+		}
+	}
+	if len(detail.Checks) > 0 {
+		rawMD += "\n## Checks\n\n"
+		for _, check := range detail.Checks {
+			rawMD += fmt.Sprintf("- %s [%s/%s] %s\n", check.CheckID, check.Status, check.Conclusion, check.Name)
+		}
+	}
+	pretty := fmt.Sprintf("%s [%s] %s open_gates=%d change_ready=%s", detail.Ticket.ID, detail.Ticket.Status, detail.Ticket.Title, len(detail.Ticket.OpenGateIDs), detail.Ticket.ChangeReadyState)
+	payload := map[string]any{"ticket": detail.Ticket, "comments": detail.Comments, "gates": detail.Gates, "changes": detail.Changes, "checks": detail.Checks, "effective_policy": detail.EffectivePolicy}
 	return writeCommandOutput(cmd, payload, rawMD, pretty)
 }
 
@@ -1587,8 +1601,8 @@ func runInspect(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Lease Active: %t\n- Completion: %s\n- Open Gates: %d\n", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs))
-	pretty := fmt.Sprintf("inspect %s -> board=%s lease_active=%t completion=%s open_gates=%d", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs))
+	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Lease Active: %t\n- Completion: %s\n- Open Gates: %d\n- Change Ready: %s\n", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState)
+	pretty := fmt.Sprintf("inspect %s -> board=%s lease_active=%t completion=%s open_gates=%d change_ready=%s", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState)
 	return writeCommandOutput(cmd, view, md, pretty)
 }
 

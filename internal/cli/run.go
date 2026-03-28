@@ -474,6 +474,22 @@ func formatRunDetail(detail service.RunDetailView) string {
 			lines = append(lines, fmt.Sprintf("- %s [%s/%s]", gate.GateID, gate.Kind, gate.State))
 		}
 	}
+	if len(detail.Changes) > 0 {
+		lines = append(lines, "", fmt.Sprintf("changes=%d", len(detail.Changes)))
+		for _, change := range detail.Changes {
+			line := fmt.Sprintf("- %s [%s]", change.ChangeID, change.Status)
+			if change.BranchName != "" {
+				line += " branch=" + change.BranchName
+			}
+			lines = append(lines, line)
+		}
+	}
+	if len(detail.Checks) > 0 {
+		lines = append(lines, "", fmt.Sprintf("checks=%d", len(detail.Checks)))
+		for _, check := range detail.Checks {
+			lines = append(lines, fmt.Sprintf("- %s [%s/%s] %s", check.CheckID, check.Status, check.Conclusion, check.Name))
+		}
+	}
 	if len(detail.Evidence) > 0 {
 		lines = append(lines, "", fmt.Sprintf("evidence=%d", len(detail.Evidence)))
 		for _, item := range detail.Evidence {
