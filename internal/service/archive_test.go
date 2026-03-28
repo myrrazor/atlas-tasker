@@ -67,7 +67,7 @@ func TestArchiveApplyListAndRestoreRuntimeRoundTrip(t *testing.T) {
 		t.Fatalf("expected archived payload %s: %v", payloadPath, err)
 	}
 
-	archives, err := queries.ListArchiveRecords(ctx, contracts.RetentionTargetRuntime)
+	archives, err := queries.ListArchiveRecords(ctx, contracts.RetentionTargetRuntime, "APP")
 	if err != nil {
 		t.Fatalf("list archives: %v", err)
 	}
@@ -150,6 +150,73 @@ func TestArchivePlanUsesProjectRetentionPolicyBinding(t *testing.T) {
 	}
 	if plan.Policy.PolicyID != "runtime-tight" || len(plan.Items) != 1 {
 		t.Fatalf("expected project-bound retention policy to drive the plan, got %#v", plan)
+	}
+}
+
+func TestArchiveListFiltersByProject(t *testing.T) {
+	root, actions, queries, projectStore, ticketStore, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	now := actions.now()
+	old := now.AddDate(0, 0, -10)
+
+	for _, project := range []contracts.Project{
+		{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion},
+		{Key: "OPS", Name: "Ops", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion},
+	} {
+		if err := projectStore.CreateProject(ctx, project); err != nil {
+			t.Fatalf("create project %s: %v", project.Key, err)
+		}
+	}
+	for _, ticket := range []contracts.TicketSnapshot{
+		{ID: "APP-1", Project: "APP", Title: "Archive app", Summary: "Archive app", Type: contracts.TicketTypeTask, Status: contracts.StatusDone, Priority: contracts.PriorityHigh, CreatedAt: old, UpdatedAt: old, SchemaVersion: contracts.CurrentSchemaVersion},
+		{ID: "OPS-1", Project: "OPS", Title: "Archive ops", Summary: "Archive ops", Type: contracts.TicketTypeTask, Status: contracts.StatusDone, Priority: contracts.PriorityHigh, CreatedAt: old, UpdatedAt: old, SchemaVersion: contracts.CurrentSchemaVersion},
+	} {
+		if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
+			t.Fatalf("create ticket %s: %v", ticket.ID, err)
+		}
+	}
+	for _, run := range []contracts.RunSnapshot{
+		normalizeRunSnapshot(contracts.RunSnapshot{RunID: "run_app", TicketID: "APP-1", Project: "APP", Status: contracts.RunStatusCompleted, Kind: contracts.RunKindWork, CreatedAt: old, CompletedAt: old, SchemaVersion: contracts.CurrentSchemaVersion}),
+		normalizeRunSnapshot(contracts.RunSnapshot{RunID: "run_ops", TicketID: "OPS-1", Project: "OPS", Status: contracts.RunStatusCompleted, Kind: contracts.RunKindWork, CreatedAt: old, CompletedAt: old, SchemaVersion: contracts.CurrentSchemaVersion}),
+	} {
+		if err := (RunStore{Root: root}).SaveRun(ctx, run); err != nil {
+			t.Fatalf("save run %s: %v", run.RunID, err)
+		}
+		if err := os.MkdirAll(storage.RuntimeDir(root, run.RunID), 0o755); err != nil {
+			t.Fatalf("mkdir runtime dir %s: %v", run.RunID, err)
+		}
+		if err := os.WriteFile(storage.RuntimeBriefFile(root, run.RunID), []byte(run.Project), 0o644); err != nil {
+			t.Fatalf("write runtime brief %s: %v", run.RunID, err)
+		}
+		if err := os.Chtimes(storage.RuntimeDir(root, run.RunID), old, old); err != nil {
+			t.Fatalf("chtimes runtime dir %s: %v", run.RunID, err)
+		}
+		if err := os.Chtimes(storage.RuntimeBriefFile(root, run.RunID), old, old); err != nil {
+			t.Fatalf("chtimes runtime brief %s: %v", run.RunID, err)
+		}
+	}
+
+	if _, err := actions.ApplyArchive(ctx, contracts.RetentionTargetRuntime, "APP", true, contracts.Actor("human:owner"), "archive app"); err != nil {
+		t.Fatalf("apply app archive: %v", err)
+	}
+	if _, err := actions.ApplyArchive(ctx, contracts.RetentionTargetRuntime, "OPS", true, contracts.Actor("human:owner"), "archive ops"); err != nil {
+		t.Fatalf("apply ops archive: %v", err)
+	}
+
+	appArchives, err := queries.ListArchiveRecords(ctx, contracts.RetentionTargetRuntime, "APP")
+	if err != nil {
+		t.Fatalf("list app archives: %v", err)
+	}
+	if len(appArchives) != 1 || appArchives[0].ProjectKey != "APP" {
+		t.Fatalf("expected one APP archive, got %#v", appArchives)
+	}
+
+	opsArchives, err := queries.ListArchiveRecords(ctx, contracts.RetentionTargetRuntime, "OPS")
+	if err != nil {
+		t.Fatalf("list ops archives: %v", err)
+	}
+	if len(opsArchives) != 1 || opsArchives[0].ProjectKey != "OPS" {
+		t.Fatalf("expected one OPS archive, got %#v", opsArchives)
 	}
 }
 

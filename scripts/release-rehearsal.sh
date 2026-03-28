@@ -8,6 +8,20 @@ BIN_NAME="tracker"
 DIST_DIR="${DIST_DIR:-$(mktemp -d)}"
 WORK_DIR="${WORK_DIR:-$(mktemp -d)}"
 INSTALL_DIR="${INSTALL_DIR:-$(mktemp -d)}"
+
+need_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "missing required command: $1" >&2
+    exit 1
+  fi
+}
+
+need_cmd go
+need_cmd git
+need_cmd tar
+need_cmd mktemp
+need_cmd python3
+
 OS_NAME="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH_NAME="$(uname -m)"
 
