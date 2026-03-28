@@ -63,6 +63,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newImportCommand())
 	root.AddCommand(newExportCommand())
 	root.AddCommand(newArchiveCommand())
+	root.AddCommand(newCompactCommand())
 	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())
