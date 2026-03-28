@@ -89,7 +89,17 @@ func TestQueryServiceQueueAndDetailIncludeGitContext(t *testing.T) {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	defer projection.Close()
-	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+	installFakeGH(t, `#!/bin/sh
+echo "gh should not be called for passive ticket reads" >&2
+exit 1
+`)
+	if err := config.Save(root, contracts.TrackerConfig{
+		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
+		Provider: contracts.ProviderConfig{
+			DefaultSCMProvider: contracts.ChangeProviderGitHub,
+			GitHubRepo:         "myrrazor/atlas-tasker",
+		},
+	}); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {

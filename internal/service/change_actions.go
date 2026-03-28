@@ -23,82 +23,90 @@ func (s *ActionService) LinkChange(ctx context.Context, ticketID string, change 
 		if err != nil {
 			return contracts.ChangeRef{}, err
 		}
-		change = normalizeChangeRef(change)
-		if strings.TrimSpace(change.ChangeID) == "" {
-			change.ChangeID = "change_" + NewOpaqueID()
-		}
-		if existing, err := s.Changes.LoadChange(ctx, change.ChangeID); err == nil {
-			if strings.TrimSpace(change.TicketID) == "" {
-				change.TicketID = existing.TicketID
-			}
-			if change.RunID == "" {
-				change.RunID = existing.RunID
-			}
-			if change.BranchName == "" {
-				change.BranchName = existing.BranchName
-			}
-			if change.BaseBranch == "" {
-				change.BaseBranch = existing.BaseBranch
-			}
-			if change.HeadRef == "" {
-				change.HeadRef = existing.HeadRef
-			}
-			if change.URL == "" {
-				change.URL = existing.URL
-			}
-			if change.ExternalID == "" {
-				change.ExternalID = existing.ExternalID
-			}
-			if strings.TrimSpace(change.ReviewSummary) == "" {
-				change.ReviewSummary = existing.ReviewSummary
-			}
-			if len(change.ReviewRequestedFrom) == 0 {
-				change.ReviewRequestedFrom = existing.ReviewRequestedFrom
-			}
-			change.CreatedAt = existing.CreatedAt
-		}
-		change.TicketID = ticket.ID
-		if strings.TrimSpace(change.RunID) != "" {
-			run, err := s.Runs.LoadRun(ctx, change.RunID)
-			if err != nil {
-				return contracts.ChangeRef{}, err
-			}
-			if run.TicketID != ticket.ID {
-				return contracts.ChangeRef{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("run %s does not belong to ticket %s", run.RunID, ticket.ID))
-			}
-			if change.BranchName == "" {
-				change.BranchName = run.BranchName
-			}
-		}
-		if err := change.Validate(); err != nil {
-			return contracts.ChangeRef{}, err
-		}
-		now := s.now()
-		change.UpdatedAt = now
-		if !containsStringID(ticket.ChangeIDs, change.ChangeID) {
-			ticket.ChangeIDs = append(ticket.ChangeIDs, change.ChangeID)
-		}
-		ticket.UpdatedAt = now
-		if err := s.previewTicketChangeState(ctx, &ticket, &change, nil); err != nil {
-			return contracts.ChangeRef{}, err
-		}
-		event, err := s.newEvent(ctx, ticket.Project, now, actor, reason, contracts.EventChangeLinked, ticket.ID, map[string]any{
-			"ticket": ticket,
-			"change": change,
-		})
-		if err != nil {
-			return contracts.ChangeRef{}, err
-		}
-		if err := s.commitMutation(ctx, "link change", "change_ref", event, func(ctx context.Context) error {
-			if err := s.Changes.SaveChange(ctx, change); err != nil {
-				return err
-			}
-			return s.UpdateTicket(ctx, ticket)
-		}); err != nil {
-			return contracts.ChangeRef{}, err
-		}
-		return change, nil
+		change, _, err = s.upsertLinkedChangeLocked(ctx, ticket, change, actor, reason, contracts.EventChangeLinked, "link change")
+		return change, err
 	})
+}
+
+func (s *ActionService) upsertLinkedChangeLocked(ctx context.Context, ticket contracts.TicketSnapshot, change contracts.ChangeRef, actor contracts.Actor, reason string, eventType contracts.EventType, purpose string) (contracts.ChangeRef, contracts.TicketSnapshot, error) {
+	change = normalizeChangeRef(change)
+	if strings.TrimSpace(change.ChangeID) == "" {
+		change.ChangeID = "change_" + NewOpaqueID()
+	}
+	if existing, err := s.Changes.LoadChange(ctx, change.ChangeID); err == nil {
+		if strings.TrimSpace(change.TicketID) == "" {
+			change.TicketID = existing.TicketID
+		}
+		if change.RunID == "" {
+			change.RunID = existing.RunID
+		}
+		if change.BranchName == "" {
+			change.BranchName = existing.BranchName
+		}
+		if change.BaseBranch == "" {
+			change.BaseBranch = existing.BaseBranch
+		}
+		if change.HeadRef == "" {
+			change.HeadRef = existing.HeadRef
+		}
+		if change.URL == "" {
+			change.URL = existing.URL
+		}
+		if change.ExternalID == "" {
+			change.ExternalID = existing.ExternalID
+		}
+		if strings.TrimSpace(change.ReviewSummary) == "" {
+			change.ReviewSummary = existing.ReviewSummary
+		}
+		if len(change.ReviewRequestedFrom) == 0 {
+			change.ReviewRequestedFrom = existing.ReviewRequestedFrom
+		}
+		if change.ChecksStatus == "" {
+			change.ChecksStatus = existing.ChecksStatus
+		}
+		change.CreatedAt = existing.CreatedAt
+	}
+	change.TicketID = ticket.ID
+	if strings.TrimSpace(change.RunID) != "" {
+		run, err := s.Runs.LoadRun(ctx, change.RunID)
+		if err != nil {
+			return contracts.ChangeRef{}, contracts.TicketSnapshot{}, err
+		}
+		if run.TicketID != ticket.ID {
+			return contracts.ChangeRef{}, contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("run %s does not belong to ticket %s", run.RunID, ticket.ID))
+		}
+		if change.BranchName == "" {
+			change.BranchName = run.BranchName
+		}
+	}
+	if err := change.Validate(); err != nil {
+		return contracts.ChangeRef{}, contracts.TicketSnapshot{}, err
+	}
+	now := s.now()
+	change.UpdatedAt = now
+	if !containsStringID(ticket.ChangeIDs, change.ChangeID) {
+		ticket.ChangeIDs = append(ticket.ChangeIDs, change.ChangeID)
+	}
+	ticket.UpdatedAt = now
+	if err := s.previewTicketChangeState(ctx, &ticket, &change, nil); err != nil {
+		return contracts.ChangeRef{}, contracts.TicketSnapshot{}, err
+	}
+	event, err := s.newEvent(ctx, ticket.Project, now, actor, reason, eventType, ticket.ID, map[string]any{
+		"ticket": ticket,
+		"change": change,
+	})
+	if err != nil {
+		return contracts.ChangeRef{}, contracts.TicketSnapshot{}, err
+	}
+	if err := s.commitMutation(ctx, purpose, "change_ref", event, func(ctx context.Context) error {
+		if err := s.Changes.SaveChange(ctx, change); err != nil {
+			return err
+		}
+		return s.UpdateTicket(ctx, ticket)
+	}); err != nil {
+		return contracts.ChangeRef{}, contracts.TicketSnapshot{}, err
+	}
+	return change, ticket, nil
 }
 
 func (s *ActionService) UnlinkChange(ctx context.Context, ticketID string, changeID string, actor contracts.Actor, reason string) (contracts.TicketSnapshot, contracts.ChangeRef, error) {
@@ -303,10 +311,18 @@ func (s *ActionService) RecordCheck(ctx context.Context, check contracts.CheckRe
 }
 
 func (s *ActionService) refreshTicketChangeState(ctx context.Context, ticket *contracts.TicketSnapshot) error {
-	return s.previewTicketChangeState(ctx, ticket, nil, nil)
+	return s.previewTicketChangeStateWithPendingChecks(ctx, ticket, nil, nil)
 }
 
 func (s *ActionService) previewTicketChangeState(ctx context.Context, ticket *contracts.TicketSnapshot, pendingChange *contracts.ChangeRef, pendingCheck *contracts.CheckResult) error {
+	var pendingChecks []contracts.CheckResult
+	if pendingCheck != nil {
+		pendingChecks = append(pendingChecks, *pendingCheck)
+	}
+	return s.previewTicketChangeStateWithPendingChecks(ctx, ticket, pendingChange, pendingChecks)
+}
+
+func (s *ActionService) previewTicketChangeStateWithPendingChecks(ctx context.Context, ticket *contracts.TicketSnapshot, pendingChange *contracts.ChangeRef, pendingChecks []contracts.CheckResult) error {
 	changes, err := s.Changes.ListChanges(ctx, ticket.ID)
 	if err != nil {
 		return err
@@ -325,12 +341,12 @@ func (s *ActionService) previewTicketChangeState(ctx context.Context, ticket *co
 		}
 	}
 	linked := linkedChanges(*ticket, changes)
-	relevantChecks, err := s.checksForScopeWithPending(ctx, contracts.CheckScopeTicket, ticket.ID, pendingCheck)
+	relevantChecks, err := s.checksForScopeWithPendingSet(ctx, contracts.CheckScopeTicket, ticket.ID, pendingChecks)
 	if err != nil {
 		return err
 	}
 	for _, change := range linked {
-		changeChecks, err := s.checksForScopeWithPending(ctx, contracts.CheckScopeChange, change.ChangeID, pendingCheck)
+		changeChecks, err := s.checksForScopeWithPendingSet(ctx, contracts.CheckScopeChange, change.ChangeID, pendingChecks)
 		if err != nil {
 			return err
 		}
@@ -341,23 +357,33 @@ func (s *ActionService) previewTicketChangeState(ctx context.Context, ticket *co
 }
 
 func (s *ActionService) checksForScopeWithPending(ctx context.Context, scope contracts.CheckScope, scopeID string, pending *contracts.CheckResult) ([]contracts.CheckResult, error) {
+	var pendingChecks []contracts.CheckResult
+	if pending != nil {
+		pendingChecks = append(pendingChecks, *pending)
+	}
+	return s.checksForScopeWithPendingSet(ctx, scope, scopeID, pendingChecks)
+}
+
+func (s *ActionService) checksForScopeWithPendingSet(ctx context.Context, scope contracts.CheckScope, scopeID string, pendingChecks []contracts.CheckResult) ([]contracts.CheckResult, error) {
 	checks, err := s.Checks.ListChecks(ctx, scope, scopeID)
 	if err != nil {
 		return nil, err
 	}
-	if pending == nil || pending.Scope != scope || pending.ScopeID != scopeID {
-		return checks, nil
-	}
-	replaced := false
-	for i := range checks {
-		if checks[i].CheckID == pending.CheckID {
-			checks[i] = *pending
-			replaced = true
-			break
+	for _, pending := range pendingChecks {
+		if pending.Scope != scope || pending.ScopeID != scopeID {
+			continue
 		}
-	}
-	if !replaced {
-		checks = append(checks, *pending)
+		replaced := false
+		for i := range checks {
+			if checks[i].CheckID == pending.CheckID {
+				checks[i] = pending
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			checks = append(checks, pending)
+		}
 	}
 	return checks, nil
 }

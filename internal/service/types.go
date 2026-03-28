@@ -81,10 +81,11 @@ type InspectView struct {
 }
 
 type ChangeDetailView struct {
-	Change      contracts.ChangeRef      `json:"change"`
-	Ticket      contracts.TicketSnapshot `json:"ticket,omitempty"`
-	Checks      []contracts.CheckResult  `json:"checks,omitempty"`
-	GeneratedAt time.Time                `json:"generated_at"`
+	Change       contracts.ChangeRef      `json:"change"`
+	Ticket       contracts.TicketSnapshot `json:"ticket,omitempty"`
+	Checks       []contracts.CheckResult  `json:"checks,omitempty"`
+	ChangedFiles []string                 `json:"changed_files,omitempty"`
+	GeneratedAt  time.Time                `json:"generated_at"`
 }
 
 type HandoffContextView struct {
@@ -203,9 +204,77 @@ type GitCommitView struct {
 	Subject    string    `json:"subject"`
 }
 
+type GitHubCapabilityView struct {
+	Authenticated bool   `json:"authenticated"`
+	Installed     bool   `json:"installed"`
+	Repo          string `json:"repo,omitempty"`
+}
+
+type GitHubPRView struct {
+	BaseRef          string    `json:"base_ref,omitempty"`
+	Draft            bool      `json:"draft"`
+	HeadRef          string    `json:"head_ref,omitempty"`
+	MergeStateStatus string    `json:"merge_state_status,omitempty"`
+	MergedAt         time.Time `json:"merged_at,omitempty"`
+	Number           int       `json:"number"`
+	ReviewDecision   string    `json:"review_decision,omitempty"`
+	State            string    `json:"state,omitempty"`
+	Title            string    `json:"title"`
+	URL              string    `json:"url"`
+}
+
+type GitHubCheckView struct {
+	Bucket      string    `json:"bucket,omitempty"`
+	CompletedAt time.Time `json:"completed_at,omitempty"`
+	Description string    `json:"description,omitempty"`
+	Link        string    `json:"link,omitempty"`
+	Name        string    `json:"name"`
+	StartedAt   time.Time `json:"started_at,omitempty"`
+	State       string    `json:"state,omitempty"`
+	Workflow    string    `json:"workflow,omitempty"`
+}
+
+type GitHubContextView struct {
+	Capability     GitHubCapabilityView `json:"capability"`
+	PullRequests   []GitHubPRView       `json:"pull_requests,omitempty"`
+	SuggestedTitle string               `json:"suggested_title,omitempty"`
+}
+
 type GitContextView struct {
-	CurrentBranchMatches bool            `json:"current_branch_matches"`
-	Repo                 GitRepoView     `json:"repo"`
-	SuggestedBranch      string          `json:"suggested_branch,omitempty"`
-	Refs                 []GitCommitView `json:"refs,omitempty"`
+	CurrentBranchMatches bool              `json:"current_branch_matches"`
+	GitHub               GitHubContextView `json:"github,omitempty"`
+	Repo                 GitRepoView       `json:"repo"`
+	SuggestedBranch      string            `json:"suggested_branch,omitempty"`
+	Refs                 []GitCommitView   `json:"refs,omitempty"`
+}
+
+type ChangeCreateResultView struct {
+	Change      contracts.ChangeRef      `json:"change"`
+	Created     bool                     `json:"created"`
+	ReasonCodes []string                 `json:"reason_codes,omitempty"`
+	Ticket      contracts.TicketSnapshot `json:"ticket"`
+	GeneratedAt time.Time                `json:"generated_at"`
+}
+
+type ChangeStatusView struct {
+	Change               contracts.ChangeRef           `json:"change"`
+	ChangedFiles         []string                      `json:"changed_files,omitempty"`
+	CurrentBranch        string                        `json:"current_branch,omitempty"`
+	DetachedHEAD         bool                          `json:"detached_head"`
+	Git                  GitContextView                `json:"git"`
+	LocalBranchExists    bool                          `json:"local_branch_exists"`
+	ObservedChecksStatus contracts.CheckAggregateState `json:"observed_checks_status"`
+	ObservedStatus       contracts.ChangeStatus        `json:"observed_status"`
+	PullRequest          *GitHubPRView                 `json:"pull_request,omitempty"`
+	ReasonCodes          []string                      `json:"reason_codes,omitempty"`
+	Ticket               contracts.TicketSnapshot      `json:"ticket"`
+	GeneratedAt          time.Time                     `json:"generated_at"`
+}
+
+type CheckSyncResultView struct {
+	Aggregate   contracts.CheckAggregateState `json:"aggregate"`
+	Change      contracts.ChangeRef           `json:"change"`
+	Checks      []contracts.CheckResult       `json:"checks,omitempty"`
+	ReasonCodes []string                      `json:"reason_codes,omitempty"`
+	GeneratedAt time.Time                     `json:"generated_at"`
 }
