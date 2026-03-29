@@ -16,6 +16,9 @@ type QueryService struct {
 	Root               string
 	Projects           contracts.ProjectStore
 	Tickets            contracts.TicketStore
+	Collaborators      contracts.CollaboratorStore
+	Memberships        contracts.MembershipStore
+	Mentions           contracts.MentionStore
 	Agents             contracts.AgentStore
 	PermissionProfiles contracts.PermissionProfileStore
 	Runs               contracts.RunStore
@@ -36,7 +39,7 @@ type QueryService struct {
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
-	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, PermissionProfiles: PermissionProfileStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Gates: GateStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Changes: ChangeStore{Root: root}, Checks: CheckStore{Root: root}, ImportJobs: ImportJobStore{Root: root}, ExportBundles: ExportBundleStore{Root: root}, RetentionPolicies: RetentionPolicyStore{Root: root}, Archives: ArchiveRecordStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
+	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Collaborators: CollaboratorStore{Root: root}, Memberships: MembershipStore{Root: root}, Mentions: MentionStore{Root: root}, Agents: AgentStore{Root: root}, PermissionProfiles: PermissionProfileStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Gates: GateStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Changes: ChangeStore{Root: root}, Checks: CheckStore{Root: root}, ImportJobs: ImportJobStore{Root: root}, ExportBundles: ExportBundleStore{Root: root}, RetentionPolicies: RetentionPolicyStore{Root: root}, Archives: ArchiveRecordStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
 }
 
 func (s *QueryService) now() time.Time {
@@ -380,11 +383,16 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
+	allMentions, err := s.Mentions.ListMentions(ctx, "")
+	if err != nil {
+		return TicketDetailView{}, err
+	}
+	mentions := mentionsForTicket(allMentions, ticket.ID)
 	gitView, err := SCMService{Root: s.Root}.ContextForTicket(ctx, ticket)
 	if err != nil {
 		return TicketDetailView{}, err
 	}
-	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, Gates: gates, Changes: changes, Checks: checks, EffectivePolicy: policy, Git: gitView}, nil
+	return TicketDetailView{Ticket: ticket, Comments: comments, Mentions: mentions, History: history.Events, Gates: gates, Changes: changes, Checks: checks, EffectivePolicy: policy, Git: gitView}, nil
 }
 
 func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor contracts.Actor) (InspectView, error) {
@@ -402,6 +410,7 @@ func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor
 		Changes:         detail.Changes,
 		Checks:          detail.Checks,
 		Git:             detail.Git,
+		Mentions:        detail.Mentions,
 	}
 	if actor == "" {
 		return view, nil

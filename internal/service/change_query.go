@@ -84,7 +84,17 @@ func (s *QueryService) HandoffView(ctx context.Context, handoffID string) (Hando
 	if err != nil {
 		return HandoffContextView{}, err
 	}
-	return HandoffContextView{Handoff: packet, Changes: filteredChanges, Checks: checks, GeneratedAt: s.now()}, nil
+	allMentions, err := s.Mentions.ListMentions(ctx, "")
+	if err != nil {
+		return HandoffContextView{}, err
+	}
+	mentions := make([]contracts.Mention, 0)
+	for _, mention := range allMentions {
+		if mention.SourceKind == "handoff" && mention.SourceID == packet.HandoffID {
+			mentions = append(mentions, mention)
+		}
+	}
+	return HandoffContextView{Handoff: packet, Changes: filteredChanges, Checks: checks, Mentions: mentions, GeneratedAt: s.now()}, nil
 }
 
 func (s *QueryService) ticketChangeContext(ctx context.Context, ticket contracts.TicketSnapshot) ([]contracts.ChangeRef, []contracts.CheckResult, error) {

@@ -111,6 +111,10 @@ func (s *ActionService) decideGate(ctx context.Context, gateID string, actor con
 		if err != nil {
 			return contracts.GateSnapshot{}, err
 		}
+		mentions, err := s.extractMentions(ctx, event, "gate", gate.GateID, ticket.ID, gate.DecisionReason)
+		if err != nil {
+			return contracts.GateSnapshot{}, err
+		}
 		if err := s.commitMutation(ctx, "decide gate", "gate", event, func(ctx context.Context) error {
 			if err := s.Gates.SaveGate(ctx, gate); err != nil {
 				return err
@@ -120,8 +124,19 @@ func (s *ActionService) decideGate(ctx context.Context, gateID string, actor con
 					return err
 				}
 			}
-			return s.UpdateTicket(ctx, ticket)
+			if err := s.UpdateTicket(ctx, ticket); err != nil {
+				return err
+			}
+			for _, mention := range mentions.Mentions {
+				if err := s.Mentions.SaveMention(ctx, mention); err != nil {
+					return err
+				}
+			}
+			return nil
 		}); err != nil {
+			return contracts.GateSnapshot{}, err
+		}
+		if err := s.recordMentionEvents(ctx, ticket.Project, actor, reason, mentions.Mentions); err != nil {
 			return contracts.GateSnapshot{}, err
 		}
 		return gate, nil

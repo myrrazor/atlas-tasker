@@ -652,11 +652,11 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		if err != nil {
 			return loadedMsg{err: err}
 		}
-		approvals, err = m.queries.Approvals(ctx)
+		approvals, err = m.queries.Approvals(ctx, "")
 		if err != nil {
 			return loadedMsg{err: err}
 		}
-		operatorInbox, err = m.queries.Inbox(ctx)
+		operatorInbox, err = m.queries.Inbox(ctx, "")
 		if err != nil {
 			return loadedMsg{err: err}
 		}

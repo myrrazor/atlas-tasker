@@ -54,6 +54,7 @@ type BoardViewModel struct {
 type TicketDetailView struct {
 	Ticket          contracts.TicketSnapshot `json:"ticket"`
 	Comments        []string                 `json:"comments"`
+	Mentions        []contracts.Mention      `json:"mentions,omitempty"`
 	History         []contracts.Event        `json:"history"`
 	Gates           []contracts.GateSnapshot `json:"gates,omitempty"`
 	Changes         []contracts.ChangeRef    `json:"changes,omitempty"`
@@ -111,6 +112,7 @@ type InspectView struct {
 	Changes         []contracts.ChangeRef    `json:"changes,omitempty"`
 	Checks          []contracts.CheckResult  `json:"checks,omitempty"`
 	Git             GitContextView           `json:"git"`
+	Mentions        []contracts.Mention      `json:"mentions,omitempty"`
 	QueueCategories []QueueCategory          `json:"queue_categories,omitempty"`
 }
 
@@ -126,6 +128,7 @@ type HandoffContextView struct {
 	Handoff     contracts.HandoffPacket `json:"handoff"`
 	Changes     []contracts.ChangeRef   `json:"changes,omitempty"`
 	Checks      []contracts.CheckResult `json:"checks,omitempty"`
+	Mentions    []contracts.Mention     `json:"mentions,omitempty"`
 	GeneratedAt time.Time               `json:"generated_at"`
 }
 

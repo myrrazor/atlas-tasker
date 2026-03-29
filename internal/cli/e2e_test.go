@@ -243,6 +243,47 @@ func TestShellParityForOrchestrationCommands(t *testing.T) {
 	}
 }
 
+func TestShellParityForCollaboratorMembershipAndMentionsCommands(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\noutput=%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Mentions", "--type", "task", "--actor", "human:owner")
+
+	runSlashShell(t, `/collaborator add rev-1 --name "Rev One" --actor-map agent:reviewer-1 --actor human:owner`)
+	runSlashShell(t, `/collaborator list`)
+	runSlashShell(t, `/collaborator view rev-1`)
+	runSlashShell(t, `/membership bind rev-1 --scope-kind project --scope-id APP --role reviewer --actor human:owner`)
+	runSlashShell(t, `/membership list --collaborator rev-1`)
+
+	must("ticket", "comment", "APP-1", "--body", "review with @rev-1", "--actor", "human:owner")
+
+	mentionsOut := must("mentions", "list", "--collaborator", "rev-1", "--json")
+	var mentions struct {
+		Items []struct {
+			MentionUID string `json:"mention_uid"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(mentionsOut), &mentions); err != nil {
+		t.Fatalf("parse mentions list: %v\nraw=%s", err, mentionsOut)
+	}
+	if len(mentions.Items) != 1 || mentions.Items[0].MentionUID == "" {
+		t.Fatalf("expected one mention, got %#v", mentions.Items)
+	}
+
+	runSlashShell(t, `/mentions list --collaborator rev-1`)
+	runSlashShell(t, `/mentions view `+mentions.Items[0].MentionUID)
+}
+
 func TestShellParityForImportExportCommands(t *testing.T) {
 	withTempWorkspace(t)
 

@@ -128,7 +128,8 @@ func runApprovals(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer workspace.close()
-	items, err := workspace.queries.Approvals(commandContext(cmd))
+	collaboratorID, _ := cmd.Flags().GetString("collaborator")
+	items, err := workspace.queries.Approvals(commandContext(cmd), collaboratorID)
 	if err != nil {
 		return err
 	}
@@ -143,7 +144,8 @@ func runInbox(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer workspace.close()
-	items, err := workspace.queries.Inbox(commandContext(cmd))
+	collaboratorID, _ := cmd.Flags().GetString("collaborator")
+	items, err := workspace.queries.Inbox(commandContext(cmd), collaboratorID)
 	if err != nil {
 		return err
 	}
@@ -211,6 +213,9 @@ func formatInboxDetail(detail service.InboxDetailView) string {
 	}
 	if detail.Item.HandoffID != "" {
 		lines = append(lines, "", service.RenderHandoffMarkdown(detail.Handoff))
+	}
+	if detail.Item.MentionUID != "" {
+		lines = append(lines, "", fmt.Sprintf("mention=@%s via %s %s", detail.Mention.CollaboratorID, detail.Mention.SourceKind, detail.Mention.SourceID))
 	}
 	return strings.Join(lines, "\n")
 }

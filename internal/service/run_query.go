@@ -73,7 +73,25 @@ func (s *QueryService) RunDetail(ctx context.Context, runID string) (RunDetailVi
 			filteredHandoffs = append(filteredHandoffs, handoff)
 		}
 	}
-	return RunDetailView{Run: run, Ticket: ticket, Gates: filteredGates, Changes: filteredChanges, Checks: checks, Evidence: evidence, Handoffs: filteredHandoffs, GeneratedAt: s.now()}, nil
+	allMentions, err := s.Mentions.ListMentions(ctx, "")
+	if err != nil {
+		return RunDetailView{}, err
+	}
+	mentionSources := make(map[string]struct{}, len(evidence)+len(filteredHandoffs))
+	for _, item := range evidence {
+		mentionSources["evidence:"+item.EvidenceID] = struct{}{}
+	}
+	for _, handoff := range filteredHandoffs {
+		mentionSources["handoff:"+handoff.HandoffID] = struct{}{}
+	}
+	mentions := make([]contracts.Mention, 0)
+	for _, mention := range allMentions {
+		key := mention.SourceKind + ":" + mention.SourceID
+		if _, ok := mentionSources[key]; ok {
+			mentions = append(mentions, mention)
+		}
+	}
+	return RunDetailView{Run: run, Ticket: ticket, Gates: filteredGates, Changes: filteredChanges, Checks: checks, Evidence: evidence, Handoffs: filteredHandoffs, Mentions: mentions, GeneratedAt: s.now()}, nil
 }
 
 func (s *QueryService) WorktreeDetail(ctx context.Context, runID string) (WorktreeStatusView, error) {

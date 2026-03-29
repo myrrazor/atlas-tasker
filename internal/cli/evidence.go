@@ -91,6 +91,7 @@ func runHandoffView(cmd *cobra.Command, args []string) error {
 			"schema_version":               view.Handoff.SchemaVersion,
 			"changes":                      view.Changes,
 			"checks":                       view.Checks,
+			"mentions":                     view.Mentions,
 		},
 	}
 	return writeCommandOutput(cmd, data, pretty, pretty)
@@ -139,6 +140,12 @@ func formatHandoffDetail(view service.HandoffContextView) string {
 		lines = append(lines, "", "## Checks", "")
 		for _, check := range view.Checks {
 			lines = append(lines, fmt.Sprintf("- %s [%s/%s] %s", check.CheckID, check.Status, check.Conclusion, check.Name))
+		}
+	}
+	if len(view.Mentions) > 0 {
+		lines = append(lines, "", "## Mentions", "")
+		for _, mention := range view.Mentions {
+			lines = append(lines, fmt.Sprintf("- @%s via %s %s", mention.CollaboratorID, mention.SourceKind, mention.SourceID))
 		}
 	}
 	return strings.Join(lines, "\n")

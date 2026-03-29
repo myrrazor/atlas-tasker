@@ -6,45 +6,87 @@ import (
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/spf13/cobra"
 )
 
 func newCollaboratorCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "collaborator", Short: "Manage collaborators and trust state"}
-	for _, sub := range []*cobra.Command{
-		{Use: "list", Short: "List collaborators", RunE: notImplementedRead("collaborator_list")},
-		{Use: "view <ID>", Args: cobra.ExactArgs(1), Short: "View collaborator details", RunE: notImplementedRead("collaborator_detail")},
-		{Use: "add", Short: "Add a collaborator", RunE: notImplementedMutation("collaborator_detail")},
-		{Use: "edit <ID>", Args: cobra.ExactArgs(1), Short: "Edit collaborator metadata", RunE: notImplementedMutation("collaborator_detail")},
-		{Use: "trust <ID>", Args: cobra.ExactArgs(1), Short: "Mark a collaborator as trusted", RunE: notImplementedMutation("collaborator_detail")},
-		{Use: "suspend <ID>", Args: cobra.ExactArgs(1), Short: "Suspend a collaborator", RunE: notImplementedMutation("collaborator_detail")},
-		{Use: "remove <ID>", Args: cobra.ExactArgs(1), Short: "Tombstone a collaborator", RunE: notImplementedMutation("collaborator_detail")},
-	} {
-		if strings.Contains(sub.Use, "list") || strings.Contains(sub.Use, "view") {
-			addReadOutputFlags(sub, &outputFlags{})
-		} else {
-			addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
-			addReadOutputFlags(sub, &outputFlags{})
-		}
-		cmd.AddCommand(sub)
-	}
+
+	list := &cobra.Command{Use: "list", Short: "List collaborators", RunE: runCollaboratorList}
+	list.Flags().String("status", "", "Filter by collaborator status")
+	addReadOutputFlags(list, &outputFlags{})
+
+	view := &cobra.Command{Use: "view <ID>", Args: cobra.ExactArgs(1), Short: "View collaborator details", RunE: runCollaboratorView}
+	addReadOutputFlags(view, &outputFlags{})
+
+	add := &cobra.Command{Use: "add <ID>", Args: cobra.ExactArgs(1), Short: "Add a collaborator", RunE: runCollaboratorAdd}
+	add.Flags().String("name", "", "Display name")
+	add.Flags().StringArray("actor-map", nil, "Atlas actor mapped to this collaborator")
+	add.Flags().StringArray("provider-handle", nil, "Provider handle mapping as provider:handle")
+	addMutationFlags(add, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(add, &outputFlags{})
+
+	edit := &cobra.Command{Use: "edit <ID>", Args: cobra.ExactArgs(1), Short: "Edit collaborator metadata", RunE: runCollaboratorEdit}
+	edit.Flags().String("name", "", "Display name")
+	edit.Flags().StringArray("actor-map", nil, "Replace Atlas actor mappings")
+	edit.Flags().StringArray("provider-handle", nil, "Replace provider handle mappings as provider:handle")
+	editMutationFlags(edit)
+
+	trust := &cobra.Command{Use: "trust <ID>", Args: cobra.ExactArgs(1), Short: "Mark a collaborator as trusted", RunE: runCollaboratorTrust}
+	trustMutationFlags(trust)
+
+	suspend := &cobra.Command{Use: "suspend <ID>", Args: cobra.ExactArgs(1), Short: "Suspend a collaborator", RunE: runCollaboratorSuspend}
+	suspendMutationFlags(suspend)
+
+	remove := &cobra.Command{Use: "remove <ID>", Args: cobra.ExactArgs(1), Short: "Tombstone a collaborator", RunE: runCollaboratorRemove}
+	removeMutationFlags(remove)
+
+	cmd.AddCommand(list, view, add, edit, trust, suspend, remove)
 	return cmd
+}
+
+func editMutationFlags(cmd *cobra.Command) {
+	addMutationFlags(cmd, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(cmd, &outputFlags{})
+}
+
+func trustMutationFlags(cmd *cobra.Command) {
+	addMutationFlags(cmd, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(cmd, &outputFlags{})
+}
+
+func suspendMutationFlags(cmd *cobra.Command) {
+	addMutationFlags(cmd, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(cmd, &outputFlags{})
+}
+
+func removeMutationFlags(cmd *cobra.Command) {
+	addMutationFlags(cmd, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(cmd, &outputFlags{})
 }
 
 func newMembershipCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "membership", Short: "Manage collaborator memberships"}
-	list := &cobra.Command{Use: "list", Short: "List memberships", RunE: notImplementedRead("membership_list")}
-	bind := &cobra.Command{Use: "bind", Short: "Bind a collaborator to a scope", RunE: notImplementedMutation("membership_list")}
-	unbind := &cobra.Command{Use: "unbind", Short: "Unbind a collaborator membership", RunE: notImplementedMutation("membership_list")}
-	for _, sub := range []*cobra.Command{list, bind, unbind} {
-		if sub == list {
-			addReadOutputFlags(sub, &outputFlags{})
-		} else {
-			addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
-			addReadOutputFlags(sub, &outputFlags{})
-		}
-		cmd.AddCommand(sub)
-	}
+
+	list := &cobra.Command{Use: "list", Short: "List memberships", RunE: runMembershipList}
+	list.Flags().String("collaborator", "", "Filter by collaborator ID")
+	addReadOutputFlags(list, &outputFlags{})
+
+	bind := &cobra.Command{Use: "bind <COLLABORATOR-ID>", Args: cobra.ExactArgs(1), Short: "Bind a collaborator to a scope", RunE: runMembershipBind}
+	bind.Flags().String("scope-kind", "", "Scope kind: workspace or project")
+	bind.Flags().String("scope-id", "", "Scope ID; defaults to the current workspace for workspace scope")
+	bind.Flags().String("role", "", "Membership role")
+	bind.Flags().StringArray("profile", nil, "Default permission profile to attach")
+	addMutationFlags(bind, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(bind, &outputFlags{})
+
+	unbind := &cobra.Command{Use: "unbind <MEMBERSHIP-UID>", Args: cobra.ExactArgs(1), Short: "Unbind a collaborator membership", RunE: runMembershipUnbind}
+	addMutationFlags(unbind, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(unbind, &outputFlags{})
+
+	cmd.AddCommand(list, bind, unbind)
 	return cmd
 }
 
@@ -152,8 +194,9 @@ func newConflictCommand() *cobra.Command {
 
 func newMentionsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "mentions", Short: "Inspect collaborator mentions"}
-	list := &cobra.Command{Use: "list", Short: "List mentions", RunE: notImplementedRead("mentions_list")}
-	view := &cobra.Command{Use: "view <MENTION-UID>", Args: cobra.ExactArgs(1), Short: "View a mention", RunE: notImplementedRead("mention_detail")}
+	list := &cobra.Command{Use: "list", Short: "List mentions", RunE: runMentionsList}
+	list.Flags().String("collaborator", "", "Filter mentions for one collaborator")
+	view := &cobra.Command{Use: "view <MENTION-UID>", Args: cobra.ExactArgs(1), Short: "View a mention", RunE: runMentionView}
 	for _, sub := range []*cobra.Command{list, view} {
 		addReadOutputFlags(sub, &outputFlags{})
 		cmd.AddCommand(sub)
@@ -178,6 +221,356 @@ func newProjectRulesCommand() *cobra.Command {
 	addReadOutputFlags(render, &outputFlags{})
 	cmd.AddCommand(render)
 	return cmd
+}
+
+func runCollaboratorList(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	statusRaw, _ := cmd.Flags().GetString("status")
+	status := contracts.CollaboratorStatus(strings.TrimSpace(statusRaw))
+	items, err := workspace.queries.ListCollaborators(commandContext(cmd))
+	if err != nil {
+		return err
+	}
+	if status != "" {
+		filtered := make([]contracts.CollaboratorProfile, 0, len(items))
+		for _, item := range items {
+			if item.Status == status {
+				filtered = append(filtered, item)
+			}
+		}
+		items = filtered
+	}
+	pretty := formatCollaboratorList(items)
+	data := map[string]any{"kind": "collaborator_list", "generated_at": time.Now().UTC(), "items": items}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runCollaboratorView(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.CollaboratorDetail(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatCollaboratorDetail(view)
+	data := map[string]any{"kind": "collaborator_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runCollaboratorAdd(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	name, _ := cmd.Flags().GetString("name")
+	actorsRaw, _ := cmd.Flags().GetStringArray("actor-map")
+	handlesRaw, _ := cmd.Flags().GetStringArray("provider-handle")
+	atlasActors, err := parseCollaboratorActors(actorsRaw)
+	if err != nil {
+		return err
+	}
+	providerHandles, err := parseProviderHandles(handlesRaw)
+	if err != nil {
+		return err
+	}
+	collaborator, err := workspace.actions.AddCollaborator(commandContext(cmd), contracts.CollaboratorProfile{
+		CollaboratorID:  strings.TrimSpace(args[0]),
+		DisplayName:     strings.TrimSpace(name),
+		AtlasActors:     atlasActors,
+		ProviderHandles: providerHandles,
+	}, normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	view, err := workspace.queries.CollaboratorDetail(commandContext(cmd), collaborator.CollaboratorID)
+	if err != nil {
+		return err
+	}
+	pretty := formatCollaboratorDetail(view)
+	data := map[string]any{"kind": "collaborator_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runCollaboratorEdit(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	name, _ := cmd.Flags().GetString("name")
+	actorsRaw, _ := cmd.Flags().GetStringArray("actor-map")
+	handlesRaw, _ := cmd.Flags().GetStringArray("provider-handle")
+	atlasActors, err := parseCollaboratorActors(actorsRaw)
+	if err != nil {
+		return err
+	}
+	providerHandles, err := parseProviderHandles(handlesRaw)
+	if err != nil {
+		return err
+	}
+	_, err = workspace.actions.EditCollaborator(commandContext(cmd), args[0], name, atlasActors, providerHandles, normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	view, err := workspace.queries.CollaboratorDetail(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatCollaboratorDetail(view)
+	data := map[string]any{"kind": "collaborator_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runCollaboratorTrust(cmd *cobra.Command, args []string) error {
+	return mutateCollaboratorStatus(cmd, args[0], func(workspace *workspace, actor contracts.Actor, reason string) (contracts.CollaboratorProfile, error) {
+		return workspace.actions.SetCollaboratorTrust(commandContext(cmd), args[0], true, actor, reason)
+	})
+}
+
+func runCollaboratorSuspend(cmd *cobra.Command, args []string) error {
+	return mutateCollaboratorStatus(cmd, args[0], func(workspace *workspace, actor contracts.Actor, reason string) (contracts.CollaboratorProfile, error) {
+		return workspace.actions.SetCollaboratorStatus(commandContext(cmd), args[0], contracts.CollaboratorStatusSuspended, actor, reason)
+	})
+}
+
+func runCollaboratorRemove(cmd *cobra.Command, args []string) error {
+	return mutateCollaboratorStatus(cmd, args[0], func(workspace *workspace, actor contracts.Actor, reason string) (contracts.CollaboratorProfile, error) {
+		return workspace.actions.SetCollaboratorStatus(commandContext(cmd), args[0], contracts.CollaboratorStatusRemoved, actor, reason)
+	})
+}
+
+func mutateCollaboratorStatus(cmd *cobra.Command, collaboratorID string, fn func(*workspace, contracts.Actor, string) (contracts.CollaboratorProfile, error)) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	if _, err := fn(workspace, normalizeActor(actorRaw), reason); err != nil {
+		return err
+	}
+	view, err := workspace.queries.CollaboratorDetail(commandContext(cmd), collaboratorID)
+	if err != nil {
+		return err
+	}
+	pretty := formatCollaboratorDetail(view)
+	data := map[string]any{"kind": "collaborator_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runMembershipList(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	collaboratorID, _ := cmd.Flags().GetString("collaborator")
+	items, err := workspace.queries.ListMemberships(commandContext(cmd), collaboratorID)
+	if err != nil {
+		return err
+	}
+	pretty := formatMembershipList(items)
+	data := map[string]any{"kind": "membership_list", "generated_at": time.Now().UTC(), "items": items}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runMembershipBind(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	scopeKindRaw, _ := cmd.Flags().GetString("scope-kind")
+	scopeID, _ := cmd.Flags().GetString("scope-id")
+	roleRaw, _ := cmd.Flags().GetString("role")
+	profiles, _ := cmd.Flags().GetStringArray("profile")
+	membership, err := workspace.actions.BindMembership(commandContext(cmd), contracts.MembershipBinding{
+		CollaboratorID:            strings.TrimSpace(args[0]),
+		ScopeKind:                 contracts.MembershipScopeKind(strings.TrimSpace(scopeKindRaw)),
+		ScopeID:                   strings.TrimSpace(scopeID),
+		Role:                      contracts.MembershipRole(strings.TrimSpace(roleRaw)),
+		DefaultPermissionProfiles: profiles,
+	}, normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	data := map[string]any{"kind": "membership_list", "generated_at": membership.UpdatedAt, "items": []contracts.MembershipBinding{membership}}
+	pretty := formatMembershipList([]contracts.MembershipBinding{membership})
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runMembershipUnbind(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	membership, err := workspace.actions.UnbindMembership(commandContext(cmd), args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	data := map[string]any{"kind": "membership_list", "generated_at": membership.UpdatedAt, "items": []contracts.MembershipBinding{membership}}
+	pretty := formatMembershipList([]contracts.MembershipBinding{membership})
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runMentionsList(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	collaboratorID, _ := cmd.Flags().GetString("collaborator")
+	items, err := workspace.queries.ListMentions(commandContext(cmd), collaboratorID)
+	if err != nil {
+		return err
+	}
+	pretty := formatMentionsList(items)
+	data := map[string]any{"kind": "mentions_list", "generated_at": time.Now().UTC(), "items": items}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runMentionView(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.MentionDetail(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatMentionDetail(view)
+	data := map[string]any{"kind": "mention_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func formatCollaboratorList(items []contracts.CollaboratorProfile) string {
+	if len(items) == 0 {
+		return "no collaborators"
+	}
+	lines := []string{"collaborators:"}
+	for _, item := range items {
+		name := item.DisplayName
+		if name == "" {
+			name = item.CollaboratorID
+		}
+		lines = append(lines, fmt.Sprintf("- %s [%s/%s] %s", item.CollaboratorID, item.Status, item.TrustState, name))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatCollaboratorDetail(view service.CollaboratorDetailView) string {
+	lines := []string{
+		fmt.Sprintf("collaborator %s", view.Collaborator.CollaboratorID),
+		fmt.Sprintf("status=%s trust=%s", view.Collaborator.Status, view.Collaborator.TrustState),
+	}
+	if view.Collaborator.DisplayName != "" {
+		lines = append(lines, "name="+view.Collaborator.DisplayName)
+	}
+	if len(view.Collaborator.AtlasActors) > 0 {
+		actors := make([]string, 0, len(view.Collaborator.AtlasActors))
+		for _, actor := range view.Collaborator.AtlasActors {
+			actors = append(actors, string(actor))
+		}
+		lines = append(lines, "actors="+strings.Join(actors, ","))
+	}
+	if len(view.Memberships) > 0 {
+		lines = append(lines, "", formatMembershipList(view.Memberships))
+	}
+	if len(view.Mentions) > 0 {
+		lines = append(lines, "", formatMentionsList(view.Mentions))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatMembershipList(items []contracts.MembershipBinding) string {
+	if len(items) == 0 {
+		return "no memberships"
+	}
+	lines := []string{"memberships:"}
+	for _, item := range items {
+		lines = append(lines, fmt.Sprintf("- %s %s -> %s:%s (%s)", item.MembershipUID, item.CollaboratorID, item.ScopeKind, item.ScopeID, item.Role))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatMentionsList(items []contracts.Mention) string {
+	if len(items) == 0 {
+		return "no mentions"
+	}
+	lines := []string{"mentions:"}
+	for _, item := range items {
+		lines = append(lines, fmt.Sprintf("- %s @%s %s %s", item.MentionUID, item.CollaboratorID, item.SourceKind, item.SourceID))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatMentionDetail(view service.MentionDetailView) string {
+	lines := []string{
+		fmt.Sprintf("mention %s", view.Mention.MentionUID),
+		fmt.Sprintf("@%s in %s %s", view.Mention.CollaboratorID, view.Mention.SourceKind, view.Mention.SourceID),
+	}
+	if view.Mention.TicketID != "" {
+		lines = append(lines, "ticket="+view.Mention.TicketID)
+	}
+	if view.Collaborator.CollaboratorID != "" {
+		lines = append(lines, fmt.Sprintf("collaborator_status=%s trust=%s", view.Collaborator.Status, view.Collaborator.TrustState))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func parseCollaboratorActors(values []string) ([]contracts.Actor, error) {
+	items := make([]contracts.Actor, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		actor := contracts.Actor(value)
+		if !actor.IsValid() {
+			return nil, fmt.Errorf("invalid actor: %s", value)
+		}
+		items = append(items, actor)
+	}
+	return items, nil
+}
+
+func parseProviderHandles(values []string) (map[string]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	items := make(map[string]string, len(values))
+	for _, value := range values {
+		provider, handle, ok := strings.Cut(strings.TrimSpace(value), ":")
+		if !ok {
+			return nil, fmt.Errorf("invalid provider handle mapping %q: want provider:handle", value)
+		}
+		provider = strings.TrimSpace(provider)
+		handle = strings.TrimSpace(handle)
+		if provider == "" || handle == "" {
+			return nil, fmt.Errorf("invalid provider handle mapping %q: want provider:handle", value)
+		}
+		items[provider] = handle
+	}
+	return items, nil
 }
 
 func notImplementedRead(kind string) func(*cobra.Command, []string) error {

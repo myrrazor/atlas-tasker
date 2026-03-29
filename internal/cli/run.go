@@ -504,6 +504,12 @@ func formatRunDetail(detail service.RunDetailView) string {
 			lines = append(lines, fmt.Sprintf("- %s next_actor=%s next_gate=%s", item.HandoffID, item.SuggestedNextActor, item.SuggestedNextGate))
 		}
 	}
+	if len(detail.Mentions) > 0 {
+		lines = append(lines, "", fmt.Sprintf("mentions=%d", len(detail.Mentions)))
+		for _, mention := range detail.Mentions {
+			lines = append(lines, fmt.Sprintf("- @%s via %s %s", mention.CollaboratorID, mention.SourceKind, mention.SourceID))
+		}
+	}
 	return strings.Join(lines, "\n")
 }
 

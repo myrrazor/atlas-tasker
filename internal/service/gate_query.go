@@ -37,22 +37,31 @@ func (s *QueryService) GateDetail(ctx context.Context, gateID string) (contracts
 	return s.Gates.LoadGate(ctx, gateID)
 }
 
-func (s *QueryService) Approvals(ctx context.Context) ([]ApprovalItemView, error) {
+func (s *QueryService) Approvals(ctx context.Context, collaboratorID string) ([]ApprovalItemView, error) {
 	gates, err := s.GateList(ctx, "", "", contracts.GateStateOpen)
 	if err != nil {
 		return nil, err
 	}
+	filterID := strings.TrimSpace(collaboratorID)
 	items := make([]ApprovalItemView, 0, len(gates))
 	for _, gate := range gates {
 		ticket, err := s.Tickets.GetTicket(ctx, gate.TicketID)
 		if err != nil {
 			return nil, err
 		}
+		collaboratorIDs, err := s.collaboratorIDsForGate(ctx, gate, ticket.Project)
+		if err != nil {
+			return nil, err
+		}
+		if filterID != "" && !containsString(collaboratorIDs, filterID) {
+			continue
+		}
 		items = append(items, ApprovalItemView{
-			Gate:        gate,
-			Ticket:      ticket,
-			Summary:     summarizeGate(gate, ticket),
-			GeneratedAt: gate.CreatedAt,
+			Gate:            gate,
+			Ticket:          ticket,
+			CollaboratorIDs: collaboratorIDs,
+			Summary:         summarizeGate(gate, ticket),
+			GeneratedAt:     gate.CreatedAt,
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -64,22 +73,25 @@ func (s *QueryService) Approvals(ctx context.Context) ([]ApprovalItemView, error
 	return items, nil
 }
 
-func (s *QueryService) Inbox(ctx context.Context) ([]InboxItemView, error) {
+func (s *QueryService) Inbox(ctx context.Context, collaboratorID string) ([]InboxItemView, error) {
 	items := make([]InboxItemView, 0)
-	approvals, err := s.Approvals(ctx)
+	filterID := strings.TrimSpace(collaboratorID)
+	approvals, err := s.Approvals(ctx, filterID)
 	if err != nil {
 		return nil, err
 	}
 	for _, approval := range approvals {
 		items = append(items, InboxItemView{
-			ID:          "gate:" + approval.Gate.GateID,
-			Kind:        "gate",
-			TicketID:    approval.Gate.TicketID,
-			RunID:       approval.Gate.RunID,
-			GateID:      approval.Gate.GateID,
-			Summary:     approval.Summary,
-			State:       string(approval.Gate.State),
-			GeneratedAt: approval.GeneratedAt,
+			ID:              "gate:" + approval.Gate.GateID,
+			Kind:            "gate",
+			TicketID:        approval.Gate.TicketID,
+			RunID:           approval.Gate.RunID,
+			GateID:          approval.Gate.GateID,
+			CollaboratorIDs: approval.CollaboratorIDs,
+			Summary:         approval.Summary,
+			State:           string(approval.Gate.State),
+			Provenance:      "local",
+			GeneratedAt:     approval.GeneratedAt,
 		})
 	}
 	runs, err := s.ListRuns(ctx, "", "", "")
@@ -97,15 +109,41 @@ func (s *QueryService) Inbox(ctx context.Context) ([]InboxItemView, error) {
 		if !ok {
 			continue
 		}
+		collaboratorIDs, err := s.collaboratorIDsForHandoff(ctx, handoff, run.Project)
+		if err != nil {
+			return nil, err
+		}
+		if filterID != "" && !containsString(collaboratorIDs, filterID) {
+			continue
+		}
 		items = append(items, InboxItemView{
-			ID:          "handoff:" + handoff.HandoffID,
-			Kind:        "handoff",
-			TicketID:    run.TicketID,
-			RunID:       run.RunID,
-			HandoffID:   handoff.HandoffID,
-			Summary:     fmt.Sprintf("%s is ready for handoff on %s", run.RunID, run.TicketID),
-			State:       string(run.Status),
-			GeneratedAt: handoff.GeneratedAt,
+			ID:              "handoff:" + handoff.HandoffID,
+			Kind:            "handoff",
+			TicketID:        run.TicketID,
+			RunID:           run.RunID,
+			HandoffID:       handoff.HandoffID,
+			CollaboratorIDs: collaboratorIDs,
+			Summary:         fmt.Sprintf("%s is ready for handoff on %s", run.RunID, run.TicketID),
+			State:           string(run.Status),
+			Provenance:      "local",
+			GeneratedAt:     handoff.GeneratedAt,
+		})
+	}
+	mentions, err := s.Mentions.ListMentions(ctx, filterID)
+	if err != nil {
+		return nil, err
+	}
+	for _, mention := range mentions {
+		items = append(items, InboxItemView{
+			ID:              "mention:" + mention.MentionUID,
+			Kind:            "mention",
+			TicketID:        mention.TicketID,
+			MentionUID:      mention.MentionUID,
+			CollaboratorIDs: []string{mention.CollaboratorID},
+			Summary:         fmt.Sprintf("@%s mentioned in %s %s", mention.CollaboratorID, mention.SourceKind, mention.SourceID),
+			State:           "open",
+			Provenance:      "local",
+			GeneratedAt:     mention.CreatedAt,
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -118,7 +156,7 @@ func (s *QueryService) Inbox(ctx context.Context) ([]InboxItemView, error) {
 }
 
 func (s *QueryService) InboxDetail(ctx context.Context, itemID string) (InboxDetailView, error) {
-	items, err := s.Inbox(ctx)
+	items, err := s.Inbox(ctx, "")
 	if err != nil {
 		return InboxDetailView{}, err
 	}
@@ -149,6 +187,12 @@ func (s *QueryService) InboxDetail(ctx context.Context, itemID string) (InboxDet
 			handoff, err := s.Handoffs.LoadHandoff(ctx, item.HandoffID)
 			if err == nil {
 				detail.Handoff = handoff
+			}
+		}
+		if item.MentionUID != "" {
+			mention, err := s.Mentions.LoadMention(ctx, item.MentionUID)
+			if err == nil {
+				detail.Mention = mention
 			}
 		}
 		return detail, nil
@@ -183,4 +227,13 @@ func summarizeGate(gate contracts.GateSnapshot, ticket contracts.TicketSnapshot)
 		summary += " -> " + string(gate.RequiredRole)
 	}
 	return summary
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

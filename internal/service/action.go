@@ -16,6 +16,9 @@ type ActionService struct {
 	Root               string
 	Projects           contracts.ProjectStore
 	Tickets            contracts.TicketStore
+	Collaborators      contracts.CollaboratorStore
+	Memberships        contracts.MembershipStore
+	Mentions           contracts.MentionStore
 	Agents             contracts.AgentStore
 	PermissionProfiles contracts.PermissionProfileStore
 	Runs               contracts.RunStore
@@ -46,7 +49,7 @@ func NewActionService(root string, projects contracts.ProjectStore, tickets cont
 		fm.Root = canonicalRoot
 		locks = fm
 	}
-	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: canonicalRoot}, PermissionProfiles: PermissionProfileStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Gates: GateStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Changes: ChangeStore{Root: canonicalRoot}, Checks: CheckStore{Root: canonicalRoot}, ImportJobs: ImportJobStore{Root: canonicalRoot}, ExportBundles: ExportBundleStore{Root: canonicalRoot}, RetentionPolicies: RetentionPolicyStore{Root: canonicalRoot}, Archives: ArchiveRecordStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
+	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Collaborators: CollaboratorStore{Root: canonicalRoot}, Memberships: MembershipStore{Root: canonicalRoot}, Mentions: MentionStore{Root: canonicalRoot}, Agents: AgentStore{Root: canonicalRoot}, PermissionProfiles: PermissionProfileStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Gates: GateStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Changes: ChangeStore{Root: canonicalRoot}, Checks: CheckStore{Root: canonicalRoot}, ImportJobs: ImportJobStore{Root: canonicalRoot}, ExportBundles: ExportBundleStore{Root: canonicalRoot}, RetentionPolicies: RetentionPolicyStore{Root: canonicalRoot}, Archives: ArchiveRecordStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
 }
 
 func (s *ActionService) now() time.Time {
@@ -491,7 +494,24 @@ func (s *ActionService) CommentTicket(ctx context.Context, ticketID string, body
 		if err != nil {
 			return struct{}{}, err
 		}
-		return struct{}{}, s.commitMutation(ctx, "comment ticket", "event_only", event, nil)
+		mentions, err := s.extractMentions(ctx, event, "ticket_comment", event.EventUID, ticket.ID, body)
+		if err != nil {
+			return struct{}{}, err
+		}
+		if err := s.commitMutation(ctx, "comment ticket", "comment", event, func(ctx context.Context) error {
+			for _, mention := range mentions.Mentions {
+				if err := s.Mentions.SaveMention(ctx, mention); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return struct{}{}, err
+		}
+		if err := s.recordMentionEvents(ctx, ticket.Project, actor, reason, mentions.Mentions); err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, nil
 	})
 	return err
 }

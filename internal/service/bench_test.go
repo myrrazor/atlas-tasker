@@ -126,7 +126,7 @@ func BenchmarkApprovals(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := queries.Approvals(ctx); err != nil {
+		if _, err := queries.Approvals(ctx, ""); err != nil {
 			b.Fatalf("approvals: %v", err)
 		}
 	}

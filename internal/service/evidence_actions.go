@@ -84,6 +84,13 @@ func (s *ActionService) AddEvidence(ctx context.Context, runID string, evidenceT
 			}
 			return contracts.EvidenceItem{}, err
 		}
+		mentions, err := s.extractMentions(ctx, event, "evidence", evidence.EvidenceID, run.TicketID, evidence.Title, evidence.Body)
+		if err != nil {
+			if artifactTarget != "" {
+				_ = os.Remove(artifactTarget)
+			}
+			return contracts.EvidenceItem{}, err
+		}
 		if err := s.commitMutation(ctx, "add evidence", "evidence", event, func(ctx context.Context) error {
 			if err := s.Evidence.SaveEvidence(ctx, evidence); err != nil {
 				if artifactTarget != "" {
@@ -98,8 +105,16 @@ func (s *ActionService) AddEvidence(ctx context.Context, runID string, evidenceT
 				}
 				return err
 			}
+			for _, mention := range mentions.Mentions {
+				if err := s.Mentions.SaveMention(ctx, mention); err != nil {
+					return err
+				}
+			}
 			return nil
 		}); err != nil {
+			return contracts.EvidenceItem{}, err
+		}
+		if err := s.recordMentionEvents(ctx, run.Project, actor, reason, mentions.Mentions); err != nil {
 			return contracts.EvidenceItem{}, err
 		}
 		return evidence, nil
@@ -140,6 +155,10 @@ func (s *ActionService) CreateHandoff(ctx context.Context, runID string, actor c
 		if err != nil {
 			return contracts.HandoffPacket{}, err
 		}
+		mentions, err := s.extractMentions(ctx, event, "handoff", packet.HandoffID, run.TicketID, strings.Join(packet.OpenQuestions, "\n"), strings.Join(packet.Risks, "\n"), packet.StatusSummary)
+		if err != nil {
+			return contracts.HandoffPacket{}, err
+		}
 		if err := s.commitMutation(ctx, "create handoff", "handoff", event, func(ctx context.Context) error {
 			rollback := func() {
 				_ = os.Remove(storage.HandoffFile(s.Root, packet.HandoffID))
@@ -164,8 +183,17 @@ func (s *ActionService) CreateHandoff(ctx context.Context, runID string, actor c
 				rollback()
 				return err
 			}
+			for _, mention := range mentions.Mentions {
+				if err := s.Mentions.SaveMention(ctx, mention); err != nil {
+					rollback()
+					return err
+				}
+			}
 			return nil
 		}); err != nil {
+			return contracts.HandoffPacket{}, err
+		}
+		if err := s.recordMentionEvents(ctx, run.Project, actor, reason, mentions.Mentions); err != nil {
 			return contracts.HandoffPacket{}, err
 		}
 		return packet, nil

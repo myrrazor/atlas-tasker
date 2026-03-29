@@ -47,6 +47,30 @@ func AgentFile(root string, agentID string) string {
 	return filepath.Join(AgentsDir(root), agentID+".toml")
 }
 
+func CollaboratorsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "collaborators")
+}
+
+func CollaboratorFile(root string, collaboratorID string) string {
+	return filepath.Join(CollaboratorsDir(root), collaboratorID+".md")
+}
+
+func MembershipsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "memberships")
+}
+
+func MembershipFile(root string, membershipUID string) string {
+	return filepath.Join(MembershipsDir(root), membershipUID+".md")
+}
+
+func MentionsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "mentions")
+}
+
+func MentionFile(root string, mentionUID string) string {
+	return filepath.Join(MentionsDir(root), mentionUID+".md")
+}
+
 func RunbooksDir(root string) string {
 	return filepath.Join(TrackerDir(root), "runbooks")
 }

@@ -13,10 +13,11 @@ type AgentDetailView struct {
 }
 
 type ApprovalItemView struct {
-	Gate        contracts.GateSnapshot   `json:"gate"`
-	Ticket      contracts.TicketSnapshot `json:"ticket"`
-	Summary     string                   `json:"summary"`
-	GeneratedAt time.Time                `json:"generated_at"`
+	Gate            contracts.GateSnapshot   `json:"gate"`
+	Ticket          contracts.TicketSnapshot `json:"ticket"`
+	CollaboratorIDs []string                 `json:"collaborator_ids,omitempty"`
+	Summary         string                   `json:"summary"`
+	GeneratedAt     time.Time                `json:"generated_at"`
 }
 
 type AgentEligibilityEntry struct {
@@ -43,6 +44,7 @@ type RunDetailView struct {
 	Checks      []contracts.CheckResult   `json:"checks,omitempty"`
 	Evidence    []contracts.EvidenceItem  `json:"evidence,omitempty"`
 	Handoffs    []contracts.HandoffPacket `json:"handoffs,omitempty"`
+	Mentions    []contracts.Mention       `json:"mentions,omitempty"`
 	GeneratedAt time.Time                 `json:"generated_at"`
 }
 
@@ -102,15 +104,18 @@ type WorktreeStatusView struct {
 }
 
 type InboxItemView struct {
-	ID          string    `json:"id"`
-	Kind        string    `json:"kind"`
-	TicketID    string    `json:"ticket_id"`
-	RunID       string    `json:"run_id,omitempty"`
-	GateID      string    `json:"gate_id,omitempty"`
-	HandoffID   string    `json:"handoff_id,omitempty"`
-	Summary     string    `json:"summary"`
-	State       string    `json:"state"`
-	GeneratedAt time.Time `json:"generated_at"`
+	ID              string    `json:"id"`
+	Kind            string    `json:"kind"`
+	TicketID        string    `json:"ticket_id"`
+	RunID           string    `json:"run_id,omitempty"`
+	GateID          string    `json:"gate_id,omitempty"`
+	HandoffID       string    `json:"handoff_id,omitempty"`
+	MentionUID      string    `json:"mention_uid,omitempty"`
+	CollaboratorIDs []string  `json:"collaborator_ids,omitempty"`
+	Summary         string    `json:"summary"`
+	State           string    `json:"state"`
+	Provenance      string    `json:"provenance,omitempty"`
+	GeneratedAt     time.Time `json:"generated_at"`
 }
 
 type InboxDetailView struct {
@@ -119,5 +124,19 @@ type InboxDetailView struct {
 	Run       contracts.RunSnapshot    `json:"run,omitempty"`
 	Gate      contracts.GateSnapshot   `json:"gate,omitempty"`
 	Handoff   contracts.HandoffPacket  `json:"handoff,omitempty"`
+	Mention   contracts.Mention        `json:"mention,omitempty"`
 	Generated time.Time                `json:"generated_at"`
+}
+
+type CollaboratorDetailView struct {
+	Collaborator contracts.CollaboratorProfile `json:"collaborator"`
+	Memberships  []contracts.MembershipBinding `json:"memberships,omitempty"`
+	Mentions     []contracts.Mention           `json:"mentions,omitempty"`
+	GeneratedAt  time.Time                     `json:"generated_at"`
+}
+
+type MentionDetailView struct {
+	Mention      contracts.Mention             `json:"mention"`
+	Collaborator contracts.CollaboratorProfile `json:"collaborator,omitempty"`
+	GeneratedAt  time.Time                     `json:"generated_at"`
 }
