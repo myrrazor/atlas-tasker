@@ -1,0 +1,2 @@
+[workflow]
+completion_mode = "owner_gate"

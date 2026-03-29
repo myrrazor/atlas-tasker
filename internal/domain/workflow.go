@@ -75,6 +75,11 @@ func CheckCompletionPermission(mode contracts.CompletionMode, actor contracts.Ac
 			return nil
 		}
 		return fmt.Errorf("only reviewer or human:owner can complete in review_gate mode")
+	case contracts.CompletionModeDualGate:
+		if actor != contracts.Actor("human:owner") {
+			return fmt.Errorf("only human:owner can complete in dual_gate mode")
+		}
+		return nil
 	default:
 		return fmt.Errorf("invalid completion mode: %s", mode)
 	}
