@@ -10,12 +10,14 @@ import (
 
 func newDashboardCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "dashboard", Short: "Show delivery dashboard summary", RunE: runDashboard}
+	cmd.Flags().String("collaborator", "", "Filter dashboard summary for one collaborator")
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
 func newTimelineCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "timeline <TICKET-ID>", Args: cobra.ExactArgs(1), Short: "Show the event timeline for one ticket", RunE: runTimeline}
+	cmd.Flags().String("collaborator", "", "Filter timeline context for one collaborator")
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }

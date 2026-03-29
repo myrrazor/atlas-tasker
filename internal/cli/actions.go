@@ -178,6 +178,9 @@ func ensureInitArtifacts(root string) error {
 	if err := os.MkdirAll(storage.SubscriptionsDir(root), 0o755); err != nil {
 		return err
 	}
+	if _, err := service.EnsureWorkspaceIdentityForCLI(root); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(storage.AgentsDir(root), 0o755); err != nil {
 		return err
 	}

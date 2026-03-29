@@ -12,7 +12,8 @@ const (
 	SchemaVersionV2      = 2
 	SchemaVersionV3      = 3
 	SchemaVersionV4      = 4
-	CurrentSchemaVersion = SchemaVersionV4
+	SchemaVersionV5      = 5
+	CurrentSchemaVersion = SchemaVersionV5
 	DefaultLeaseTTL      = 60 * time.Minute
 )
 
@@ -166,7 +167,7 @@ func (p Project) Validate() error {
 	if strings.TrimSpace(p.Name) == "" {
 		return fmt.Errorf("project name is required")
 	}
-	if p.SchemaVersion != 0 && p.SchemaVersion != SchemaVersionV1 && p.SchemaVersion != SchemaVersionV2 && p.SchemaVersion != SchemaVersionV3 && p.SchemaVersion != SchemaVersionV4 {
+	if p.SchemaVersion != 0 && p.SchemaVersion != SchemaVersionV1 && p.SchemaVersion != SchemaVersionV2 && p.SchemaVersion != SchemaVersionV3 && p.SchemaVersion != SchemaVersionV4 && p.SchemaVersion != SchemaVersionV5 {
 		return fmt.Errorf("invalid project schema version: %d", p.SchemaVersion)
 	}
 	if err := p.Defaults.Validate(); err != nil {
@@ -467,6 +468,7 @@ func (p ProgressSummary) Validate() error {
 // TicketSnapshot mirrors v1 ticket markdown frontmatter plus body sections.
 type TicketSnapshot struct {
 	ID                   string           `json:"id"`
+	TicketUID            string           `json:"ticket_uid,omitempty"`
 	Project              string           `json:"project"`
 	Title                string           `json:"title"`
 	Type                 TicketType       `json:"type"`
@@ -610,6 +612,9 @@ func NormalizeProject(project Project) Project {
 func NormalizeTicketSnapshot(ticket TicketSnapshot) TicketSnapshot {
 	if ticket.SchemaVersion == 0 {
 		ticket.SchemaVersion = SchemaVersionV1
+	}
+	if ticket.TicketUID == "" {
+		ticket.TicketUID = TicketUID(ticket.Project, ticket.ID)
 	}
 	if ticket.Labels == nil {
 		ticket.Labels = []string{}

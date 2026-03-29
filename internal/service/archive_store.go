@@ -140,9 +140,7 @@ func (s RetentionPolicyStore) ListRetentionPolicies(_ context.Context) ([]contra
 }
 
 func (s ArchiveRecordStore) SaveArchiveRecord(_ context.Context, record contracts.ArchiveRecord) error {
-	if record.SchemaVersion == 0 {
-		record.SchemaVersion = contracts.CurrentSchemaVersion
-	}
+	record = normalizeArchiveRecord(record)
 	if err := record.Validate(); err != nil {
 		return err
 	}
@@ -174,10 +172,7 @@ func (s ArchiveRecordStore) LoadArchiveRecord(_ context.Context, archiveID strin
 	if err := yaml.Unmarshal([]byte(fmRaw), &fm); err != nil {
 		return contracts.ArchiveRecord{}, fmt.Errorf("parse archive record %s: %w", archiveID, err)
 	}
-	record := fm.ArchiveRecord
-	if record.SchemaVersion == 0 {
-		record.SchemaVersion = contracts.CurrentSchemaVersion
-	}
+	record := normalizeArchiveRecord(fm.ArchiveRecord)
 	return record, record.Validate()
 }
 
@@ -222,4 +217,14 @@ func sanitizeRetentionPolicyID(policyID string) string {
 
 func archivePayloadPath(root string, archiveID string, sourcePath string) string {
 	return filepath.Join(storage.ArchivePayloadDir(root, archiveID), filepath.Clean(sourcePath))
+}
+
+func normalizeArchiveRecord(record contracts.ArchiveRecord) contracts.ArchiveRecord {
+	if record.SchemaVersion == 0 {
+		record.SchemaVersion = contracts.CurrentSchemaVersion
+	}
+	if record.ArchiveRecordUID == "" {
+		record.ArchiveRecordUID = contracts.ArchiveRecordUID(record.ArchiveID)
+	}
+	return record
 }

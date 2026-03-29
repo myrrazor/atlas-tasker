@@ -40,6 +40,13 @@ ARCHIVE="${BIN_NAME}_${VERSION_NO_V}_${OS_NAME}_${ARCH_NAME}.tar.gz"
 
 mkdir -p "$DIST_DIR" "$WORK_DIR" "$INSTALL_DIR"
 
+if [ -f "$ROOT_DIR/docs/v1.6-base-marker.txt" ]; then
+  echo "v1.6 base marker: $(cat "$ROOT_DIR/docs/v1.6-base-marker.txt")"
+fi
+if [ -f "$ROOT_DIR/docs/v1.6-base.json" ]; then
+  echo "v1.6 base json: $(cat "$ROOT_DIR/docs/v1.6-base.json")"
+fi
+
 GOOS="$OS_NAME" GOARCH="$ARCH_NAME" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$DIST_DIR/$BIN_NAME" "$ROOT_DIR/cmd/tracker"
 tar -czf "$DIST_DIR/$ARCHIVE" -C "$DIST_DIR" "$BIN_NAME"
 if command -v shasum >/dev/null 2>&1; then

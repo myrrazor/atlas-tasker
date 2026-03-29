@@ -56,10 +56,17 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newApprovalsCommand())
 	root.AddCommand(newGateCommand())
 	root.AddCommand(newInboxCommand())
+	root.AddCommand(newCollaboratorCommand())
+	root.AddCommand(newMembershipCommand())
 	root.AddCommand(newChangeCommand())
 	root.AddCommand(newChecksCommand())
 	root.AddCommand(newPermissionProfileCommand())
 	root.AddCommand(newPermissionsCommand())
+	root.AddCommand(newRemoteCommand())
+	root.AddCommand(newSyncCommand())
+	root.AddCommand(newBundleCommand())
+	root.AddCommand(newConflictCommand())
+	root.AddCommand(newMentionsCommand())
 	root.AddCommand(newImportCommand())
 	root.AddCommand(newExportCommand())
 	root.AddCommand(newArchiveCommand())
@@ -425,6 +432,8 @@ func newProjectCommand() *cobra.Command {
 	addMutationFlags(policySet, &mutationFlags{Actor: "human:owner"})
 	policy.AddCommand(policySet)
 	cmd.AddCommand(policy)
+	cmd.AddCommand(newProjectCodeownersCommand())
+	cmd.AddCommand(newProjectRulesCommand())
 	return cmd
 }
 

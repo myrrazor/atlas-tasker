@@ -424,6 +424,7 @@ func (s *Store) ensureEventColumn(name string, definition string) error {
 }
 
 func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
+	event = contracts.NormalizeEvent(event)
 	if err := event.Validate(); err != nil {
 		return err
 	}
@@ -766,6 +767,7 @@ func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.
 				return nil, fmt.Errorf("decode event metadata: %w", err)
 			}
 		}
+		event = contracts.NormalizeEvent(event)
 		events = append(events, event)
 	}
 	if err := rows.Err(); err != nil {
@@ -891,6 +893,7 @@ func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.Tick
 }
 
 func (s *Store) insertEventOnly(ctx context.Context, event contracts.Event) error {
+	event = contracts.NormalizeEvent(event)
 	payloadJSON := ""
 	if event.Payload != nil {
 		raw, err := json.Marshal(event.Payload)

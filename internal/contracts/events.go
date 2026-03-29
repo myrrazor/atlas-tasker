@@ -108,6 +108,28 @@ const (
 	EventArchiveApplied                   EventType = "archive.applied"
 	EventArchiveRestored                  EventType = "archive.restored"
 	EventCompactCompleted                 EventType = "compact.completed"
+	EventCollaboratorAdded                EventType = "collaborator.added"
+	EventCollaboratorEdited               EventType = "collaborator.edited"
+	EventCollaboratorTrusted              EventType = "collaborator.trusted"
+	EventCollaboratorSuspended            EventType = "collaborator.suspended"
+	EventCollaboratorRemoved              EventType = "collaborator.removed"
+	EventMembershipBound                  EventType = "membership.bound"
+	EventMembershipUnbound                EventType = "membership.unbound"
+	EventMentionRecorded                  EventType = "mention.recorded"
+	EventRemoteAdded                      EventType = "remote.added"
+	EventRemoteEdited                     EventType = "remote.edited"
+	EventRemoteRemoved                    EventType = "remote.removed"
+	EventSyncStarted                      EventType = "sync.started"
+	EventSyncCompleted                    EventType = "sync.completed"
+	EventSyncFailed                       EventType = "sync.failed"
+	EventBundleCreated                    EventType = "bundle.created"
+	EventBundleImported                   EventType = "bundle.imported"
+	EventBundleVerified                   EventType = "bundle.verified"
+	EventConflictOpened                   EventType = "conflict.opened"
+	EventConflictResolved                 EventType = "conflict.resolved"
+	EventProviderMappingUpdated           EventType = "provider_mapping.updated"
+	EventCodeownersRendered               EventType = "codeowners.rendered"
+	EventCodeownersWritten                EventType = "codeowners.written"
 )
 
 var validEventTypes = map[EventType]struct{}{
@@ -182,6 +204,28 @@ var validEventTypes = map[EventType]struct{}{
 	EventArchiveApplied:                   {},
 	EventArchiveRestored:                  {},
 	EventCompactCompleted:                 {},
+	EventCollaboratorAdded:                {},
+	EventCollaboratorEdited:               {},
+	EventCollaboratorTrusted:              {},
+	EventCollaboratorSuspended:            {},
+	EventCollaboratorRemoved:              {},
+	EventMembershipBound:                  {},
+	EventMembershipUnbound:                {},
+	EventMentionRecorded:                  {},
+	EventRemoteAdded:                      {},
+	EventRemoteEdited:                     {},
+	EventRemoteRemoved:                    {},
+	EventSyncStarted:                      {},
+	EventSyncCompleted:                    {},
+	EventSyncFailed:                       {},
+	EventBundleCreated:                    {},
+	EventBundleImported:                   {},
+	EventBundleVerified:                   {},
+	EventConflictOpened:                   {},
+	EventConflictResolved:                 {},
+	EventProviderMappingUpdated:           {},
+	EventCodeownersRendered:               {},
+	EventCodeownersWritten:                {},
 }
 
 func (t EventType) IsValid() bool {
@@ -200,16 +244,19 @@ type EventMetadata struct {
 }
 
 type Event struct {
-	EventID       int64         `json:"event_id"`
-	Timestamp     time.Time     `json:"timestamp"`
-	Actor         Actor         `json:"actor"`
-	Reason        string        `json:"reason,omitempty"`
-	Type          EventType     `json:"type"`
-	Project       string        `json:"project"`
-	TicketID      string        `json:"ticket_id,omitempty"`
-	Payload       any           `json:"payload,omitempty"`
-	Metadata      EventMetadata `json:"metadata,omitempty"`
-	SchemaVersion int           `json:"schema_version"`
+	EventID           int64         `json:"event_id"`
+	EventUID          string        `json:"event_uid,omitempty"`
+	Timestamp         time.Time     `json:"timestamp"`
+	OriginWorkspaceID string        `json:"origin_workspace_id,omitempty"`
+	LogicalClock      int64         `json:"logical_clock,omitempty"`
+	Actor             Actor         `json:"actor"`
+	Reason            string        `json:"reason,omitempty"`
+	Type              EventType     `json:"type"`
+	Project           string        `json:"project"`
+	TicketID          string        `json:"ticket_id,omitempty"`
+	Payload           any           `json:"payload,omitempty"`
+	Metadata          EventMetadata `json:"metadata,omitempty"`
+	SchemaVersion     int           `json:"schema_version"`
 }
 
 func (e Event) Validate() error {
@@ -218,6 +265,9 @@ func (e Event) Validate() error {
 	}
 	if e.Timestamp.IsZero() {
 		return fmt.Errorf("timestamp is required")
+	}
+	if e.LogicalClock < 0 {
+		return fmt.Errorf("logical_clock must be >= 0")
 	}
 	if !e.Actor.IsValid() {
 		return fmt.Errorf("invalid actor: %s", e.Actor)
@@ -238,4 +288,17 @@ func (e Event) Validate() error {
 		return fmt.Errorf("invalid metadata.root_actor: %s", e.Metadata.RootActor)
 	}
 	return nil
+}
+
+func NormalizeEvent(event Event) Event {
+	if event.EventUID == "" {
+		event.EventUID = LegacyEventUID(event)
+	}
+	if event.LogicalClock == 0 && event.EventID > 0 {
+		event.LogicalClock = event.EventID
+	}
+	if event.SchemaVersion == 0 {
+		event.SchemaVersion = SchemaVersionV1
+	}
+	return event
 }

@@ -80,3 +80,21 @@ type ArchiveRecordStore interface {
 	LoadArchiveRecord(ctx context.Context, archiveID string) (ArchiveRecord, error)
 	ListArchiveRecords(ctx context.Context) ([]ArchiveRecord, error)
 }
+
+type SyncRemoteStore interface {
+	SaveSyncRemote(ctx context.Context, remote SyncRemote) error
+	LoadSyncRemote(ctx context.Context, remoteID string) (SyncRemote, error)
+	ListSyncRemotes(ctx context.Context) ([]SyncRemote, error)
+}
+
+type SyncJobStore interface {
+	SaveSyncJob(ctx context.Context, job SyncJob) error
+	LoadSyncJob(ctx context.Context, jobID string) (SyncJob, error)
+	ListSyncJobs(ctx context.Context, remoteID string) ([]SyncJob, error)
+}
+
+type ConflictStore interface {
+	SaveConflict(ctx context.Context, conflict ConflictRecord) error
+	LoadConflict(ctx context.Context, conflictID string) (ConflictRecord, error)
+	ListConflicts(ctx context.Context) ([]ConflictRecord, error)
+}

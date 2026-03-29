@@ -11,6 +11,7 @@ import (
 
 type ticketFrontmatter struct {
 	ID                   string                     `yaml:"id"`
+	TicketUID            string                     `yaml:"ticket_uid,omitempty"`
 	Project              string                     `yaml:"project"`
 	Title                string                     `yaml:"title"`
 	Type                 contracts.TicketType       `yaml:"type"`
@@ -53,6 +54,7 @@ func EncodeTicketMarkdown(ticket contracts.TicketSnapshot) (string, error) {
 	ticket = contracts.NormalizeTicketSnapshot(ticket)
 	fm := ticketFrontmatter{
 		ID:                   ticket.ID,
+		TicketUID:            ticket.TicketUID,
 		Project:              ticket.Project,
 		Title:                ticket.Title,
 		Type:                 ticket.Type,
@@ -146,6 +148,7 @@ func DecodeTicketMarkdown(doc string) (contracts.TicketSnapshot, error) {
 
 	ticket := contracts.TicketSnapshot{
 		ID:                   fm.ID,
+		TicketUID:            strings.TrimSpace(fm.TicketUID),
 		Project:              fm.Project,
 		Title:                fm.Title,
 		Type:                 fm.Type,

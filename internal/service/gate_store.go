@@ -21,6 +21,7 @@ type gateFrontmatter struct {
 }
 
 func (s GateStore) SaveGate(_ context.Context, gate contracts.GateSnapshot) error {
+	gate = normalizeGateSnapshot(gate)
 	if err := gate.Validate(); err != nil {
 		return err
 	}
@@ -52,7 +53,7 @@ func (s GateStore) LoadGate(_ context.Context, gateID string) (contracts.GateSna
 	if err := yaml.Unmarshal([]byte(fmRaw), &fm); err != nil {
 		return contracts.GateSnapshot{}, fmt.Errorf("parse gate %s: %w", gateID, err)
 	}
-	return fm.GateSnapshot, nil
+	return normalizeGateSnapshot(fm.GateSnapshot), nil
 }
 
 func (s GateStore) ListGates(_ context.Context, ticketID string) ([]contracts.GateSnapshot, error) {
@@ -122,4 +123,14 @@ func RenderGateMarkdown(gate contracts.GateSnapshot) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func normalizeGateSnapshot(gate contracts.GateSnapshot) contracts.GateSnapshot {
+	if gate.SchemaVersion == 0 {
+		gate.SchemaVersion = contracts.CurrentSchemaVersion
+	}
+	if gate.GateUID == "" {
+		gate.GateUID = contracts.GateUID(gate.GateID)
+	}
+	return gate
 }

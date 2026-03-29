@@ -107,6 +107,9 @@ func normalizeRunSnapshot(run contracts.RunSnapshot) contracts.RunSnapshot {
 	if run.SchemaVersion == 0 {
 		run.SchemaVersion = contracts.CurrentSchemaVersion
 	}
+	if run.RunUID == "" {
+		run.RunUID = contracts.RunUID(run.RunID)
+	}
 	if run.Status == "" {
 		run.Status = contracts.RunStatusPlanned
 	}

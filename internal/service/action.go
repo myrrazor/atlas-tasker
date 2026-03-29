@@ -64,26 +64,46 @@ func (s *ActionService) newEvent(ctx context.Context, project string, at time.Ti
 	if !lockHeld(ctx) {
 		return contracts.Event{}, apperr.New(apperr.CodeInternal, "event allocation requires workspace write lock")
 	}
+	workspaceID, err := ensureWorkspaceIdentity(s.Root)
+	if err != nil {
+		return contracts.Event{}, err
+	}
 	eventID, err := s.NextEventID(ctx, project)
 	if err != nil {
 		return contracts.Event{}, err
 	}
-	return contracts.Event{
-		EventID:       eventID,
-		Timestamp:     at.UTC(),
-		Actor:         actor,
-		Reason:        reason,
-		Type:          eventType,
-		Project:       project,
-		TicketID:      ticketID,
-		Payload:       payload,
-		Metadata:      eventMetadataFromContext(ctx, actor),
-		SchemaVersion: contracts.CurrentSchemaVersion,
-	}, nil
+	logicalClock, err := s.NextLogicalClock(ctx)
+	if err != nil {
+		return contracts.Event{}, err
+	}
+	return contracts.NormalizeEvent(contracts.Event{
+		EventID:           eventID,
+		EventUID:          contracts.DeterministicUID("event", workspaceID, fmt.Sprintf("%d", logicalClock), fmt.Sprintf("%d", eventID), string(eventType), project, ticketID, at.UTC().Format(time.RFC3339Nano)),
+		Timestamp:         at.UTC(),
+		OriginWorkspaceID: workspaceID,
+		LogicalClock:      logicalClock,
+		Actor:             actor,
+		Reason:            reason,
+		Type:              eventType,
+		Project:           project,
+		TicketID:          ticketID,
+		Payload:           payload,
+		Metadata:          eventMetadataFromContext(ctx, actor),
+		SchemaVersion:     contracts.CurrentSchemaVersion,
+	}), nil
 }
 
 func (s *ActionService) commitMutation(ctx context.Context, purpose string, canonicalKind string, event contracts.Event, writeCanonical func(context.Context) error) error {
 	ctx = contextWithDefaultReplayMode(ctx)
+	if lockHeld(ctx) {
+		normalized, err := s.normalizeAppendOnlyEvent(ctx, event)
+		if err != nil {
+			return err
+		}
+		event = normalized
+	} else {
+		event = contracts.NormalizeEvent(event)
+	}
 	journal, err := s.journal().Begin(purpose, canonicalKind, event)
 	if err != nil {
 		return err
@@ -160,6 +180,25 @@ func (s *ActionService) NextEventID(ctx context.Context, project string) (int64,
 			}
 		}
 		return maxID + 1, nil
+	})
+}
+
+func (s *ActionService) NextLogicalClock(ctx context.Context) (int64, error) {
+	return withWriteLock(ctx, s.LockManager, "allocate logical clock", func(ctx context.Context) (int64, error) {
+		events, err := s.Events.StreamEvents(ctx, "", 0)
+		if err != nil {
+			return 0, err
+		}
+		var maxClock int64
+		for _, event := range events {
+			if event.LogicalClock > maxClock {
+				maxClock = event.LogicalClock
+			}
+			if event.LogicalClock == 0 && event.EventID > maxClock {
+				maxClock = event.EventID
+			}
+		}
+		return maxClock + 1, nil
 	})
 }
 
@@ -257,9 +296,35 @@ func (s *ActionService) SoftDeleteTicket(ctx context.Context, id string, actor c
 
 func (s *ActionService) AppendAndProject(ctx context.Context, event contracts.Event) error {
 	_, err := withWriteLock(ctx, s.LockManager, "append and project event", func(ctx context.Context) (struct{}, error) {
-		return struct{}{}, s.commitMutation(ctx, "append and project event", "event_only", event, nil)
+		normalized, err := s.normalizeAppendOnlyEvent(ctx, event)
+		if err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, s.commitMutation(ctx, "append and project event", "event_only", normalized, nil)
 	})
 	return err
+}
+
+func (s *ActionService) normalizeAppendOnlyEvent(ctx context.Context, event contracts.Event) (contracts.Event, error) {
+	event = contracts.NormalizeEvent(event)
+	if event.OriginWorkspaceID == "" {
+		workspaceID, err := ensureWorkspaceIdentity(s.Root)
+		if err != nil {
+			return contracts.Event{}, err
+		}
+		event.OriginWorkspaceID = workspaceID
+	}
+	if event.LogicalClock == 0 {
+		next, err := s.NextLogicalClock(ctx)
+		if err != nil {
+			return contracts.Event{}, err
+		}
+		event.LogicalClock = next
+	}
+	if event.EventUID == "" {
+		event.EventUID = contracts.DeterministicUID("event", event.OriginWorkspaceID, fmt.Sprintf("%d", event.LogicalClock), fmt.Sprintf("%d", event.EventID), string(event.Type), event.Project, event.TicketID, event.Timestamp.UTC().Format(time.RFC3339Nano))
+	}
+	return contracts.NormalizeEvent(event), nil
 }
 
 func (s *ActionService) AllocateTicketID(ctx context.Context, project string) (string, error) {

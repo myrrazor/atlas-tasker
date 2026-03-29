@@ -39,12 +39,14 @@ func newGateCommand() *cobra.Command {
 
 func newApprovalsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "approvals", Short: "List open approval work", RunE: runApprovals}
+	cmd.Flags().String("collaborator", "", "Filter approval work for one collaborator")
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
 func newInboxCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "inbox", Short: "List derived operator inbox items", RunE: runInbox}
+	cmd.Flags().String("collaborator", "", "Filter inbox items for one collaborator")
 	addReadOutputFlags(cmd, &outputFlags{})
 	view := &cobra.Command{Use: "view <ITEM-ID>", Args: cobra.ExactArgs(1), Short: "Show one inbox item", RunE: runInboxView}
 	addReadOutputFlags(view, &outputFlags{})

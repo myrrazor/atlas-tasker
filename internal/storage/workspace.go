@@ -35,6 +35,10 @@ func SubscriptionsDir(root string) string {
 	return filepath.Join(TrackerDir(root), "subscriptions")
 }
 
+func WorkspaceMetadataFile(root string) string {
+	return filepath.Join(TrackerDir(root), "workspace.json")
+}
+
 func AgentsDir(root string) string {
 	return filepath.Join(TrackerDir(root), "agents")
 }
@@ -157,6 +161,54 @@ func ArchiveRecordFile(root string, archiveID string) string {
 
 func ArchivePayloadDir(root string, archiveID string) string {
 	return filepath.Join(ArchivesDir(root), archiveID)
+}
+
+func SyncDir(root string) string {
+	return filepath.Join(TrackerDir(root), "sync")
+}
+
+func SyncRemotesDir(root string) string {
+	return filepath.Join(SyncDir(root), "remotes")
+}
+
+func SyncRemoteFile(root string, remoteID string) string {
+	return filepath.Join(SyncRemotesDir(root), remoteID+".md")
+}
+
+func SyncJobsDir(root string) string {
+	return filepath.Join(SyncDir(root), "jobs")
+}
+
+func SyncJobFile(root string, jobID string) string {
+	return filepath.Join(SyncJobsDir(root), jobID+".md")
+}
+
+func SyncConflictsDir(root string) string {
+	return filepath.Join(SyncDir(root), "conflicts")
+}
+
+func SyncConflictFile(root string, conflictID string) string {
+	return filepath.Join(SyncConflictsDir(root), conflictID+".md")
+}
+
+func SyncBundlesDir(root string) string {
+	return filepath.Join(SyncDir(root), "bundles")
+}
+
+func SyncBundleFile(root string, bundleID string) string {
+	return filepath.Join(SyncBundlesDir(root), bundleID+".md")
+}
+
+func SyncMirrorDir(root string) string {
+	return filepath.Join(SyncDir(root), "mirror")
+}
+
+func SyncMirrorRemoteDir(root string, remoteID string) string {
+	return filepath.Join(SyncMirrorDir(root), remoteID)
+}
+
+func SyncStagingDir(root string) string {
+	return filepath.Join(SyncDir(root), "staging")
 }
 
 func ProjectDir(root string, key string) string {

@@ -431,6 +431,7 @@ func (p AgentProfile) Validate() error {
 
 type RunSnapshot struct {
 	RunID           string        `json:"run_id" yaml:"run_id"`
+	RunUID          string        `json:"run_uid,omitempty" yaml:"run_uid,omitempty"`
 	TicketID        string        `json:"ticket_id" yaml:"ticket_id"`
 	Project         string        `json:"project" yaml:"project"`
 	AgentID         string        `json:"agent_id,omitempty" yaml:"agent_id,omitempty"`
@@ -556,6 +557,7 @@ func (r Runbook) Validate() error {
 
 type EvidenceItem struct {
 	EvidenceID           string       `json:"evidence_id" yaml:"evidence_id"`
+	EvidenceUID          string       `json:"evidence_uid,omitempty" yaml:"evidence_uid,omitempty"`
 	RunID                string       `json:"run_id" yaml:"run_id"`
 	TicketID             string       `json:"ticket_id" yaml:"ticket_id"`
 	Type                 EvidenceType `json:"type" yaml:"type"`
@@ -592,6 +594,7 @@ func (e EvidenceItem) Validate() error {
 
 type HandoffPacket struct {
 	HandoffID                 string    `json:"handoff_id" yaml:"handoff_id"`
+	HandoffUID                string    `json:"handoff_uid,omitempty" yaml:"handoff_uid,omitempty"`
 	SourceRunID               string    `json:"source_run_id" yaml:"source_run_id"`
 	TicketID                  string    `json:"ticket_id" yaml:"ticket_id"`
 	Actor                     Actor     `json:"actor" yaml:"actor"`
@@ -633,6 +636,7 @@ func (h HandoffPacket) Validate() error {
 
 type GateSnapshot struct {
 	GateID               string         `json:"gate_id" yaml:"gate_id"`
+	GateUID              string         `json:"gate_uid,omitempty" yaml:"gate_uid,omitempty"`
 	TicketID             string         `json:"ticket_id" yaml:"ticket_id"`
 	RunID                string         `json:"run_id,omitempty" yaml:"run_id,omitempty"`
 	Kind                 GateKind       `json:"kind" yaml:"kind"`

@@ -131,6 +131,7 @@ func (s ChangeReadyState) IsValid() bool {
 
 type ChangeRef struct {
 	ChangeID            string              `json:"change_id" yaml:"change_id"`
+	ChangeUID           string              `json:"change_uid,omitempty" yaml:"change_uid,omitempty"`
 	Provider            ChangeProvider      `json:"provider" yaml:"provider"`
 	TicketID            string              `json:"ticket_id" yaml:"ticket_id"`
 	RunID               string              `json:"run_id,omitempty" yaml:"run_id,omitempty"`
@@ -258,6 +259,7 @@ func (c CheckConclusion) IsValid() bool {
 
 type CheckResult struct {
 	CheckID       string          `json:"check_id" yaml:"check_id"`
+	CheckUID      string          `json:"check_uid,omitempty" yaml:"check_uid,omitempty"`
 	Source        CheckSource     `json:"source" yaml:"source"`
 	Provider      ChangeProvider  `json:"provider,omitempty" yaml:"provider,omitempty"`
 	Scope         CheckScope      `json:"scope" yaml:"scope"`
@@ -419,6 +421,7 @@ func (s ImportJobStatus) IsValid() bool {
 
 type ImportJob struct {
 	JobID             string           `json:"job_id" yaml:"job_id"`
+	ImportJobUID      string           `json:"import_job_uid,omitempty" yaml:"import_job_uid,omitempty"`
 	SourceType        ImportSourceType `json:"source_type" yaml:"source_type"`
 	Status            ImportJobStatus  `json:"status" yaml:"status"`
 	SourceFingerprint string           `json:"source_fingerprint,omitempty" yaml:"source_fingerprint,omitempty"`
@@ -467,15 +470,16 @@ func (s ExportBundleStatus) IsValid() bool {
 }
 
 type ExportBundle struct {
-	BundleID      string             `json:"bundle_id" yaml:"bundle_id"`
-	Scope         string             `json:"scope,omitempty" yaml:"scope,omitempty"`
-	Format        string             `json:"format,omitempty" yaml:"format,omitempty"`
-	ArtifactPath  string             `json:"artifact_path,omitempty" yaml:"artifact_path,omitempty"`
-	ManifestPath  string             `json:"manifest_path,omitempty" yaml:"manifest_path,omitempty"`
-	ChecksumPath  string             `json:"checksum_path,omitempty" yaml:"checksum_path,omitempty"`
-	Status        ExportBundleStatus `json:"status" yaml:"status"`
-	CreatedAt     time.Time          `json:"created_at" yaml:"created_at"`
-	SchemaVersion int                `json:"schema_version" yaml:"schema_version"`
+	BundleID        string             `json:"bundle_id" yaml:"bundle_id"`
+	ExportBundleUID string             `json:"export_bundle_uid,omitempty" yaml:"export_bundle_uid,omitempty"`
+	Scope           string             `json:"scope,omitempty" yaml:"scope,omitempty"`
+	Format          string             `json:"format,omitempty" yaml:"format,omitempty"`
+	ArtifactPath    string             `json:"artifact_path,omitempty" yaml:"artifact_path,omitempty"`
+	ManifestPath    string             `json:"manifest_path,omitempty" yaml:"manifest_path,omitempty"`
+	ChecksumPath    string             `json:"checksum_path,omitempty" yaml:"checksum_path,omitempty"`
+	Status          ExportBundleStatus `json:"status" yaml:"status"`
+	CreatedAt       time.Time          `json:"created_at" yaml:"created_at"`
+	SchemaVersion   int                `json:"schema_version" yaml:"schema_version"`
 }
 
 func (b ExportBundle) Validate() error {
@@ -563,19 +567,20 @@ func (s ArchiveRecordState) IsValid() bool {
 }
 
 type ArchiveRecord struct {
-	ArchiveID     string             `json:"archive_id" yaml:"archive_id"`
-	Target        RetentionTarget    `json:"target" yaml:"target"`
-	Scope         string             `json:"scope,omitempty" yaml:"scope,omitempty"`
-	ProjectKey    string             `json:"project_key,omitempty" yaml:"project_key,omitempty"`
-	SourcePaths   []string           `json:"source_paths,omitempty" yaml:"source_paths,omitempty"`
-	PayloadDir    string             `json:"payload_dir,omitempty" yaml:"payload_dir,omitempty"`
-	ItemCount     int                `json:"item_count,omitempty" yaml:"item_count,omitempty"`
-	TotalBytes    int64              `json:"total_bytes,omitempty" yaml:"total_bytes,omitempty"`
-	State         ArchiveRecordState `json:"state" yaml:"state"`
-	Warnings      []string           `json:"warnings,omitempty" yaml:"warnings,omitempty"`
-	CreatedAt     time.Time          `json:"created_at" yaml:"created_at"`
-	RestoredAt    time.Time          `json:"restored_at,omitempty" yaml:"restored_at,omitempty"`
-	SchemaVersion int                `json:"schema_version" yaml:"schema_version"`
+	ArchiveID        string             `json:"archive_id" yaml:"archive_id"`
+	ArchiveRecordUID string             `json:"archive_record_uid,omitempty" yaml:"archive_record_uid,omitempty"`
+	Target           RetentionTarget    `json:"target" yaml:"target"`
+	Scope            string             `json:"scope,omitempty" yaml:"scope,omitempty"`
+	ProjectKey       string             `json:"project_key,omitempty" yaml:"project_key,omitempty"`
+	SourcePaths      []string           `json:"source_paths,omitempty" yaml:"source_paths,omitempty"`
+	PayloadDir       string             `json:"payload_dir,omitempty" yaml:"payload_dir,omitempty"`
+	ItemCount        int                `json:"item_count,omitempty" yaml:"item_count,omitempty"`
+	TotalBytes       int64              `json:"total_bytes,omitempty" yaml:"total_bytes,omitempty"`
+	State            ArchiveRecordState `json:"state" yaml:"state"`
+	Warnings         []string           `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	CreatedAt        time.Time          `json:"created_at" yaml:"created_at"`
+	RestoredAt       time.Time          `json:"restored_at,omitempty" yaml:"restored_at,omitempty"`
+	SchemaVersion    int                `json:"schema_version" yaml:"schema_version"`
 }
 
 func (r ArchiveRecord) Validate() error {

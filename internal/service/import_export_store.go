@@ -29,6 +29,7 @@ type exportBundleFrontmatter struct {
 }
 
 func (s ImportJobStore) SaveImportJob(_ context.Context, job contracts.ImportJob) error {
+	job = normalizeImportJob(job)
 	if err := job.Validate(); err != nil {
 		return err
 	}
@@ -67,7 +68,7 @@ func (s ImportJobStore) LoadImportJob(_ context.Context, jobID string) (contract
 	if strings.TrimSpace(job.Summary) == "" {
 		job.Summary = strings.TrimSpace(body)
 	}
-	return job, nil
+	return normalizeImportJob(job), nil
 }
 
 func (s ImportJobStore) ListImportJobs(_ context.Context) ([]contracts.ImportJob, error) {
@@ -99,6 +100,7 @@ func (s ImportJobStore) ListImportJobs(_ context.Context) ([]contracts.ImportJob
 }
 
 func (s ExportBundleStore) SaveExportBundle(_ context.Context, bundle contracts.ExportBundle) error {
+	bundle = normalizeExportBundle(bundle)
 	if err := bundle.Validate(); err != nil {
 		return err
 	}
@@ -130,7 +132,7 @@ func (s ExportBundleStore) LoadExportBundle(_ context.Context, bundleID string) 
 	if err := yaml.Unmarshal([]byte(fmRaw), &fm); err != nil {
 		return contracts.ExportBundle{}, fmt.Errorf("parse export bundle %s: %w", bundleID, err)
 	}
-	return fm.ExportBundle, nil
+	return normalizeExportBundle(fm.ExportBundle), nil
 }
 
 func (s ExportBundleStore) ListExportBundles(_ context.Context) ([]contracts.ExportBundle, error) {
@@ -159,4 +161,24 @@ func (s ExportBundleStore) ListExportBundles(_ context.Context) ([]contracts.Exp
 		return items[i].CreatedAt.Before(items[j].CreatedAt)
 	})
 	return items, nil
+}
+
+func normalizeImportJob(job contracts.ImportJob) contracts.ImportJob {
+	if job.SchemaVersion == 0 {
+		job.SchemaVersion = contracts.CurrentSchemaVersion
+	}
+	if job.ImportJobUID == "" {
+		job.ImportJobUID = contracts.ImportJobUID(job.JobID)
+	}
+	return job
+}
+
+func normalizeExportBundle(bundle contracts.ExportBundle) contracts.ExportBundle {
+	if bundle.SchemaVersion == 0 {
+		bundle.SchemaVersion = contracts.CurrentSchemaVersion
+	}
+	if bundle.ExportBundleUID == "" {
+		bundle.ExportBundleUID = contracts.ExportBundleUID(bundle.BundleID)
+	}
+	return bundle
 }

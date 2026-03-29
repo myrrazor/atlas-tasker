@@ -23,6 +23,7 @@ type Log struct {
 }
 
 func (l *Log) AppendEvent(_ context.Context, event contracts.Event) error {
+	event = contracts.NormalizeEvent(event)
 	if err := event.Validate(); err != nil {
 		return err
 	}
@@ -125,6 +126,7 @@ func readEventFile(path string) ([]contracts.Event, error) {
 		if err := json.Unmarshal([]byte(raw), &event); err != nil {
 			return nil, fmt.Errorf("decode event line %d in %s: %w", line, path, err)
 		}
+		event = contracts.NormalizeEvent(event)
 		if err := event.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid event line %d in %s: %w", line, path, err)
 		}

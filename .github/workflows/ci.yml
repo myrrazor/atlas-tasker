@@ -14,9 +14,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Print v1.5 base marker
+      - name: Print base markers
         run: |
           test -f docs/v1.5-base-marker.txt && cat docs/v1.5-base-marker.txt || true
+          test -f docs/v1.6-base-marker.txt && cat docs/v1.6-base-marker.txt || true
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -33,9 +34,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Print v1.5 base marker
+      - name: Print base markers
         run: |
           test -f docs/v1.5-base-marker.txt && cat docs/v1.5-base-marker.txt || true
+          test -f docs/v1.6-base-marker.txt && cat docs/v1.6-base-marker.txt || true
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod

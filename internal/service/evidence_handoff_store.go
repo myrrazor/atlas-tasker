@@ -30,6 +30,7 @@ type handoffFrontmatter struct {
 }
 
 func (s EvidenceStore) SaveEvidence(_ context.Context, evidence contracts.EvidenceItem) error {
+	evidence = normalizeEvidenceItem(evidence)
 	if err := evidence.Validate(); err != nil {
 		return err
 	}
@@ -109,10 +110,11 @@ func loadEvidenceFile(path string, evidenceID string) (contracts.EvidenceItem, e
 	if strings.TrimSpace(evidence.Body) == "" {
 		evidence.Body = strings.TrimSpace(body)
 	}
-	return evidence, nil
+	return normalizeEvidenceItem(evidence), nil
 }
 
 func (s HandoffStore) SaveHandoff(_ context.Context, handoff contracts.HandoffPacket) error {
+	handoff = normalizeHandoffPacket(handoff)
 	if err := handoff.Validate(); err != nil {
 		return err
 	}
@@ -143,7 +145,7 @@ func (s HandoffStore) LoadHandoff(_ context.Context, handoffID string) (contract
 	if err := yaml.Unmarshal([]byte(fmRaw), &fm); err != nil {
 		return contracts.HandoffPacket{}, fmt.Errorf("parse handoff %s: %w", handoffID, err)
 	}
-	return fm.HandoffPacket, nil
+	return normalizeHandoffPacket(fm.HandoffPacket), nil
 }
 
 func (s HandoffStore) ListHandoffs(_ context.Context, ticketID string) ([]contracts.HandoffPacket, error) {
@@ -218,4 +220,24 @@ func RenderHandoffMarkdown(handoff contracts.HandoffPacket) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func normalizeEvidenceItem(evidence contracts.EvidenceItem) contracts.EvidenceItem {
+	if evidence.SchemaVersion == 0 {
+		evidence.SchemaVersion = contracts.CurrentSchemaVersion
+	}
+	if evidence.EvidenceUID == "" {
+		evidence.EvidenceUID = contracts.EvidenceUID(evidence.RunID, evidence.EvidenceID)
+	}
+	return evidence
+}
+
+func normalizeHandoffPacket(handoff contracts.HandoffPacket) contracts.HandoffPacket {
+	if handoff.SchemaVersion == 0 {
+		handoff.SchemaVersion = contracts.CurrentSchemaVersion
+	}
+	if handoff.HandoffUID == "" {
+		handoff.HandoffUID = contracts.HandoffUID(handoff.HandoffID)
+	}
+	return handoff
 }

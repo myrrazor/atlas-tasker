@@ -57,8 +57,8 @@ func TestStoresLoadV1FixtureWithDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read upgraded ticket: %v", err)
 	}
-	if !strings.Contains(string(raw), "schema_version: 4") {
-		t.Fatalf("expected lazy upgrade write to persist schema_version 4:\n%s", string(raw))
+	if !strings.Contains(string(raw), "schema_version: 5") {
+		t.Fatalf("expected lazy upgrade write to persist schema_version 5:\n%s", string(raw))
 	}
 
 	project.Name = "App Sample Updated"
@@ -69,7 +69,7 @@ func TestStoresLoadV1FixtureWithDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read upgraded project: %v", err)
 	}
-	if !strings.Contains(string(projectRaw), "schema_version: 4") {
-		t.Fatalf("expected project update to persist schema_version 4:\n%s", string(projectRaw))
+	if !strings.Contains(string(projectRaw), "schema_version: 5") {
+		t.Fatalf("expected project update to persist schema_version 5:\n%s", string(projectRaw))
 	}
 }

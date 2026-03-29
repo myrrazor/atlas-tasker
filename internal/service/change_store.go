@@ -185,6 +185,9 @@ func normalizeChangeRef(change contracts.ChangeRef) contracts.ChangeRef {
 	if change.SchemaVersion == 0 {
 		change.SchemaVersion = contracts.CurrentSchemaVersion
 	}
+	if change.ChangeUID == "" {
+		change.ChangeUID = contracts.ChangeUID(change.ChangeID)
+	}
 	if change.Provider == "" {
 		change.Provider = contracts.ChangeProviderLocal
 	}
@@ -206,6 +209,9 @@ func normalizeChangeRef(change contracts.ChangeRef) contracts.ChangeRef {
 func normalizeCheckResult(check contracts.CheckResult) contracts.CheckResult {
 	if check.SchemaVersion == 0 {
 		check.SchemaVersion = contracts.CurrentSchemaVersion
+	}
+	if check.CheckUID == "" {
+		check.CheckUID = contracts.CheckUID(check.CheckID)
 	}
 	if check.Source == "" {
 		check.Source = contracts.CheckSourceManual

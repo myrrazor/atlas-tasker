@@ -87,3 +87,94 @@ func TestRootCommandIncludesRequiredV15SubcommandsAndFlags(t *testing.T) {
 		}
 	}
 }
+
+func TestRootCommandIncludesRequiredV16CommandsAndFlags(t *testing.T) {
+	root := NewRootCommand()
+	requiredTopLevel := []string{"collaborator", "membership", "remote", "sync", "bundle", "conflict", "mentions"}
+	for _, name := range requiredTopLevel {
+		if _, _, err := root.Find([]string{name}); err != nil {
+			t.Fatalf("expected v1.6 top-level command %q to exist: %v", name, err)
+		}
+	}
+
+	type commandContract struct {
+		path          []string
+		mutating      bool
+		hasOutputMode bool
+	}
+	contracts := []commandContract{
+		{path: []string{"collaborator", "list"}, hasOutputMode: true},
+		{path: []string{"collaborator", "view"}, hasOutputMode: true},
+		{path: []string{"collaborator", "add"}, mutating: true, hasOutputMode: true},
+		{path: []string{"collaborator", "edit"}, mutating: true, hasOutputMode: true},
+		{path: []string{"collaborator", "trust"}, mutating: true, hasOutputMode: true},
+		{path: []string{"collaborator", "suspend"}, mutating: true, hasOutputMode: true},
+		{path: []string{"collaborator", "remove"}, mutating: true, hasOutputMode: true},
+		{path: []string{"membership", "list"}, hasOutputMode: true},
+		{path: []string{"membership", "bind"}, mutating: true, hasOutputMode: true},
+		{path: []string{"membership", "unbind"}, mutating: true, hasOutputMode: true},
+		{path: []string{"remote", "list"}, hasOutputMode: true},
+		{path: []string{"remote", "view"}, hasOutputMode: true},
+		{path: []string{"remote", "add"}, mutating: true, hasOutputMode: true},
+		{path: []string{"remote", "edit"}, mutating: true, hasOutputMode: true},
+		{path: []string{"remote", "remove"}, mutating: true, hasOutputMode: true},
+		{path: []string{"sync", "status"}, hasOutputMode: true},
+		{path: []string{"sync", "jobs"}, hasOutputMode: true},
+		{path: []string{"sync", "view"}, hasOutputMode: true},
+		{path: []string{"sync", "fetch"}, mutating: true, hasOutputMode: true},
+		{path: []string{"sync", "pull"}, mutating: true, hasOutputMode: true},
+		{path: []string{"sync", "push"}, mutating: true, hasOutputMode: true},
+		{path: []string{"sync", "run"}, mutating: true, hasOutputMode: true},
+		{path: []string{"bundle", "create"}, mutating: true, hasOutputMode: true},
+		{path: []string{"bundle", "list"}, hasOutputMode: true},
+		{path: []string{"bundle", "view"}, hasOutputMode: true},
+		{path: []string{"bundle", "verify"}, mutating: true, hasOutputMode: true},
+		{path: []string{"bundle", "import"}, mutating: true, hasOutputMode: true},
+		{path: []string{"conflict", "list"}, hasOutputMode: true},
+		{path: []string{"conflict", "view"}, hasOutputMode: true},
+		{path: []string{"conflict", "resolve"}, mutating: true, hasOutputMode: true},
+		{path: []string{"mentions", "list"}, hasOutputMode: true},
+		{path: []string{"mentions", "view"}, hasOutputMode: true},
+		{path: []string{"project", "codeowners", "render"}, hasOutputMode: true},
+		{path: []string{"project", "codeowners", "write"}, mutating: true, hasOutputMode: true},
+		{path: []string{"project", "rules", "render"}, hasOutputMode: true},
+		{path: []string{"inbox"}, hasOutputMode: true},
+		{path: []string{"approvals"}, hasOutputMode: true},
+		{path: []string{"dashboard"}, hasOutputMode: true},
+		{path: []string{"timeline"}, hasOutputMode: true},
+	}
+
+	for _, item := range contracts {
+		cmd, _, err := root.Find(item.path)
+		if err != nil {
+			t.Fatalf("expected command %q to exist: %v", item.path, err)
+		}
+		if cmd.Short == "" {
+			t.Fatalf("expected command %q to have help text", item.path)
+		}
+		if item.hasOutputMode {
+			for _, flag := range []string{"pretty", "md", "json"} {
+				if cmd.Flag(flag) == nil {
+					t.Fatalf("expected command %q to expose --%s", item.path, flag)
+				}
+			}
+		}
+		if item.mutating {
+			for _, flag := range []string{"actor", "reason"} {
+				if cmd.Flag(flag) == nil {
+					t.Fatalf("expected mutating command %q to expose --%s", item.path, flag)
+				}
+			}
+		}
+	}
+
+	for _, path := range [][]string{{"inbox"}, {"approvals"}, {"dashboard"}, {"timeline"}} {
+		cmd, _, err := root.Find(path)
+		if err != nil {
+			t.Fatalf("expected collaborator-aware command %q to exist: %v", path, err)
+		}
+		if cmd.Flag("collaborator") == nil {
+			t.Fatalf("expected command %q to expose --collaborator", path)
+		}
+	}
+}
