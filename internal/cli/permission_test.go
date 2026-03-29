@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
 
 func TestPermissionProfileCommandsAndDispatchEnforcement(t *testing.T) {
@@ -183,5 +186,76 @@ func TestPermissionProfileBindUnbindAndFlagGuardrails(t *testing.T) {
 	}
 	if len(allowed.Payload.Decisions) != 1 || !allowed.Payload.Decisions[0].Allowed {
 		t.Fatalf("expected unbound profile to restore dispatch access, got %#v", allowed.Payload.Decisions)
+	}
+}
+
+func TestPermissionsViewReflectsCollaboratorLifecycleDenials(t *testing.T) {
+	withTempWorkspace(t)
+	gitRunCLI(t, "init", "-b", "main")
+	gitRunCLI(t, "config", "user.email", "atlas@example.com")
+	gitRunCLI(t, "config", "user.name", "Atlas")
+	writeGitFile(t, "README.md", "# atlas\n")
+	gitRunCLI(t, "add", "README.md")
+	gitRunCLI(t, "commit", "-m", "init")
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Lifecycle gate", "--type", "task", "--actor", "human:owner")
+	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")
+	must("collaborator", "add", "builder-1", "--name", "Builder One", "--actor-map", "agent:builder-1", "--actor", "human:owner")
+	must("collaborator", "trust", "builder-1", "--actor", "human:owner")
+	must("membership", "bind", "builder-1", "--scope-kind", "project", "--scope-id", "APP", "--role", "contributor", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+
+	dispatchOut := must("run", "dispatch", "APP-1", "--agent", "builder-1", "--actor", "human:owner", "--json")
+	var dispatch struct {
+		Payload struct {
+			RunID string `json:"run_id"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(dispatchOut), &dispatch); err != nil {
+		t.Fatalf("parse dispatch output: %v\nraw=%s", err, dispatchOut)
+	}
+	if dispatch.Payload.RunID == "" {
+		t.Fatalf("expected dispatched run id")
+	}
+
+	must("run", "start", dispatch.Payload.RunID, "--actor", "human:owner")
+	workspace, err := openWorkspace()
+	if err != nil {
+		t.Fatalf("open workspace: %v", err)
+	}
+	defer workspace.close()
+	if _, err := workspace.actions.SetCollaboratorTrust(context.Background(), "builder-1", false, contracts.Actor("human:owner"), "revoke trust"); err != nil {
+		t.Fatalf("revoke collaborator trust: %v", err)
+	}
+
+	blockedOut := must("permissions", "view", "run:"+dispatch.Payload.RunID, "--actor", "agent:builder-1", "--action", "run_complete", "--json")
+	var blocked struct {
+		Payload struct {
+			Decisions []struct {
+				Allowed     bool     `json:"allowed"`
+				ReasonCodes []string `json:"reason_codes"`
+			} `json:"decisions"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(blockedOut), &blocked); err != nil {
+		t.Fatalf("parse blocked permissions view: %v\nraw=%s", err, blockedOut)
+	}
+	if len(blocked.Payload.Decisions) != 1 || blocked.Payload.Decisions[0].Allowed || !strings.Contains(strings.Join(blocked.Payload.Decisions[0].ReasonCodes, ","), "collaborator_untrusted") {
+		t.Fatalf("expected collaborator_untrusted denial, got %#v", blocked.Payload.Decisions)
+	}
+
+	if out, err := runCLI(t, "run", "complete", dispatch.Payload.RunID, "--summary", "done", "--actor", "agent:builder-1"); err == nil || !strings.Contains(out+err.Error(), "collaborator_untrusted") {
+		t.Fatalf("expected run complete denial for untrusted collaborator, err=%v out=%s", err, out)
 	}
 }
