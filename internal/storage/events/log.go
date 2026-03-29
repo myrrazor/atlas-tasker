@@ -97,10 +97,16 @@ func (l *Log) StreamEvents(_ context.Context, project string, afterEventID int64
 	}
 
 	sort.Slice(events, func(i, j int) bool {
-		if events[i].EventID == events[j].EventID {
+		if events[i].LogicalClock != events[j].LogicalClock {
+			return events[i].LogicalClock < events[j].LogicalClock
+		}
+		if !events[i].Timestamp.Equal(events[j].Timestamp) {
 			return events[i].Timestamp.Before(events[j].Timestamp)
 		}
-		return events[i].EventID < events[j].EventID
+		if events[i].OriginWorkspaceID != events[j].OriginWorkspaceID {
+			return events[i].OriginWorkspaceID < events[j].OriginWorkspaceID
+		}
+		return events[i].EventUID < events[j].EventUID
 	})
 
 	return events, nil

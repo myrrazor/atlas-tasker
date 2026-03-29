@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -456,6 +457,146 @@ func TestCollaboratorRoutingRespectsProjectMembership(t *testing.T) {
 		if item.Kind != "mention" && item.TicketID != "APP-1" {
 			t.Fatalf("expected collaborator routing to stay on APP only, got %#v", inbox.Items)
 		}
+	}
+}
+
+func TestConflictCommands(t *testing.T) {
+	sourceDir := t.TempDir()
+	targetDir := t.TempDir()
+	remoteDir := filepath.Join(t.TempDir(), "path-remote")
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+
+	runAt := func(dir string, args ...string) (string, error) {
+		t.Helper()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatalf("chdir %s failed: %v", dir, err)
+		}
+		return runCLI(t, args...)
+	}
+	mustAt := func(dir string, args ...string) string {
+		t.Helper()
+		out, err := runAt(dir, args...)
+		if err != nil {
+			t.Fatalf("command failed in %s %v: %v\noutput=%s", dir, args, err, out)
+		}
+		return out
+	}
+
+	mustAt(sourceDir, "init")
+	mustAt(sourceDir, "project", "create", "APP", "App Project")
+	mustAt(sourceDir, "ticket", "create", "--project", "APP", "--title", "Remote title", "--type", "task", "--actor", "human:owner")
+	mustAt(sourceDir, "ticket", "create", "--project", "APP", "--title", "Remote-only", "--type", "task", "--actor", "human:owner")
+	mustAt(sourceDir, "remote", "add", "origin", "--kind", "path", "--location", remoteDir, "--default-action", "push", "--actor", "human:owner")
+	pushOut := mustAt(sourceDir, "sync", "push", "--remote", "origin", "--actor", "human:owner", "--json")
+	var pushed struct {
+		Payload struct {
+			Publication struct {
+				WorkspaceID string `json:"workspace_id"`
+			} `json:"publication"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(pushOut), &pushed); err != nil {
+		t.Fatalf("parse source push: %v\nraw=%s", err, pushOut)
+	}
+	if pushed.Payload.Publication.WorkspaceID == "" {
+		t.Fatalf("expected source workspace id, got %#v", pushed)
+	}
+
+	mustAt(targetDir, "init")
+	mustAt(targetDir, "project", "create", "APP", "App Project")
+	mustAt(targetDir, "ticket", "create", "--project", "APP", "--title", "Local title", "--type", "task", "--actor", "human:owner")
+	mustAt(targetDir, "remote", "add", "origin", "--kind", "path", "--location", remoteDir, "--default-action", "pull", "--actor", "human:owner")
+	if out, err := runAt(targetDir, "sync", "pull", "--remote", "origin", "--workspace", pushed.Payload.Publication.WorkspaceID, "--actor", "human:owner", "--json"); err == nil {
+		t.Fatalf("expected sync pull conflict, got success output=%s", out)
+	}
+
+	conflictListOut := mustAt(targetDir, "conflict", "list", "--json")
+	var listed struct {
+		Kind  string `json:"kind"`
+		Items []struct {
+			ConflictID string `json:"conflict_id"`
+			EntityKind string `json:"entity_kind"`
+			Status     string `json:"status"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(conflictListOut), &listed); err != nil {
+		t.Fatalf("parse conflict list: %v\nraw=%s", err, conflictListOut)
+	}
+	if listed.Kind != "conflict_list" || len(listed.Items) == 0 {
+		t.Fatalf("unexpected conflict list payload: %#v", listed)
+	}
+	ticketConflictID := ""
+	for _, item := range listed.Items {
+		if item.EntityKind == "ticket" && item.Status == "open" {
+			ticketConflictID = item.ConflictID
+			break
+		}
+	}
+	if ticketConflictID == "" {
+		t.Fatalf("expected open ticket conflict in %#v", listed.Items)
+	}
+
+	conflictViewOut := mustAt(targetDir, "conflict", "view", ticketConflictID, "--json")
+	var viewed struct {
+		Kind    string `json:"kind"`
+		Payload struct {
+			Conflict struct {
+				ConflictID string `json:"conflict_id"`
+			} `json:"conflict"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(conflictViewOut), &viewed); err != nil {
+		t.Fatalf("parse conflict view: %v\nraw=%s", err, conflictViewOut)
+	}
+	if viewed.Kind != "conflict_detail" || viewed.Payload.Conflict.ConflictID != ticketConflictID {
+		t.Fatalf("unexpected conflict view payload: %#v", viewed)
+	}
+
+	resolveOut := mustAt(targetDir, "conflict", "resolve", ticketConflictID, "--resolution", "use_remote", "--actor", "human:owner", "--json")
+	var resolved struct {
+		Kind    string `json:"kind"`
+		Payload struct {
+			Conflict struct {
+				Status     string `json:"status"`
+				Resolution string `json:"resolution"`
+			} `json:"conflict"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(resolveOut), &resolved); err != nil {
+		t.Fatalf("parse conflict resolve: %v\nraw=%s", err, resolveOut)
+	}
+	if resolved.Kind != "conflict_resolve_result" || resolved.Payload.Conflict.Status != "resolved" || resolved.Payload.Conflict.Resolution != "use_remote" {
+		t.Fatalf("unexpected resolve payload: %#v", resolved)
+	}
+
+	ticketOut := mustAt(targetDir, "ticket", "view", "APP-1", "--json")
+	var ticket struct {
+		Ticket struct {
+			Title string `json:"title"`
+		} `json:"ticket"`
+	}
+	if err := json.Unmarshal([]byte(ticketOut), &ticket); err != nil {
+		t.Fatalf("parse ticket view after resolve: %v\nraw=%s", err, ticketOut)
+	}
+	if ticket.Ticket.Title != "Remote title" {
+		t.Fatalf("expected remote ticket title after resolve, got %#v", ticket)
+	}
+
+	ticketTwoOut := mustAt(targetDir, "ticket", "view", "APP-2", "--json")
+	var ticketTwo struct {
+		Ticket struct {
+			Title string `json:"title"`
+		} `json:"ticket"`
+	}
+	if err := json.Unmarshal([]byte(ticketTwoOut), &ticketTwo); err != nil {
+		t.Fatalf("parse remote-only ticket: %v\nraw=%s", err, ticketTwoOut)
+	}
+	if ticketTwo.Ticket.Title != "Remote-only" {
+		t.Fatalf("expected remote-only ticket to apply, got %#v", ticketTwo)
 	}
 }
 

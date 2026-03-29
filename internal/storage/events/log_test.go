@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -121,5 +122,56 @@ func TestStreamEventsDetectsCorruptedLine(t *testing.T) {
 	log := &Log{RootDir: root}
 	if _, err := log.StreamEvents(context.Background(), "APP", 0); err == nil {
 		t.Fatal("expected corruption error")
+	}
+}
+
+func TestStreamEventsUsesLamportOrdering(t *testing.T) {
+	root := t.TempDir()
+	log := &Log{RootDir: root}
+
+	laterIDLowerClock := contracts.NormalizeEvent(contracts.Event{
+		EventID:           10,
+		EventUID:          "evt-a",
+		Timestamp:         time.Date(2026, 3, 22, 12, 5, 0, 0, time.UTC),
+		OriginWorkspaceID: "ws-a",
+		LogicalClock:      2,
+		Actor:             contracts.Actor("human:owner"),
+		Type:              contracts.EventTicketUpdated,
+		Project:           "APP",
+		TicketID:          "APP-1",
+		SchemaVersion:     contracts.CurrentSchemaVersion,
+	})
+	earlierIDHigherClock := contracts.NormalizeEvent(contracts.Event{
+		EventID:           1,
+		EventUID:          "evt-b",
+		Timestamp:         time.Date(2026, 3, 22, 12, 1, 0, 0, time.UTC),
+		OriginWorkspaceID: "ws-b",
+		LogicalClock:      1,
+		Actor:             contracts.Actor("human:owner"),
+		Type:              contracts.EventTicketCreated,
+		Project:           "APP",
+		TicketID:          "APP-1",
+		SchemaVersion:     contracts.CurrentSchemaVersion,
+	})
+
+	if err := os.MkdirAll(storage.EventsDir(root), 0o755); err != nil {
+		t.Fatalf("mkdir events dir failed: %v", err)
+	}
+	path := filepath.Join(storage.EventsDir(root), "2026-03.jsonl")
+	rawA, _ := json.Marshal(laterIDLowerClock)
+	rawB, _ := json.Marshal(earlierIDHigherClock)
+	if err := os.WriteFile(path, append(append(rawA, '\n'), append(rawB, '\n')...), 0o644); err != nil {
+		t.Fatalf("write event file failed: %v", err)
+	}
+
+	events, err := log.StreamEvents(context.Background(), "APP", 0)
+	if err != nil {
+		t.Fatalf("stream events failed: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected two events, got %#v", events)
+	}
+	if events[0].EventUID != "evt-b" || events[1].EventUID != "evt-a" {
+		t.Fatalf("expected logical clock ordering, got %#v", events)
 	}
 }

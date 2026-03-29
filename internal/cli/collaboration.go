@@ -124,7 +124,7 @@ func newSyncCommand() *cobra.Command {
 	view := &cobra.Command{Use: "view <JOB-ID>", Args: cobra.ExactArgs(1), Short: "View one sync job", RunE: runSyncView}
 	fetch := &cobra.Command{Use: "fetch", Short: "Fetch remote sync publications", RunE: runSyncFetch}
 	fetch.Flags().String("remote", "", "Remote ID")
-	pull := &cobra.Command{Use: "pull", Short: "Pull remote state into an empty workspace", RunE: runSyncPull}
+	pull := &cobra.Command{Use: "pull", Short: "Pull remote state into this workspace", RunE: runSyncPull}
 	pull.Flags().String("remote", "", "Remote ID")
 	pull.Flags().String("workspace", "", "Source workspace ID when the remote has multiple publications")
 	push := &cobra.Command{Use: "push", Short: "Publish local state to a remote", RunE: runSyncPush}
@@ -148,7 +148,7 @@ func newBundleCommand() *cobra.Command {
 	list := &cobra.Command{Use: "list", Short: "List local bundle jobs", RunE: runBundleList}
 	view := &cobra.Command{Use: "view <ID>", Args: cobra.ExactArgs(1), Short: "View one bundle", RunE: runBundleView}
 	verify := &cobra.Command{Use: "verify <PATH|BUNDLE-ID>", Args: cobra.ExactArgs(1), Short: "Verify a sync bundle", RunE: runBundleVerify}
-	importCmd := &cobra.Command{Use: "import <PATH|BUNDLE-ID>", Args: cobra.ExactArgs(1), Short: "Import a sync bundle into an empty workspace", RunE: runBundleImport}
+	importCmd := &cobra.Command{Use: "import <PATH|BUNDLE-ID>", Args: cobra.ExactArgs(1), Short: "Import a sync bundle into this workspace", RunE: runBundleImport}
 	for _, sub := range []*cobra.Command{create, list, view, verify, importCmd} {
 		addReadOutputFlags(sub, &outputFlags{})
 		if sub == create || sub == verify || sub == importCmd {
@@ -161,26 +161,15 @@ func newBundleCommand() *cobra.Command {
 
 func newConflictCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "conflict", Short: "Inspect and resolve sync conflicts"}
-	for _, item := range []struct {
-		use  string
-		kind string
-		mut  bool
-		args cobra.PositionalArgs
-	}{
-		{use: "list", kind: "conflict_list"},
-		{use: "view <ID>", kind: "conflict_detail", args: cobra.ExactArgs(1)},
-		{use: "resolve <ID>", kind: "conflict_resolve_result", mut: true, args: cobra.ExactArgs(1)},
-	} {
-		sub := &cobra.Command{Use: item.use, Short: "v1.6 conflict command", Args: item.args}
-		if item.mut {
-			sub.RunE = notImplementedMutation(item.kind)
-			addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
-		} else {
-			sub.RunE = notImplementedRead(item.kind)
-		}
-		addReadOutputFlags(sub, &outputFlags{})
-		cmd.AddCommand(sub)
-	}
+	list := &cobra.Command{Use: "list", Short: "List sync conflicts", RunE: runConflictList}
+	view := &cobra.Command{Use: "view <ID>", Args: cobra.ExactArgs(1), Short: "View one sync conflict", RunE: runConflictView}
+	resolve := &cobra.Command{Use: "resolve <ID>", Args: cobra.ExactArgs(1), Short: "Resolve a sync conflict", RunE: runConflictResolve}
+	resolve.Flags().String("resolution", "", "Resolution: use_local or use_remote")
+	addReadOutputFlags(list, &outputFlags{})
+	addReadOutputFlags(view, &outputFlags{})
+	addMutationFlags(resolve, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(resolve, &outputFlags{})
+	cmd.AddCommand(list, view, resolve)
 	return cmd
 }
 
@@ -700,6 +689,55 @@ func runBundleImport(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
+func runConflictList(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	items, err := workspace.queries.ListConflicts(commandContext(cmd))
+	if err != nil {
+		return err
+	}
+	pretty := formatConflictList(items)
+	data := map[string]any{"kind": "conflict_list", "generated_at": time.Now().UTC(), "items": items}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runConflictView(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.ConflictDetail(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatConflictDetail(view)
+	data := map[string]any{"kind": "conflict_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runConflictResolve(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	resolutionRaw, _ := cmd.Flags().GetString("resolution")
+	resolution := contracts.ConflictResolution(strings.TrimSpace(resolutionRaw))
+	view, err := workspace.actions.ResolveConflict(commandContext(cmd), args[0], resolution, normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatConflictDetail(view)
+	data := map[string]any{"kind": "conflict_resolve_result", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
 func mutateSyncJob(cmd *cobra.Command, fn func(*workspace, contracts.Actor, string, string, string) (service.SyncJobDetailView, error)) (service.SyncJobDetailView, error) {
 	workspace, err := openWorkspace()
 	if err != nil {
@@ -934,6 +972,35 @@ func formatBundleVerify(view service.SyncBundleVerifyView) string {
 		line += " warnings=" + strings.Join(view.Warnings, ",")
 	}
 	return line
+}
+
+func formatConflictList(items []contracts.ConflictRecord) string {
+	if len(items) == 0 {
+		return "no sync conflicts"
+	}
+	lines := []string{"sync conflicts:"}
+	for _, item := range items {
+		lines = append(lines, fmt.Sprintf("- %s %s %s [%s]", item.ConflictID, item.EntityKind, item.ConflictType, item.Status))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatConflictDetail(view service.ConflictDetailView) string {
+	lines := []string{
+		fmt.Sprintf("conflict %s", view.Conflict.ConflictID),
+		fmt.Sprintf("entity=%s uid=%s", view.Conflict.EntityKind, view.Conflict.EntityUID),
+		fmt.Sprintf("type=%s status=%s", view.Conflict.ConflictType, view.Conflict.Status),
+	}
+	if view.Conflict.LocalRef != "" {
+		lines = append(lines, "local_ref="+view.Conflict.LocalRef)
+	}
+	if view.Conflict.RemoteRef != "" {
+		lines = append(lines, "remote_ref="+view.Conflict.RemoteRef)
+	}
+	if view.Conflict.Resolution != "" {
+		lines = append(lines, "resolution="+string(view.Conflict.Resolution))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func parseCollaboratorActors(values []string) ([]contracts.Actor, error) {

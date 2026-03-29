@@ -18,7 +18,6 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
-	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
 )
 
 const (
@@ -359,12 +358,11 @@ func (s *ActionService) ImportSyncBundle(ctx context.Context, bundleRef string, 
 		if !actor.IsValid() {
 			return SyncJobDetailView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
 		}
-		if hasState, err := syncWorkspaceHasCanonicalState(s.Root); err != nil {
+		if err := s.ensureSyncMigrationStamp(ctx); err != nil {
 			return SyncJobDetailView{}, err
-		} else if hasState {
-			return SyncJobDetailView{}, apperr.New(apperr.CodeConflict, "bundle import requires an empty workspace until reconciliation lands")
 		}
 		artifactPath := resolveSyncBundlePath(s.Root, bundleRef)
+		jobID := "import_" + NewOpaqueID()
 		verifyView, err := verifySyncBundle(artifactPath)
 		if err != nil {
 			return SyncJobDetailView{}, err
@@ -376,20 +374,9 @@ func (s *ActionService) ImportSyncBundle(ctx context.Context, bundleRef string, 
 		if err != nil {
 			return SyncJobDetailView{}, err
 		}
-		for rel, raw := range files {
-			if rel == "manifest.json" {
-				continue
-			}
-			if !isSyncableRelativePath(rel) {
-				return SyncJobDetailView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("bundle contains unsupported path %s", rel))
-			}
-			dest := filepath.Join(s.Root, filepath.FromSlash(rel))
-			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-				return SyncJobDetailView{}, fmt.Errorf("create import dir: %w", err)
-			}
-			if err := os.WriteFile(dest, raw, 0o644); err != nil {
-				return SyncJobDetailView{}, fmt.Errorf("write import file %s: %w", rel, err)
-			}
+		applyResult, err := s.applyImportedSyncFiles(ctx, jobID, files, actor, reason)
+		if err != nil {
+			return SyncJobDetailView{}, err
 		}
 		workspaceID, err := ensureWorkspaceIdentity(s.Root)
 		if err != nil {
@@ -404,15 +391,24 @@ func (s *ActionService) ImportSyncBundle(ctx context.Context, bundleRef string, 
 			}
 		}
 		job := normalizeSyncJob(contracts.SyncJob{
-			JobID:         "import_" + NewOpaqueID(),
+			JobID:         jobID,
 			BundleRef:     artifactPath,
 			Mode:          contracts.SyncJobModeBundleImport,
 			State:         contracts.SyncJobStateCompleted,
 			StartedAt:     s.now(),
 			FinishedAt:    s.now(),
-			Counts:        map[string]int{"files": verifyView.Publication.FileCount},
+			Counts:        map[string]int{"files": verifyView.Publication.FileCount, "applied_files": applyResult.AppliedFiles},
+			ConflictIDs:   append([]string{}, applyResult.ConflictIDs...),
 			SchemaVersion: contracts.CurrentSchemaVersion,
 		})
+		if len(applyResult.ConflictIDs) > 0 {
+			job.State = contracts.SyncJobStateFailed
+			job.ReasonCodes = []string{"sync_conflicts_detected"}
+			if err := saveSyncJobOnly(ctx, s.SyncJobs, job); err != nil {
+				return SyncJobDetailView{}, err
+			}
+			return SyncJobDetailView{}, buildSyncConflictError(applyResult.ConflictIDs)
+		}
 		event, err := s.newEvent(ctx, workspaceEventProject, s.now(), actor, reason, contracts.EventBundleImported, "", verifyView.Publication)
 		if err != nil {
 			return SyncJobDetailView{}, err
@@ -510,11 +506,6 @@ func (s *ActionService) SyncPull(ctx context.Context, remoteID string, sourceWor
 		if !remote.Enabled {
 			return SyncJobDetailView{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("sync remote %s is disabled", remoteID))
 		}
-		if hasState, err := syncWorkspaceHasCanonicalState(s.Root); err != nil {
-			return SyncJobDetailView{}, err
-		} else if hasState {
-			return SyncJobDetailView{}, apperr.New(apperr.CodeConflict, "sync pull requires an empty workspace until reconciliation lands")
-		}
 		publications, err := fetchRemotePublications(s.Root, remote)
 		if err != nil {
 			return SyncJobDetailView{}, err
@@ -525,6 +516,24 @@ func (s *ActionService) SyncPull(ctx context.Context, remoteID string, sourceWor
 		}
 		imported, err := s.ImportSyncBundle(ctx, artifactPath, actor, reason)
 		if err != nil {
+			if conflictIDs, ok := conflictIDsFromError(err); ok {
+				job := normalizeSyncJob(contracts.SyncJob{
+					JobID:         "sync_pull_" + NewOpaqueID(),
+					RemoteID:      remote.RemoteID,
+					BundleRef:     artifactPath,
+					Mode:          contracts.SyncJobModePull,
+					State:         contracts.SyncJobStateFailed,
+					StartedAt:     s.now(),
+					FinishedAt:    s.now(),
+					ReasonCodes:   []string{"sync_conflicts_detected"},
+					ConflictIDs:   append([]string{}, conflictIDs...),
+					Counts:        map[string]int{"files": publication.FileCount},
+					SchemaVersion: contracts.CurrentSchemaVersion,
+				})
+				if saveErr := saveSyncJobOnly(ctx, s.SyncJobs, job); saveErr != nil {
+					return SyncJobDetailView{}, saveErr
+				}
+			}
 			return SyncJobDetailView{}, err
 		}
 		job := normalizeSyncJob(contracts.SyncJob{
@@ -1416,50 +1425,5 @@ func isSyncableRelativePath(rel string) bool {
 		return true
 	default:
 		return false
-	}
-}
-
-func syncWorkspaceHasCanonicalState(root string) (bool, error) {
-	files, err := collectSyncableFiles(root)
-	if err != nil {
-		return false, err
-	}
-	for _, rel := range files {
-		if strings.HasPrefix(rel, ".tracker/events/") {
-			continue
-		}
-		return true, nil
-	}
-	events, err := (&eventstore.Log{RootDir: root}).StreamEvents(context.Background(), "", 0)
-	if err != nil {
-		return false, err
-	}
-	for _, event := range events {
-		if eventCountsForSyncState(event.Type) {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func eventCountsForSyncState(eventType contracts.EventType) bool {
-	switch eventType {
-	case contracts.EventRemoteAdded,
-		contracts.EventRemoteEdited,
-		contracts.EventRemoteRemoved,
-		contracts.EventSyncStarted,
-		contracts.EventSyncCompleted,
-		contracts.EventSyncFailed,
-		contracts.EventBundleCreated,
-		contracts.EventBundleImported,
-		contracts.EventBundleVerified,
-		contracts.EventConflictOpened,
-		contracts.EventConflictResolved,
-		contracts.EventProviderMappingUpdated,
-		contracts.EventCodeownersRendered,
-		contracts.EventCodeownersWritten:
-		return false
-	default:
-		return true
 	}
 }

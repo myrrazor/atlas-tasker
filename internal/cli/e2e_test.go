@@ -683,6 +683,97 @@ func TestShellParityForRemoteSyncAndBundleCommands(t *testing.T) {
 	runSlashShell(t, "/remote remove origin --actor human:owner")
 }
 
+func TestShellParityForConflictCommands(t *testing.T) {
+	sourceDir := t.TempDir()
+	targetDir := t.TempDir()
+	remoteDir := filepath.Join(t.TempDir(), "path-remote")
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+
+	runAt := func(dir string, args ...string) string {
+		t.Helper()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatalf("chdir %s failed: %v", dir, err)
+		}
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed in %s %v: %v\noutput=%s", dir, args, err, out)
+		}
+		return out
+	}
+	slashAt := func(dir string, slash string) {
+		t.Helper()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatalf("chdir %s failed: %v", dir, err)
+		}
+		runSlashShell(t, slash)
+	}
+
+	runAt(sourceDir, "init")
+	runAt(sourceDir, "project", "create", "APP", "App Project")
+	runAt(sourceDir, "ticket", "create", "--project", "APP", "--title", "Remote title", "--type", "task", "--actor", "human:owner")
+	runAt(sourceDir, "ticket", "create", "--project", "APP", "--title", "Remote-only", "--type", "task", "--actor", "human:owner")
+	slashAt(sourceDir, "/remote add origin --kind path --location "+remoteDir+" --default-action push --actor human:owner")
+	sourcePushOut := runAt(sourceDir, "sync", "push", "--remote", "origin", "--actor", "human:owner", "--json")
+	var sourcePush struct {
+		Payload struct {
+			Publication struct {
+				WorkspaceID string `json:"workspace_id"`
+			} `json:"publication"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(sourcePushOut), &sourcePush); err != nil {
+		t.Fatalf("parse source push: %v\nraw=%s", err, sourcePushOut)
+	}
+
+	runAt(targetDir, "init")
+	runAt(targetDir, "project", "create", "APP", "App Project")
+	runAt(targetDir, "ticket", "create", "--project", "APP", "--title", "Local title", "--type", "task", "--actor", "human:owner")
+	slashAt(targetDir, "/remote add origin --kind path --location "+remoteDir+" --default-action pull --actor human:owner")
+
+	if err := os.Chdir(targetDir); err != nil {
+		t.Fatalf("chdir target failed: %v", err)
+	}
+	args, err := ParseSlashCommand("/sync pull --remote origin --workspace " + sourcePush.Payload.Publication.WorkspaceID + " --actor human:owner")
+	if err != nil {
+		t.Fatalf("parse slash sync pull failed: %v", err)
+	}
+	if err := executeArgsWithSurface(args, contracts.EventSurfaceShell); err == nil {
+		t.Fatal("expected slash sync pull conflict")
+	}
+
+	slashAt(targetDir, "/conflict list")
+	conflictsOut := runAt(targetDir, "conflict", "list", "--json")
+	var conflicts struct {
+		Items []struct {
+			ConflictID string `json:"conflict_id"`
+			EntityKind string `json:"entity_kind"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(conflictsOut), &conflicts); err != nil {
+		t.Fatalf("parse conflict list: %v\nraw=%s", err, conflictsOut)
+	}
+	if len(conflicts.Items) == 0 {
+		t.Fatalf("expected one conflict, got %#v", conflicts.Items)
+	}
+	conflictID := ""
+	for _, item := range conflicts.Items {
+		if item.EntityKind == "ticket" {
+			conflictID = item.ConflictID
+			break
+		}
+	}
+	if conflictID == "" {
+		t.Fatalf("expected ticket conflict, got %#v", conflicts.Items)
+	}
+
+	slashAt(targetDir, "/conflict view "+conflictID)
+	slashAt(targetDir, "/conflict resolve "+conflictID+" --resolution use_remote --actor human:owner")
+}
+
 func runSlashShell(t *testing.T, slash string) {
 	t.Helper()
 	args, err := ParseSlashCommand(slash)

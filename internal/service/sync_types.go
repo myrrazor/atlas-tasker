@@ -56,3 +56,8 @@ type SyncBundleVerifyView struct {
 	Publication SyncPublication `json:"publication,omitempty"`
 	GeneratedAt time.Time       `json:"generated_at"`
 }
+
+type ConflictDetailView struct {
+	Conflict    contracts.ConflictRecord `json:"conflict"`
+	GeneratedAt time.Time                `json:"generated_at"`
+}
