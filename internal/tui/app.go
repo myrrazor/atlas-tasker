@@ -51,15 +51,16 @@ const (
 type dialogAction string
 
 const (
-	dialogCreate  dialogAction = "create"
-	dialogEdit    dialogAction = "edit"
-	dialogMove    dialogAction = "move"
-	dialogAssign  dialogAction = "assign"
-	dialogLink    dialogAction = "link"
-	dialogUnlink  dialogAction = "unlink"
-	dialogComment dialogAction = "comment"
-	dialogReject  dialogAction = "reject"
-	dialogBulk    dialogAction = "bulk"
+	dialogCreate             dialogAction = "create"
+	dialogEdit               dialogAction = "edit"
+	dialogMove               dialogAction = "move"
+	dialogAssign             dialogAction = "assign"
+	dialogLink               dialogAction = "link"
+	dialogUnlink             dialogAction = "unlink"
+	dialogComment            dialogAction = "comment"
+	dialogReject             dialogAction = "reject"
+	dialogBulk               dialogAction = "bulk"
+	dialogCollaboratorFilter dialogAction = "collaborator_filter"
 )
 
 type keyMap struct {
@@ -82,6 +83,7 @@ type keyMap struct {
 	Approve       key.Binding
 	Reject        key.Binding
 	Complete      key.Binding
+	Filter        key.Binding
 	BulkPreview   key.Binding
 	BulkApply     key.Binding
 	Cancel        key.Binding
@@ -89,13 +91,13 @@ type keyMap struct {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Palette, k.New, k.BulkPreview, k.Refresh, k.Quit}
+	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Palette, k.Filter, k.BulkPreview, k.Refresh, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Left, k.Right, k.Up, k.Down, k.Select, k.Refresh, k.Quit, k.Cancel},
-		{k.Palette, k.New, k.Edit, k.Move, k.Assign, k.Link, k.Unlink},
+		{k.Palette, k.New, k.Edit, k.Move, k.Assign, k.Link, k.Unlink, k.Filter},
 		{k.Claim, k.Comment, k.RequestReview, k.Approve, k.Reject, k.Complete, k.BulkPreview, k.BulkApply},
 	}
 }
@@ -124,46 +126,47 @@ func (d dialogState) active() bool {
 }
 
 type model struct {
-	root              string
-	actions           *service.ActionService
-	queries           *service.QueryService
-	projection        *sqlitestore.Store
-	actor             contracts.Actor
-	actorErr          string
-	keys              keyMap
-	help              help.Model
-	screen            screen
-	width             int
-	height            int
-	board             service.BoardViewModel
-	queue             service.QueueView
-	review            service.QueueView
-	owner             service.QueueView
-	runs              []contracts.RunSnapshot
-	runDetail         service.RunDetailView
-	runLaunch         service.RunLaunchManifestView
-	agents            []service.AgentDetailView
-	approvals         []service.ApprovalItemView
-	operatorInbox     []service.InboxItemView
-	dispatchQueue     service.DispatchQueueView
-	worktrees         []service.WorktreeStatusView
-	dashboard         service.DashboardSummaryView
-	timeline          service.TimelineView
-	inbox             []service.NotificationDelivery
-	deadLetters       []service.NotificationDelivery
-	savedViews        []contracts.SavedView
-	automations       []contracts.AutomationRule
-	automationExplain []service.AutomationResult
-	detail            service.TicketDetailView
-	search            textinput.Model
-	searchHits        []contracts.TicketSnapshot
-	selectedID        string
-	selectedView      string
-	cursor            int
-	status            string
-	dialog            dialogState
-	lastBulk          *service.BulkOperationResult
-	pendingBulk       *service.BulkOperation
+	root               string
+	actions            *service.ActionService
+	queries            *service.QueryService
+	projection         *sqlitestore.Store
+	actor              contracts.Actor
+	actorErr           string
+	keys               keyMap
+	help               help.Model
+	screen             screen
+	width              int
+	height             int
+	board              service.BoardViewModel
+	queue              service.QueueView
+	review             service.QueueView
+	owner              service.QueueView
+	runs               []contracts.RunSnapshot
+	runDetail          service.RunDetailView
+	runLaunch          service.RunLaunchManifestView
+	agents             []service.AgentDetailView
+	approvals          []service.ApprovalItemView
+	operatorInbox      []service.InboxItemView
+	dispatchQueue      service.DispatchQueueView
+	worktrees          []service.WorktreeStatusView
+	dashboard          service.DashboardSummaryView
+	timeline           service.TimelineView
+	inbox              []service.NotificationDelivery
+	deadLetters        []service.NotificationDelivery
+	savedViews         []contracts.SavedView
+	automations        []contracts.AutomationRule
+	automationExplain  []service.AutomationResult
+	detail             service.TicketDetailView
+	search             textinput.Model
+	searchHits         []contracts.TicketSnapshot
+	collaboratorFilter string
+	selectedID         string
+	selectedView       string
+	cursor             int
+	status             string
+	dialog             dialogState
+	lastBulk           *service.BulkOperationResult
+	pendingBulk        *service.BulkOperation
 }
 
 type loadedMsg struct {
@@ -264,6 +267,7 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		Approve:       key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "approve")),
 		Reject:        key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "reject")),
 		Complete:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "complete")),
+		Filter:        key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "collab filter")),
 		BulkPreview:   key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "bulk preview")),
 		BulkApply:     key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "apply bulk")),
 		Cancel:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel dialog")),
@@ -501,6 +505,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.requestReviewSelected()
 		case key.Matches(msg, m.keys.Approve):
 			return m, m.approveSelected()
+		case key.Matches(msg, m.keys.Filter):
+			m.dialog = newPromptDialog(dialogCollaboratorFilter, "", "Collaborator Filter", "rev-1 or blank to clear", m.collaboratorFilter)
+			return m, nil
 		case key.Matches(msg, m.keys.Reject):
 			if id := m.selectedTicketID(); id != "" {
 				m.dialog = newPromptDialog(dialogReject, id, "Reject Review", "Why is this going back?", "")
@@ -541,7 +548,7 @@ func (m model) View() string {
 	if m.dialog.active() {
 		body = body + "\n\n" + m.dialogView()
 	}
-	footer := fmt.Sprintf("actor: %s | %s", optionalActor(m.actor, "unset"), m.status)
+	footer := fmt.Sprintf("actor: %s | collaborator: %s | %s", optionalActor(m.actor, "unset"), optionalString(strings.TrimSpace(m.collaboratorFilter), "all"), m.status)
 	if width := m.width; width > 0 && width < lipgloss.Width(body) {
 		body = lipgloss.NewStyle().Width(width).Render(body)
 	}
@@ -561,7 +568,7 @@ func (m model) bodyView() string {
 		if m.detail.Ticket.ID == "" {
 			return render.EmptyState("Detail", "No ticket selected yet.")
 		}
-		return detailWithOrchestration(m.detail, m.runs, m.runDetail, m.runLaunch, m.timeline)
+		return detailWithOrchestration(m.detail, m.runs, m.runDetail, m.runLaunch, m.timeline, m.collaboratorFilter)
 	case screenSearch:
 		body := m.search.View() + "\n\n"
 		if len(m.searchHits) == 0 {
@@ -580,7 +587,7 @@ func (m model) bodyView() string {
 	case screenViews:
 		return savedViewsPanel(m.savedViews, m.selectedViewName(), m.cursor)
 	case screenOps:
-		return opsView(m.dashboard, m.agents, m.dispatchQueue, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk)
+		return opsView(m.dashboard, m.agents, m.dispatchQueue, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk, m.collaboratorFilter)
 	default:
 		return ""
 	}
@@ -652,11 +659,11 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		if err != nil {
 			return loadedMsg{err: err}
 		}
-		approvals, err = m.queries.Approvals(ctx, "")
+		approvals, err = m.queries.Approvals(ctx, m.collaboratorFilter)
 		if err != nil {
 			return loadedMsg{err: err}
 		}
-		operatorInbox, err = m.queries.Inbox(ctx, "")
+		operatorInbox, err = m.queries.Inbox(ctx, m.collaboratorFilter)
 		if err != nil {
 			return loadedMsg{err: err}
 		}
@@ -668,7 +675,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		if err != nil {
 			return loadedMsg{err: err}
 		}
-		dashboard, err = m.queries.Dashboard(ctx)
+		dashboard, err = m.queries.Dashboard(ctx, m.collaboratorFilter)
 		if err != nil {
 			return loadedMsg{err: err}
 		}
@@ -680,7 +687,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			if err != nil {
 				return loadedMsg{err: err}
 			}
-			timeline, err = m.queries.Timeline(ctx, selectedID)
+			timeline, err = m.queries.Timeline(ctx, selectedID, m.collaboratorFilter)
 			if err != nil {
 				return loadedMsg{err: err}
 			}
@@ -1019,6 +1026,9 @@ func (m model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.dialog.Kind {
 	case dialogPalette, dialogPrompt:
 		if key.Matches(msg, m.keys.Select) {
+			if m.dialog.Action == dialogCollaboratorFilter {
+				m.collaboratorFilter = strings.TrimSpace(m.dialog.Input.Value())
+			}
 			cmd := m.submitDialog()
 			m.dialog = dialogState{}
 			return m, cmd
@@ -1161,7 +1171,7 @@ func nextTickets(next service.NextView) []contracts.TicketSnapshot {
 	return items
 }
 
-func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.RunSnapshot, runDetail service.RunDetailView, launch service.RunLaunchManifestView, timeline service.TimelineView) string {
+func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.RunSnapshot, runDetail service.RunDetailView, launch service.RunLaunchManifestView, timeline service.TimelineView, collaboratorFilter string) string {
 	body := render.TicketPretty(detail.Ticket, detail.Comments)
 	gitLines := []string{"Git Context:"}
 	if !detail.Git.Repo.Present {
@@ -1223,6 +1233,9 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 	if len(timeline.Entries) == 0 {
 		timelineLines = append(timelineLines, "- none")
 	} else {
+		if strings.TrimSpace(collaboratorFilter) != "" {
+			timelineLines = append(timelineLines, "- collaborator_filter: "+collaboratorFilter)
+		}
 		timelineLines = append(timelineLines,
 			fmt.Sprintf("- change_ready: %s", timeline.ChangeReady),
 			fmt.Sprintf("- open_gates: %s", optionalString(strings.Join(timeline.OpenGateIDs, ","), "none")),
@@ -1296,9 +1309,10 @@ func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) s
 	return strings.Join(lines, "\n")
 }
 
-func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetailView, dispatch service.DispatchQueueView, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation) string {
+func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetailView, dispatch service.DispatchQueueView, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation, collaboratorFilter string) string {
 	lines := []string{
 		"Dashboard:",
+		fmt.Sprintf("- collaborator_filter: %s", optionalString(strings.TrimSpace(collaboratorFilter), "all")),
 		fmt.Sprintf("- active_runs: %d", dashboard.ActiveRuns),
 		fmt.Sprintf("- awaiting_review: %d", dashboard.AwaitingReview.Count),
 		fmt.Sprintf("- awaiting_owner: %d", dashboard.AwaitingOwner.Count),
@@ -1307,8 +1321,55 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		fmt.Sprintf("- stale_worktrees: %s", optionalString(strings.Join(dashboard.StaleWorktrees, ","), "none")),
 		fmt.Sprintf("- retention_pressure: %s", optionalString(strings.Join(dashboard.RetentionTargets, ","), "none")),
 		"",
-		"Agents:",
+		"Collaboration:",
+		fmt.Sprintf("- mentions: %d", len(dashboard.MentionQueue)),
+		fmt.Sprintf("- conflicts: %d", len(dashboard.ConflictQueue)),
+		fmt.Sprintf("- failed_sync_jobs: %s", optionalString(strings.Join(dashboard.FailedSyncJobs, ","), "none")),
+		"",
+		"Collaborator Workload:",
 	}
+	if len(dashboard.CollaboratorWorkload) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range dashboard.CollaboratorWorkload {
+			lines = append(lines, fmt.Sprintf("- %s approvals=%d inbox=%d mentions=%d handoffs=%d", item.CollaboratorID, item.Approvals, item.InboxItems, item.Mentions, item.Handoffs))
+		}
+	}
+	lines = append(lines, "", "Remote Health:")
+	if len(dashboard.RemoteHealth) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range dashboard.RemoteHealth {
+			lines = append(lines, fmt.Sprintf("- %s [%s] publications=%d failed=%d", item.RemoteID, item.State, item.PublicationCount, item.FailedJobs))
+		}
+	}
+	lines = append(lines, "", "Conflict Queue:")
+	if len(dashboard.ConflictQueue) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range dashboard.ConflictQueue {
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.ConflictID, item.EntityKind, item.ConflictType))
+		}
+	}
+	lines = append(lines, "", "Mention Queue:")
+	if len(dashboard.MentionQueue) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range dashboard.MentionQueue {
+			lines = append(lines, fmt.Sprintf("- %s @%s %s", item.MentionUID, item.CollaboratorID, item.Summary))
+		}
+	}
+	lines = append(lines, "", "Provider Mapping Warnings:")
+	if len(dashboard.ProviderMappingWarnings) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, warning := range dashboard.ProviderMappingWarnings {
+			lines = append(lines, "- "+warning)
+		}
+	}
+	lines = append(lines, "",
+		"Agents:",
+	)
 	if len(agents) == 0 {
 		lines = append(lines, "- none")
 	} else {

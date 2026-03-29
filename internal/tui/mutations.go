@@ -129,6 +129,16 @@ func (m model) runPromptMutation(dialog dialogState) tea.Cmd {
 		})
 	case dialogBulk:
 		return m.previewBulkAction(value)
+	case dialogCollaboratorFilter:
+		return func() tea.Msg {
+			msg := m.reload(m.selectedID, strings.TrimSpace(m.search.Value()), "collaboration filter updated")()
+			loaded, ok := msg.(loadedMsg)
+			if !ok {
+				return loadedMsg{status: "collaboration filter updated"}
+			}
+			loaded.status = "collaboration filter updated"
+			return loaded
+		}
 	default:
 		return failMutation(fmt.Errorf("unsupported dialog action: %s", dialog.Action))
 	}

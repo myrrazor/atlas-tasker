@@ -73,32 +73,84 @@ type DashboardBucket struct {
 	TicketIDs []string `json:"ticket_ids,omitempty"`
 }
 
+type CollaboratorWorkloadView struct {
+	CollaboratorID string `json:"collaborator_id"`
+	Approvals      int    `json:"approvals"`
+	InboxItems     int    `json:"inbox_items"`
+	Mentions       int    `json:"mentions"`
+	Handoffs       int    `json:"handoffs"`
+}
+
+type MentionQueueEntry struct {
+	MentionUID      string    `json:"mention_uid"`
+	CollaboratorID  string    `json:"collaborator_id"`
+	TicketID        string    `json:"ticket_id,omitempty"`
+	SourceKind      string    `json:"source_kind"`
+	SourceID        string    `json:"source_id"`
+	Summary         string    `json:"summary"`
+	OriginWorkspace string    `json:"origin_workspace_id,omitempty"`
+	GeneratedAt     time.Time `json:"generated_at"`
+}
+
+type ConflictQueueEntry struct {
+	ConflictID   string                   `json:"conflict_id"`
+	EntityKind   string                   `json:"entity_kind"`
+	EntityUID    string                   `json:"entity_uid"`
+	ConflictType contracts.ConflictType   `json:"conflict_type"`
+	Status       contracts.ConflictStatus `json:"status"`
+	TicketID     string                   `json:"ticket_id,omitempty"`
+	OpenedByJob  string                   `json:"opened_by_job,omitempty"`
+	GeneratedAt  time.Time                `json:"generated_at"`
+}
+
+type RemoteHealthView struct {
+	RemoteID            string    `json:"remote_id"`
+	Enabled             bool      `json:"enabled"`
+	DefaultAction       string    `json:"default_action,omitempty"`
+	PublicationCount    int       `json:"publication_count"`
+	LatestPublicationAt time.Time `json:"latest_publication_at,omitempty"`
+	LastSuccessAt       time.Time `json:"last_success_at,omitempty"`
+	FailedJobs          int       `json:"failed_jobs"`
+	State               string    `json:"state"`
+}
+
 type DashboardSummaryView struct {
-	GeneratedAt      time.Time       `json:"generated_at"`
-	ActiveRuns       int             `json:"active_runs"`
-	AwaitingReview   DashboardBucket `json:"awaiting_review"`
-	AwaitingOwner    DashboardBucket `json:"awaiting_owner"`
-	MergeReady       DashboardBucket `json:"merge_ready"`
-	BlockedByChecks  DashboardBucket `json:"blocked_by_checks"`
-	StaleWorktrees   []string        `json:"stale_worktrees,omitempty"`
-	RetentionTargets []string        `json:"retention_targets,omitempty"`
+	GeneratedAt             time.Time                  `json:"generated_at"`
+	CollaboratorFilter      string                     `json:"collaborator_filter,omitempty"`
+	ActiveRuns              int                        `json:"active_runs"`
+	AwaitingReview          DashboardBucket            `json:"awaiting_review"`
+	AwaitingOwner           DashboardBucket            `json:"awaiting_owner"`
+	MergeReady              DashboardBucket            `json:"merge_ready"`
+	BlockedByChecks         DashboardBucket            `json:"blocked_by_checks"`
+	StaleWorktrees          []string                   `json:"stale_worktrees,omitempty"`
+	RetentionTargets        []string                   `json:"retention_targets,omitempty"`
+	CollaboratorWorkload    []CollaboratorWorkloadView `json:"collaborator_workload,omitempty"`
+	MentionQueue            []MentionQueueEntry        `json:"mention_queue,omitempty"`
+	ConflictQueue           []ConflictQueueEntry       `json:"conflict_queue,omitempty"`
+	RemoteHealth            []RemoteHealthView         `json:"remote_health,omitempty"`
+	FailedSyncJobs          []string                   `json:"failed_sync_jobs,omitempty"`
+	ProviderMappingWarnings []string                   `json:"provider_mapping_warnings,omitempty"`
 }
 
 type TimelineEntry struct {
-	Timestamp time.Time           `json:"timestamp"`
-	EventID   int64               `json:"event_id"`
-	Type      contracts.EventType `json:"type"`
-	Actor     contracts.Actor     `json:"actor"`
-	TicketID  string              `json:"ticket_id,omitempty"`
-	Summary   string              `json:"summary"`
+	Timestamp       time.Time           `json:"timestamp"`
+	EventID         int64               `json:"event_id"`
+	Type            contracts.EventType `json:"type"`
+	Kind            string              `json:"kind,omitempty"`
+	Actor           contracts.Actor     `json:"actor"`
+	TicketID        string              `json:"ticket_id,omitempty"`
+	CollaboratorIDs []string            `json:"collaborator_ids,omitempty"`
+	Provenance      string              `json:"provenance,omitempty"`
+	Summary         string              `json:"summary"`
 }
 
 type TimelineView struct {
-	TicketID    string                     `json:"ticket_id"`
-	GeneratedAt time.Time                  `json:"generated_at"`
-	Entries     []TimelineEntry            `json:"entries"`
-	ChangeReady contracts.ChangeReadyState `json:"change_ready"`
-	OpenGateIDs []string                   `json:"open_gate_ids,omitempty"`
+	TicketID           string                     `json:"ticket_id"`
+	CollaboratorFilter string                     `json:"collaborator_filter,omitempty"`
+	GeneratedAt        time.Time                  `json:"generated_at"`
+	Entries            []TimelineEntry            `json:"entries"`
+	ChangeReady        contracts.ChangeReadyState `json:"change_ready"`
+	OpenGateIDs        []string                   `json:"open_gate_ids,omitempty"`
 }
 
 type InspectView struct {

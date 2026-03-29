@@ -78,3 +78,53 @@ func TestTimelineCommandReturnsTicketHistory(t *testing.T) {
 		t.Fatalf("unexpected timeline entry detail: %#v", payload.Payload.Entries)
 	}
 }
+
+func TestDashboardAndTimelineAcceptCollaboratorFilters(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Collab seed", "--type", "task", "--actor", "human:owner")
+	must("collaborator", "add", "rev-1", "--name", "Rev One", "--actor-map", "agent:reviewer-1", "--actor", "human:owner")
+	must("collaborator", "trust", "rev-1", "--actor", "human:owner")
+	must("membership", "bind", "rev-1", "--scope-kind", "project", "--scope-id", "APP", "--role", "reviewer", "--actor", "human:owner")
+	must("ticket", "comment", "APP-1", "--body", "ping @rev-1", "--actor", "agent:builder-1")
+
+	dashboardOut := must("dashboard", "--collaborator", "rev-1", "--json")
+	var dashboard struct {
+		Payload struct {
+			CollaboratorFilter string `json:"collaborator_filter"`
+			MentionQueue       []struct {
+				CollaboratorID string `json:"collaborator_id"`
+			} `json:"mention_queue"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(dashboardOut), &dashboard); err != nil {
+		t.Fatalf("parse filtered dashboard output: %v\nraw=%s", err, dashboardOut)
+	}
+	if dashboard.Payload.CollaboratorFilter != "rev-1" || len(dashboard.Payload.MentionQueue) != 1 || dashboard.Payload.MentionQueue[0].CollaboratorID != "rev-1" {
+		t.Fatalf("unexpected filtered dashboard payload: %#v", dashboard)
+	}
+
+	timelineOut := must("timeline", "APP-1", "--collaborator", "rev-1", "--json")
+	var timeline struct {
+		Payload struct {
+			CollaboratorFilter string `json:"collaborator_filter"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(timelineOut), &timeline); err != nil {
+		t.Fatalf("parse filtered timeline output: %v\nraw=%s", err, timelineOut)
+	}
+	if timeline.Payload.CollaboratorFilter != "rev-1" {
+		t.Fatalf("unexpected filtered timeline payload: %#v", timeline)
+	}
+}

@@ -62,3 +62,18 @@ func ensureWorkspaceIdentity(root string) (string, error) {
 func EnsureWorkspaceIdentityForCLI(root string) (string, error) {
 	return ensureWorkspaceIdentity(root)
 }
+
+func loadWorkspaceIdentity(root string) (string, error) {
+	raw, err := os.ReadFile(storage.WorkspaceMetadataFile(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("read workspace metadata: %w", err)
+	}
+	var meta workspaceMetadata
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return "", fmt.Errorf("decode workspace metadata: %w", err)
+	}
+	return strings.TrimSpace(meta.WorkspaceID), nil
+}

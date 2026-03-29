@@ -341,6 +341,109 @@ func TestOpsViewShowsAgentsDispatchAndWorktreesPanels(t *testing.T) {
 	}
 }
 
+func TestOpsViewShowsCollaborationConsole(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	defer m.close()
+
+	ctx := service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: contracts.EventSurfaceTUI})
+	actor, err := m.queries.ResolveActor(ctx, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("resolve actor: %v", err)
+	}
+	if _, err := m.actions.AddCollaborator(ctx, contracts.CollaboratorProfile{
+		CollaboratorID: "rev-1",
+		DisplayName:    "Reviewer One",
+		AtlasActors:    []contracts.Actor{contracts.Actor("agent:reviewer-1")},
+		SchemaVersion:  contracts.CurrentSchemaVersion,
+	}, actor, "seed collaborator"); err != nil {
+		t.Fatalf("add collaborator: %v", err)
+	}
+	if _, err := m.actions.SetCollaboratorTrust(ctx, "rev-1", true, actor, "trust collaborator"); err != nil {
+		t.Fatalf("trust collaborator: %v", err)
+	}
+	if _, err := m.actions.BindMembership(ctx, contracts.MembershipBinding{
+		CollaboratorID: "rev-1",
+		ScopeKind:      contracts.MembershipScopeProject,
+		ScopeID:        "APP",
+		Role:           contracts.MembershipRoleReviewer,
+	}, actor, "bind reviewer"); err != nil {
+		t.Fatalf("bind membership: %v", err)
+	}
+	if err := m.actions.CommentTicket(ctx, "APP-1", "ping @rev-1", contracts.Actor("agent:builder-1"), "mention reviewer"); err != nil {
+		t.Fatalf("comment ticket: %v", err)
+	}
+	if err := (service.GateStore{Root: root}).SaveGate(context.Background(), contracts.GateSnapshot{
+		GateID:        "gate_review_1",
+		TicketID:      "APP-1",
+		Kind:          contracts.GateKindReview,
+		State:         contracts.GateStateOpen,
+		RequiredRole:  contracts.AgentRoleReviewer,
+		CreatedBy:     actor,
+		CreatedAt:     time.Date(2026, 3, 23, 10, 2, 0, 0, time.UTC),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save gate: %v", err)
+	}
+	if err := (service.SyncRemoteStore{Root: root}).SaveSyncRemote(context.Background(), contracts.SyncRemote{
+		RemoteID:      "origin",
+		Kind:          contracts.SyncRemoteKindPath,
+		Location:      filepath.Join(root, "remote"),
+		Enabled:       true,
+		DefaultAction: contracts.SyncDefaultActionPull,
+		CreatedAt:     time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC),
+		UpdatedAt:     time.Date(2026, 3, 23, 10, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("save sync remote: %v", err)
+	}
+	if err := (service.SyncJobStore{Root: root}).SaveSyncJob(context.Background(), contracts.SyncJob{
+		JobID:         "sync_pull_1",
+		RemoteID:      "origin",
+		Mode:          contracts.SyncJobModePull,
+		State:         contracts.SyncJobStateFailed,
+		StartedAt:     time.Date(2026, 3, 23, 10, 3, 0, 0, time.UTC),
+		FinishedAt:    time.Date(2026, 3, 23, 10, 4, 0, 0, time.UTC),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save sync job: %v", err)
+	}
+	if err := (service.ConflictStore{Root: root}).SaveConflict(context.Background(), contracts.ConflictRecord{
+		ConflictID:    "conflict_ticket_1",
+		EntityKind:    "ticket",
+		EntityUID:     contracts.TicketUID("APP", "APP-1"),
+		ConflictType:  contracts.ConflictTypeScalarDivergence,
+		Status:        contracts.ConflictStatusOpen,
+		OpenedByJob:   "sync_pull_1",
+		OpenedAt:      time.Date(2026, 3, 23, 10, 5, 0, 0, time.UTC),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save conflict: %v", err)
+	}
+
+	updated, _ := m.Update(m.refresh()().(loadedMsg))
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	m = updated.(model)
+	m.dialog.Input.SetValue("rev-1")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("expected collaborator filter reload")
+	}
+	updated, _ = m.Update(cmd().(loadedMsg))
+	m = updated.(model)
+	m.screen = screenOps
+	view := m.View()
+	for _, needle := range []string{"collaborator: rev-1", "Remote Health:", "Conflict Queue:", "Mention Queue:"} {
+		if !strings.Contains(view, needle) {
+			t.Fatalf("expected %q in ops view, got %s", needle, view)
+		}
+	}
+}
+
 func TestPaletteRunLaunchWritesRuntimeArtifacts(t *testing.T) {
 	root, runID := seededTUIRunWorkspace(t)
 	m, err := newModel(root, contracts.Actor("human:owner"))
