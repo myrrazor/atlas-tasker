@@ -73,6 +73,9 @@ func TestDoctorJSONReportsStructuredSuccess(t *testing.T) {
 		RepairActions []string `json:"repair_actions"`
 		IssueCodes    []string `json:"issue_codes"`
 		EventsCount   int      `json:"events_scanned"`
+		Migration     struct {
+			State string `json:"state"`
+		} `json:"migration"`
 	}
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		t.Fatalf("parse doctor payload: %v\nraw=%s", err, out)
@@ -91,6 +94,9 @@ func TestDoctorJSONReportsStructuredSuccess(t *testing.T) {
 	}
 	if payload.RepairActions == nil {
 		t.Fatal("expected repair_actions field to be present")
+	}
+	if payload.Migration.State == "" {
+		t.Fatal("expected migration field to be present")
 	}
 }
 

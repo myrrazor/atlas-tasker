@@ -956,6 +956,7 @@ func formatSyncStatus(view service.SyncStatusView) string {
 	lines := []string{
 		"workspace=" + view.WorkspaceID,
 		fmt.Sprintf("migration_complete=%t", view.MigrationComplete),
+		"migration_state=" + string(view.Migration.State),
 	}
 	if len(view.ReasonCodes) > 0 {
 		lines = append(lines, "reasons="+strings.Join(view.ReasonCodes, ","))

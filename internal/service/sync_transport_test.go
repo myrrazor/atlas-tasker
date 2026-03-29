@@ -2,14 +2,20 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
+	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
+	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
+	sqlitestore "github.com/myrrazor/atlas-tasker/internal/storage/sqlite"
 )
 
 func TestSyncStatusDoesNotStampWorkspaceIdentityOnRead(t *testing.T) {
@@ -23,8 +29,186 @@ func TestSyncStatusDoesNotStampWorkspaceIdentityOnRead(t *testing.T) {
 	if status.WorkspaceID != "" || status.MigrationComplete {
 		t.Fatalf("expected unstamped workspace status, got %#v", status)
 	}
+	if status.Migration.State != MigrationStateUnstamped || len(status.Migration.ReasonCodes) == 0 || status.Migration.ReasonCodes[0] != "migration_incomplete" {
+		t.Fatalf("expected explicit unstamped migration state, got %#v", status.Migration)
+	}
 	if _, err := os.Stat(storage.WorkspaceMetadataFile(root)); !os.IsNotExist(err) {
 		t.Fatalf("sync status should not stamp workspace metadata, err=%v", err)
+	}
+}
+
+func TestMigrationStatusDetectsDivergentTicketUID(t *testing.T) {
+	ctx := context.Background()
+	root, actions, queries, projectStore, _, _ := newImportExportHarness(t)
+	seedSyncWorkspace(t, ctx, actions, projectStore)
+
+	if _, err := actions.CreateSyncBundle(ctx, contracts.Actor("human:owner"), "stamp migration"); err != nil {
+		t.Fatalf("create sync bundle: %v", err)
+	}
+	if err := replaceFrontmatterValue(storage.TicketFile(root, "APP", "APP-1"), "ticket_uid", "00000000-0000-0000-0000-000000000999"); err != nil {
+		t.Fatalf("corrupt ticket uid: %v", err)
+	}
+
+	status, err := queries.MigrationStatus(ctx)
+	if err != nil {
+		t.Fatalf("migration status: %v", err)
+	}
+	if status.State != MigrationStateDivergent || status.Ready {
+		t.Fatalf("expected divergent migration status, got %#v", status)
+	}
+	if !containsMigrationReason(status.ReasonCodes, "migration_divergent") {
+		t.Fatalf("expected migration_divergent reason, got %#v", status.ReasonCodes)
+	}
+	if len(status.Entities) == 0 || status.Entities[0].Kind == "" {
+		t.Fatalf("expected entity-level migration details, got %#v", status.Entities)
+	}
+	if _, err := actions.CreateSyncBundle(ctx, contracts.Actor("human:owner"), "retry with divergence"); err == nil || apperr.CodeOf(err) != apperr.CodeRepairNeeded {
+		t.Fatalf("expected create sync bundle to fail with repair needed, got %v", err)
+	}
+}
+
+func TestSyncGitRemoteConvergesAfterIndependentLegacyUpgradeAndUnrelatedWrites(t *testing.T) {
+	ctx := context.Background()
+	baseRoot, actions, _, projectStore, _, _ := newImportExportHarness(t)
+	seedSyncWorkspace(t, ctx, actions, projectStore)
+	legacyizeWorkspace(t, baseRoot)
+
+	rootA := filepath.Join(t.TempDir(), "workspace-a")
+	rootB := filepath.Join(t.TempDir(), "workspace-b")
+	if err := copyDir(baseRoot, rootA); err != nil {
+		t.Fatalf("copy workspace a: %v", err)
+	}
+	if err := copyDir(baseRoot, rootB); err != nil {
+		t.Fatalf("copy workspace b: %v", err)
+	}
+	_, actionsA, queriesA, projectsA, _, _ := reopenImportExportHarness(t, rootA)
+	_, actionsB, queriesB, projectsB, _, _ := reopenImportExportHarness(t, rootB)
+	_ = projectsA
+	_ = projectsB
+
+	gitRemote := filepath.Join(t.TempDir(), "sync-remote.git")
+	gitRun(t, t.TempDir(), "init", "--bare", gitRemote)
+	actor := contracts.Actor("human:owner")
+
+	if _, err := actionsA.AddSyncRemote(ctx, contracts.SyncRemote{RemoteID: "origin", Kind: contracts.SyncRemoteKindGit, Location: gitRemote, DefaultAction: contracts.SyncDefaultActionPush, Enabled: true}, actor, "seed git remote a"); err != nil {
+		t.Fatalf("add git remote a: %v", err)
+	}
+	if _, err := actionsB.AddSyncRemote(ctx, contracts.SyncRemote{RemoteID: "origin", Kind: contracts.SyncRemoteKindGit, Location: gitRemote, DefaultAction: contracts.SyncDefaultActionPull, Enabled: true}, actor, "seed git remote b"); err != nil {
+		t.Fatalf("add git remote b: %v", err)
+	}
+
+	if _, err := actionsA.AddCollaborator(ctx, contracts.CollaboratorProfile{CollaboratorID: "alice", DisplayName: "Alice", Status: contracts.CollaboratorStatusActive, TrustState: contracts.CollaboratorTrustStateTrusted}, actor, "local write a"); err != nil {
+		t.Fatalf("add collaborator a: %v", err)
+	}
+	if _, err := actionsB.AddCollaborator(ctx, contracts.CollaboratorProfile{CollaboratorID: "bob", DisplayName: "Bob", Status: contracts.CollaboratorStatusActive, TrustState: contracts.CollaboratorTrustStateTrusted}, actor, "local write b"); err != nil {
+		t.Fatalf("add collaborator b: %v", err)
+	}
+
+	pushA, err := actionsA.SyncPush(ctx, "origin", actor, "push upgraded replica a")
+	if err != nil {
+		t.Fatalf("push a: %v", err)
+	}
+	if _, err := actionsB.SyncPull(ctx, "origin", pushA.Publication.WorkspaceID, actor, "pull upgraded replica a"); err != nil {
+		t.Fatalf("pull b from a: %v", err)
+	}
+	pushB, err := actionsB.SyncPush(ctx, "origin", actor, "push upgraded replica b")
+	if err != nil {
+		t.Fatalf("push b: %v", err)
+	}
+	if _, err := actionsA.SyncPull(ctx, "origin", pushB.Publication.WorkspaceID, actor, "pull upgraded replica b"); err != nil {
+		t.Fatalf("pull a from b: %v", err)
+	}
+
+	ticketsA, err := projectsA.ListProjects(ctx)
+	if err != nil || len(ticketsA) == 0 {
+		t.Fatalf("expected projects after convergence, err=%v projects=%#v", err, ticketsA)
+	}
+	ticketA, err := queriesA.TicketDetail(ctx, "APP-1")
+	if err != nil {
+		t.Fatalf("ticket detail a: %v", err)
+	}
+	ticketB, err := queriesB.TicketDetail(ctx, "APP-1")
+	if err != nil {
+		t.Fatalf("ticket detail b: %v", err)
+	}
+	if ticketA.Ticket.TicketUID == "" || ticketA.Ticket.TicketUID != ticketB.Ticket.TicketUID {
+		t.Fatalf("expected converged deterministic ticket uid, got %q vs %q", ticketA.Ticket.TicketUID, ticketB.Ticket.TicketUID)
+	}
+	if collaborators, err := queriesA.ListCollaborators(ctx); err != nil || len(collaborators) != 2 {
+		t.Fatalf("expected converged collaborators on a, err=%v items=%#v", err, collaborators)
+	}
+	if collaborators, err := queriesB.ListCollaborators(ctx); err != nil || len(collaborators) != 2 {
+		t.Fatalf("expected converged collaborators on b, err=%v items=%#v", err, collaborators)
+	}
+	statusA, err := queriesA.MigrationStatus(ctx)
+	if err != nil {
+		t.Fatalf("migration status a: %v", err)
+	}
+	statusB, err := queriesB.MigrationStatus(ctx)
+	if err != nil {
+		t.Fatalf("migration status b: %v", err)
+	}
+	if !statusA.Ready || !statusB.Ready || statusA.State != MigrationStateStamped || statusB.State != MigrationStateStamped {
+		t.Fatalf("expected stamped migration status after convergence\na=%#v\nb=%#v", statusA, statusB)
+	}
+}
+
+func TestSyncBundleConvergesAfterIndependentLegacyUpgradeAndUnrelatedWrites(t *testing.T) {
+	ctx := context.Background()
+	baseRoot, actions, _, projectStore, _, _ := newImportExportHarness(t)
+	seedSyncWorkspace(t, ctx, actions, projectStore)
+	legacyizeWorkspace(t, baseRoot)
+
+	rootA := filepath.Join(t.TempDir(), "bundle-a")
+	rootB := filepath.Join(t.TempDir(), "bundle-b")
+	if err := copyDir(baseRoot, rootA); err != nil {
+		t.Fatalf("copy bundle workspace a: %v", err)
+	}
+	if err := copyDir(baseRoot, rootB); err != nil {
+		t.Fatalf("copy bundle workspace b: %v", err)
+	}
+	_, actionsA, queriesA, _, _, _ := reopenImportExportHarness(t, rootA)
+	_, actionsB, queriesB, _, _, _ := reopenImportExportHarness(t, rootB)
+	actor := contracts.Actor("human:owner")
+
+	if _, err := actionsA.AddCollaborator(ctx, contracts.CollaboratorProfile{CollaboratorID: "alice", DisplayName: "Alice", Status: contracts.CollaboratorStatusActive, TrustState: contracts.CollaboratorTrustStateTrusted}, actor, "local write a"); err != nil {
+		t.Fatalf("add collaborator a: %v", err)
+	}
+	if _, err := actionsB.AddCollaborator(ctx, contracts.CollaboratorProfile{CollaboratorID: "bob", DisplayName: "Bob", Status: contracts.CollaboratorStatusActive, TrustState: contracts.CollaboratorTrustStateTrusted}, actor, "local write b"); err != nil {
+		t.Fatalf("add collaborator b: %v", err)
+	}
+
+	bundleA, err := actionsA.CreateSyncBundle(ctx, actor, "bundle a")
+	if err != nil {
+		t.Fatalf("create bundle a: %v", err)
+	}
+	if _, err := actionsB.ImportSyncBundle(ctx, bundleA.Job.BundleRef, actor, "import a"); err != nil {
+		t.Fatalf("import bundle a into b: %v", err)
+	}
+	bundleB, err := actionsB.CreateSyncBundle(ctx, actor, "bundle b")
+	if err != nil {
+		t.Fatalf("create bundle b: %v", err)
+	}
+	if _, err := actionsA.ImportSyncBundle(ctx, bundleB.Job.BundleRef, actor, "import b"); err != nil {
+		t.Fatalf("import bundle b into a: %v", err)
+	}
+
+	ticketA, err := queriesA.TicketDetail(ctx, "APP-1")
+	if err != nil {
+		t.Fatalf("ticket detail a: %v", err)
+	}
+	ticketB, err := queriesB.TicketDetail(ctx, "APP-1")
+	if err != nil {
+		t.Fatalf("ticket detail b: %v", err)
+	}
+	if ticketA.Ticket.TicketUID == "" || ticketA.Ticket.TicketUID != ticketB.Ticket.TicketUID {
+		t.Fatalf("expected converged deterministic ticket uid after bundle import, got %q vs %q", ticketA.Ticket.TicketUID, ticketB.Ticket.TicketUID)
+	}
+	if collaborators, err := queriesA.ListCollaborators(ctx); err != nil || len(collaborators) != 2 {
+		t.Fatalf("expected converged collaborators on a after bundle import, err=%v items=%#v", err, collaborators)
+	}
+	if collaborators, err := queriesB.ListCollaborators(ctx); err != nil || len(collaborators) != 2 {
+		t.Fatalf("expected converged collaborators on b after bundle import, err=%v items=%#v", err, collaborators)
 	}
 }
 
@@ -434,4 +618,116 @@ func containsEventType(events []contracts.Event, eventType contracts.EventType) 
 		}
 	}
 	return false
+}
+
+func containsMigrationReason(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func reopenImportExportHarness(t *testing.T, root string) (string, *ActionService, *QueryService, mdstore.ProjectStore, mdstore.TicketStore, *eventstore.Log) {
+	t.Helper()
+	now := time.Date(2026, 3, 27, 9, 0, 0, 0, time.UTC)
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return now }}
+	eventsLog := &eventstore.Log{RootDir: root}
+	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventsLog)
+	if err != nil {
+		t.Fatalf("open sqlite at %s: %v", root, err)
+	}
+	t.Cleanup(func() { _ = projection.Close() })
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return now }, FileLockManager{Root: root}, nil, nil)
+	queries := NewQueryService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return now })
+	return root, actions, queries, projectStore, ticketStore, eventsLog
+}
+
+func legacyizeWorkspace(t *testing.T, root string) {
+	t.Helper()
+	if err := os.Remove(storage.WorkspaceMetadataFile(root)); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("remove workspace metadata: %v", err)
+	}
+	if err := os.Remove(syncMigrationPath(root)); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("remove sync migration file: %v", err)
+	}
+	if err := removeFrontmatterField(storage.TicketFile(root, "APP", "APP-1"), "ticket_uid"); err != nil {
+		t.Fatalf("remove ticket uid: %v", err)
+	}
+	entries, err := os.ReadDir(storage.EventsDir(root))
+	if err != nil {
+		t.Fatalf("read events dir: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
+			continue
+		}
+		path := filepath.Join(storage.EventsDir(root), entry.Name())
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read events file %s: %v", path, err)
+		}
+		lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+		rewritten := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(line), &payload); err != nil {
+				t.Fatalf("parse event json: %v", err)
+			}
+			delete(payload, "event_uid")
+			delete(payload, "logical_clock")
+			delete(payload, "origin_workspace_id")
+			normalized, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatalf("marshal legacy event json: %v", err)
+			}
+			rewritten = append(rewritten, string(normalized))
+		}
+		if err := os.WriteFile(path, []byte(strings.Join(rewritten, "\n")+"\n"), 0o644); err != nil {
+			t.Fatalf("rewrite events file %s: %v", path, err)
+		}
+	}
+}
+
+func removeFrontmatterField(path string, field string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+	prefix := strings.TrimSpace(field) + ":"
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	return os.WriteFile(path, []byte(strings.Join(filtered, "\n")), 0o644)
+}
+
+func replaceFrontmatterValue(path string, field string, value string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+	prefix := strings.TrimSpace(field) + ":"
+	replaced := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			lines[i] = field + ": " + value
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		return fmt.Errorf("frontmatter field %s not found in %s", field, path)
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }

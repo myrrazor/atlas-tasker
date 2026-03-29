@@ -291,14 +291,14 @@ func (e Event) Validate() error {
 }
 
 func NormalizeEvent(event Event) Event {
-	if event.EventUID == "" {
-		event.EventUID = LegacyEventUID(event)
+	if event.SchemaVersion == 0 {
+		event.SchemaVersion = SchemaVersionV1
 	}
 	if event.LogicalClock == 0 && event.EventID > 0 {
 		event.LogicalClock = event.EventID
 	}
-	if event.SchemaVersion == 0 {
-		event.SchemaVersion = SchemaVersionV1
+	if event.EventUID == "" {
+		event.EventUID = CanonicalEventUID(event)
 	}
 	return event
 }
