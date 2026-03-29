@@ -3,7 +3,10 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -597,6 +600,91 @@ func TestConflictCommands(t *testing.T) {
 	}
 	if ticketTwo.Ticket.Title != "Remote-only" {
 		t.Fatalf("expected remote-only ticket to apply, got %#v", ticketTwo)
+	}
+}
+
+func TestProjectCodeownersAndRulesCommands(t *testing.T) {
+	workspaceDir := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+	if err := os.Chdir(workspaceDir); err != nil {
+		t.Fatalf("chdir workspace failed: %v", err)
+	}
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\noutput=%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("collaborator", "add", "rev-1", "--name", "Rev One", "--actor-map", "agent:reviewer-1", "--provider-handle", "github:rev-one", "--actor", "human:owner")
+	must("collaborator", "trust", "rev-1", "--actor", "human:owner")
+	must("membership", "bind", "rev-1", "--scope-kind", "project", "--scope-id", "APP", "--role", "reviewer", "--actor", "human:owner")
+	gitInit := exec.Command("git", "init")
+	gitInit.Dir = workspaceDir
+	if raw, err := gitInit.CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v\n%s", err, raw)
+	}
+
+	renderOut := must("project", "codeowners", "render", "APP", "--json")
+	var rendered struct {
+		Kind    string `json:"kind"`
+		Payload struct {
+			Content string `json:"content"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(renderOut), &rendered); err != nil {
+		t.Fatalf("parse codeowners render: %v\nraw=%s", err, renderOut)
+	}
+	if rendered.Kind != "codeowners_preview" || !strings.Contains(rendered.Payload.Content, "* @rev-one") {
+		t.Fatalf("unexpected codeowners preview: %#v", rendered)
+	}
+
+	writeOut := must("project", "codeowners", "write", "APP", "--actor", "human:owner", "--reason", "write codeowners", "--json")
+	var written struct {
+		Payload struct {
+			Path string `json:"path"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(writeOut), &written); err != nil {
+		t.Fatalf("parse codeowners write: %v\nraw=%s", err, writeOut)
+	}
+	raw, err := os.ReadFile(filepath.Join(workspaceDir, "CODEOWNERS"))
+	if err != nil {
+		t.Fatalf("read CODEOWNERS: %v", err)
+	}
+	expectedPath := filepath.Join(workspaceDir, "CODEOWNERS")
+	expectedPath, err = filepath.EvalSymlinks(expectedPath)
+	if err != nil {
+		t.Fatalf("resolve CODEOWNERS path: %v", err)
+	}
+	if written.Payload.Path != expectedPath || !strings.Contains(string(raw), "@rev-one") {
+		t.Fatalf("unexpected CODEOWNERS write payload=%#v raw=%s", written, string(raw))
+	}
+
+	rulesOut := must("project", "rules", "render", "APP", "--json")
+	var rules struct {
+		Kind    string `json:"kind"`
+		Payload struct {
+			Rules []struct {
+				Name      string   `json:"name"`
+				Reviewers []string `json:"reviewers"`
+			} `json:"rules"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(rulesOut), &rules); err != nil {
+		t.Fatalf("parse provider rules preview: %v\nraw=%s", err, rulesOut)
+	}
+	if rules.Kind != "provider_rules_preview" || len(rules.Payload.Rules) == 0 || !slices.Contains(rules.Payload.Rules[0].Reviewers, "@rev-one") {
+		t.Fatalf("unexpected provider rules preview: %#v", rules)
 	}
 }
 

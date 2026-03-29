@@ -306,26 +306,82 @@ type ReleaseConfig struct {
 
 func (c ReleaseConfig) Validate() error { return nil }
 
+type ProviderTeamMapping struct {
+	Alias    string         `json:"alias" yaml:"alias"`
+	Provider ChangeProvider `json:"provider" yaml:"provider"`
+	Handle   string         `json:"handle" yaml:"handle"`
+}
+
+func (m ProviderTeamMapping) Validate() error {
+	if strings.TrimSpace(m.Alias) == "" {
+		return fmt.Errorf("provider team alias is required")
+	}
+	if m.Provider == "" || !m.Provider.IsValid() {
+		return fmt.Errorf("invalid provider team provider: %s", m.Provider)
+	}
+	if strings.TrimSpace(m.Handle) == "" {
+		return fmt.Errorf("provider team handle is required")
+	}
+	return nil
+}
+
+type CodeownersRule struct {
+	Pattern       string   `json:"pattern" yaml:"pattern"`
+	Collaborators []string `json:"collaborators,omitempty" yaml:"collaborators,omitempty"`
+	Teams         []string `json:"teams,omitempty" yaml:"teams,omitempty"`
+}
+
+func (r CodeownersRule) Validate() error {
+	if strings.TrimSpace(r.Pattern) == "" {
+		return fmt.Errorf("codeowners rule pattern is required")
+	}
+	return nil
+}
+
+type ProviderRule struct {
+	Name              string   `json:"name" yaml:"name"`
+	Paths             []string `json:"paths,omitempty" yaml:"paths,omitempty"`
+	Collaborators     []string `json:"collaborators,omitempty" yaml:"collaborators,omitempty"`
+	Teams             []string `json:"teams,omitempty" yaml:"teams,omitempty"`
+	RequiredApprovals int      `json:"required_approvals,omitempty" yaml:"required_approvals,omitempty"`
+}
+
+func (r ProviderRule) Validate() error {
+	if strings.TrimSpace(r.Name) == "" {
+		return fmt.Errorf("provider rule name is required")
+	}
+	if len(r.Paths) == 0 {
+		return fmt.Errorf("provider rule paths are required")
+	}
+	if r.RequiredApprovals < 0 {
+		return fmt.Errorf("provider rule required_approvals must be >= 0")
+	}
+	return nil
+}
+
 // ProjectDefaults captures project-level policy defaults introduced in v1.2.
 type ProjectDefaults struct {
-	CompletionMode      CompletionMode  `json:"completion_mode,omitempty"`
-	LeaseTTLMinutes     int             `json:"lease_ttl_minutes,omitempty"`
-	AllowedWorkers      []Actor         `json:"allowed_workers,omitempty"`
-	RequiredReviewer    Actor           `json:"required_reviewer,omitempty"`
-	TemplatesPath       string          `json:"templates_path,omitempty"`
-	HooksEnabled        bool            `json:"hooks_enabled,omitempty"`
-	Worktrees           WorktreeConfig  `json:"worktrees,omitempty"`
-	RunbookMappings     []RunbookMap    `json:"runbook_mappings,omitempty"`
-	RoutingHints        []RoutingHint   `json:"routing_hints,omitempty"`
-	GateTemplates       []GateTemplate  `json:"gate_templates,omitempty"`
-	ExecutionSafety     ExecutionSafety `json:"execution_safety,omitempty"`
-	PermissionProfiles  []string        `json:"permission_profiles,omitempty"`
-	SCMProvider         ChangeProvider  `json:"scm_provider,omitempty"`
-	SCMBaseBranch       string          `json:"scm_base_branch,omitempty"`
-	SCMRepo             string          `json:"scm_repo,omitempty"`
-	RetentionPolicies   []string        `json:"retention_policies,omitempty"`
-	ImportTemplate      string          `json:"import_template,omitempty"`
-	ReleaseVerification string          `json:"release_verification,omitempty"`
+	CompletionMode      CompletionMode        `json:"completion_mode,omitempty"`
+	LeaseTTLMinutes     int                   `json:"lease_ttl_minutes,omitempty"`
+	AllowedWorkers      []Actor               `json:"allowed_workers,omitempty"`
+	RequiredReviewer    Actor                 `json:"required_reviewer,omitempty"`
+	TemplatesPath       string                `json:"templates_path,omitempty"`
+	HooksEnabled        bool                  `json:"hooks_enabled,omitempty"`
+	Worktrees           WorktreeConfig        `json:"worktrees,omitempty"`
+	RunbookMappings     []RunbookMap          `json:"runbook_mappings,omitempty"`
+	RoutingHints        []RoutingHint         `json:"routing_hints,omitempty"`
+	GateTemplates       []GateTemplate        `json:"gate_templates,omitempty"`
+	ExecutionSafety     ExecutionSafety       `json:"execution_safety,omitempty"`
+	PermissionProfiles  []string              `json:"permission_profiles,omitempty"`
+	SCMProvider         ChangeProvider        `json:"scm_provider,omitempty"`
+	SCMBaseBranch       string                `json:"scm_base_branch,omitempty"`
+	SCMRepo             string                `json:"scm_repo,omitempty"`
+	RetentionPolicies   []string              `json:"retention_policies,omitempty"`
+	ImportTemplate      string                `json:"import_template,omitempty"`
+	ReleaseVerification string                `json:"release_verification,omitempty"`
+	ProviderTeams       []ProviderTeamMapping `json:"provider_teams,omitempty"`
+	CodeownersRules     []CodeownersRule      `json:"codeowners_rules,omitempty"`
+	ProviderRules       []ProviderRule        `json:"provider_rules,omitempty"`
 }
 
 func (p ProjectDefaults) Validate() error {
@@ -361,6 +417,21 @@ func (p ProjectDefaults) Validate() error {
 	}
 	if p.SCMProvider != "" && !p.SCMProvider.IsValid() {
 		return fmt.Errorf("invalid project scm_provider: %s", p.SCMProvider)
+	}
+	for _, mapping := range p.ProviderTeams {
+		if err := mapping.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, rule := range p.CodeownersRules {
+		if err := rule.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, rule := range p.ProviderRules {
+		if err := rule.Validate(); err != nil {
+			return err
+		}
 	}
 	if err := p.ExecutionSafety.Validate(); err != nil {
 		return err

@@ -187,8 +187,8 @@ func newMentionsCommand() *cobra.Command {
 
 func newProjectCodeownersCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "codeowners", Short: "Preview or write CODEOWNERS scaffolding"}
-	render := &cobra.Command{Use: "render <KEY>", Args: cobra.ExactArgs(1), Short: "Render CODEOWNERS preview", RunE: notImplementedRead("codeowners_preview")}
-	write := &cobra.Command{Use: "write <KEY>", Args: cobra.ExactArgs(1), Short: "Write CODEOWNERS scaffolding", RunE: notImplementedMutation("codeowners_preview")}
+	render := &cobra.Command{Use: "render <KEY>", Args: cobra.ExactArgs(1), Short: "Render CODEOWNERS preview", RunE: runProjectCodeownersRender}
+	write := &cobra.Command{Use: "write <KEY>", Args: cobra.ExactArgs(1), Short: "Write CODEOWNERS scaffolding", RunE: runProjectCodeownersWrite}
 	addReadOutputFlags(render, &outputFlags{})
 	addMutationFlags(write, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(write, &outputFlags{})
@@ -198,7 +198,7 @@ func newProjectCodeownersCommand() *cobra.Command {
 
 func newProjectRulesCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "rules", Short: "Render provider rules scaffolding"}
-	render := &cobra.Command{Use: "render <KEY>", Args: cobra.ExactArgs(1), Short: "Render provider rules preview", RunE: notImplementedRead("provider_rules_preview")}
+	render := &cobra.Command{Use: "render <KEY>", Args: cobra.ExactArgs(1), Short: "Render provider rules preview", RunE: runProjectRulesRender}
 	addReadOutputFlags(render, &outputFlags{})
 	cmd.AddCommand(render)
 	return cmd
@@ -789,6 +789,53 @@ func runMentionsList(cmd *cobra.Command, _ []string) error {
 	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
+func runProjectCodeownersRender(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.CodeownersPreview(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatCodeownersPreview(view)
+	data := map[string]any{"kind": "codeowners_preview", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runProjectCodeownersWrite(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.WriteCodeowners(commandContext(cmd), args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatCodeownersPreview(view)
+	data := map[string]any{"kind": "codeowners_preview", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runProjectRulesRender(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.ProviderRulesPreview(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatProviderRulesPreview(view)
+	data := map[string]any{"kind": "provider_rules_preview", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
 func runMentionView(cmd *cobra.Command, args []string) error {
 	workspace, err := openWorkspace()
 	if err != nil {
@@ -999,6 +1046,41 @@ func formatConflictDetail(view service.ConflictDetailView) string {
 	}
 	if view.Conflict.Resolution != "" {
 		lines = append(lines, "resolution="+string(view.Conflict.Resolution))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatCodeownersPreview(view service.CodeownersPreviewView) string {
+	lines := []string{"codeowners preview for " + view.Project}
+	if strings.TrimSpace(view.Path) != "" {
+		lines = append(lines, "path="+view.Path)
+	}
+	lines = append(lines, "", view.Content)
+	if len(view.Warnings) > 0 {
+		lines = append(lines, "", "warnings:")
+		for _, warning := range view.Warnings {
+			lines = append(lines, "- "+warning)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatProviderRulesPreview(view service.ProviderRulesPreviewView) string {
+	if len(view.Rules) == 0 {
+		if len(view.Warnings) == 0 {
+			return "no provider rules preview"
+		}
+		return "provider rules preview\nwarnings:\n- " + strings.Join(view.Warnings, "\n- ")
+	}
+	lines := []string{"provider rules preview for " + view.Project}
+	for _, rule := range view.Rules {
+		lines = append(lines, fmt.Sprintf("- %s paths=%s approvals=%d reviewers=%s", rule.Name, strings.Join(rule.Paths, ","), rule.RequiredApprovals, strings.Join(rule.Reviewers, ",")))
+	}
+	if len(view.Warnings) > 0 {
+		lines = append(lines, "warnings:")
+		for _, warning := range view.Warnings {
+			lines = append(lines, "- "+warning)
+		}
 	}
 	return strings.Join(lines, "\n")
 }
