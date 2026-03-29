@@ -415,6 +415,11 @@ func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor
 		Git:             detail.Git,
 		Mentions:        detail.Mentions,
 	}
+	migration, err := s.MigrationStatus(ctx)
+	if err != nil {
+		return InspectView{}, err
+	}
+	view.Migration = migration
 	if actor == "" {
 		return view, nil
 	}

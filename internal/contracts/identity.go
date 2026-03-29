@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -102,6 +103,28 @@ func ArchiveRecordUID(archiveID string) string {
 		return ""
 	}
 	return DeterministicUID("archive", archiveID)
+}
+
+func CanonicalEventUID(event Event) string {
+	if event.SchemaVersion == 0 {
+		event.SchemaVersion = SchemaVersionV1
+	}
+	if event.LogicalClock == 0 && event.EventID > 0 {
+		event.LogicalClock = event.EventID
+	}
+	if strings.TrimSpace(event.OriginWorkspaceID) != "" {
+		return DeterministicUID(
+			"event",
+			event.OriginWorkspaceID,
+			fmt.Sprintf("%d", event.LogicalClock),
+			fmt.Sprintf("%d", event.EventID),
+			string(event.Type),
+			event.Project,
+			event.TicketID,
+			event.Timestamp.UTC().Format(time.RFC3339Nano),
+		)
+	}
+	return LegacyEventUID(event)
 }
 
 func LegacyEventUID(event Event) string {

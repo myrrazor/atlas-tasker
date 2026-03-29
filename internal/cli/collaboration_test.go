@@ -143,7 +143,10 @@ func TestRemoteSyncAndBundleCommands(t *testing.T) {
 		Kind          string `json:"kind"`
 		Payload       struct {
 			MigrationComplete bool `json:"migration_complete"`
-			Remotes           []struct {
+			Migration         struct {
+				State string `json:"state"`
+			} `json:"migration"`
+			Remotes []struct {
 				Publications []struct {
 					BundleID string `json:"bundle_id"`
 				} `json:"publications"`
@@ -153,7 +156,7 @@ func TestRemoteSyncAndBundleCommands(t *testing.T) {
 	if err := json.Unmarshal([]byte(statusOut), &status); err != nil {
 		t.Fatalf("parse sync status: %v\nraw=%s", err, statusOut)
 	}
-	if status.FormatVersion != jsonFormatVersion || status.Kind != "sync_status" || !status.Payload.MigrationComplete || len(status.Payload.Remotes) != 1 || len(status.Payload.Remotes[0].Publications) != 1 {
+	if status.FormatVersion != jsonFormatVersion || status.Kind != "sync_status" || !status.Payload.MigrationComplete || status.Payload.Migration.State != "stamped" || len(status.Payload.Remotes) != 1 || len(status.Payload.Remotes[0].Publications) != 1 {
 		t.Fatalf("unexpected sync status payload: %#v", status)
 	}
 

@@ -157,6 +157,7 @@ type InspectView struct {
 	Ticket          contracts.TicketSnapshot `json:"ticket"`
 	BoardStatus     contracts.Status         `json:"board_status"`
 	LeaseActive     bool                     `json:"lease_active"`
+	Migration       MigrationStatusView      `json:"migration"`
 	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
 	Permissions     []PermissionDecisionView `json:"permissions,omitempty"`
 	History         []contracts.Event        `json:"history"`

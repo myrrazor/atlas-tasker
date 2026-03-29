@@ -29,6 +29,7 @@ const (
 type syncMigrationState struct {
 	Complete      bool      `json:"complete"`
 	WorkspaceID   string    `json:"workspace_id"`
+	State         string    `json:"state,omitempty"`
 	StampedAt     time.Time `json:"stamped_at"`
 	SchemaVersion int       `json:"schema_version"`
 }
@@ -108,11 +109,7 @@ func (s *QueryService) BundleDetail(ctx context.Context, bundleRef string) (Sync
 }
 
 func (s *QueryService) SyncStatus(ctx context.Context, remoteID string) (SyncStatusView, error) {
-	workspaceID, err := loadWorkspaceIdentity(s.Root)
-	if err != nil {
-		return SyncStatusView{}, err
-	}
-	migrationComplete, err := syncMigrationComplete(s.Root)
+	migration, err := s.MigrationStatus(ctx)
 	if err != nil {
 		return SyncStatusView{}, err
 	}
@@ -132,12 +129,14 @@ func (s *QueryService) SyncStatus(ctx context.Context, remoteID string) (SyncSta
 		}
 		items = append(items, SyncStatusRemoteView{Remote: remote, Publications: publications})
 	}
-	reasonCodes := []string{}
-	if strings.TrimSpace(workspaceID) == "" || !migrationComplete {
-		reasonCodes = append(reasonCodes, "migration_incomplete")
-		migrationComplete = false
-	}
-	return SyncStatusView{WorkspaceID: workspaceID, MigrationComplete: migrationComplete, ReasonCodes: reasonCodes, Remotes: items, GeneratedAt: s.now()}, nil
+	return SyncStatusView{
+		WorkspaceID:       migration.WorkspaceID,
+		MigrationComplete: migration.Ready,
+		Migration:         migration,
+		ReasonCodes:       append([]string{}, migration.ReasonCodes...),
+		Remotes:           items,
+		GeneratedAt:       s.now(),
+	}, nil
 }
 
 func (s *ActionService) AddSyncRemote(ctx context.Context, remote contracts.SyncRemote, actor contracts.Actor, reason string) (contracts.SyncRemote, error) {
@@ -244,6 +243,9 @@ func (s *ActionService) CreateSyncBundle(ctx context.Context, actor contracts.Ac
 			return SyncJobDetailView{}, err
 		}
 		if err := s.ensureSyncMigrationStamp(ctx); err != nil {
+			return SyncJobDetailView{}, err
+		}
+		if err := s.ensureSyncMigrationReady(ctx); err != nil {
 			return SyncJobDetailView{}, err
 		}
 		bundleID := "syncbundle_" + NewOpaqueID()
@@ -362,6 +364,9 @@ func (s *ActionService) ImportSyncBundle(ctx context.Context, bundleRef string, 
 		if err := s.ensureSyncMigrationStamp(ctx); err != nil {
 			return SyncJobDetailView{}, err
 		}
+		if err := s.ensureSyncMigrationReady(ctx); err != nil {
+			return SyncJobDetailView{}, err
+		}
 		artifactPath := resolveSyncBundlePath(s.Root, bundleRef)
 		jobID := "import_" + NewOpaqueID()
 		verifyView, err := verifySyncBundle(artifactPath)
@@ -383,7 +388,7 @@ func (s *ActionService) ImportSyncBundle(ctx context.Context, bundleRef string, 
 		if err != nil {
 			return SyncJobDetailView{}, err
 		}
-		if err := writeSyncMigrationState(syncMigrationPath(s.Root), syncMigrationState{Complete: true, WorkspaceID: workspaceID, StampedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		if err := writeSyncMigrationState(syncMigrationPath(s.Root), syncMigrationState{Complete: true, WorkspaceID: workspaceID, State: string(MigrationStateStamped), StampedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
 			return SyncJobDetailView{}, err
 		}
 		if s.Projection != nil {
@@ -735,11 +740,14 @@ func (s *ActionService) ensureSyncMigrationStamp(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := restampLegacyEventFiles(s.Root); err != nil {
+		return err
+	}
 	workspaceID, err := ensureWorkspaceIdentity(s.Root)
 	if err != nil {
 		return err
 	}
-	return writeSyncMigrationState(path, syncMigrationState{Complete: true, WorkspaceID: workspaceID, StampedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion})
+	return writeSyncMigrationState(path, syncMigrationState{Complete: true, WorkspaceID: workspaceID, State: string(MigrationStateStamped), StampedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion})
 }
 
 func syncMigrationPath(root string) string {
@@ -747,17 +755,9 @@ func syncMigrationPath(root string) string {
 }
 
 func syncMigrationComplete(root string) (bool, error) {
-	path := syncMigrationPath(root)
-	raw, err := os.ReadFile(path)
+	state, _, err := loadSyncMigrationState(root)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("read sync migration state: %w", err)
-	}
-	var state syncMigrationState
-	if err := json.Unmarshal(raw, &state); err != nil {
-		return false, fmt.Errorf("decode sync migration state: %w", err)
+		return false, err
 	}
 	return state.Complete, nil
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -1547,6 +1548,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		repairActions = append(repairActions, "reset corrupted projection")
 	}
 	defer func() { _ = projection.Close() }()
+	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
 	projectIssues := 0
 	for _, project := range projects {
 		if err := project.Validate(); err != nil {
@@ -1612,7 +1614,14 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	migration, err := queries.MigrationStatus(ctx)
+	if err != nil {
+		return err
+	}
 	issueCodes := append([]string{}, orchestrationReport.IssueCodes...)
+	issueCodes = append(issueCodes, migration.ReasonCodes...)
+	sort.Strings(issueCodes)
+	issueCodes = slices.Compact(issueCodes)
 	message := fmt.Sprintf("doctor ok: %d events scanned, %d projects, %d tickets", len(events), len(projects), len(tickets))
 	payload := map[string]any{
 		"ok":             true,
@@ -1623,6 +1632,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"repair_actions": append(append(append([]string{}, repairActions...), repairReport.Actions...), orchestrationRepairActions...),
 		"repair_pending": repairReport.Pending,
 		"config":         config.MaskTrackerConfig(cfg),
+		"migration":      migration,
 		"issue_codes":    issueCodes,
 		"issues": map[string]any{
 			"project_issues": projectIssues,
