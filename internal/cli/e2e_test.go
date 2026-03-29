@@ -604,6 +604,85 @@ func TestShellParityForDashboardAndTimelineCommands(t *testing.T) {
 	runSlashShell(t, "/timeline APP-1")
 }
 
+func TestShellParityForRemoteSyncAndBundleCommands(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\noutput=%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Shell sync", "--type", "task", "--actor", "human:owner")
+
+	remoteDir := filepath.Join(t.TempDir(), "path-remote")
+	runSlashShell(t, "/remote add origin --kind path --location "+remoteDir+" --default-action push --actor human:owner")
+	runSlashShell(t, "/remote list")
+	runSlashShell(t, "/remote view origin")
+	runSlashShell(t, "/remote edit origin --default-action pull --enabled=false --actor human:owner")
+	runSlashShell(t, "/remote edit origin --default-action push --enabled=true --actor human:owner")
+	runSlashShell(t, "/bundle create --actor human:owner")
+	runSlashShell(t, "/bundle list")
+
+	bundleListOut := must("bundle", "list", "--json")
+	var bundleList struct {
+		Items []struct {
+			JobID string `json:"job_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(bundleListOut), &bundleList); err != nil {
+		t.Fatalf("parse bundle list: %v\nraw=%s", err, bundleListOut)
+	}
+	if len(bundleList.Items) == 0 || bundleList.Items[0].JobID == "" {
+		t.Fatalf("expected bundle jobs, got %#v", bundleList)
+	}
+	runSlashShell(t, "/bundle view "+bundleList.Items[0].JobID)
+
+	createdOut := must("bundle", "create", "--actor", "human:owner", "--json")
+	var created struct {
+		Payload struct {
+			Job struct {
+				BundleRef string `json:"bundle_ref"`
+			} `json:"job"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(createdOut), &created); err != nil {
+		t.Fatalf("parse created bundle: %v\nraw=%s", err, createdOut)
+	}
+	runSlashShell(t, "/bundle verify "+created.Payload.Job.BundleRef+" --actor human:owner")
+	runSlashShell(t, "/sync push --remote origin --actor human:owner")
+	runSlashShell(t, "/sync status --remote origin")
+	runSlashShell(t, "/sync jobs --remote origin")
+
+	jobsOut := must("sync", "jobs", "--remote", "origin", "--json")
+	var jobs struct {
+		Items []struct {
+			JobID string `json:"job_id"`
+			Mode  string `json:"mode"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(jobsOut), &jobs); err != nil {
+		t.Fatalf("parse sync jobs: %v\nraw=%s", err, jobsOut)
+	}
+	var pushJobID string
+	for _, job := range jobs.Items {
+		if job.Mode == "push" {
+			pushJobID = job.JobID
+			break
+		}
+	}
+	if pushJobID == "" {
+		t.Fatalf("expected push job in %#v", jobs.Items)
+	}
+	runSlashShell(t, "/sync view "+pushJobID)
+	runSlashShell(t, "/remote remove origin --actor human:owner")
+}
+
 func runSlashShell(t *testing.T, slash string) {
 	t.Helper()
 	args, err := ParseSlashCommand(slash)

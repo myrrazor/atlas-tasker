@@ -92,18 +92,23 @@ func newMembershipCommand() *cobra.Command {
 
 func newRemoteCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "remote", Short: "Manage Atlas sync remotes"}
-	for _, sub := range []*cobra.Command{
-		{Use: "list", Short: "List sync remotes", RunE: notImplementedRead("remote_list")},
-		{Use: "view <ID>", Args: cobra.ExactArgs(1), Short: "View sync remote details", RunE: notImplementedRead("remote_detail")},
-		{Use: "add", Short: "Add a sync remote", RunE: notImplementedMutation("remote_detail")},
-		{Use: "edit <ID>", Args: cobra.ExactArgs(1), Short: "Edit a sync remote", RunE: notImplementedMutation("remote_detail")},
-		{Use: "remove <ID>", Args: cobra.ExactArgs(1), Short: "Remove a sync remote", RunE: notImplementedMutation("remote_detail")},
-	} {
-		if strings.HasPrefix(sub.Use, "list") || strings.HasPrefix(sub.Use, "view") {
-			addReadOutputFlags(sub, &outputFlags{})
-		} else {
+	list := &cobra.Command{Use: "list", Short: "List sync remotes", RunE: runRemoteList}
+	view := &cobra.Command{Use: "view <ID>", Args: cobra.ExactArgs(1), Short: "View sync remote details", RunE: runRemoteView}
+	add := &cobra.Command{Use: "add <ID>", Args: cobra.ExactArgs(1), Short: "Add a sync remote", RunE: runRemoteAdd}
+	add.Flags().String("kind", "path", "Remote kind: path or git")
+	add.Flags().String("location", "", "Remote location")
+	add.Flags().String("default-action", "fetch", "Default sync action: fetch, pull, or push")
+	add.Flags().Bool("disabled", false, "Create the remote disabled")
+	edit := &cobra.Command{Use: "edit <ID>", Args: cobra.ExactArgs(1), Short: "Edit a sync remote", RunE: runRemoteEdit}
+	edit.Flags().String("kind", "", "Replace the remote kind")
+	edit.Flags().String("location", "", "Replace the remote location")
+	edit.Flags().String("default-action", "", "Replace the default sync action")
+	edit.Flags().Bool("enabled", true, "Whether the remote is enabled")
+	remove := &cobra.Command{Use: "remove <ID>", Args: cobra.ExactArgs(1), Short: "Remove a sync remote", RunE: runRemoteRemove}
+	for _, sub := range []*cobra.Command{list, view, add, edit, remove} {
+		addReadOutputFlags(sub, &outputFlags{})
+		if sub == add || sub == edit || sub == remove {
 			addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
-			addReadOutputFlags(sub, &outputFlags{})
 		}
 		cmd.AddCommand(sub)
 	}
@@ -112,29 +117,26 @@ func newRemoteCommand() *cobra.Command {
 
 func newSyncCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "sync", Short: "Inspect and run Atlas sync jobs"}
-	contracts := []struct {
-		use  string
-		kind string
-		mut  bool
-		args cobra.PositionalArgs
-	}{
-		{use: "status", kind: "sync_status"},
-		{use: "jobs", kind: "sync_job_list"},
-		{use: "view <JOB-ID>", kind: "sync_job_detail", args: cobra.ExactArgs(1)},
-		{use: "fetch", kind: "sync_status", mut: true},
-		{use: "pull", kind: "sync_status", mut: true},
-		{use: "push", kind: "sync_status", mut: true},
-		{use: "run", kind: "sync_status", mut: true},
-	}
-	for _, item := range contracts {
-		sub := &cobra.Command{Use: item.use, Short: "v1.6 sync command", Args: item.args}
-		if item.mut {
-			sub.RunE = notImplementedMutation(item.kind)
-			addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
-		} else {
-			sub.RunE = notImplementedRead(item.kind)
-		}
+	status := &cobra.Command{Use: "status", Short: "Inspect sync status", RunE: runSyncStatus}
+	status.Flags().String("remote", "", "Filter by remote ID")
+	jobs := &cobra.Command{Use: "jobs", Short: "List sync jobs", RunE: runSyncJobs}
+	jobs.Flags().String("remote", "", "Filter by remote ID")
+	view := &cobra.Command{Use: "view <JOB-ID>", Args: cobra.ExactArgs(1), Short: "View one sync job", RunE: runSyncView}
+	fetch := &cobra.Command{Use: "fetch", Short: "Fetch remote sync publications", RunE: runSyncFetch}
+	fetch.Flags().String("remote", "", "Remote ID")
+	pull := &cobra.Command{Use: "pull", Short: "Pull remote state into an empty workspace", RunE: runSyncPull}
+	pull.Flags().String("remote", "", "Remote ID")
+	pull.Flags().String("workspace", "", "Source workspace ID when the remote has multiple publications")
+	push := &cobra.Command{Use: "push", Short: "Publish local state to a remote", RunE: runSyncPush}
+	push.Flags().String("remote", "", "Remote ID")
+	run := &cobra.Command{Use: "run", Short: "Run the remote's default sync action", RunE: runSyncRun}
+	run.Flags().String("remote", "", "Remote ID")
+	run.Flags().String("workspace", "", "Source workspace ID when running a pull action")
+	for _, sub := range []*cobra.Command{status, jobs, view, fetch, pull, push, run} {
 		addReadOutputFlags(sub, &outputFlags{})
+		if sub == fetch || sub == pull || sub == push || sub == run {
+			addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
+		}
 		cmd.AddCommand(sub)
 	}
 	return cmd
@@ -142,26 +144,16 @@ func newSyncCommand() *cobra.Command {
 
 func newBundleCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "bundle", Short: "Create, verify, and import Atlas sync bundles"}
-	for _, item := range []struct {
-		use  string
-		kind string
-		mut  bool
-		args cobra.PositionalArgs
-	}{
-		{use: "create", kind: "bundle_create_result", mut: true},
-		{use: "list", kind: "bundle_list"},
-		{use: "view <ID>", kind: "bundle_detail", args: cobra.ExactArgs(1)},
-		{use: "verify <ID>", kind: "bundle_verify_result", mut: true, args: cobra.ExactArgs(1)},
-		{use: "import", kind: "bundle_import_result", mut: true},
-	} {
-		sub := &cobra.Command{Use: item.use, Short: "v1.6 bundle command", Args: item.args}
-		if item.mut {
-			sub.RunE = notImplementedMutation(item.kind)
-			addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
-		} else {
-			sub.RunE = notImplementedRead(item.kind)
-		}
+	create := &cobra.Command{Use: "create", Short: "Create a local sync bundle", RunE: runBundleCreate}
+	list := &cobra.Command{Use: "list", Short: "List local bundle jobs", RunE: runBundleList}
+	view := &cobra.Command{Use: "view <ID>", Args: cobra.ExactArgs(1), Short: "View one bundle", RunE: runBundleView}
+	verify := &cobra.Command{Use: "verify <PATH|BUNDLE-ID>", Args: cobra.ExactArgs(1), Short: "Verify a sync bundle", RunE: runBundleVerify}
+	importCmd := &cobra.Command{Use: "import <PATH|BUNDLE-ID>", Args: cobra.ExactArgs(1), Short: "Import a sync bundle into an empty workspace", RunE: runBundleImport}
+	for _, sub := range []*cobra.Command{create, list, view, verify, importCmd} {
 		addReadOutputFlags(sub, &outputFlags{})
+		if sub == create || sub == verify || sub == importCmd {
+			addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
+		}
 		cmd.AddCommand(sub)
 	}
 	return cmd
@@ -431,6 +423,318 @@ func runMembershipUnbind(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
+func runRemoteList(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	items, err := workspace.queries.ListSyncRemotes(commandContext(cmd))
+	if err != nil {
+		return err
+	}
+	pretty := formatRemoteList(items)
+	data := map[string]any{"kind": "remote_list", "generated_at": time.Now().UTC(), "items": items}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runRemoteView(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.SyncRemoteDetail(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatRemoteDetail(view)
+	data := map[string]any{"kind": "remote_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runRemoteAdd(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	kindRaw, _ := cmd.Flags().GetString("kind")
+	location, _ := cmd.Flags().GetString("location")
+	defaultActionRaw, _ := cmd.Flags().GetString("default-action")
+	disabled, _ := cmd.Flags().GetBool("disabled")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	remote, err := workspace.actions.AddSyncRemote(commandContext(cmd), contracts.SyncRemote{
+		RemoteID:      strings.TrimSpace(args[0]),
+		Kind:          contracts.SyncRemoteKind(strings.TrimSpace(kindRaw)),
+		Location:      strings.TrimSpace(location),
+		Enabled:       !disabled,
+		DefaultAction: contracts.SyncDefaultAction(strings.TrimSpace(defaultActionRaw)),
+	}, normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	view, err := workspace.queries.SyncRemoteDetail(commandContext(cmd), remote.RemoteID)
+	if err != nil {
+		return err
+	}
+	pretty := formatRemoteDetail(view)
+	data := map[string]any{"kind": "remote_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runRemoteEdit(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	kindRaw, _ := cmd.Flags().GetString("kind")
+	location, _ := cmd.Flags().GetString("location")
+	defaultActionRaw, _ := cmd.Flags().GetString("default-action")
+	enabled, _ := cmd.Flags().GetBool("enabled")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	remote, err := workspace.actions.EditSyncRemote(commandContext(cmd), args[0], contracts.SyncRemoteKind(strings.TrimSpace(kindRaw)), strings.TrimSpace(location), contracts.SyncDefaultAction(strings.TrimSpace(defaultActionRaw)), enabled, normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	view, err := workspace.queries.SyncRemoteDetail(commandContext(cmd), remote.RemoteID)
+	if err != nil {
+		return err
+	}
+	pretty := formatRemoteDetail(view)
+	data := map[string]any{"kind": "remote_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runRemoteRemove(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	if err := workspace.actions.RemoveSyncRemote(commandContext(cmd), args[0], normalizeActor(actorRaw), reason); err != nil {
+		return err
+	}
+	data := map[string]any{"kind": "remote_detail", "generated_at": time.Now().UTC(), "payload": map[string]any{"remote_id": args[0], "removed": true}}
+	return writeCommandOutput(cmd, data, "remote removed", "remote removed")
+}
+
+func runSyncStatus(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	remoteID, _ := cmd.Flags().GetString("remote")
+	view, err := workspace.queries.SyncStatus(commandContext(cmd), strings.TrimSpace(remoteID))
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncStatus(view)
+	data := map[string]any{"kind": "sync_status", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runSyncJobs(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	remoteID, _ := cmd.Flags().GetString("remote")
+	items, err := workspace.queries.ListSyncJobs(commandContext(cmd), strings.TrimSpace(remoteID))
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncJobs(items)
+	data := map[string]any{"kind": "sync_job_list", "generated_at": time.Now().UTC(), "items": items}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runSyncView(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.SyncJobDetail(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncJobDetail(view)
+	data := map[string]any{"kind": "sync_job_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runSyncFetch(cmd *cobra.Command, _ []string) error {
+	view, err := mutateSyncJob(cmd, func(workspace *workspace, actor contracts.Actor, reason string, remoteID string, sourceWorkspaceID string) (service.SyncJobDetailView, error) {
+		return workspace.actions.SyncFetch(commandContext(cmd), remoteID, actor, reason)
+	})
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncJobDetail(view)
+	data := map[string]any{"kind": "sync_job_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runSyncPush(cmd *cobra.Command, _ []string) error {
+	view, err := mutateSyncJob(cmd, func(workspace *workspace, actor contracts.Actor, reason string, remoteID string, sourceWorkspaceID string) (service.SyncJobDetailView, error) {
+		return workspace.actions.SyncPush(commandContext(cmd), remoteID, actor, reason)
+	})
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncJobDetail(view)
+	data := map[string]any{"kind": "sync_job_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runSyncPull(cmd *cobra.Command, _ []string) error {
+	view, err := mutateSyncJob(cmd, func(workspace *workspace, actor contracts.Actor, reason string, remoteID string, sourceWorkspaceID string) (service.SyncJobDetailView, error) {
+		return workspace.actions.SyncPull(commandContext(cmd), remoteID, sourceWorkspaceID, actor, reason)
+	})
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncJobDetail(view)
+	data := map[string]any{"kind": "sync_job_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runSyncRun(cmd *cobra.Command, _ []string) error {
+	view, err := mutateSyncJob(cmd, func(workspace *workspace, actor contracts.Actor, reason string, remoteID string, sourceWorkspaceID string) (service.SyncJobDetailView, error) {
+		return workspace.actions.SyncRun(commandContext(cmd), remoteID, sourceWorkspaceID, actor, reason)
+	})
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncJobDetail(view)
+	data := map[string]any{"kind": "sync_job_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runBundleCreate(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.CreateSyncBundle(commandContext(cmd), normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncJobDetail(view)
+	data := map[string]any{"kind": "bundle_create_result", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runBundleList(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	items, err := workspace.queries.ListBundleJobs(commandContext(cmd))
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncJobs(items)
+	data := map[string]any{"kind": "bundle_list", "generated_at": time.Now().UTC(), "items": items}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runBundleView(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.BundleDetail(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncJobDetail(view)
+	data := map[string]any{"kind": "bundle_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runBundleVerify(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.VerifySyncBundle(commandContext(cmd), args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatBundleVerify(view)
+	data := map[string]any{"kind": "bundle_verify_result", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runBundleImport(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.ImportSyncBundle(commandContext(cmd), args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatSyncJobDetail(view)
+	data := map[string]any{"kind": "bundle_import_result", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func mutateSyncJob(cmd *cobra.Command, fn func(*workspace, contracts.Actor, string, string, string) (service.SyncJobDetailView, error)) (service.SyncJobDetailView, error) {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return service.SyncJobDetailView{}, err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	remoteID, err := syncRemoteIDForCommand(cmd, workspace)
+	if err != nil {
+		return service.SyncJobDetailView{}, err
+	}
+	sourceWorkspaceID, _ := cmd.Flags().GetString("workspace")
+	return fn(workspace, normalizeActor(actorRaw), reason, remoteID, strings.TrimSpace(sourceWorkspaceID))
+}
+
+func syncRemoteIDForCommand(cmd *cobra.Command, workspace *workspace) (string, error) {
+	remoteID, _ := cmd.Flags().GetString("remote")
+	remoteID = strings.TrimSpace(remoteID)
+	if remoteID != "" {
+		return remoteID, nil
+	}
+	remotes, err := workspace.queries.ListSyncRemotes(commandContext(cmd))
+	if err != nil {
+		return "", err
+	}
+	if len(remotes) == 1 {
+		return remotes[0].RemoteID, nil
+	}
+	if len(remotes) == 0 {
+		return "", apperr.New(apperr.CodeNotFound, "no sync remotes configured")
+	}
+	return "", apperr.New(apperr.CodeInvalidInput, "multiple sync remotes configured; specify --remote")
+}
+
 func runMentionsList(cmd *cobra.Command, _ []string) error {
 	workspace, err := openWorkspace()
 	if err != nil {
@@ -535,6 +839,101 @@ func formatMentionDetail(view service.MentionDetailView) string {
 		lines = append(lines, fmt.Sprintf("collaborator_status=%s trust=%s", view.Collaborator.Status, view.Collaborator.TrustState))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func formatRemoteList(items []contracts.SyncRemote) string {
+	if len(items) == 0 {
+		return "no sync remotes"
+	}
+	lines := []string{"sync remotes:"}
+	for _, item := range items {
+		lines = append(lines, fmt.Sprintf("- %s kind=%s enabled=%t default=%s", item.RemoteID, item.Kind, item.Enabled, item.DefaultAction))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatRemoteDetail(view service.SyncRemoteDetailView) string {
+	lines := []string{
+		fmt.Sprintf("remote %s", view.Remote.RemoteID),
+		fmt.Sprintf("kind=%s enabled=%t default=%s", view.Remote.Kind, view.Remote.Enabled, view.Remote.DefaultAction),
+		"location=" + view.Remote.Location,
+	}
+	if len(view.Publications) > 0 {
+		lines = append(lines, "", "publications:")
+		for _, publication := range view.Publications {
+			lines = append(lines, fmt.Sprintf("- %s bundle=%s files=%d", publication.WorkspaceID, publication.BundleID, publication.FileCount))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatSyncStatus(view service.SyncStatusView) string {
+	lines := []string{
+		"workspace=" + view.WorkspaceID,
+		fmt.Sprintf("migration_complete=%t", view.MigrationComplete),
+	}
+	if len(view.ReasonCodes) > 0 {
+		lines = append(lines, "reasons="+strings.Join(view.ReasonCodes, ","))
+	}
+	if len(view.Remotes) > 0 {
+		lines = append(lines, "", "remotes:")
+		for _, item := range view.Remotes {
+			lines = append(lines, fmt.Sprintf("- %s enabled=%t publications=%d", item.Remote.RemoteID, item.Remote.Enabled, len(item.Publications)))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatSyncJobs(items []contracts.SyncJob) string {
+	if len(items) == 0 {
+		return "no sync jobs"
+	}
+	lines := []string{"sync jobs:"}
+	for _, item := range items {
+		line := fmt.Sprintf("- %s mode=%s state=%s", item.JobID, item.Mode, item.State)
+		if item.RemoteID != "" {
+			line += " remote=" + item.RemoteID
+		}
+		if item.BundleRef != "" {
+			line += " bundle=" + item.BundleRef
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatSyncJobDetail(view service.SyncJobDetailView) string {
+	lines := []string{
+		fmt.Sprintf("job %s", view.Job.JobID),
+		fmt.Sprintf("mode=%s state=%s", view.Job.Mode, view.Job.State),
+	}
+	if view.Job.RemoteID != "" {
+		lines = append(lines, "remote="+view.Job.RemoteID)
+	}
+	if view.Job.BundleRef != "" {
+		lines = append(lines, "bundle="+view.Job.BundleRef)
+	}
+	if view.Publication.BundleID != "" {
+		lines = append(lines, fmt.Sprintf("publication=%s files=%d", view.Publication.BundleID, view.Publication.FileCount))
+	}
+	if len(view.Job.ReasonCodes) > 0 {
+		lines = append(lines, "reasons="+strings.Join(view.Job.ReasonCodes, ","))
+	}
+	if len(view.Job.Warnings) > 0 {
+		lines = append(lines, "warnings="+strings.Join(view.Job.Warnings, ","))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatBundleVerify(view service.SyncBundleVerifyView) string {
+	line := fmt.Sprintf("bundle verify %s verified=%t", view.BundleRef, view.Verified)
+	if len(view.Errors) > 0 {
+		line += " errors=" + strings.Join(view.Errors, ",")
+	}
+	if len(view.Warnings) > 0 {
+		line += " warnings=" + strings.Join(view.Warnings, ",")
+	}
+	return line
 }
 
 func parseCollaboratorActors(values []string) ([]contracts.Actor, error) {

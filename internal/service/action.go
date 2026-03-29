@@ -19,6 +19,9 @@ type ActionService struct {
 	Collaborators      contracts.CollaboratorStore
 	Memberships        contracts.MembershipStore
 	Mentions           contracts.MentionStore
+	SyncRemotes        contracts.SyncRemoteStore
+	SyncJobs           contracts.SyncJobStore
+	Conflicts          contracts.ConflictStore
 	Agents             contracts.AgentStore
 	PermissionProfiles contracts.PermissionProfileStore
 	Runs               contracts.RunStore
@@ -49,7 +52,7 @@ func NewActionService(root string, projects contracts.ProjectStore, tickets cont
 		fm.Root = canonicalRoot
 		locks = fm
 	}
-	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Collaborators: CollaboratorStore{Root: canonicalRoot}, Memberships: MembershipStore{Root: canonicalRoot}, Mentions: MentionStore{Root: canonicalRoot}, Agents: AgentStore{Root: canonicalRoot}, PermissionProfiles: PermissionProfileStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Gates: GateStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Changes: ChangeStore{Root: canonicalRoot}, Checks: CheckStore{Root: canonicalRoot}, ImportJobs: ImportJobStore{Root: canonicalRoot}, ExportBundles: ExportBundleStore{Root: canonicalRoot}, RetentionPolicies: RetentionPolicyStore{Root: canonicalRoot}, Archives: ArchiveRecordStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
+	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Collaborators: CollaboratorStore{Root: canonicalRoot}, Memberships: MembershipStore{Root: canonicalRoot}, Mentions: MentionStore{Root: canonicalRoot}, SyncRemotes: SyncRemoteStore{Root: canonicalRoot}, SyncJobs: SyncJobStore{Root: canonicalRoot}, Conflicts: ConflictStore{Root: canonicalRoot}, Agents: AgentStore{Root: canonicalRoot}, PermissionProfiles: PermissionProfileStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Gates: GateStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Changes: ChangeStore{Root: canonicalRoot}, Checks: CheckStore{Root: canonicalRoot}, ImportJobs: ImportJobStore{Root: canonicalRoot}, ExportBundles: ExportBundleStore{Root: canonicalRoot}, RetentionPolicies: RetentionPolicyStore{Root: canonicalRoot}, Archives: ArchiveRecordStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
 }
 
 func (s *ActionService) now() time.Time {

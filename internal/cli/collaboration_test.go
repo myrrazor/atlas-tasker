@@ -1,73 +1,233 @@
 package cli
 
 import (
-	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 )
 
-func TestV16ReadStubsUseContractShape(t *testing.T) {
+func TestRemoteSyncAndBundleCommands(t *testing.T) {
 	withTempWorkspace(t)
-	if _, err := runCLI(t, "init"); err != nil {
-		t.Fatalf("init failed: %v", err)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\noutput=%s", args, err, out)
+		}
+		return out
 	}
 
-	statusOut, err := runCLI(t, "sync", "status", "--json")
-	if err != nil {
-		t.Fatalf("sync status failed: %v", err)
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Sync me", "--type", "task", "--actor", "human:owner")
+
+	remoteDir := filepath.Join(t.TempDir(), "path-remote")
+	addedOut := must("remote", "add", "origin", "--kind", "path", "--location", remoteDir, "--default-action", "push", "--actor", "human:owner", "--json")
+	var added struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Payload       struct {
+			Remote struct {
+				RemoteID      string `json:"remote_id"`
+				DefaultAction string `json:"default_action"`
+				Enabled       bool   `json:"enabled"`
+			} `json:"remote"`
+		} `json:"payload"`
 	}
+	if err := json.Unmarshal([]byte(addedOut), &added); err != nil {
+		t.Fatalf("parse remote add: %v\nraw=%s", err, addedOut)
+	}
+	if added.FormatVersion != jsonFormatVersion || added.Kind != "remote_detail" || added.Payload.Remote.RemoteID != "origin" || added.Payload.Remote.DefaultAction != "push" || !added.Payload.Remote.Enabled {
+		t.Fatalf("unexpected remote add payload: %#v", added)
+	}
+
+	listOut := must("remote", "list", "--json")
+	var listed struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Items         []struct {
+			RemoteID string `json:"remote_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(listOut), &listed); err != nil {
+		t.Fatalf("parse remote list: %v\nraw=%s", err, listOut)
+	}
+	if listed.Kind != "remote_list" || len(listed.Items) != 1 || listed.Items[0].RemoteID != "origin" {
+		t.Fatalf("unexpected remote list payload: %#v", listed)
+	}
+
+	editedOut := must("remote", "edit", "origin", "--default-action", "pull", "--enabled=false", "--actor", "human:owner", "--json")
+	var edited struct {
+		Payload struct {
+			Remote struct {
+				DefaultAction string `json:"default_action"`
+				Enabled       bool   `json:"enabled"`
+			} `json:"remote"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(editedOut), &edited); err != nil {
+		t.Fatalf("parse remote edit: %v\nraw=%s", err, editedOut)
+	}
+	if edited.Payload.Remote.DefaultAction != "pull" || edited.Payload.Remote.Enabled {
+		t.Fatalf("expected edited remote to be disabled pull, got %#v", edited)
+	}
+	must("remote", "edit", "origin", "--default-action", "push", "--enabled=true", "--actor", "human:owner")
+
+	createOut := must("bundle", "create", "--actor", "human:owner", "--json")
+	var created struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Payload       struct {
+			Job struct {
+				JobID     string `json:"job_id"`
+				BundleRef string `json:"bundle_ref"`
+			} `json:"job"`
+			Publication struct {
+				BundleID    string `json:"bundle_id"`
+				WorkspaceID string `json:"workspace_id"`
+			} `json:"publication"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(createOut), &created); err != nil {
+		t.Fatalf("parse bundle create: %v\nraw=%s", err, createOut)
+	}
+	if created.Kind != "bundle_create_result" || created.Payload.Job.JobID == "" || created.Payload.Job.BundleRef == "" || created.Payload.Publication.BundleID == "" || created.Payload.Publication.WorkspaceID == "" {
+		t.Fatalf("unexpected bundle create payload: %#v", created)
+	}
+
+	verifyOut := must("bundle", "verify", created.Payload.Job.BundleRef, "--actor", "human:owner", "--json")
+	var verified struct {
+		Kind    string `json:"kind"`
+		Payload struct {
+			Verified bool `json:"verified"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(verifyOut), &verified); err != nil {
+		t.Fatalf("parse bundle verify: %v\nraw=%s", err, verifyOut)
+	}
+	if verified.Kind != "bundle_verify_result" || !verified.Payload.Verified {
+		t.Fatalf("unexpected bundle verify payload: %#v", verified)
+	}
+
+	syncPushOut := must("sync", "push", "--remote", "origin", "--actor", "human:owner", "--json")
+	var pushed struct {
+		Kind    string `json:"kind"`
+		Payload struct {
+			Job struct {
+				JobID string `json:"job_id"`
+				Mode  string `json:"mode"`
+			} `json:"job"`
+			Remote struct {
+				RemoteID string `json:"remote_id"`
+			} `json:"remote"`
+			Publication struct {
+				BundleID string `json:"bundle_id"`
+			} `json:"publication"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(syncPushOut), &pushed); err != nil {
+		t.Fatalf("parse sync push: %v\nraw=%s", err, syncPushOut)
+	}
+	if pushed.Kind != "sync_job_detail" || pushed.Payload.Job.Mode != "push" || pushed.Payload.Remote.RemoteID != "origin" || pushed.Payload.Publication.BundleID == "" {
+		t.Fatalf("unexpected sync push payload: %#v", pushed)
+	}
+
+	statusOut := must("sync", "status", "--remote", "origin", "--json")
 	var status struct {
-		FormatVersion string         `json:"format_version"`
-		Kind          string         `json:"kind"`
-		Payload       map[string]any `json:"payload"`
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Payload       struct {
+			MigrationComplete bool `json:"migration_complete"`
+			Remotes           []struct {
+				Publications []struct {
+					BundleID string `json:"bundle_id"`
+				} `json:"publications"`
+			} `json:"remotes"`
+		} `json:"payload"`
 	}
 	if err := json.Unmarshal([]byte(statusOut), &status); err != nil {
-		t.Fatalf("parse sync status json: %v\nraw=%s", err, statusOut)
+		t.Fatalf("parse sync status: %v\nraw=%s", err, statusOut)
 	}
-	if status.FormatVersion != jsonFormatVersion || status.Kind != "sync_status" || status.Payload == nil {
-		t.Fatalf("unexpected sync status stub payload: %#v", status)
+	if status.FormatVersion != jsonFormatVersion || status.Kind != "sync_status" || !status.Payload.MigrationComplete || len(status.Payload.Remotes) != 1 || len(status.Payload.Remotes[0].Publications) != 1 {
+		t.Fatalf("unexpected sync status payload: %#v", status)
 	}
 
-	remoteOut, err := runCLI(t, "remote", "view", "origin", "--json")
-	if err != nil {
-		t.Fatalf("remote view failed: %v", err)
+	jobsOut := must("sync", "jobs", "--remote", "origin", "--json")
+	var jobs struct {
+		Kind  string `json:"kind"`
+		Items []struct {
+			JobID string `json:"job_id"`
+			Mode  string `json:"mode"`
+		} `json:"items"`
 	}
-	var remote struct {
-		FormatVersion string         `json:"format_version"`
-		Kind          string         `json:"kind"`
-		Payload       map[string]any `json:"payload"`
+	if err := json.Unmarshal([]byte(jobsOut), &jobs); err != nil {
+		t.Fatalf("parse sync jobs: %v\nraw=%s", err, jobsOut)
 	}
-	if err := json.Unmarshal([]byte(remoteOut), &remote); err != nil {
-		t.Fatalf("parse remote detail json: %v\nraw=%s", err, remoteOut)
+	if jobs.Kind != "sync_job_list" || len(jobs.Items) == 0 {
+		t.Fatalf("expected sync jobs, got %#v", jobs)
 	}
-	if remote.FormatVersion != jsonFormatVersion || remote.Kind != "remote_detail" || remote.Payload == nil {
-		t.Fatalf("unexpected remote detail stub payload: %#v", remote)
-	}
-}
 
-func TestV16MutationStubsReturnJSONErrorExit(t *testing.T) {
-	withTempWorkspace(t)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	code := Execute([]string{"remote", "add", "--json"}, &stdout, &stderr)
-	if code == 0 {
-		t.Fatalf("expected remote add stub to fail")
+	jobViewOut := must("sync", "view", pushed.Payload.Job.JobID, "--json")
+	var jobView struct {
+		Kind    string `json:"kind"`
+		Payload struct {
+			Job struct {
+				JobID string `json:"job_id"`
+			} `json:"job"`
+		} `json:"payload"`
 	}
-	if stdout.Len() != 0 {
-		t.Fatalf("expected no stdout for json error path, got %s", stdout.String())
+	if err := json.Unmarshal([]byte(jobViewOut), &jobView); err != nil {
+		t.Fatalf("parse sync job view: %v\nraw=%s", err, jobViewOut)
 	}
-	var envelope struct {
-		OK    bool `json:"ok"`
-		Error struct {
-			Code string `json:"code"`
-			Exit int    `json:"exit"`
-		} `json:"error"`
+	if jobView.Kind != "sync_job_detail" || jobView.Payload.Job.JobID != pushed.Payload.Job.JobID {
+		t.Fatalf("unexpected sync job view payload: %#v", jobView)
 	}
-	if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
-		t.Fatalf("parse json error envelope: %v\nraw=%s", err, stderr.String())
+
+	bundleListOut := must("bundle", "list", "--json")
+	var bundleList struct {
+		Kind  string `json:"kind"`
+		Items []struct {
+			JobID string `json:"job_id"`
+			Mode  string `json:"mode"`
+		} `json:"items"`
 	}
-	if envelope.OK || envelope.Error.Exit == 0 {
-		t.Fatalf("unexpected json error envelope: %#v", envelope)
+	if err := json.Unmarshal([]byte(bundleListOut), &bundleList); err != nil {
+		t.Fatalf("parse bundle list: %v\nraw=%s", err, bundleListOut)
+	}
+	if bundleList.Kind != "bundle_list" || len(bundleList.Items) == 0 {
+		t.Fatalf("expected bundle jobs, got %#v", bundleList)
+	}
+
+	bundleViewOut := must("bundle", "view", created.Payload.Job.JobID, "--json")
+	var bundleView struct {
+		Kind    string `json:"kind"`
+		Payload struct {
+			Job struct {
+				JobID string `json:"job_id"`
+			} `json:"job"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(bundleViewOut), &bundleView); err != nil {
+		t.Fatalf("parse bundle view: %v\nraw=%s", err, bundleViewOut)
+	}
+	if bundleView.Kind != "bundle_detail" || bundleView.Payload.Job.JobID != created.Payload.Job.JobID {
+		t.Fatalf("unexpected bundle view payload: %#v", bundleView)
+	}
+
+	removeOut := must("remote", "remove", "origin", "--actor", "human:owner", "--json")
+	var removed struct {
+		Kind    string `json:"kind"`
+		Payload struct {
+			RemoteID string `json:"remote_id"`
+			Removed  bool   `json:"removed"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(removeOut), &removed); err != nil {
+		t.Fatalf("parse remote remove: %v\nraw=%s", err, removeOut)
+	}
+	if removed.Kind != "remote_detail" || removed.Payload.RemoteID != "origin" || !removed.Payload.Removed {
+		t.Fatalf("unexpected remote remove payload: %#v", removed)
 	}
 }
 
