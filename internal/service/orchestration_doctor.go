@@ -13,20 +13,25 @@ import (
 )
 
 type OrchestrationDoctorReport struct {
-	RunIssues      int      `json:"run_issues"`
-	GateIssues     int      `json:"gate_issues"`
-	HandoffIssues  int      `json:"handoff_issues"`
-	EvidenceIssues int      `json:"evidence_issues"`
-	RuntimeIssues  int      `json:"runtime_issues"`
-	WorktreeIssues int      `json:"worktree_issues"`
-	ArchiveIssues  int      `json:"archive_issues"`
-	ChangeIssues   int      `json:"change_issues"`
-	CheckIssues    int      `json:"check_issues"`
-	IssueCodes     []string `json:"issue_codes"`
+	RunIssues          int      `json:"run_issues"`
+	GateIssues         int      `json:"gate_issues"`
+	HandoffIssues      int      `json:"handoff_issues"`
+	EvidenceIssues     int      `json:"evidence_issues"`
+	RuntimeIssues      int      `json:"runtime_issues"`
+	WorktreeIssues     int      `json:"worktree_issues"`
+	ArchiveIssues      int      `json:"archive_issues"`
+	ChangeIssues       int      `json:"change_issues"`
+	CheckIssues        int      `json:"check_issues"`
+	CollaboratorIssues int      `json:"collaborator_issues"`
+	MembershipIssues   int      `json:"membership_issues"`
+	MentionIssues      int      `json:"mention_issues"`
+	SyncIssues         int      `json:"sync_issues"`
+	ConflictIssues     int      `json:"conflict_issues"`
+	IssueCodes         []string `json:"issue_codes"`
 }
 
 func (r OrchestrationDoctorReport) TotalIssues() int {
-	return r.RunIssues + r.GateIssues + r.HandoffIssues + r.EvidenceIssues + r.RuntimeIssues + r.WorktreeIssues + r.ArchiveIssues + r.ChangeIssues + r.CheckIssues
+	return r.RunIssues + r.GateIssues + r.HandoffIssues + r.EvidenceIssues + r.RuntimeIssues + r.WorktreeIssues + r.ArchiveIssues + r.ChangeIssues + r.CheckIssues + r.CollaboratorIssues + r.MembershipIssues + r.MentionIssues + r.SyncIssues + r.ConflictIssues
 }
 
 func AuditOrchestration(ctx context.Context, root string, tickets contracts.TicketStore) (OrchestrationDoctorReport, error) {
@@ -71,10 +76,38 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 	if err != nil {
 		return OrchestrationDoctorReport{}, err
 	}
+	collaborators, err := auditCollaboratorDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
+	memberships, err := auditMembershipDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
+	mentions, err := auditMentionDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
+	remotes, err := auditSyncRemoteDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
+	syncJobs, err := auditSyncJobDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
+	conflicts, err := auditConflictDocs(ctx, root, &report, addIssue)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
+	}
 
 	ticketsByID := make(map[string]contracts.TicketSnapshot, len(allTickets))
 	for _, ticket := range allTickets {
 		ticketsByID[ticket.ID] = ticket
+	}
+	projectKeys, err := loadProjectKeys(root)
+	if err != nil {
+		return OrchestrationDoctorReport{}, err
 	}
 	runsByID := make(map[string]contracts.RunSnapshot, len(runs))
 	worktrees := WorktreeManager{Root: root}
@@ -206,6 +239,88 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 	for _, change := range changes {
 		changeByID[change.ChangeID] = change
 	}
+	collaboratorsByID := make(map[string]contracts.CollaboratorProfile, len(collaborators))
+	for _, collaborator := range collaborators {
+		collaboratorsByID[collaborator.CollaboratorID] = collaborator
+		if err := collaborator.Validate(); err != nil {
+			addIssue("collaborator_invalid", &report.CollaboratorIssues)
+		}
+	}
+	for _, membership := range memberships {
+		if err := membership.Validate(); err != nil {
+			addIssue("membership_invalid", &report.MembershipIssues)
+			continue
+		}
+		if _, ok := collaboratorsByID[membership.CollaboratorID]; !ok {
+			addIssue("membership_collaborator_missing", &report.MembershipIssues)
+		}
+		if membership.ScopeKind == contracts.MembershipScopeProject {
+			if _, ok := projectKeys[membership.ScopeID]; !ok {
+				addIssue("membership_scope_missing", &report.MembershipIssues)
+			}
+		}
+	}
+	for _, mention := range mentions {
+		if err := mention.Validate(); err != nil {
+			addIssue("mention_invalid", &report.MentionIssues)
+			continue
+		}
+		if _, ok := collaboratorsByID[mention.CollaboratorID]; !ok {
+			addIssue("mention_collaborator_missing", &report.MentionIssues)
+		}
+		if strings.TrimSpace(mention.TicketID) != "" {
+			if _, ok := ticketsByID[mention.TicketID]; !ok {
+				addIssue("mention_ticket_missing", &report.MentionIssues)
+			}
+		}
+	}
+	remotesByID := make(map[string]contracts.SyncRemote, len(remotes))
+	for _, remote := range remotes {
+		remotesByID[remote.RemoteID] = remote
+		if err := remote.Validate(); err != nil {
+			addIssue("sync_remote_invalid", &report.SyncIssues)
+			continue
+		}
+		if _, err := normalizeSyncRemoteLocation(root, remote.Kind, remote.Location); err != nil {
+			addIssue("sync_remote_invalid", &report.SyncIssues)
+		}
+	}
+	syncJobsByID := make(map[string]contracts.SyncJob, len(syncJobs))
+	for _, job := range syncJobs {
+		syncJobsByID[job.JobID] = job
+		if err := job.Validate(); err != nil {
+			addIssue("sync_job_invalid", &report.SyncIssues)
+			continue
+		}
+		if strings.TrimSpace(job.RemoteID) != "" {
+			if _, ok := remotesByID[job.RemoteID]; !ok {
+				addIssue("sync_job_remote_missing", &report.SyncIssues)
+			}
+		}
+	}
+	conflictsByID := make(map[string]contracts.ConflictRecord, len(conflicts))
+	for _, conflict := range conflicts {
+		conflictsByID[conflict.ConflictID] = conflict
+		if err := conflict.Validate(); err != nil {
+			addIssue("conflict_invalid", &report.ConflictIssues)
+			continue
+		}
+		if strings.TrimSpace(conflict.OpenedByJob) != "" {
+			if _, ok := syncJobsByID[conflict.OpenedByJob]; !ok {
+				addIssue("conflict_job_missing", &report.ConflictIssues)
+			}
+		}
+		for _, path := range []string{conflict.LocalRef, conflict.RemoteRef} {
+			if strings.TrimSpace(path) == "" {
+				continue
+			}
+			info, err := os.Stat(path)
+			if err != nil || info.IsDir() {
+				addIssue("conflict_snapshot_missing", &report.ConflictIssues)
+				break
+			}
+		}
+	}
 	for _, check := range checks {
 		if err := check.Validate(); err != nil {
 			addIssue("check_invalid", &report.CheckIssues)
@@ -223,6 +338,14 @@ func AuditOrchestration(ctx context.Context, root string, tickets contracts.Tick
 		case contracts.CheckScopeTicket:
 			if _, ok := ticketsByID[check.ScopeID]; !ok {
 				addIssue("check_scope_missing", &report.CheckIssues)
+			}
+		}
+	}
+	for _, job := range syncJobs {
+		for _, conflictID := range job.ConflictIDs {
+			if _, ok := conflictsByID[conflictID]; !ok {
+				addIssue("sync_job_conflict_missing", &report.SyncIssues)
+				break
 			}
 		}
 	}
@@ -505,7 +628,217 @@ func recordDoctorIssue(report *OrchestrationDoctorReport, addIssue func(string, 
 		addIssue(code, &report.ChangeIssues)
 	case "CheckIssues":
 		addIssue(code, &report.CheckIssues)
+	case "CollaboratorIssues":
+		addIssue(code, &report.CollaboratorIssues)
+	case "MembershipIssues":
+		addIssue(code, &report.MembershipIssues)
+	case "MentionIssues":
+		addIssue(code, &report.MentionIssues)
+	case "SyncIssues":
+		addIssue(code, &report.SyncIssues)
+	case "ConflictIssues":
+		addIssue(code, &report.ConflictIssues)
 	}
+}
+
+func auditCollaboratorDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.CollaboratorProfile, error) {
+	entries, err := os.ReadDir(storage.CollaboratorsDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.CollaboratorProfile{}, nil
+		}
+		return nil, fmt.Errorf("read collaborators dir: %w", err)
+	}
+	store := CollaboratorStore{Root: root}
+	items := make([]contracts.CollaboratorProfile, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		item, err := store.LoadCollaborator(ctx, strings.TrimSuffix(entry.Name(), ".md"))
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "collaborator_doc_corrupt", "CollaboratorIssues")
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].CollaboratorID < items[j].CollaboratorID
+		}
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	return items, nil
+}
+
+func auditMembershipDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.MembershipBinding, error) {
+	entries, err := os.ReadDir(storage.MembershipsDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.MembershipBinding{}, nil
+		}
+		return nil, fmt.Errorf("read memberships dir: %w", err)
+	}
+	store := MembershipStore{Root: root}
+	items := make([]contracts.MembershipBinding, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		item, err := store.LoadMembership(ctx, strings.TrimSuffix(entry.Name(), ".md"))
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "membership_doc_corrupt", "MembershipIssues")
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].MembershipUID < items[j].MembershipUID
+		}
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	return items, nil
+}
+
+func auditMentionDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.Mention, error) {
+	entries, err := os.ReadDir(storage.MentionsDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.Mention{}, nil
+		}
+		return nil, fmt.Errorf("read mentions dir: %w", err)
+	}
+	store := MentionStore{Root: root}
+	items := make([]contracts.Mention, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		item, err := store.LoadMention(ctx, strings.TrimSuffix(entry.Name(), ".md"))
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "mention_doc_corrupt", "MentionIssues")
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].MentionUID < items[j].MentionUID
+		}
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	return items, nil
+}
+
+func auditSyncRemoteDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.SyncRemote, error) {
+	entries, err := os.ReadDir(storage.SyncRemotesDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.SyncRemote{}, nil
+		}
+		return nil, fmt.Errorf("read sync remotes dir: %w", err)
+	}
+	store := SyncRemoteStore{Root: root}
+	items := make([]contracts.SyncRemote, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		item, err := store.LoadSyncRemote(ctx, strings.TrimSuffix(entry.Name(), ".md"))
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "sync_remote_doc_corrupt", "SyncIssues")
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].RemoteID < items[j].RemoteID
+		}
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	return items, nil
+}
+
+func auditSyncJobDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.SyncJob, error) {
+	entries, err := os.ReadDir(storage.SyncJobsDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.SyncJob{}, nil
+		}
+		return nil, fmt.Errorf("read sync jobs dir: %w", err)
+	}
+	store := SyncJobStore{Root: root}
+	items := make([]contracts.SyncJob, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		item, err := store.LoadSyncJob(ctx, strings.TrimSuffix(entry.Name(), ".md"))
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "sync_job_doc_corrupt", "SyncIssues")
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].StartedAt.Equal(items[j].StartedAt) {
+			return items[i].JobID < items[j].JobID
+		}
+		return items[i].StartedAt.Before(items[j].StartedAt)
+	})
+	return items, nil
+}
+
+func auditConflictDocs(ctx context.Context, root string, report *OrchestrationDoctorReport, addIssue func(string, *int)) ([]contracts.ConflictRecord, error) {
+	entries, err := os.ReadDir(storage.SyncConflictsDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.ConflictRecord{}, nil
+		}
+		return nil, fmt.Errorf("read sync conflicts dir: %w", err)
+	}
+	store := ConflictStore{Root: root}
+	items := make([]contracts.ConflictRecord, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		item, err := store.LoadConflict(ctx, strings.TrimSuffix(entry.Name(), ".md"))
+		if err != nil {
+			recordDoctorIssue(report, addIssue, "conflict_doc_corrupt", "ConflictIssues")
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].OpenedAt.Equal(items[j].OpenedAt) {
+			return items[i].ConflictID < items[j].ConflictID
+		}
+		return items[i].OpenedAt.Before(items[j].OpenedAt)
+	})
+	return items, nil
+}
+
+func loadProjectKeys(root string) (map[string]struct{}, error) {
+	entries, err := os.ReadDir(storage.ProjectsDir(root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]struct{}{}, nil
+		}
+		return nil, fmt.Errorf("read projects dir: %w", err)
+	}
+	keys := map[string]struct{}{}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(storage.ProjectsDir(root), entry.Name(), "project.md")); err == nil {
+			keys[entry.Name()] = struct{}{}
+		}
+	}
+	return keys, nil
 }
 
 func auditRuntimeForRun(root string, run contracts.RunSnapshot, archivedPaths map[string]struct{}, report *OrchestrationDoctorReport, addIssue func(string, *int)) error {
