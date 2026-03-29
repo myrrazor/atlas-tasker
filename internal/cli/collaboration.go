@@ -182,39 +182,48 @@ func newProjectRulesCommand() *cobra.Command {
 
 func notImplementedRead(kind string) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
-		payload := map[string]any{
+		data := map[string]any{
 			"kind":         kind,
 			"generated_at": time.Now().UTC(),
 			"warnings": []map[string]any{{
 				"code":    "not_implemented",
 				"message": "v1.6 contract frozen; implementation lands in follow-up PRs",
 			}},
-			"items": []any{},
 		}
-		return writeCommandOutput(cmd, payload, "# Pending\n\nThis v1.6 command is frozen but not implemented yet.", fmt.Sprintf("%s is frozen but not implemented yet", kind))
+		if stubUsesPayload(kind) {
+			data["payload"] = map[string]any{}
+		} else {
+			data["items"] = []any{}
+		}
+		return writeCommandOutput(cmd, data, "# Pending\n\nThis v1.6 command is frozen but not implemented yet.", fmt.Sprintf("%s is frozen but not implemented yet", kind))
+	}
+}
+
+func stubUsesPayload(kind string) bool {
+	switch kind {
+	case "collaborator_detail",
+		"mention_detail",
+		"remote_detail",
+		"sync_status",
+		"sync_job_detail",
+		"bundle_create_result",
+		"bundle_detail",
+		"bundle_verify_result",
+		"bundle_import_result",
+		"conflict_detail",
+		"conflict_resolve_result",
+		"codeowners_preview",
+		"provider_rules_preview":
+		return true
+	default:
+		return false
 	}
 }
 
 func notImplementedMutation(kind string) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, _ []string) error {
-		jsonMode, _ := cmd.Flags().GetBool("json")
-		mdMode, _ := cmd.Flags().GetBool("md")
-		if jsonMode {
-			return writeCommandOutput(cmd, map[string]any{
-				"ok":             false,
-				"kind":           kind,
-				"generated_at":   time.Now().UTC(),
-				"format_version": jsonFormatVersion,
-				"error": map[string]any{
-					"code":    apperr.CodeInternal,
-					"message": "v1.6 command is frozen but not implemented yet",
-				},
-			}, "", "")
-		}
-		if mdMode {
-			fmt.Fprintln(cmd.OutOrStdout(), "# Pending\n\nThis v1.6 mutating command is frozen but not implemented yet.")
-			return apperr.New(apperr.CodeInternal, "v1.6 command is frozen but not implemented yet")
-		}
-		return apperr.New(apperr.CodeInternal, "v1.6 command is frozen but not implemented yet")
+		_, _ = cmd.Flags().GetBool("json")
+		_, _ = cmd.Flags().GetBool("md")
+		return apperr.New(apperr.CodeInternal, fmt.Sprintf("%s is frozen but not implemented yet", kind))
 	}
 }
