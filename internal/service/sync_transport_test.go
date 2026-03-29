@@ -69,6 +69,66 @@ func TestMigrationStatusDetectsDivergentTicketUID(t *testing.T) {
 	}
 }
 
+func TestMigrationStatusIgnoresArchivePayloadDocs(t *testing.T) {
+	ctx := context.Background()
+	root, _, queries, _, _, _ := newImportExportHarness(t)
+
+	workspaceID, err := ensureWorkspaceIdentity(root)
+	if err != nil {
+		t.Fatalf("ensure workspace identity: %v", err)
+	}
+	record := contracts.ArchiveRecord{
+		ArchiveID:     "archive_rt",
+		Target:        contracts.RetentionTargetRuntime,
+		Scope:         "workspace",
+		ProjectKey:    "APP",
+		SourcePaths:   []string{filepath.Join(storage.TrackerDirName, "runtime", "run_1")},
+		PayloadDir:    storage.ArchivePayloadDir(root, "archive_rt"),
+		ItemCount:     1,
+		TotalBytes:    5,
+		State:         contracts.ArchiveRecordArchived,
+		CreatedAt:     time.Date(2026, 3, 27, 9, 0, 0, 0, time.UTC),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := (ArchiveRecordStore{Root: root}).SaveArchiveRecord(ctx, record); err != nil {
+		t.Fatalf("save archive record: %v", err)
+	}
+	payloadBrief := filepath.Join(record.PayloadDir, storage.TrackerDirName, "runtime", "run_1", "brief.md")
+	if err := os.MkdirAll(filepath.Dir(payloadBrief), 0o755); err != nil {
+		t.Fatalf("mkdir payload dir: %v", err)
+	}
+	if err := os.WriteFile(payloadBrief, []byte("brief"), 0o644); err != nil {
+		t.Fatalf("write payload brief: %v", err)
+	}
+	if err := writeSyncMigrationState(syncMigrationPath(root), syncMigrationState{
+		Complete:      true,
+		WorkspaceID:   workspaceID,
+		State:         string(MigrationStateStamped),
+		StampedAt:     time.Date(2026, 3, 27, 9, 0, 0, 0, time.UTC),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("write sync migration state: %v", err)
+	}
+
+	status, err := queries.MigrationStatus(ctx)
+	if err != nil {
+		t.Fatalf("migration status: %v", err)
+	}
+	if !status.Ready || status.State != MigrationStateStamped {
+		t.Fatalf("expected stamped migration status, got %#v", status)
+	}
+	for _, entity := range status.Entities {
+		if entity.Kind != "archive_record" {
+			continue
+		}
+		if entity.State != MigrationStateStamped || entity.Unknown != 0 || entity.Total != 1 {
+			t.Fatalf("expected archive payload docs to be ignored, got %#v", entity)
+		}
+		return
+	}
+	t.Fatalf("expected archive_record entity status in %#v", status.Entities)
+}
+
 func TestSyncGitRemoteConvergesAfterIndependentLegacyUpgradeAndUnrelatedWrites(t *testing.T) {
 	ctx := context.Background()
 	baseRoot, actions, _, projectStore, _, _ := newImportExportHarness(t)
