@@ -9,7 +9,24 @@ import (
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
+
+func TestSyncStatusDoesNotStampWorkspaceIdentityOnRead(t *testing.T) {
+	ctx := context.Background()
+	root, _, queries, _, _, _ := newImportExportHarness(t)
+
+	status, err := queries.SyncStatus(ctx, "")
+	if err != nil {
+		t.Fatalf("sync status: %v", err)
+	}
+	if status.WorkspaceID != "" || status.MigrationComplete {
+		t.Fatalf("expected unstamped workspace status, got %#v", status)
+	}
+	if _, err := os.Stat(storage.WorkspaceMetadataFile(root)); !os.IsNotExist(err) {
+		t.Fatalf("sync status should not stamp workspace metadata, err=%v", err)
+	}
+}
 
 func TestSyncPathRemoteRoundTrip(t *testing.T) {
 	ctx := context.Background()

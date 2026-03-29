@@ -108,7 +108,7 @@ func (s *QueryService) BundleDetail(ctx context.Context, bundleRef string) (Sync
 }
 
 func (s *QueryService) SyncStatus(ctx context.Context, remoteID string) (SyncStatusView, error) {
-	workspaceID, err := ensureWorkspaceIdentity(s.Root)
+	workspaceID, err := loadWorkspaceIdentity(s.Root)
 	if err != nil {
 		return SyncStatusView{}, err
 	}
@@ -133,8 +133,9 @@ func (s *QueryService) SyncStatus(ctx context.Context, remoteID string) (SyncSta
 		items = append(items, SyncStatusRemoteView{Remote: remote, Publications: publications})
 	}
 	reasonCodes := []string{}
-	if !migrationComplete {
+	if strings.TrimSpace(workspaceID) == "" || !migrationComplete {
 		reasonCodes = append(reasonCodes, "migration_incomplete")
+		migrationComplete = false
 	}
 	return SyncStatusView{WorkspaceID: workspaceID, MigrationComplete: migrationComplete, ReasonCodes: reasonCodes, Remotes: items, GeneratedAt: s.now()}, nil
 }

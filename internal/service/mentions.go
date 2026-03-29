@@ -12,9 +12,10 @@ import (
 )
 
 var (
-	fencedCodePattern = regexp.MustCompile("(?s)```.*?```")
-	inlineCodePattern = regexp.MustCompile("`[^`]*`")
-	mentionPattern    = regexp.MustCompile(`(^|[\s\(\[\{>'",;])@([a-z0-9][a-z0-9._-]*)\b`)
+	fencedCodePattern   = regexp.MustCompile("(?s)```.*?```")
+	inlineCodePattern   = regexp.MustCompile("`[^`]*`")
+	slashMentionPattern = regexp.MustCompile(`@[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*`)
+	mentionPattern      = regexp.MustCompile(`(^|[\s\(\[\{>'",;])@([a-z0-9][a-z0-9._-]*)\b`)
 )
 
 type mentionExtraction struct {
@@ -76,6 +77,7 @@ func sanitizeMentionText(raw string) string {
 	raw = strings.ReplaceAll(raw, "\\@", " ")
 	raw = fencedCodePattern.ReplaceAllString(raw, " ")
 	raw = inlineCodePattern.ReplaceAllString(raw, " ")
+	raw = slashMentionPattern.ReplaceAllString(raw, " ")
 	return raw
 }
 

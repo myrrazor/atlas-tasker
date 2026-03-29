@@ -20,6 +20,7 @@ func TestCollectMentionCandidatesIgnoresNonCanonicalContexts(t *testing.T) {
 		"mail alana@example.com should not count",
 		"url https://example.com/@alana should not count",
 		"path /tmp/@alana should not count",
+		"provider handle @gh/alana should not count",
 		"escaped \\@alana should not count",
 		"inline `@alana` should not count",
 		"```\n@alana\n```",
