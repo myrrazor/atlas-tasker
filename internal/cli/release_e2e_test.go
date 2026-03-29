@@ -270,7 +270,7 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 	distDir := t.TempDir()
 	workDir := t.TempDir()
 	binDir := t.TempDir()
-	version := "v1.5.0-rc1"
+	version := "v1.6.0-rc1"
 	archive := filepath.Join(distDir, packagedArchiveName(version))
 
 	build := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(distDir, "tracker"), "./cmd/tracker")
@@ -428,6 +428,236 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(workDir, ".tracker", "runtime", runID)); !os.IsNotExist(err) {
 		t.Fatalf("expected packaged cleanup to remove runtime dir, err=%v", err)
+	}
+
+	runInstalledAt := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command(trackerBin, args...)
+		cmd.Dir = dir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("installed tracker in %s %v failed: %v\n%s", dir, args, err, output)
+		}
+		return string(output)
+	}
+	runInstalledErrAt := func(dir string, args ...string) (string, error) {
+		t.Helper()
+		cmd := exec.Command(trackerBin, args...)
+		cmd.Dir = dir
+		output, err := cmd.CombinedOutput()
+		return string(output), err
+	}
+
+	gitRemoteRoot := t.TempDir()
+	gitRemoteDir := filepath.Join(gitRemoteRoot, "sync-remote.git")
+	gitRunInDir(t, gitRemoteRoot, "init", "--bare", gitRemoteDir)
+
+	workspaceB := t.TempDir()
+	workspaceC := t.TempDir()
+	workspaceD := t.TempDir()
+
+	for _, dir := range []string{workspaceB, workspaceC, workspaceD} {
+		runInstalledAt(dir, "init")
+	}
+
+	runInstalled("collaborator", "add", "rev-1", "--name", "Rev One", "--actor-map", "agent:reviewer-1", "--actor", "human:owner")
+	runInstalled("collaborator", "trust", "rev-1", "--actor", "human:owner")
+	runInstalled("membership", "bind", "rev-1", "--scope-kind", "project", "--scope-id", "APP", "--role", "reviewer", "--actor", "human:owner")
+	runInstalled("ticket", "create", "--project", "APP", "--title", "Shared sync", "--type", "task", "--actor", "human:owner")
+	runInstalled("ticket", "comment", "APP-2", "--body", "loop in @rev-1", "--actor", "human:owner")
+	runInstalled("remote", "add", "origin", "--kind", "git", "--location", gitRemoteDir, "--default-action", "push", "--actor", "human:owner")
+
+	sourcePushJSON := runInstalled("sync", "push", "--remote", "origin", "--actor", "human:owner", "--json")
+	var sourcePush struct {
+		Payload struct {
+			Publication struct {
+				WorkspaceID string `json:"workspace_id"`
+			} `json:"publication"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(sourcePushJSON), &sourcePush); err != nil {
+		t.Fatalf("parse packaged source sync push: %v\n%s", err, sourcePushJSON)
+	}
+	if sourcePush.Payload.Publication.WorkspaceID == "" {
+		t.Fatalf("expected source workspace id, got %s", sourcePushJSON)
+	}
+
+	runInstalledAt(workspaceB, "remote", "add", "origin", "--kind", "git", "--location", gitRemoteDir, "--default-action", "pull", "--actor", "human:owner")
+	runInstalledAt(workspaceB, "sync", "pull", "--remote", "origin", "--workspace", sourcePush.Payload.Publication.WorkspaceID, "--actor", "human:owner")
+	mentionsB := runInstalledAt(workspaceB, "mentions", "list", "--collaborator", "rev-1", "--json")
+	if !strings.Contains(mentionsB, "\"collaborator_id\": \"rev-1\"") {
+		t.Fatalf("expected synced canonical mention in workspace B: %s", mentionsB)
+	}
+	runInstalledAt(workspaceB, "ticket", "edit", "APP-2", "--title", "Shared sync from B", "--actor", "human:owner")
+	remotePushJSON := runInstalledAt(workspaceB, "sync", "push", "--remote", "origin", "--actor", "human:owner", "--json")
+	var remotePush struct {
+		Payload struct {
+			Publication struct {
+				WorkspaceID string `json:"workspace_id"`
+			} `json:"publication"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(remotePushJSON), &remotePush); err != nil {
+		t.Fatalf("parse packaged remote sync push: %v\n%s", err, remotePushJSON)
+	}
+	if remotePush.Payload.Publication.WorkspaceID == "" {
+		t.Fatalf("expected workspace B id, got %s", remotePushJSON)
+	}
+
+	runInstalled("ticket", "edit", "APP-2", "--title", "Shared sync from A", "--actor", "human:owner")
+	if output, err := runInstalledErrAt(workDir, "sync", "pull", "--remote", "origin", "--workspace", remotePush.Payload.Publication.WorkspaceID, "--actor", "human:owner", "--json"); err == nil {
+		t.Fatalf("expected packaged sync pull conflict, got success output=%s", output)
+	}
+	conflictListJSON := runInstalled("conflict", "list", "--json")
+	var conflictList struct {
+		Items []struct {
+			ConflictID string `json:"conflict_id"`
+			EntityKind string `json:"entity_kind"`
+			Status     string `json:"status"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(conflictListJSON), &conflictList); err != nil {
+		t.Fatalf("parse packaged conflict list: %v\n%s", err, conflictListJSON)
+	}
+	conflictID := ""
+	for _, item := range conflictList.Items {
+		if item.EntityKind == "ticket" && item.Status == "open" {
+			conflictID = item.ConflictID
+			break
+		}
+	}
+	if conflictID == "" {
+		t.Fatalf("expected open packaged ticket conflict, got %s", conflictListJSON)
+	}
+	runInstalled("conflict", "resolve", conflictID, "--resolution", "use_remote", "--actor", "human:owner")
+	ticketAfterResolve := runInstalled("ticket", "view", "APP-2", "--json")
+	if !strings.Contains(ticketAfterResolve, "Shared sync from B") {
+		t.Fatalf("expected remote resolution to win for APP-2, got %s", ticketAfterResolve)
+	}
+
+	runInstalledAt(workspaceB, "ticket", "create", "--project", "APP", "--title", "Shared from B", "--type", "task", "--actor", "human:owner")
+	workspaceBPush := runInstalledAt(workspaceB, "sync", "push", "--remote", "origin", "--actor", "human:owner", "--json")
+	if err := json.Unmarshal([]byte(workspaceBPush), &remotePush); err != nil {
+		t.Fatalf("parse workspace B follow-up push: %v\n%s", err, workspaceBPush)
+	}
+
+	runInstalledAt(workspaceC, "remote", "add", "origin", "--kind", "git", "--location", gitRemoteDir, "--default-action", "pull", "--actor", "human:owner")
+	runInstalledAt(workspaceC, "sync", "pull", "--remote", "origin", "--workspace", remotePush.Payload.Publication.WorkspaceID, "--actor", "human:owner")
+	ticketsC := runInstalledAt(workspaceC, "ticket", "list", "--project", "APP", "--json")
+	if !strings.Contains(ticketsC, "\"id\": \"APP-3\"") {
+		t.Fatalf("expected workspace C to receive APP-3, got %s", ticketsC)
+	}
+	runInstalledAt(workspaceC, "ticket", "create", "--project", "APP", "--title", "Shared from C", "--type", "task", "--actor", "human:owner")
+	workspaceCPush := runInstalledAt(workspaceC, "sync", "push", "--remote", "origin", "--actor", "human:owner", "--json")
+	var cPush struct {
+		Payload struct {
+			Publication struct {
+				WorkspaceID string `json:"workspace_id"`
+			} `json:"publication"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(workspaceCPush), &cPush); err != nil {
+		t.Fatalf("parse workspace C push: %v\n%s", err, workspaceCPush)
+	}
+	runInstalled("sync", "pull", "--remote", "origin", "--workspace", cPush.Payload.Publication.WorkspaceID, "--actor", "human:owner")
+	ticketsA := runInstalled("ticket", "list", "--project", "APP", "--json")
+	for _, ticketID := range []string{"APP-3", "APP-4"} {
+		if !strings.Contains(ticketsA, "\"id\": \""+ticketID+"\"") {
+			t.Fatalf("expected workspace A to converge with %s, got %s", ticketID, ticketsA)
+		}
+	}
+
+	bundleCreateJSON := runInstalled("bundle", "create", "--actor", "human:owner", "--json")
+	var bundleCreated struct {
+		Payload struct {
+			Job struct {
+				BundleRef string `json:"bundle_ref"`
+			} `json:"job"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(bundleCreateJSON), &bundleCreated); err != nil {
+		t.Fatalf("parse packaged bundle create: %v\n%s", err, bundleCreateJSON)
+	}
+	if bundleCreated.Payload.Job.BundleRef == "" {
+		t.Fatalf("expected bundle ref, got %s", bundleCreateJSON)
+	}
+	bundleVerifyJSON := runInstalled("bundle", "verify", bundleCreated.Payload.Job.BundleRef, "--actor", "human:owner", "--json")
+	if !strings.Contains(bundleVerifyJSON, "\"verified\": true") {
+		t.Fatalf("expected packaged bundle verify to pass, got %s", bundleVerifyJSON)
+	}
+	runInstalledAt(workspaceD, "bundle", "import", bundleCreated.Payload.Job.BundleRef, "--actor", "human:owner")
+	ticketsD := runInstalledAt(workspaceD, "ticket", "list", "--project", "APP", "--json")
+	if !strings.Contains(ticketsD, "\"id\": \"APP-4\"") {
+		t.Fatalf("expected bundle import workspace to receive converged tickets, got %s", ticketsD)
+	}
+	mentionsD := runInstalledAt(workspaceD, "mentions", "list", "--collaborator", "rev-1", "--json")
+	if !strings.Contains(mentionsD, "\"collaborator_id\": \"rev-1\"") {
+		t.Fatalf("expected bundle import workspace to receive mentions, got %s", mentionsD)
+	}
+
+	runInstalled("ticket", "move", "APP-3", "ready", "--actor", "human:owner")
+	dispatchSyncedJSON := runInstalled("run", "dispatch", "APP-3", "--agent", "builder-1", "--actor", "human:owner", "--json")
+	if err := json.Unmarshal([]byte(dispatchSyncedJSON), &dispatch); err != nil {
+		t.Fatalf("parse packaged synced dispatch: %v\n%s", err, dispatchSyncedJSON)
+	}
+	syncedRunID := dispatch.Payload.RunID
+	runInstalled("run", "launch", syncedRunID, "--actor", "human:owner")
+	runInstalled("run", "start", syncedRunID, "--actor", "human:owner")
+	runInstalled("ticket", "move", "APP-3", "in_progress", "--actor", "human:owner")
+	runInstalled("run", "checkpoint", syncedRunID, "--title", "Synced checkpoint", "--body", "runtime after sync", "--actor", "human:owner")
+	runInstalled("run", "handoff", syncedRunID, "--next-actor", "agent:reviewer-1", "--next-gate", "review", "--actor", "human:owner")
+	syncedApprovalsJSON := runInstalled("approvals", "--json")
+	if err := json.Unmarshal([]byte(syncedApprovalsJSON), &approvals); err != nil {
+		t.Fatalf("parse packaged synced approvals: %v\n%s", err, syncedApprovalsJSON)
+	}
+	if len(approvals.Items) == 0 {
+		t.Fatalf("expected synced approval gate, got %s", syncedApprovalsJSON)
+	}
+	runInstalled("gate", "approve", approvals.Items[0].Gate.GateID, "--actor", "agent:reviewer-1", "--reason", "synced archive rehearsal")
+	runInstalled("run", "complete", syncedRunID, "--actor", "human:owner", "--summary", "synced flow complete")
+
+	syncedRuntimeDir := filepath.Join(workDir, ".tracker", "runtime", syncedRunID)
+	if err := filepath.Walk(syncedRuntimeDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		return os.Chtimes(path, old, old)
+	}); err != nil {
+		t.Fatalf("backdate synced runtime dir: %v", err)
+	}
+	runInstalled("archive", "apply", "--target", "runtime", "--project", "APP", "--yes", "--actor", "human:owner")
+	archiveAfterSyncJSON := runInstalled("archive", "list", "--target", "runtime", "--json")
+	var archiveAfterSync struct {
+		Items []struct {
+			ArchiveID   string   `json:"archive_id"`
+			SourcePaths []string `json:"source_paths"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(archiveAfterSyncJSON), &archiveAfterSync); err != nil {
+		t.Fatalf("parse packaged synced archive list: %v\n%s", err, archiveAfterSyncJSON)
+	}
+	syncedArchiveID := ""
+	targetRuntimePath := filepath.ToSlash(filepath.Join(".tracker", "runtime", syncedRunID))
+	for _, item := range archiveAfterSync.Items {
+		for _, path := range item.SourcePaths {
+			if path == targetRuntimePath {
+				syncedArchiveID = item.ArchiveID
+				break
+			}
+		}
+		if syncedArchiveID != "" {
+			break
+		}
+	}
+	if syncedArchiveID == "" {
+		t.Fatalf("expected synced runtime archive, got %s", archiveAfterSyncJSON)
+	}
+	runInstalled("compact", "--yes", "--actor", "human:owner")
+	runInstalled("archive", "restore", syncedArchiveID, "--actor", "human:owner")
+	runInstalled("reindex")
+	doctorJSON := runInstalled("doctor", "--repair", "--json")
+	if !strings.Contains(doctorJSON, "\"repair_pending\": 0") {
+		t.Fatalf("expected doctor repair to settle after synced archive flow, got %s", doctorJSON)
 	}
 }
 

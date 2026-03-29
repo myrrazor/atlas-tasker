@@ -2,7 +2,7 @@
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
-VERSION="${VERSION:-v1.5.0-rc1}"
+VERSION="${VERSION:-v1.6.0-rc1}"
 VERSION_NO_V="${VERSION#v}"
 BIN_NAME="tracker"
 DIST_DIR="${DIST_DIR:-$(mktemp -d)}"
@@ -108,8 +108,8 @@ RUN_ID="$(printf '%s' "$DISPATCH_JSON" | python3 -c 'import json,sys; print(json
 "$INSTALL_DIR/$BIN_NAME" ticket move APP-1 in_progress --actor human:owner
 "$INSTALL_DIR/$BIN_NAME" run checkpoint "$RUN_ID" --title "Smoke checkpoint" --body "runtime + worktree ready" --actor human:owner
 "$INSTALL_DIR/$BIN_NAME" run evidence add "$RUN_ID" --type note --title "Smoke evidence" --body "packaged rehearsal" --actor human:owner
-"$INSTALL_DIR/$BIN_NAME" change create "$RUN_ID" --actor human:owner --json > "$WORK_DIR/change-create.json"
-CHANGE_ID="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["change"]["change_id"])' < "$WORK_DIR/change-create.json")"
+CHANGE_CREATE_JSON="$("$INSTALL_DIR/$BIN_NAME" change create "$RUN_ID" --actor human:owner --json)"
+CHANGE_ID="$(printf '%s' "$CHANGE_CREATE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["change"]["change_id"])')"
 "$INSTALL_DIR/$BIN_NAME" change status "$CHANGE_ID" >/dev/null
 "$INSTALL_DIR/$BIN_NAME" run handoff "$RUN_ID" --next-actor agent:reviewer-1 --next-gate review --actor human:owner
 APPROVALS_JSON="$("$INSTALL_DIR/$BIN_NAME" approvals --json)"
@@ -137,4 +137,168 @@ fi
 "$INSTALL_DIR/$BIN_NAME" run cleanup "$RUN_ID" --actor human:owner
 "$INSTALL_DIR/$BIN_NAME" inspect APP-1 --actor human:owner --json >/dev/null
 
-echo "release rehearsal ok: version=$VERSION archive=$ARCHIVE install_dir=$INSTALL_DIR work_dir=$WORK_DIR"
+TRACKER="$INSTALL_DIR/$BIN_NAME"
+run_in() {
+  dir="$1"
+  shift
+  (
+    cd "$dir"
+    "$TRACKER" "$@"
+  )
+}
+
+GIT_REMOTE_ROOT="$(mktemp -d)"
+GIT_REMOTE="$GIT_REMOTE_ROOT/sync-remote.git"
+git init --bare "$GIT_REMOTE" >/dev/null
+WORK_B="$(mktemp -d)"
+WORK_C="$(mktemp -d)"
+WORK_D="$(mktemp -d)"
+
+run_in "$WORK_B" init
+run_in "$WORK_C" init
+run_in "$WORK_D" init
+
+run_in "$WORK_DIR" collaborator add rev-1 --name "Rev One" --actor-map agent:reviewer-1 --actor human:owner >/dev/null
+run_in "$WORK_DIR" collaborator trust rev-1 --actor human:owner >/dev/null
+run_in "$WORK_DIR" membership bind rev-1 --scope-kind project --scope-id APP --role reviewer --actor human:owner >/dev/null
+run_in "$WORK_DIR" ticket create --project APP --title "Shared sync" --type task --actor human:owner >/dev/null
+run_in "$WORK_DIR" ticket comment APP-2 --body "loop in @rev-1" --actor human:owner >/dev/null
+run_in "$WORK_DIR" remote add origin --kind git --location "$GIT_REMOTE" --default-action push --actor human:owner >/dev/null
+
+SOURCE_PUSH_JSON="$(run_in "$WORK_DIR" sync push --remote origin --actor human:owner --json)"
+SOURCE_WORKSPACE_ID="$(printf '%s' "$SOURCE_PUSH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["publication"]["workspace_id"])')"
+if [ -z "$SOURCE_WORKSPACE_ID" ]; then
+  echo "failed to read source workspace id from packaged sync push" >&2
+  exit 1
+fi
+
+run_in "$WORK_B" remote add origin --kind git --location "$GIT_REMOTE" --default-action pull --actor human:owner >/dev/null
+run_in "$WORK_B" sync pull --remote origin --workspace "$SOURCE_WORKSPACE_ID" --actor human:owner >/dev/null
+MENTIONS_B="$(run_in "$WORK_B" mentions list --collaborator rev-1 --json)"
+case "$MENTIONS_B" in
+  *'"collaborator_id": "rev-1"'*) ;;
+  *) echo "workspace B missing synced canonical mention: $MENTIONS_B" >&2; exit 1 ;;
+esac
+
+run_in "$WORK_B" ticket edit APP-2 --title "Shared sync from B" --actor human:owner >/dev/null
+REMOTE_PUSH_JSON="$(run_in "$WORK_B" sync push --remote origin --actor human:owner --json)"
+REMOTE_WORKSPACE_ID="$(printf '%s' "$REMOTE_PUSH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["publication"]["workspace_id"])')"
+if [ -z "$REMOTE_WORKSPACE_ID" ]; then
+  echo "failed to read workspace B id from packaged sync push" >&2
+  exit 1
+fi
+
+run_in "$WORK_DIR" ticket edit APP-2 --title "Shared sync from A" --actor human:owner >/dev/null
+PULL_CONFLICT_LOG="$(mktemp)"
+if run_in "$WORK_DIR" sync pull --remote origin --workspace "$REMOTE_WORKSPACE_ID" --actor human:owner --json >"$PULL_CONFLICT_LOG" 2>&1; then
+  echo "expected packaged sync pull conflict, got success" >&2
+  cat "$PULL_CONFLICT_LOG" >&2
+  exit 1
+fi
+CONFLICT_LIST_JSON="$(run_in "$WORK_DIR" conflict list --json)"
+CONFLICT_ID="$(printf '%s' "$CONFLICT_LIST_JSON" | python3 -c 'import json,sys; items=json.load(sys.stdin)["items"]; print(next((item["conflict_id"] for item in items if item["entity_kind"] == "ticket" and item["status"] == "open"), ""))')"
+if [ -z "$CONFLICT_ID" ]; then
+  echo "expected open packaged ticket conflict, got: $CONFLICT_LIST_JSON" >&2
+  exit 1
+fi
+run_in "$WORK_DIR" conflict resolve "$CONFLICT_ID" --resolution use_remote --actor human:owner >/dev/null
+TICKET_AFTER_RESOLVE="$(run_in "$WORK_DIR" ticket view APP-2 --json)"
+case "$TICKET_AFTER_RESOLVE" in
+  *'Shared sync from B'*) ;;
+  *) echo "expected remote conflict resolution to win for APP-2: $TICKET_AFTER_RESOLVE" >&2; exit 1 ;;
+esac
+
+run_in "$WORK_B" ticket create --project APP --title "Shared from B" --type task --actor human:owner >/dev/null
+REMOTE_PUSH_JSON="$(run_in "$WORK_B" sync push --remote origin --actor human:owner --json)"
+REMOTE_WORKSPACE_ID="$(printf '%s' "$REMOTE_PUSH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["publication"]["workspace_id"])')"
+
+run_in "$WORK_C" remote add origin --kind git --location "$GIT_REMOTE" --default-action pull --actor human:owner >/dev/null
+run_in "$WORK_C" sync pull --remote origin --workspace "$REMOTE_WORKSPACE_ID" --actor human:owner >/dev/null
+TICKETS_C="$(run_in "$WORK_C" ticket list --project APP --json)"
+case "$TICKETS_C" in
+  *'"id": "APP-3"'*) ;;
+  *) echo "expected workspace C to receive APP-3: $TICKETS_C" >&2; exit 1 ;;
+esac
+run_in "$WORK_C" ticket create --project APP --title "Shared from C" --type task --actor human:owner >/dev/null
+C_PUSH_JSON="$(run_in "$WORK_C" sync push --remote origin --actor human:owner --json)"
+C_WORKSPACE_ID="$(printf '%s' "$C_PUSH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["publication"]["workspace_id"])')"
+run_in "$WORK_DIR" sync pull --remote origin --workspace "$C_WORKSPACE_ID" --actor human:owner >/dev/null
+TICKETS_A="$(run_in "$WORK_DIR" ticket list --project APP --json)"
+for ticket_id in APP-3 APP-4; do
+  case "$TICKETS_A" in
+    *"\"id\": \"$ticket_id\""*) ;;
+    *) echo "expected workspace A to converge with $ticket_id: $TICKETS_A" >&2; exit 1 ;;
+  esac
+done
+
+BUNDLE_CREATE_JSON="$(run_in "$WORK_DIR" bundle create --actor human:owner --json)"
+BUNDLE_REF="$(printf '%s' "$BUNDLE_CREATE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["job"]["bundle_ref"])')"
+if [ -z "$BUNDLE_REF" ]; then
+  echo "failed to read bundle ref from packaged bundle create" >&2
+  exit 1
+fi
+BUNDLE_VERIFY_JSON="$(run_in "$WORK_DIR" bundle verify "$BUNDLE_REF" --actor human:owner --json)"
+case "$BUNDLE_VERIFY_JSON" in
+  *'"verified": true'*) ;;
+  *) echo "expected bundle verify to pass: $BUNDLE_VERIFY_JSON" >&2; exit 1 ;;
+esac
+run_in "$WORK_D" bundle import "$BUNDLE_REF" --actor human:owner >/dev/null
+TICKETS_D="$(run_in "$WORK_D" ticket list --project APP --json)"
+case "$TICKETS_D" in
+  *'"id": "APP-4"'*) ;;
+  *) echo "expected bundle import workspace to receive converged tickets: $TICKETS_D" >&2; exit 1 ;;
+esac
+MENTIONS_D="$(run_in "$WORK_D" mentions list --collaborator rev-1 --json)"
+case "$MENTIONS_D" in
+  *'"collaborator_id": "rev-1"'*) ;;
+  *) echo "expected bundle import workspace to receive mentions: $MENTIONS_D" >&2; exit 1 ;;
+esac
+
+run_in "$WORK_DIR" ticket move APP-3 ready --actor human:owner >/dev/null
+SYNCED_DISPATCH_JSON="$(run_in "$WORK_DIR" run dispatch APP-3 --agent builder-1 --actor human:owner --json)"
+SYNCED_RUN_ID="$(printf '%s' "$SYNCED_DISPATCH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["run_id"])')"
+run_in "$WORK_DIR" run launch "$SYNCED_RUN_ID" --actor human:owner >/dev/null
+run_in "$WORK_DIR" run start "$SYNCED_RUN_ID" --actor human:owner >/dev/null
+run_in "$WORK_DIR" ticket move APP-3 in_progress --actor human:owner >/dev/null
+run_in "$WORK_DIR" run checkpoint "$SYNCED_RUN_ID" --title "Synced checkpoint" --body "runtime after sync" --actor human:owner >/dev/null
+run_in "$WORK_DIR" run handoff "$SYNCED_RUN_ID" --next-actor agent:reviewer-1 --next-gate review --actor human:owner >/dev/null
+SYNCED_APPROVALS_JSON="$(run_in "$WORK_DIR" approvals --json)"
+SYNCED_GATE_ID="$(printf '%s' "$SYNCED_APPROVALS_JSON" | python3 -c 'import json,sys; items=json.load(sys.stdin)["items"]; print(items[0]["gate"]["gate_id"] if items else "")')"
+if [ -z "$SYNCED_GATE_ID" ]; then
+  echo "failed to find synced review gate during packaged rehearsal" >&2
+  exit 1
+fi
+run_in "$WORK_DIR" gate approve "$SYNCED_GATE_ID" --actor agent:reviewer-1 --reason "synced archive rehearsal" >/dev/null
+run_in "$WORK_DIR" run complete "$SYNCED_RUN_ID" --actor human:owner --summary "synced flow complete" >/dev/null
+find "$WORK_DIR/.tracker/runtime/$SYNCED_RUN_ID" -exec touch -t 202001010101 {} +
+run_in "$WORK_DIR" archive apply --target runtime --project APP --yes --actor human:owner >/dev/null
+SYNC_ARCHIVE_JSON="$(run_in "$WORK_DIR" archive list --target runtime --json)"
+SYNC_ARCHIVE_ID="$(python3 - "$SYNCED_RUN_ID" "$SYNC_ARCHIVE_JSON" <<'PY'
+import json
+import sys
+
+run_id = sys.argv[1]
+items = json.loads(sys.argv[2])["items"]
+target = f".tracker/runtime/{run_id}"
+for item in items:
+    if target in item.get("source_paths", []):
+        print(item["archive_id"])
+        break
+else:
+    print("")
+PY
+)"
+if [ -z "$SYNC_ARCHIVE_ID" ]; then
+  echo "expected synced runtime archive: $SYNC_ARCHIVE_JSON" >&2
+  exit 1
+fi
+run_in "$WORK_DIR" compact --yes --actor human:owner >/dev/null
+run_in "$WORK_DIR" archive restore "$SYNC_ARCHIVE_ID" --actor human:owner >/dev/null
+run_in "$WORK_DIR" reindex >/dev/null
+DOCTOR_JSON="$(run_in "$WORK_DIR" doctor --repair --json)"
+case "$DOCTOR_JSON" in
+  *'"repair_pending": 0'*) ;;
+  *) echo "expected doctor repair to settle after synced archive flow: $DOCTOR_JSON" >&2; exit 1 ;;
+esac
+
+echo "release rehearsal ok: version=$VERSION archive=$ARCHIVE install_dir=$INSTALL_DIR work_dir=$WORK_DIR git_remote=$GIT_REMOTE"

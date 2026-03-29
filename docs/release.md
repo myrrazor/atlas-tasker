@@ -1,6 +1,6 @@
 # Atlas Tasker Release Guide
 
-Atlas Tasker v1.5 ships prebuilt macOS and Linux binaries plus a one-line install script.
+Atlas Tasker v1.6 ships prebuilt macOS and Linux binaries plus a one-line install script.
 
 ## Artifacts
 
@@ -16,14 +16,14 @@ Each archive contains a single `tracker` binary.
 
 ## In-Repo Deliverables
 
-`PR-508` proves the release workflow shape inside the repo:
+`PR-608` proves the release workflow shape inside the repo:
 
 - release archives are built for macOS and Linux
 - `checksums.txt` is generated and published with the archives
 - GitHub artifact attestations are generated for the archives and checksum file
 - `scripts/install.sh` installs a published archive
 - `scripts/verify-release.sh` verifies checksums and, by default, artifact attestations
-- `scripts/release-rehearsal.sh` exercises the installed-binary smoke flow locally
+- `scripts/release-rehearsal.sh` exercises the installed-binary single-workspace and multi-workspace smoke flows locally
 
 These deliverables are necessary, but they are not the same thing as a real hosted prerelease.
 
@@ -48,7 +48,7 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 Optional overrides:
 
 ```bash
-VERSION=v1.5.0 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
+VERSION=v1.6.0 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
 
 ## Manual Install
@@ -62,17 +62,19 @@ VERSION=v1.5.0 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubuserconte
 Example:
 
 ```bash
-curl -fsSLO https://github.com/myrrazor/atlas-tasker/releases/download/v1.5.0/tracker_1.5.0_darwin_arm64.tar.gz
-VERSION=v1.5.0 ./scripts/verify-release.sh ./tracker_1.5.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/myrrazor/atlas-tasker/releases/download/v1.6.0/tracker_1.6.0_darwin_arm64.tar.gz
+VERSION=v1.6.0 ./scripts/verify-release.sh ./tracker_1.6.0_darwin_arm64.tar.gz
 ```
 
 If you already have the GitHub CLI authenticated, `scripts/verify-release.sh` also runs:
 
 ```bash
-gh attestation verify ./tracker_1.5.0_darwin_arm64.tar.gz --repo myrrazor/atlas-tasker
+gh attestation verify ./tracker_1.6.0_darwin_arm64.tar.gz --repo myrrazor/atlas-tasker
 ```
 
 Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or when GitHub attestations are intentionally unavailable.
+
+`bundle verify` proves archive integrity and manifest correctness. It does not claim cryptographic signer authenticity for the bundle source.
 
 ## Release Workflow
 
@@ -95,7 +97,7 @@ Before cutting a real prerelease:
 Local rehearsal command:
 
 ```bash
-VERSION=v1.5.0-rc1 ./scripts/release-rehearsal.sh
+VERSION=v1.6.0-rc1 ./scripts/release-rehearsal.sh
 sh scripts/stability-smoke.sh
 ```
 
@@ -111,7 +113,7 @@ That script:
 
 ## Packaged Smoke Flow
 
-The v1.5 packaged smoke flow covers:
+The v1.6 packaged smoke flow covers:
 
 - run dispatch
 - runtime launch
@@ -121,6 +123,12 @@ The v1.5 packaged smoke flow covers:
 - run and ticket completion
 - runtime archival and restore
 - worktree cleanup
+- collaborator add, trust, and membership bind
+- git remote sync across multiple workspaces
+- explicit sync conflict creation and resolution
+- offline bundle create, verify, and import
+- three-workspace convergence
+- compact, reindex, and doctor after synced history exists
 
 Suggested flow:
 
@@ -158,6 +166,18 @@ tracker run cleanup <RUN-ID> --actor human:owner
 tracker inspect APP-1 --actor human:owner --json
 ```
 
+## Collaboration Rehearsal
+
+The release rehearsal now proves the v1.6 collaboration surface with installed binaries:
+
+1. workspace A publishes through a git sync remote
+2. workspace B pulls, receives collaborators and mentions, and publishes a conflicting edit
+3. workspace A opens and resolves an explicit conflict
+4. workspace B publishes a new ticket, workspace C pulls it, then publishes another ticket
+5. workspace A pulls from workspace C and proves three-workspace convergence
+6. workspace A creates a bundle, verifies it, and workspace D imports it
+7. workspace A runs archive, compact, restore, reindex, and doctor after synced history exists
+
 ## Release Manager Checklist
 
 ### In-repo gate
@@ -167,6 +187,7 @@ tracker inspect APP-1 --actor human:owner --json
 - [ ] `scripts/install.sh` passes syntax and rehearsal
 - [ ] `scripts/verify-release.sh` passes syntax and rehearsal
 - [ ] `scripts/release-rehearsal.sh` passes locally
+- [ ] packaged collaboration smoke proves git sync, bundle fallback, and three-workspace convergence
 
 ### Post-merge prerelease gate
 - [ ] prerelease tag created
