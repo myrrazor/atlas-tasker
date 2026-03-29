@@ -2,9 +2,11 @@ package service
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -266,6 +268,143 @@ func TestPreviewImportRejectsPathTraversalBundle(t *testing.T) {
 	}
 }
 
+func TestPreviewImportRejectsAbsolutePathBundle(t *testing.T) {
+	_, actions, _, _, _, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	archivePath := filepath.Join(t.TempDir(), "absolute.tar.gz")
+
+	if err := writeTestBundle(archivePath, map[string][]byte{
+		"manifest.json": mustJSON(t, bundleManifest{
+			FormatVersion: "v1",
+			BundleID:      "bundle_absolute",
+			Scope:         "workspace",
+			CreatedAt:     actions.now(),
+			Files: []bundleFileRecord{
+				{Path: "/escape.txt", SHA256: strings.Repeat("0", 64), Size: int64(len("boom"))},
+			},
+		}),
+		"/escape.txt": []byte("boom"),
+	}); err != nil {
+		t.Fatalf("write absolute bundle: %v", err)
+	}
+
+	if _, err := actions.PreviewImport(ctx, archivePath, contracts.Actor("human:owner"), "preview absolute bundle"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("expected invalid input for absolute path bundle, got %v", err)
+	}
+}
+
+func TestPreviewImportRejectsSymlinkBundle(t *testing.T) {
+	_, actions, _, _, _, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	archivePath := filepath.Join(t.TempDir(), "symlink.tar.gz")
+
+	if err := writeTestBundleEntries(archivePath, []testTarEntry{
+		{
+			Header: tar.Header{
+				Name:     "manifest.json",
+				Mode:     0o644,
+				Size:     int64(len(mustJSON(t, bundleManifest{FormatVersion: "v1", BundleID: "bundle_symlink", Scope: "workspace", CreatedAt: actions.now()}))),
+				ModTime:  time.Now().UTC(),
+				Typeflag: tar.TypeReg,
+			},
+			Body: mustJSON(t, bundleManifest{FormatVersion: "v1", BundleID: "bundle_symlink", Scope: "workspace", CreatedAt: actions.now()}),
+		},
+		{
+			Header: tar.Header{
+				Name:     "linked.txt",
+				Typeflag: tar.TypeSymlink,
+				Linkname: "target.txt",
+				ModTime:  time.Now().UTC(),
+			},
+		},
+	}); err != nil {
+		t.Fatalf("write symlink bundle: %v", err)
+	}
+
+	if _, err := actions.PreviewImport(ctx, archivePath, contracts.Actor("human:owner"), "preview symlink bundle"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput || !strings.Contains(err.Error(), "bundle_symlink_rejected") {
+		t.Fatalf("expected symlink rejection, got %v", err)
+	}
+}
+
+func TestPreviewImportRejectsHardlinkBundle(t *testing.T) {
+	_, actions, _, _, _, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	archivePath := filepath.Join(t.TempDir(), "hardlink.tar.gz")
+
+	if err := writeTestBundleEntries(archivePath, []testTarEntry{
+		{
+			Header: tar.Header{
+				Name:     "manifest.json",
+				Mode:     0o644,
+				Size:     int64(len(mustJSON(t, bundleManifest{FormatVersion: "v1", BundleID: "bundle_hardlink", Scope: "workspace", CreatedAt: actions.now()}))),
+				ModTime:  time.Now().UTC(),
+				Typeflag: tar.TypeReg,
+			},
+			Body: mustJSON(t, bundleManifest{FormatVersion: "v1", BundleID: "bundle_hardlink", Scope: "workspace", CreatedAt: actions.now()}),
+		},
+		{
+			Header: tar.Header{
+				Name:     "linked.txt",
+				Typeflag: tar.TypeLink,
+				Linkname: "target.txt",
+				ModTime:  time.Now().UTC(),
+			},
+		},
+	}); err != nil {
+		t.Fatalf("write hardlink bundle: %v", err)
+	}
+
+	if _, err := actions.PreviewImport(ctx, archivePath, contracts.Actor("human:owner"), "preview hardlink bundle"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput || !strings.Contains(err.Error(), "bundle_hardlink_rejected") {
+		t.Fatalf("expected hardlink rejection, got %v", err)
+	}
+}
+
+func TestPreviewImportRejectsCompressionBombBundle(t *testing.T) {
+	_, actions, _, _, _, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	archivePath := filepath.Join(t.TempDir(), "bomb.tar.gz")
+	huge := bytes.Repeat([]byte("0"), 1<<20)
+
+	if err := writeTestBundle(archivePath, map[string][]byte{
+		"manifest.json": mustJSON(t, bundleManifest{
+			FormatVersion: "v1",
+			BundleID:      "bundle_bomb",
+			Scope:         "workspace",
+			CreatedAt:     actions.now(),
+			Files: []bundleFileRecord{
+				{Path: "projects/APP/tickets/APP-1.md", SHA256: strings.Repeat("0", 64), Size: int64(len(huge))},
+			},
+		}),
+		"projects/APP/tickets/APP-1.md": huge,
+	}); err != nil {
+		t.Fatalf("write compression bomb bundle: %v", err)
+	}
+
+	if _, err := actions.PreviewImport(ctx, archivePath, contracts.Actor("human:owner"), "preview compression bomb"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput || !strings.Contains(err.Error(), "compression ratio limit") {
+		t.Fatalf("expected compression ratio rejection, got %v", err)
+	}
+}
+
+func TestPreviewImportRejectsOverfullBundle(t *testing.T) {
+	_, actions, _, _, _, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	archivePath := filepath.Join(t.TempDir(), "overfull.tar.gz")
+
+	files := map[string][]byte{
+		"manifest.json": mustJSON(t, bundleManifest{FormatVersion: "v1", BundleID: "bundle_overfull", Scope: "workspace", CreatedAt: actions.now()}),
+	}
+	for i := 0; i < bundleArchiveMaxFiles+1; i++ {
+		files[fmt.Sprintf("projects/APP/tickets/APP-%d.md", i)] = []byte("x")
+	}
+	if err := writeTestBundle(archivePath, files); err != nil {
+		t.Fatalf("write overfull bundle: %v", err)
+	}
+
+	if _, err := actions.PreviewImport(ctx, archivePath, contracts.Actor("human:owner"), "preview overfull bundle"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput || !strings.Contains(err.Error(), "file count limit") {
+		t.Fatalf("expected file count rejection, got %v", err)
+	}
+}
+
 func newImportExportHarness(t *testing.T) (string, *ActionService, *QueryService, mdstore.ProjectStore, mdstore.TicketStore, *eventstore.Log) {
 	t.Helper()
 	root := t.TempDir()
@@ -286,6 +425,28 @@ func newImportExportHarness(t *testing.T) (string, *ActionService, *QueryService
 }
 
 func writeTestBundle(path string, files map[string][]byte) error {
+	entries := make([]testTarEntry, 0, len(files))
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		raw := files[name]
+		entries = append(entries, testTarEntry{
+			Header: tar.Header{Name: name, Mode: 0o644, Size: int64(len(raw)), ModTime: time.Now().UTC(), Typeflag: tar.TypeReg},
+			Body:   raw,
+		})
+	}
+	return writeTestBundleEntries(path, entries)
+}
+
+type testTarEntry struct {
+	Header tar.Header
+	Body   []byte
+}
+
+func writeTestBundleEntries(path string, entries []testTarEntry) error {
 	file, err := os.Create(path)
 	if err != nil {
 		return err
@@ -297,17 +458,14 @@ func writeTestBundle(path string, files map[string][]byte) error {
 	tw := tar.NewWriter(gz)
 	defer tw.Close()
 
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	for _, name := range names {
-		raw := files[name]
-		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(raw)), ModTime: time.Now().UTC()}); err != nil {
+	for _, entry := range entries {
+		if err := tw.WriteHeader(&entry.Header); err != nil {
 			return err
 		}
-		if _, err := tw.Write(raw); err != nil {
+		if len(entry.Body) == 0 {
+			continue
+		}
+		if _, err := tw.Write(entry.Body); err != nil {
 			return err
 		}
 	}

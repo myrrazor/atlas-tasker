@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -587,6 +589,104 @@ func TestAddSyncRemoteRejectsUnsafeLocations(t *testing.T) {
 	}, actor, "reject workspace recursion"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput {
 		t.Fatalf("expected invalid path remote, got %v", err)
 	}
+
+	if _, err := actions.AddSyncRemote(ctx, contracts.SyncRemote{
+		RemoteID:      "bad-query",
+		Kind:          contracts.SyncRemoteKindGit,
+		Location:      "https://example.com/acme/repo.git?token=secret-token",
+		DefaultAction: contracts.SyncDefaultActionFetch,
+		Enabled:       true,
+	}, actor, "reject query token"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("expected invalid git remote query secret, got %v", err)
+	}
+
+	if _, err := actions.AddSyncRemote(ctx, contracts.SyncRemote{
+		RemoteID:      "bad-scp",
+		Kind:          contracts.SyncRemoteKindGit,
+		Location:      "user:secret@example.com:acme/repo.git",
+		DefaultAction: contracts.SyncDefaultActionFetch,
+		Enabled:       true,
+	}, actor, "reject scp password"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("expected invalid scp-style git remote credentials, got %v", err)
+	}
+}
+
+func TestSyncRemoteQueriesRedactSensitiveLocations(t *testing.T) {
+	ctx := context.Background()
+	root, _, queries, _, _, _ := newImportExportHarness(t)
+	store := SyncRemoteStore{Root: root}
+	rawLocation := "https://user:secret@example.com/acme/repo.git?token=secret-token"
+	if err := store.SaveSyncRemote(ctx, contracts.SyncRemote{
+		RemoteID:      "origin",
+		Kind:          contracts.SyncRemoteKindGit,
+		Location:      rawLocation,
+		DefaultAction: contracts.SyncDefaultActionFetch,
+		Enabled:       true,
+	}); err != nil {
+		t.Fatalf("seed sync remote: %v", err)
+	}
+
+	listed, err := queries.ListSyncRemotes(ctx)
+	if err != nil {
+		t.Fatalf("list sync remotes: %v", err)
+	}
+	detail, err := queries.SyncRemoteDetail(ctx, "origin")
+	if err != nil {
+		t.Fatalf("remote detail: %v", err)
+	}
+	status, err := queries.SyncStatus(ctx, "origin")
+	if err != nil {
+		t.Fatalf("sync status: %v", err)
+	}
+
+	for _, got := range []string{
+		listed[0].Location,
+		detail.Remote.Location,
+		status.Remotes[0].Remote.Location,
+	} {
+		if strings.Contains(got, "secret") || strings.Contains(got, "secret-token") || got == rawLocation {
+			t.Fatalf("expected remote location to be redacted, got %q", got)
+		}
+		if !strings.Contains(got, "***") && !strings.Contains(got, "%2A%2A%2A") {
+			t.Fatalf("expected remote location to contain a redaction marker, got %q", got)
+		}
+	}
+}
+
+func TestVerifySyncBundleRejectsLocalOnlyEntries(t *testing.T) {
+	root, actions, _, _, _, _ := newImportExportHarness(t)
+	archivePath := filepath.Join(t.TempDir(), "bad-sync.tar.gz")
+	localOnlyPath := ".tracker/runtime/run_1/brief.md"
+	payload := []byte("derived runtime file")
+	manifest := bundleManifest{
+		FormatVersion: "v1",
+		BundleID:      "syncbundle_bad",
+		Scope:         syncBundleFormatV1,
+		CreatedAt:     actions.now(),
+		Files: []bundleFileRecord{
+			{Path: localOnlyPath, SHA256: sha256Hex(payload), Size: int64(len(payload))},
+		},
+	}
+	if err := writeTestBundle(archivePath, map[string][]byte{
+		"manifest.json": mustJSON(t, manifest),
+		localOnlyPath:   payload,
+	}); err != nil {
+		t.Fatalf("write bad sync bundle: %v", err)
+	}
+	if err := os.WriteFile(strings.TrimSuffix(archivePath, ".tar.gz")+".manifest.json", mustJSON(t, manifest), 0o644); err != nil {
+		t.Fatalf("write sync manifest sidecar: %v", err)
+	}
+
+	view, err := verifySyncBundle(archivePath)
+	if err != nil {
+		t.Fatalf("verify sync bundle: %v", err)
+	}
+	if view.Verified || !slices.Contains(view.Errors, "unsafe_sync_entry:"+localOnlyPath) {
+		t.Fatalf("expected local-only sync entry rejection, got %#v", view)
+	}
+	if _, err := os.Stat(filepath.Join(root, localOnlyPath)); !os.IsNotExist(err) {
+		t.Fatalf("expected local-only payload to stay out of workspace, err=%v", err)
+	}
 }
 
 func seedSyncWorkspace(t *testing.T, ctx context.Context, actions *ActionService, projects interface {
@@ -730,4 +830,9 @@ func replaceFrontmatterValue(path string, field string, value string) error {
 		return fmt.Errorf("frontmatter field %s not found in %s", field, path)
 	}
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
+}
+
+func sha256Hex(raw []byte) string {
+	sum := sha256.Sum256(raw)
+	return fmt.Sprintf("%x", sum[:])
 }
