@@ -63,7 +63,7 @@ func (s *ActionService) decideGate(ctx context.Context, gateID string, actor con
 		}); err != nil {
 			return contracts.GateSnapshot{}, err
 		}
-		if err := canDecideGate(actor, ticket, gate); err != nil {
+		if err := s.authorizeGateDecision(ctx, actor, ticket, gate); err != nil {
 			return contracts.GateSnapshot{}, err
 		}
 		gate.State = nextState
@@ -261,27 +261,6 @@ func (s *ActionService) requiredGatesForRun(ctx context.Context, ticket contract
 		}
 	}
 	return nil, contracts.RunbookStage{}, nil
-}
-
-func canDecideGate(actor contracts.Actor, ticket contracts.TicketSnapshot, gate contracts.GateSnapshot) error {
-	if actor == contracts.Actor("human:owner") {
-		return nil
-	}
-	if gate.RequiredAgentID != "" && string(actor) != gate.RequiredAgentID {
-		return &apperr.Error{Code: apperr.CodePermissionDenied, Message: fmt.Sprintf("%s cannot decide gate %s", actor, gate.GateID)}
-	}
-	if gate.RequiredAgentID != "" {
-		return nil
-	}
-	switch gate.Kind {
-	case contracts.GateKindOwner, contracts.GateKindRelease:
-		return &apperr.Error{Code: apperr.CodePermissionDenied, Message: fmt.Sprintf("%s cannot decide %s gate", actor, gate.Kind)}
-	case contracts.GateKindReview:
-		if ticket.Reviewer != "" && actor != ticket.Reviewer {
-			return &apperr.Error{Code: apperr.CodePermissionDenied, Message: fmt.Sprintf("%s cannot decide review gate %s", actor, gate.GateID)}
-		}
-	}
-	return nil
 }
 
 func gateRequiredRole(kind contracts.GateKind) contracts.AgentRole {

@@ -15,11 +15,12 @@ import (
 type PermissionBindingLayer string
 
 const (
-	PermissionLayerWorkspace PermissionBindingLayer = "workspace_default"
-	PermissionLayerProject   PermissionBindingLayer = "project_default"
-	PermissionLayerAgent     PermissionBindingLayer = "agent_binding"
-	PermissionLayerRunbook   PermissionBindingLayer = "runbook_binding"
-	PermissionLayerTicket    PermissionBindingLayer = "ticket_overlay"
+	PermissionLayerWorkspace  PermissionBindingLayer = "workspace_default"
+	PermissionLayerProject    PermissionBindingLayer = "project_default"
+	PermissionLayerMembership PermissionBindingLayer = "membership_default"
+	PermissionLayerAgent      PermissionBindingLayer = "agent_binding"
+	PermissionLayerRunbook    PermissionBindingLayer = "runbook_binding"
+	PermissionLayerTicket     PermissionBindingLayer = "ticket_overlay"
 )
 
 type PermissionProfileMatch struct {
@@ -67,13 +68,15 @@ type permissionEvalInput struct {
 }
 
 type permissionEvaluator struct {
-	root     string
-	projects contracts.ProjectStore
-	tickets  contracts.TicketStore
-	profiles contracts.PermissionProfileStore
-	agents   contracts.AgentStore
-	runbooks contracts.RunbookStore
-	clock    func() time.Time
+	root          string
+	projects      contracts.ProjectStore
+	tickets       contracts.TicketStore
+	collaborators contracts.CollaboratorStore
+	memberships   contracts.MembershipStore
+	profiles      contracts.PermissionProfileStore
+	agents        contracts.AgentStore
+	runbooks      contracts.RunbookStore
+	clock         func() time.Time
 }
 
 func (s *QueryService) PermissionsView(ctx context.Context, target string, actor contracts.Actor, action contracts.PermissionAction) (PermissionsView, error) {
@@ -108,7 +111,7 @@ func (s *QueryService) PermissionsView(ctx context.Context, target string, actor
 	if gate != nil {
 		view.GateID = gate.GateID
 	}
-	evaluator := permissionEvaluator{root: s.Root, projects: s.Projects, tickets: s.Tickets, profiles: s.PermissionProfiles, agents: s.Agents, runbooks: s.Runbooks, clock: s.Clock}
+	evaluator := permissionEvaluator{root: s.Root, projects: s.Projects, tickets: s.Tickets, collaborators: s.Collaborators, memberships: s.Memberships, profiles: s.PermissionProfiles, agents: s.Agents, runbooks: s.Runbooks, clock: s.Clock}
 	actions := []contracts.PermissionAction{
 		contracts.PermissionActionDispatch,
 		contracts.PermissionActionRunLaunch,
@@ -148,7 +151,7 @@ func (s *ActionService) requirePermission(ctx context.Context, input permissionE
 	if !input.Actor.IsValid() {
 		return PermissionDecisionView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", input.Actor))
 	}
-	evaluator := permissionEvaluator{root: s.Root, projects: s.Projects, tickets: s.Tickets, profiles: s.PermissionProfiles, agents: s.Agents, runbooks: s.Runbooks, clock: s.Clock}
+	evaluator := permissionEvaluator{root: s.Root, projects: s.Projects, tickets: s.Tickets, collaborators: s.Collaborators, memberships: s.Memberships, profiles: s.PermissionProfiles, agents: s.Agents, runbooks: s.Runbooks, clock: s.Clock}
 	decision, err := evaluator.evaluate(ctx, input)
 	if err != nil {
 		return PermissionDecisionView{}, err
@@ -195,12 +198,31 @@ func (e permissionEvaluator) evaluate(ctx context.Context, input permissionEvalI
 	if input.Action == "" {
 		return decision, apperr.New(apperr.CodeInvalidInput, "permission action is required")
 	}
-	profiles, err := e.applicableProfiles(ctx, input.Ticket, input.ActorAgent, input.Runbook)
+	collaborator, memberships, hasCollaborator, err := e.collaboratorForActor(ctx, input.Actor)
+	if err != nil {
+		return PermissionDecisionView{}, err
+	}
+	if hasCollaborator {
+		activeMemberships := activeMembershipsForProject(memberships, input.Ticket.Project)
+		switch collaborator.Status {
+		case contracts.CollaboratorStatusSuspended, contracts.CollaboratorStatusRemoved:
+			decision.ReasonCodes = append(decision.ReasonCodes, "collaborator_suspended")
+		}
+		if collaboratorActionNeedsProjectMembership(input.Action) && len(activeMemberships) == 0 {
+			decision.ReasonCodes = append(decision.ReasonCodes, "missing_membership")
+		}
+		if collaboratorActionRequiresTrust(input.Action) && collaborator.TrustState != contracts.CollaboratorTrustStateTrusted {
+			decision.ReasonCodes = append(decision.ReasonCodes, "collaborator_untrusted")
+		}
+	}
+	profiles, err := e.applicableProfiles(ctx, input.Ticket, input.Actor, input.ActorAgent, input.Runbook)
 	if err != nil {
 		return PermissionDecisionView{}, err
 	}
 	decision.Profiles = profiles
 	if len(profiles) == 0 {
+		decision.ReasonCodes = dedupeStrings(decision.ReasonCodes)
+		decision.Allowed = len(decision.ReasonCodes) == 0
 		return decision, nil
 	}
 
@@ -250,7 +272,7 @@ func (e permissionEvaluator) evaluate(ctx context.Context, input permissionEvalI
 	if hasActionAllowList && !actionAllowed {
 		reasonCodes = append(reasonCodes, "permission_action_not_allowed")
 	}
-	decision.ReasonCodes = dedupeStrings(reasonCodes)
+	decision.ReasonCodes = dedupeStrings(append(decision.ReasonCodes, reasonCodes...))
 	if len(allowPatterns) > 0 || len(forbiddenPatterns) > 0 {
 		pathReasonCodes := evaluatePathRestrictions(allowPatterns, forbiddenPatterns, input.ChangedFiles, input.ChangedFilesKnown)
 		decision.ReasonCodes = dedupeStrings(append(decision.ReasonCodes, pathReasonCodes...))
@@ -259,7 +281,7 @@ func (e permissionEvaluator) evaluate(ctx context.Context, input permissionEvalI
 	return decision, nil
 }
 
-func (e permissionEvaluator) applicableProfiles(ctx context.Context, ticket contracts.TicketSnapshot, actorAgent *contracts.AgentProfile, runbook string) ([]PermissionProfileMatch, error) {
+func (e permissionEvaluator) applicableProfiles(ctx context.Context, ticket contracts.TicketSnapshot, actor contracts.Actor, actorAgent *contracts.AgentProfile, runbook string) ([]PermissionProfileMatch, error) {
 	profiles, err := e.profiles.ListPermissionProfiles(ctx)
 	if err != nil {
 		return nil, err
@@ -302,6 +324,23 @@ func (e permissionEvaluator) applicableProfiles(ctx context.Context, ticket cont
 		}
 		return permissionStringSliceContains(profile.Projects, ticket.Project)
 	})
+	collaborator, memberships, hasCollaborator, err := e.collaboratorForActor(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	if hasCollaborator {
+		membershipProfileIDs := make(map[string]struct{})
+		for _, membership := range activeMembershipsForProject(memberships, ticket.Project) {
+			for _, profileID := range membership.DefaultPermissionProfiles {
+				membershipProfileIDs[strings.TrimSpace(profileID)] = struct{}{}
+			}
+		}
+		appendMatches(PermissionLayerMembership, func(profile contracts.PermissionProfile) bool {
+			_, ok := membershipProfileIDs[profile.ProfileID]
+			return ok
+		})
+		_ = collaborator
+	}
 	appendMatches(PermissionLayerAgent, func(profile contracts.PermissionProfile) bool {
 		return actorAgent != nil && permissionStringSliceContains(profile.Agents, actorAgent.AgentID)
 	})
@@ -313,6 +352,55 @@ func (e permissionEvaluator) applicableProfiles(ctx context.Context, ticket cont
 		return ok
 	})
 	return result, nil
+}
+
+func (e permissionEvaluator) collaboratorForActor(ctx context.Context, actor contracts.Actor) (contracts.CollaboratorProfile, []contracts.MembershipBinding, bool, error) {
+	if actor == "" || actor == contracts.Actor("human:owner") {
+		return contracts.CollaboratorProfile{}, nil, false, nil
+	}
+	collaborators, err := e.collaborators.ListCollaborators(ctx)
+	if err != nil {
+		return contracts.CollaboratorProfile{}, nil, false, err
+	}
+	for _, collaborator := range collaborators {
+		for _, mappedActor := range collaborator.AtlasActors {
+			if mappedActor != actor {
+				continue
+			}
+			memberships, err := e.memberships.ListMemberships(ctx, collaborator.CollaboratorID)
+			if err != nil {
+				return contracts.CollaboratorProfile{}, nil, false, err
+			}
+			return collaborator, memberships, true, nil
+		}
+	}
+	return contracts.CollaboratorProfile{}, nil, false, nil
+}
+
+func collaboratorActionNeedsProjectMembership(action contracts.PermissionAction) bool {
+	switch action {
+	case contracts.PermissionActionDispatch,
+		contracts.PermissionActionGateOpen,
+		contracts.PermissionActionGateApprove,
+		contracts.PermissionActionChangeMerge,
+		contracts.PermissionActionRunComplete,
+		contracts.PermissionActionTicketComplete:
+		return true
+	default:
+		return false
+	}
+}
+
+func collaboratorActionRequiresTrust(action contracts.PermissionAction) bool {
+	switch action {
+	case contracts.PermissionActionGateApprove,
+		contracts.PermissionActionChangeMerge,
+		contracts.PermissionActionRunComplete,
+		contracts.PermissionActionTicketComplete:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *QueryService) resolvePermissionTarget(ctx context.Context, target string) (contracts.TicketSnapshot, *contracts.RunSnapshot, *contracts.ChangeRef, *contracts.GateSnapshot, error) {

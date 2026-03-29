@@ -391,7 +391,7 @@ func (s *ActionService) MergeChange(ctx context.Context, changeID string, actor 
 		if err != nil {
 			return ChangeStatusView{}, err
 		}
-		if err := requireChangeMergeAuthority(ticket, actor); err != nil {
+		if err := requireChangeMergeAuthority(ctx, s.Collaborators, s.Memberships, ticket, actor); err != nil {
 			return ChangeStatusView{}, err
 		}
 		if change.Provider != contracts.ChangeProviderGitHub {
@@ -900,16 +900,6 @@ func requireChangeReviewAuthority(ctx context.Context, runs contracts.RunStore, 
 		return apperr.New(apperr.CodePermissionDenied, "change review request blocked: review_request_not_authorized")
 	}
 	return nil
-}
-
-func requireChangeMergeAuthority(ticket contracts.TicketSnapshot, actor contracts.Actor) error {
-	if actor == contracts.Actor("human:owner") {
-		return nil
-	}
-	if ticket.Reviewer != "" && actor == ticket.Reviewer {
-		return nil
-	}
-	return apperr.New(apperr.CodePermissionDenied, "change merge blocked: merge_not_authorized")
 }
 
 func reviewRequestTargets(ticket contracts.TicketSnapshot) []contracts.Actor {

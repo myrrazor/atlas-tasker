@@ -128,7 +128,7 @@ func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (A
 	if err != nil {
 		return AgentEligibilityReport{}, err
 	}
-	evaluator := permissionEvaluator{root: s.Root, projects: s.Projects, tickets: s.Tickets, profiles: s.PermissionProfiles, agents: s.Agents, runbooks: s.Runbooks, clock: s.Clock}
+	evaluator := permissionEvaluator{root: s.Root, projects: s.Projects, tickets: s.Tickets, collaborators: s.Collaborators, memberships: s.Memberships, profiles: s.PermissionProfiles, agents: s.Agents, runbooks: s.Runbooks, clock: s.Clock}
 	items := make([]AgentEligibilityEntry, 0, len(profiles))
 	for _, profile := range profiles {
 		activeRuns := activeCounts[profile.AgentID]
