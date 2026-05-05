@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/spf13/cobra"
@@ -63,12 +64,35 @@ func runHandoffView(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer workspace.close()
-	packet, err := workspace.queries.HandoffDetail(commandContext(cmd), args[0])
+	view, err := workspace.queries.HandoffView(commandContext(cmd), args[0])
 	if err != nil {
 		return err
 	}
-	pretty := service.RenderHandoffMarkdown(packet)
-	data := map[string]any{"kind": "handoff_detail", "generated_at": packet.GeneratedAt, "payload": packet}
+	pretty := formatHandoffDetail(view)
+	data := map[string]any{
+		"kind":         "handoff_detail",
+		"generated_at": view.GeneratedAt,
+		"payload": map[string]any{
+			"handoff_id":                   view.Handoff.HandoffID,
+			"source_run_id":                view.Handoff.SourceRunID,
+			"ticket_id":                    view.Handoff.TicketID,
+			"actor":                        view.Handoff.Actor,
+			"status_summary":               view.Handoff.StatusSummary,
+			"changed_files":                view.Handoff.ChangedFiles,
+			"commit_refs":                  view.Handoff.CommitRefs,
+			"tests":                        view.Handoff.Tests,
+			"evidence_links":               view.Handoff.EvidenceLinks,
+			"open_questions":               view.Handoff.OpenQuestions,
+			"risks":                        view.Handoff.Risks,
+			"suggested_next_actor":         view.Handoff.SuggestedNextActor,
+			"suggested_next_gate":          view.Handoff.SuggestedNextGate,
+			"suggested_next_ticket_status": view.Handoff.SuggestedNextTicketStatus,
+			"generated_at":                 view.Handoff.GeneratedAt,
+			"schema_version":               view.Handoff.SchemaVersion,
+			"changes":                      view.Changes,
+			"checks":                       view.Checks,
+		},
+	}
 	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
@@ -97,4 +121,25 @@ func runHandoffExport(cmd *cobra.Command, args []string) error {
 
 func formatHandoffShort(packetID string, runID string, ticketID string) string {
 	return fmt.Sprintf("handoff %s run=%s ticket=%s", packetID, runID, ticketID)
+}
+
+func formatHandoffDetail(view service.HandoffContextView) string {
+	lines := []string{service.RenderHandoffMarkdown(view.Handoff)}
+	if len(view.Changes) > 0 {
+		lines = append(lines, "", "## Changes", "")
+		for _, change := range view.Changes {
+			line := fmt.Sprintf("- %s [%s]", change.ChangeID, change.Status)
+			if change.BranchName != "" {
+				line += " branch=" + change.BranchName
+			}
+			lines = append(lines, line)
+		}
+	}
+	if len(view.Checks) > 0 {
+		lines = append(lines, "", "## Checks", "")
+		for _, check := range view.Checks {
+			lines = append(lines, fmt.Sprintf("- %s [%s/%s] %s", check.CheckID, check.Status, check.Conclusion, check.Name))
+		}
+	}
+	return strings.Join(lines, "\n")
 }

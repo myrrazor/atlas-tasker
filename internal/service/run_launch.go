@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -21,8 +22,11 @@ func (s *QueryService) RunOpen(ctx context.Context, runID string) (RunLaunchMani
 	return launchManifestView(s.Root, detail.Run, s.now()), nil
 }
 
-func (s *ActionService) LaunchRun(ctx context.Context, runID string, refresh bool) (RunLaunchManifestView, error) {
+func (s *ActionService) LaunchRun(ctx context.Context, runID string, refresh bool, actor contracts.Actor, reason string) (RunLaunchManifestView, error) {
 	return withWriteLock(ctx, s.LockManager, "launch run runtime", func(ctx context.Context) (RunLaunchManifestView, error) {
+		if !actor.IsValid() {
+			return RunLaunchManifestView{}, fmt.Errorf("invalid actor: %s", actor)
+		}
 		query := NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock)
 		detail, err := query.RunDetail(ctx, runID)
 		if err != nil {
@@ -30,6 +34,19 @@ func (s *ActionService) LaunchRun(ctx context.Context, runID string, refresh boo
 		}
 		view := launchManifestView(s.Root, detail.Run, s.now())
 		agent, _ := s.Agents.LoadAgent(ctx, detail.Run.AgentID)
+		changedFiles, known := permissionChangedFilesForRun(ctx, s.Runs, s.Root, detail.Run)
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionRunLaunch,
+			Actor:             actor,
+			Ticket:            detail.Ticket,
+			Run:               &detail.Run,
+			ActorAgent:        maybeAgentProfile(agent),
+			Runbook:           permissionRunbook(detail.Ticket, &detail.Run),
+			ChangedFiles:      changedFiles,
+			ChangedFilesKnown: known,
+		}); err != nil {
+			return RunLaunchManifestView{}, err
+		}
 		manifest, err := integrations.BuildRunManifest(integrations.RunManifestInput{
 			WorkspaceRoot:    s.Root,
 			Run:              detail.Run,
@@ -64,6 +81,7 @@ func (s *ActionService) LaunchRun(ctx context.Context, runID string, refresh boo
 		view.Created = created
 		view.Updated = updated
 		view.GeneratedAt = s.now()
+		_ = reason
 		return view, nil
 	})
 }
@@ -85,8 +103,17 @@ func launchManifestView(root string, run contracts.RunSnapshot, generatedAt time
 }
 
 func writeRuntimeArtifacts(refresh bool, files map[string]string) ([]string, []string, error) {
+	type fileOp struct {
+		path     string
+		body     []byte
+		existed  bool
+		previous []byte
+		tempPath string
+	}
+
 	created := make([]string, 0, len(files))
 	updated := make([]string, 0, len(files))
+	ops := make([]fileOp, 0, len(files))
 	for path, body := range files {
 		current, err := os.ReadFile(path)
 		if err == nil {
@@ -96,21 +123,94 @@ func writeRuntimeArtifacts(refresh bool, files map[string]string) ([]string, []s
 			if string(current) == body {
 				continue
 			}
-			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-				return nil, nil, fmt.Errorf("write runtime artifact %s: %w", filepath.Base(path), err)
-			}
-			updated = append(updated, path)
+			ops = append(ops, fileOp{path: path, body: []byte(body), existed: true, previous: current})
 			continue
 		}
 		if !os.IsNotExist(err) {
 			return nil, nil, fmt.Errorf("read runtime artifact %s: %w", filepath.Base(path), err)
 		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			return nil, nil, fmt.Errorf("write runtime artifact %s: %w", filepath.Base(path), err)
+		ops = append(ops, fileOp{path: path, body: []byte(body)})
+	}
+	sort.Slice(ops, func(i, j int) bool { return ops[i].path < ops[j].path })
+	// Stage every file first so a later failure does not leave a half-regenerated runtime bundle behind.
+	for i := range ops {
+		temp, err := os.CreateTemp(filepath.Dir(ops[i].path), "."+filepath.Base(ops[i].path)+".tmp-*")
+		if err != nil {
+			return nil, nil, fmt.Errorf("create runtime temp file %s: %w", filepath.Base(ops[i].path), err)
 		}
-		created = append(created, path)
+		if _, err := temp.Write(ops[i].body); err != nil {
+			_ = temp.Close()
+			_ = os.Remove(temp.Name())
+			return nil, nil, fmt.Errorf("write runtime temp file %s: %w", filepath.Base(ops[i].path), err)
+		}
+		if err := temp.Close(); err != nil {
+			_ = os.Remove(temp.Name())
+			return nil, nil, fmt.Errorf("close runtime temp file %s: %w", filepath.Base(ops[i].path), err)
+		}
+		ops[i].tempPath = temp.Name()
+	}
+	applied := make([]fileOp, 0, len(ops))
+	cleanupTemps := func(items []fileOp) {
+		for _, item := range items {
+			if strings.TrimSpace(item.tempPath) == "" {
+				continue
+			}
+			_ = os.Remove(item.tempPath)
+		}
+	}
+	rollback := func() {
+		// Restore the previous runtime view best-effort; launch is a derived convenience, not canonical state.
+		for i := len(applied) - 1; i >= 0; i-- {
+			item := applied[i]
+			if item.existed {
+				_ = writeFileAtomically(item.path, item.previous)
+				continue
+			}
+			_ = os.Remove(item.path)
+		}
+	}
+	for _, op := range ops {
+		if testRuntimeArtifactWriteHook != nil {
+			if err := testRuntimeArtifactWriteHook(op.path); err != nil {
+				cleanupTemps(ops)
+				rollback()
+				return nil, nil, err
+			}
+		}
+		if err := os.Rename(op.tempPath, op.path); err != nil {
+			cleanupTemps(ops)
+			rollback()
+			return nil, nil, fmt.Errorf("write runtime artifact %s: %w", filepath.Base(op.path), err)
+		}
+		applied = append(applied, op)
+		if op.existed {
+			updated = append(updated, op.path)
+			continue
+		}
+		created = append(created, op.path)
 	}
 	sort.Strings(created)
 	sort.Strings(updated)
 	return created, updated, nil
+}
+
+func writeFileAtomically(path string, body []byte) error {
+	temp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".restore-*")
+	if err != nil {
+		return err
+	}
+	if _, err := temp.Write(body); err != nil {
+		_ = temp.Close()
+		_ = os.Remove(temp.Name())
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		_ = os.Remove(temp.Name())
+		return err
+	}
+	if err := os.Rename(temp.Name(), path); err != nil {
+		_ = os.Remove(temp.Name())
+		return err
+	}
+	return nil
 }
