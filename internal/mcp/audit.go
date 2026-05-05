@@ -18,6 +18,7 @@ type SecurityAuditRecord struct {
 	Message            string      `json:"message"`
 	Profile            ToolProfile `json:"profile"`
 	ApprovalID         string      `json:"approval_id,omitempty"`
+	ApprovalIDProvided bool        `json:"approval_id_provided,omitempty"`
 	HighImpact         bool        `json:"high_impact"`
 	ProviderSideEffect bool        `json:"provider_live_side_effect"`
 }

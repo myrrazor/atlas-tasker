@@ -47,7 +47,7 @@ High-impact execution requires:
 - unexpired, unused approval
 - final policy recheck immediately before execution
 
-Denied high-impact attempts are written to `.tracker/runtime/mcp/security-audit.jsonl`.
+Denied high-impact attempts are written to `.tracker/runtime/mcp/security-audit.jsonl`. Denial records do not include raw approval IDs; they only record whether an approval ID was supplied. Successful high-impact execution records keep the approval ID so an executed mutation can be tied back to the human approval.
 
 ## References
 

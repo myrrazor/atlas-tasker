@@ -198,7 +198,7 @@ func (s *Server) auditDenied(spec ToolSpec, args map[string]any, reasonCode stri
 		ReasonCode:         reasonCode,
 		Message:            err.Error(),
 		Profile:            s.Options.Profile,
-		ApprovalID:         stringArg(args, "operation_approval_id"),
+		ApprovalIDProvided: stringArg(args, "operation_approval_id") != "",
 		HighImpact:         spec.HighImpact,
 		ProviderSideEffect: spec.ProviderSideEffect,
 	})

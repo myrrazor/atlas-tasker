@@ -139,6 +139,38 @@ func TestHighImpactDeniedAttemptWritesSecurityAudit(t *testing.T) {
 	}
 }
 
+func TestHighImpactDeniedAuditDoesNotLeakApprovalToken(t *testing.T) {
+	root := t.TempDir()
+	queries := service.NewQueryService(root, nil, nil, nil, nil, func() time.Time { return time.Now().UTC() })
+	server := &Server{
+		Workspace: &Workspace{Root: root, Queries: queries},
+		Options:   Options{Profile: ProfileAdmin, AllowHighImpactTools: true}.Normalized(),
+		Approvals: NewApprovalStore(root, nil),
+	}
+	secretApproval := "mcp_approval_super_secret"
+	_, err := server.CallTool(context.Background(), "atlas.change.merge", map[string]any{
+		"change_id":             "CHG-1",
+		"actor":                 "human:owner",
+		"reason":                "try merge",
+		"operation_approval_id": secretApproval,
+		"confirm_text":          "execute atlas.change.merge CHG-1",
+	})
+	if err == nil {
+		t.Fatalf("expected missing approval to be rejected")
+	}
+	raw, readErr := os.ReadFile(filepath.Join(root, ".tracker", "runtime", "mcp", "security-audit.jsonl"))
+	if readErr != nil {
+		t.Fatalf("expected audit log: %v", readErr)
+	}
+	got := string(raw)
+	if strings.Contains(got, secretApproval) {
+		t.Fatalf("denied audit leaked approval token:\n%s", got)
+	}
+	if !strings.Contains(got, `"approval_id_provided":true`) {
+		t.Fatalf("expected audit to record that an approval id was supplied:\n%s", got)
+	}
+}
+
 func TestWorkflowWritesRequireActorAndReason(t *testing.T) {
 	root := t.TempDir()
 	queries := service.NewQueryService(root, nil, nil, nil, nil, func() time.Time { return time.Now().UTC() })
@@ -234,6 +266,44 @@ func TestResultLimitsAndPagination(t *testing.T) {
 	text := textFallback("atlas.test", map[string]any{"big": strings.Repeat("x", 1000)}, false, 50)
 	if len(text) > 240 {
 		t.Fatalf("expected text fallback to honor max token estimate, got length %d", len(text))
+	}
+}
+
+func TestMCPOutputRedactsObviousSecretFields(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	rawLocation := "https://user:secret@example.com/acme/repo.git?token=secret-token"
+	if err := (service.SyncRemoteStore{Root: root}).SaveSyncRemote(ctx, contracts.SyncRemote{
+		RemoteID:      "origin",
+		Kind:          contracts.SyncRemoteKindGit,
+		Location:      rawLocation,
+		DefaultAction: contracts.SyncDefaultActionFetch,
+		Enabled:       true,
+	}); err != nil {
+		t.Fatalf("seed sync remote: %v", err)
+	}
+	queries := service.NewQueryService(root, nil, nil, nil, nil, func() time.Time { return time.Now().UTC() })
+	server := &Server{
+		Workspace: &Workspace{Root: root, Queries: queries},
+		Options:   Options{Profile: ProfileRead}.Normalized(),
+		Approvals: NewApprovalStore(root, nil),
+	}
+	result, err := server.CallTool(ctx, "atlas.sync.status", map[string]any{"remote_id": "origin"})
+	if err != nil {
+		t.Fatalf("sync status via MCP: %v", err)
+	}
+	raw, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal MCP result: %v", err)
+	}
+	got := string(raw)
+	for _, leaked := range []string{"secret", "secret-token", rawLocation} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("MCP output leaked sync remote secret %q:\n%s", leaked, got)
+		}
+	}
+	if !strings.Contains(got, "***") && !strings.Contains(got, "%2A%2A%2A") {
+		t.Fatalf("expected MCP output to include redaction marker:\n%s", got)
 	}
 }
 
