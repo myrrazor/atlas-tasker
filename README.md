@@ -40,6 +40,8 @@ tracker tui --actor agent:builder-1
 - [Decision log](docs/v1-decision-log.md)
 - [Architecture](docs/architecture.md)
 - [Command reference](docs/command-reference.md)
+- [MCP adapter](docs/mcp.md)
+- [MCP security](docs/mcp-security.md)
 - [Operator manual](docs/operator-manual.md)
 - [Upgrade guide](docs/upgrade-v1.2-to-v1.3.md)
 - [Troubleshooting](docs/troubleshooting.md)

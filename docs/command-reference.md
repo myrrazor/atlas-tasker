@@ -504,6 +504,19 @@ Slash command examples:
 - `/handoff export <HANDOFF-ID>`
 - `/evidence view <EVIDENCE-ID>`
 
+## MCP Adapter
+
+- `tracker mcp serve [--tool-profile read|workflow|delivery|admin] [--read-only] [--dangerously-allow-high-impact-tools]`
+- `tracker mcp schema --json [--tool-profile <PROFILE>]`
+- `tracker mcp tools --json [--tool-profile <PROFILE>]`
+- `tracker mcp approve-operation --operation <TOOL> --target <ID> --actor <ACTOR> --reason <TEXT> [--ttl 10m]`
+- `tracker mcp approvals list --json`
+- `tracker mcp approvals revoke <APPROVAL-ID>`
+
+Default MCP setup uses `--tool-profile read`. High-impact tools require both an admin/delivery profile that includes the tool and `--dangerously-allow-high-impact-tools`; execution still requires a one-time approval created outside MCP.
+
+See [MCP adapter](mcp.md), [MCP security](mcp-security.md), and [MCP tools](mcp-tools.md).
+
 ## TUI Shortcuts
 
 Once `tracker tui` is running:

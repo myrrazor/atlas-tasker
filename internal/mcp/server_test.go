@@ -1,0 +1,280 @@
+package mcp
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
+	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
+)
+
+func TestInventoryProfilesGateHighImpactTools(t *testing.T) {
+	read := Inventory(Options{Profile: ProfileRead}.Normalized())
+	if !toolEnabled(read, "atlas.ticket.view") {
+		t.Fatalf("expected read profile to enable atlas.ticket.view")
+	}
+	if toolEnabled(read, "atlas.ticket.comment") {
+		t.Fatalf("read profile must not enable workflow writes")
+	}
+	if toolEnabled(read, "atlas.change.merge") {
+		t.Fatalf("read profile must not enable high-impact writes")
+	}
+
+	admin := Inventory(Options{Profile: ProfileAdmin}.Normalized())
+	if toolEnabled(admin, "atlas.change.merge") {
+		t.Fatalf("admin profile without danger flag must not enable high-impact writes")
+	}
+
+	danger := Inventory(Options{Profile: ProfileAdmin, AllowHighImpactTools: true}.Normalized())
+	if !toolEnabled(danger, "atlas.change.merge") {
+		t.Fatalf("admin profile with danger flag should expose high-impact writes")
+	}
+}
+
+func TestOperationApprovalIsBoundExpiringAndSingleUse(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
+	store := NewApprovalStore(root, func() time.Time { return now })
+	approval, err := store.Create(context.Background(), "change.merge", "CHG-1", "human:owner", 10*time.Minute, "merge approved")
+	if err != nil {
+		t.Fatalf("create approval: %v", err)
+	}
+	if approval.Operation != "atlas.change.merge" {
+		t.Fatalf("operation should be normalized, got %s", approval.Operation)
+	}
+	if _, err := store.Consume(context.Background(), approval.ID, "atlas.change.merge", "CHG-other", "human:owner", "atlas.change.merge"); err == nil {
+		t.Fatalf("expected wrong target to be rejected")
+	}
+	if _, err := store.Consume(context.Background(), approval.ID, "atlas.change.merge", "CHG-1", "human:owner", "atlas.change.merge"); err != nil {
+		t.Fatalf("consume approval: %v", err)
+	}
+	if _, err := store.Consume(context.Background(), approval.ID, "atlas.change.merge", "CHG-1", "human:owner", "atlas.change.merge"); err == nil {
+		t.Fatalf("expected reused approval to be rejected")
+	}
+}
+
+func TestOperationApprovalExpiry(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
+	store := NewApprovalStore(root, func() time.Time { return now })
+	approval, err := store.Create(context.Background(), "change.merge", "CHG-1", "human:owner", time.Minute, "merge approved")
+	if err != nil {
+		t.Fatalf("create approval: %v", err)
+	}
+	store.Now = func() time.Time { return now.Add(2 * time.Minute) }
+	if _, err := store.Consume(context.Background(), approval.ID, "atlas.change.merge", "CHG-1", "human:owner", "atlas.change.merge"); err == nil {
+		t.Fatalf("expected expired approval to be rejected")
+	}
+}
+
+func TestHighImpactApprovalTargetBindsSideEffectingInputs(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
+	store := NewApprovalStore(root, func() time.Time { return now })
+	server := &Server{
+		Workspace: &Workspace{Root: root},
+		Options:   Options{Profile: ProfileAdmin, AllowHighImpactTools: true, Now: func() time.Time { return now }}.Normalized(),
+		Approvals: store,
+	}
+	spec, ok := ToolSpecByName("atlas.sync.pull")
+	if !ok {
+		t.Fatalf("missing sync pull tool")
+	}
+	args := map[string]any{
+		"remote_id":             "origin",
+		"source_workspace_id":   "other-workspace",
+		"actor":                 "human:owner",
+		"reason":                "pull approved state",
+		"operation_approval_id": "placeholder",
+		"confirm_text":          `execute atlas.sync.pull {"remote_id":"origin","source_workspace_id":"other-workspace"}`,
+	}
+	approval, err := store.Create(context.Background(), "atlas.sync.pull", "origin", "human:owner", 10*time.Minute, "too broad")
+	if err != nil {
+		t.Fatalf("create broad approval: %v", err)
+	}
+	args["operation_approval_id"] = approval.ID
+	if _, err := server.authorizeHighImpact(context.Background(), spec, args, "human:owner", specTarget(spec, args)); err == nil {
+		t.Fatalf("expected approval without source workspace binding to be rejected")
+	}
+	bound, err := store.Create(context.Background(), "atlas.sync.pull", `{"remote_id":"origin","source_workspace_id":"other-workspace"}`, "human:owner", 10*time.Minute, "exact pull")
+	if err != nil {
+		t.Fatalf("create exact approval: %v", err)
+	}
+	args["operation_approval_id"] = bound.ID
+	if _, err := server.authorizeHighImpact(context.Background(), spec, args, "human:owner", specTarget(spec, args)); err != nil {
+		t.Fatalf("expected exact approval to pass: %v", err)
+	}
+}
+
+func TestHighImpactDeniedAttemptWritesSecurityAudit(t *testing.T) {
+	root := t.TempDir()
+	queries := service.NewQueryService(root, nil, nil, nil, nil, func() time.Time { return time.Now().UTC() })
+	server := &Server{
+		Workspace: &Workspace{Root: root, Queries: queries},
+		Options:   Options{Profile: ProfileAdmin}.Normalized(),
+		Approvals: NewApprovalStore(root, nil),
+	}
+	_, err := server.CallTool(context.Background(), "atlas.change.merge", map[string]any{
+		"change_id": "CHG-1",
+		"actor":     "human:owner",
+		"reason":    "try merge",
+	})
+	if err == nil {
+		t.Fatalf("expected high-impact tool to be disabled")
+	}
+	raw, readErr := os.ReadFile(filepath.Join(root, ".tracker", "runtime", "mcp", "security-audit.jsonl"))
+	if readErr != nil {
+		t.Fatalf("expected audit log: %v", readErr)
+	}
+	if !strings.Contains(string(raw), "atlas.change.merge") || !strings.Contains(string(raw), "high_impact_tools_disabled") {
+		t.Fatalf("audit log missing useful denial data:\n%s", raw)
+	}
+}
+
+func TestWorkflowWritesRequireActorAndReason(t *testing.T) {
+	root := t.TempDir()
+	queries := service.NewQueryService(root, nil, nil, nil, nil, func() time.Time { return time.Now().UTC() })
+	server := &Server{
+		Workspace: &Workspace{Root: root, Queries: queries},
+		Options:   Options{Profile: ProfileWorkflow}.Normalized(),
+		Approvals: NewApprovalStore(root, nil),
+	}
+	_, err := server.CallTool(context.Background(), "atlas.ticket.comment", map[string]any{"ticket_id": "APP-1", "body": "hi"})
+	if err == nil || !strings.Contains(err.Error(), "actor is required") {
+		t.Fatalf("expected missing actor error, got %v", err)
+	}
+	_, err = server.CallTool(context.Background(), "atlas.ticket.comment", map[string]any{"ticket_id": "APP-1", "body": "hi", "actor": "human:owner"})
+	if err == nil || !strings.Contains(err.Error(), "reason is required") {
+		t.Fatalf("expected missing reason error, got %v", err)
+	}
+}
+
+func TestToolArgumentsRejectUnknownAndWrongTypes(t *testing.T) {
+	root := t.TempDir()
+	server := &Server{
+		Workspace: &Workspace{Root: root},
+		Options:   Options{Profile: ProfileRead}.Normalized(),
+		Approvals: NewApprovalStore(root, nil),
+	}
+	_, err := server.CallTool(context.Background(), "atlas.ticket.view", map[string]any{"ticket_id": "APP-1", "extra": "nope"})
+	if err == nil || !strings.Contains(err.Error(), "unknown argument") {
+		t.Fatalf("expected unknown argument error, got %v", err)
+	}
+	_, err = server.CallTool(context.Background(), "atlas.ticket.view", map[string]any{"ticket_id": []any{"APP-1"}})
+	if err == nil || !strings.Contains(err.Error(), "ticket_id must be a string") {
+		t.Fatalf("expected type error, got %v", err)
+	}
+}
+
+func TestMutationRecordsMCPSurfaceMetadata(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
+	if err := os.MkdirAll(storage.EventsDir(root), 0o755); err != nil {
+		t.Fatalf("mkdir events: %v", err)
+	}
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return now }}
+	if err := projectStore.CreateProject(context.Background(), contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if err := ticketStore.CreateTicket(context.Background(), contracts.TicketSnapshot{ID: "APP-1", Project: "APP", Title: "MCP ticket", Summary: "MCP ticket", Type: contracts.TicketTypeTask, Status: contracts.StatusReady, Priority: contracts.PriorityMedium, CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	workspace, err := OpenWorkspace(root, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("open workspace: %v", err)
+	}
+	defer workspace.Close()
+	server := NewServer(workspace, Options{Profile: ProfileWorkflow, Now: func() time.Time { return now }}.Normalized())
+	if _, err := server.CallTool(context.Background(), "atlas.ticket.comment", map[string]any{"ticket_id": "APP-1", "body": "from MCP", "actor": "human:owner", "reason": "agent update"}); err != nil {
+		t.Fatalf("comment via MCP: %v", err)
+	}
+	history, err := workspace.Queries.History(context.Background(), "APP-1")
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(history.Events) == 0 {
+		t.Fatalf("expected comment event")
+	}
+	last := history.Events[len(history.Events)-1]
+	if last.Metadata.Surface != contracts.EventSurfaceMCP {
+		t.Fatalf("expected MCP event surface, got %#v", last.Metadata)
+	}
+	if last.Actor != contracts.Actor("human:owner") || last.Reason != "agent update" {
+		t.Fatalf("expected actor/reason on event, got actor=%s reason=%q", last.Actor, last.Reason)
+	}
+}
+
+func TestResultLimitsAndPagination(t *testing.T) {
+	items := []string{"a", "b", "c", "d"}
+	page := paginateSlice(items, map[string]any{"limit": 2}, 50, 50)
+	if page.Total != 4 || page.NextCursor != "2" {
+		t.Fatalf("unexpected page: %#v", page)
+	}
+	raw, _ := json.Marshal(map[string]any{"big": strings.Repeat("x", 200)})
+	limited, truncated, err := applyResultLimits("atlas.test", time.Now(), json.RawMessage(raw), Options{MaxResultBytes: 80}.Normalized())
+	if err != nil {
+		t.Fatalf("apply limits: %v", err)
+	}
+	if !truncated {
+		t.Fatalf("expected result to be truncated")
+	}
+	payload := limited["payload"].(map[string]any)
+	if payload["truncated"] != true {
+		t.Fatalf("expected truncated payload, got %#v", payload)
+	}
+	text := textFallback("atlas.test", map[string]any{"big": strings.Repeat("x", 1000)}, false, 50)
+	if len(text) > 240 {
+		t.Fatalf("expected text fallback to honor max token estimate, got length %d", len(text))
+	}
+}
+
+func TestSDKServerListsOnlyEnabledTools(t *testing.T) {
+	root := t.TempDir()
+	queries := service.NewQueryService(root, nil, nil, nil, nil, func() time.Time { return time.Now().UTC() })
+	server := &Server{
+		Workspace: &Workspace{Root: root, Queries: queries},
+		Options:   Options{Profile: ProfileRead}.Normalized(),
+		Approvals: NewApprovalStore(root, nil),
+	}
+	clientTransport, serverTransport := mcpsdk.NewInMemoryTransports()
+	if _, err := server.SDKServer().Connect(context.Background(), serverTransport, nil); err != nil {
+		t.Fatalf("connect server: %v", err)
+	}
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "atlas-test", Version: "v0"}, nil)
+	session, err := client.Connect(context.Background(), clientTransport, nil)
+	if err != nil {
+		t.Fatalf("connect client: %v", err)
+	}
+	defer session.Close()
+	seen := map[string]bool{}
+	for tool, err := range session.Tools(context.Background(), nil) {
+		if err != nil {
+			t.Fatalf("list tool: %v", err)
+		}
+		seen[tool.Name] = true
+	}
+	if !seen["atlas.ticket.view"] {
+		t.Fatalf("expected read tool to be listed")
+	}
+	if seen["atlas.ticket.comment"] || seen["atlas.change.merge"] {
+		t.Fatalf("read profile leaked write/high-impact tools: %#v", seen)
+	}
+}
+
+func toolEnabled(items []ToolInfo, name string) bool {
+	for _, item := range items {
+		if item.Name == name {
+			return item.Enabled
+		}
+	}
+	return false
+}
