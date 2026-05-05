@@ -39,6 +39,9 @@ func TestRebuildFromV1FixtureWorkspace(t *testing.T) {
 	if ticket.ReviewState != contracts.ReviewStateNone {
 		t.Fatalf("unexpected review state: %s", ticket.ReviewState)
 	}
+	if len(ticket.ChangeIDs) != 0 || len(ticket.PermissionProfiles) != 0 || len(ticket.ChangeReadyReasons) != 0 {
+		t.Fatalf("expected v1.5 defaults to round-trip through projection: %#v", ticket)
+	}
 	history, err := store.QueryHistory(ctx, "APP-1")
 	if err != nil {
 		t.Fatalf("query history: %v", err)

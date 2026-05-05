@@ -71,6 +71,22 @@ func TestSCMServiceCommitRequiresStagedChangesAndPrefixesTicketID(t *testing.T) 
 	}
 }
 
+func TestSCMServiceBranchExistsTreatsQuietMissAsFalse(t *testing.T) {
+	root := t.TempDir()
+	initGitRepo(t, root)
+	writeFile(t, filepath.Join(root, "README.md"), "# atlas\n")
+	gitRun(t, root, "add", "README.md")
+	gitRun(t, root, "commit", "-m", "init")
+
+	exists, err := (SCMService{Root: root}).BranchExists(context.Background(), "ticket/missing-branch")
+	if err != nil {
+		t.Fatalf("branch exists: %v", err)
+	}
+	if exists {
+		t.Fatal("expected missing branch to report false")
+	}
+}
+
 func TestQueryServiceQueueAndDetailIncludeGitContext(t *testing.T) {
 	root := t.TempDir()
 	initGitRepo(t, root)
@@ -89,7 +105,17 @@ func TestQueryServiceQueueAndDetailIncludeGitContext(t *testing.T) {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	defer projection.Close()
-	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+	installFakeGH(t, `#!/bin/sh
+echo "gh should not be called for passive ticket reads" >&2
+exit 1
+`)
+	if err := config.Save(root, contracts.TrackerConfig{
+		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
+		Provider: contracts.ProviderConfig{
+			DefaultSCMProvider: contracts.ChangeProviderGitHub,
+			GitHubRepo:         "myrrazor/atlas-tasker",
+		},
+	}); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
@@ -155,5 +181,29 @@ func writeFile(t *testing.T, path string, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func TestSCMChangedFilesPreservesPorcelainPaths(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+
+	initGitRepo(t, root)
+	writeFile(t, filepath.Join(root, "README.md"), "# atlas\n")
+	gitRun(t, root, "add", "README.md")
+	gitRun(t, root, "commit", "-m", "init")
+
+	writeFile(t, filepath.Join(root, "README.md"), "# atlas\n\nupdated\n")
+	writeFile(t, filepath.Join(root, "notes.txt"), "untracked\n")
+
+	files, err := (SCMService{Root: root}).ChangedFiles(ctx)
+	if err != nil {
+		t.Fatalf("changed files: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected two changed files, got %#v", files)
+	}
+	if files[0] != "README.md" || files[1] != "notes.txt" {
+		t.Fatalf("unexpected changed files: %#v", files)
 	}
 }
