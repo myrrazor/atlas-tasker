@@ -12,6 +12,13 @@ type AgentDetailView struct {
 	GeneratedAt time.Time              `json:"generated_at"`
 }
 
+type ApprovalItemView struct {
+	Gate        contracts.GateSnapshot   `json:"gate"`
+	Ticket      contracts.TicketSnapshot `json:"ticket"`
+	Summary     string                   `json:"summary"`
+	GeneratedAt time.Time                `json:"generated_at"`
+}
+
 type AgentEligibilityEntry struct {
 	Agent       contracts.AgentProfile `json:"agent"`
 	Eligible    bool                   `json:"eligible"`
@@ -32,6 +39,8 @@ type RunDetailView struct {
 	Run         contracts.RunSnapshot     `json:"run"`
 	Ticket      contracts.TicketSnapshot  `json:"ticket,omitempty"`
 	Gates       []contracts.GateSnapshot  `json:"gates,omitempty"`
+	Changes     []contracts.ChangeRef     `json:"changes,omitempty"`
+	Checks      []contracts.CheckResult   `json:"checks,omitempty"`
 	Evidence    []contracts.EvidenceItem  `json:"evidence,omitempty"`
 	Handoffs    []contracts.HandoffPacket `json:"handoffs,omitempty"`
 	GeneratedAt time.Time                 `json:"generated_at"`
@@ -66,6 +75,22 @@ type DispatchResult struct {
 	GeneratedAt  time.Time `json:"generated_at"`
 }
 
+type RunLaunchManifestView struct {
+	RunID            string    `json:"run_id"`
+	TicketID         string    `json:"ticket_id"`
+	AgentID          string    `json:"agent_id"`
+	RuntimeDir       string    `json:"runtime_dir"`
+	WorktreePath     string    `json:"worktree_path,omitempty"`
+	EvidenceDir      string    `json:"evidence_dir"`
+	BriefPath        string    `json:"brief_path"`
+	ContextPath      string    `json:"context_path"`
+	CodexLaunchPath  string    `json:"codex_launch_path"`
+	ClaudeLaunchPath string    `json:"claude_launch_path"`
+	Created          []string  `json:"created,omitempty"`
+	Updated          []string  `json:"updated,omitempty"`
+	GeneratedAt      time.Time `json:"generated_at"`
+}
+
 type WorktreeStatusView struct {
 	RunID         string    `json:"run_id"`
 	TicketID      string    `json:"ticket_id,omitempty"`
@@ -82,7 +107,17 @@ type InboxItemView struct {
 	TicketID    string    `json:"ticket_id"`
 	RunID       string    `json:"run_id,omitempty"`
 	GateID      string    `json:"gate_id,omitempty"`
+	HandoffID   string    `json:"handoff_id,omitempty"`
 	Summary     string    `json:"summary"`
 	State       string    `json:"state"`
 	GeneratedAt time.Time `json:"generated_at"`
+}
+
+type InboxDetailView struct {
+	Item      InboxItemView            `json:"item"`
+	Ticket    contracts.TicketSnapshot `json:"ticket,omitempty"`
+	Run       contracts.RunSnapshot    `json:"run,omitempty"`
+	Gate      contracts.GateSnapshot   `json:"gate,omitempty"`
+	Handoff   contracts.HandoffPacket  `json:"handoff,omitempty"`
+	Generated time.Time                `json:"generated_at"`
 }
