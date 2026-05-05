@@ -15,8 +15,12 @@ import (
 )
 
 type runMutationPayload struct {
-	Run    contracts.RunSnapshot    `json:"run"`
-	Ticket contracts.TicketSnapshot `json:"ticket,omitempty"`
+	Run      contracts.RunSnapshot    `json:"run"`
+	Ticket   contracts.TicketSnapshot `json:"ticket,omitempty"`
+	Gate     contracts.GateSnapshot   `json:"gate,omitempty"`
+	Gates    []contracts.GateSnapshot `json:"gates,omitempty"`
+	Evidence contracts.EvidenceItem   `json:"evidence,omitempty"`
+	Handoff  contracts.HandoffPacket  `json:"handoff,omitempty"`
 }
 
 func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentID string, kind contracts.RunKind, actor contracts.Actor, reason string) (DispatchResult, error) {
@@ -37,6 +41,16 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 		}
 		if !kind.IsValid() {
 			return DispatchResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid run kind: %s", kind))
+		}
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionDispatch,
+			Actor:             actor,
+			Ticket:            ticket,
+			ActorAgent:        &agent,
+			Runbook:           permissionRunbook(ticket, nil),
+			ChangedFilesKnown: false,
+		}); err != nil {
+			return DispatchResult{}, err
 		}
 		entry, err := s.agentEligibility(ctx, ticket, agent.AgentID)
 		if err != nil {
@@ -79,6 +93,14 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 		if err != nil {
 			return DispatchResult{}, err
 		}
+		runbook, stage, err := NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock).resolveRunbookForAgent(ctx, ticket, agent)
+		if err != nil {
+			return DispatchResult{}, err
+		}
+		run.BlueprintStage = stage
+		if strings.TrimSpace(ticket.Runbook) == "" {
+			ticket.Runbook = runbook.Name
+		}
 		ticket.LatestRunID = run.RunID
 		ticket.LastDispatchAt = s.now()
 		payload := runMutationPayload{Run: run, Ticket: ticket}
@@ -107,6 +129,12 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 			if err := s.Runs.SaveRun(ctx, run); err != nil {
 				return err
 			}
+			if testBeforeRunWorktreeCreateHook != nil {
+				if err := testBeforeRunWorktreeCreateHook(run); err != nil {
+					rollback()
+					return err
+				}
+			}
 			if err := worktrees.Create(ctx, run); err != nil {
 				rollback()
 				return err
@@ -127,7 +155,7 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 		}); err != nil {
 			return DispatchResult{}, err
 		}
-		return DispatchResult{TicketID: ticket.ID, RunID: run.RunID, AgentID: agent.AgentID, WorktreePath: run.WorktreePath, GeneratedAt: s.now()}, nil
+		return DispatchResult{TicketID: ticket.ID, RunID: run.RunID, AgentID: agent.AgentID, Runbook: ticket.Runbook, Stage: run.BlueprintStage, WorktreePath: run.WorktreePath, GeneratedAt: s.now()}, nil
 	})
 }
 
@@ -240,6 +268,15 @@ func (s *ActionService) transitionRun(ctx context.Context, runID string, actor c
 		if err != nil {
 			return contracts.RunSnapshot{}, err
 		}
+		if next == contracts.RunStatusActive {
+			ticket, err := s.Tickets.GetTicket(ctx, run.TicketID)
+			if err != nil {
+				return contracts.RunSnapshot{}, err
+			}
+			if len(ticket.OpenGateIDs) > 0 {
+				return contracts.RunSnapshot{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("run %s cannot resume while gates are open", run.RunID))
+			}
+		}
 		if run.Status != next && !run.Status.Allows(next) {
 			return contracts.RunSnapshot{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("run %s cannot move from %s to %s", run.RunID, run.Status, next))
 		}
@@ -261,12 +298,41 @@ func (s *ActionService) transitionRun(ctx context.Context, runID string, actor c
 }
 
 func (s *ActionService) finishRun(ctx context.Context, runID string, actor contracts.Actor, reason string, eventType contracts.EventType, next contracts.RunStatus, result string, summary string) (contracts.RunSnapshot, error) {
-	return s.transitionRun(ctx, runID, actor, reason, eventType, next, func(run *contracts.RunSnapshot) {
-		run.CompletedAt = s.now()
-		run.Result = result
-		if strings.TrimSpace(summary) != "" {
-			run.Summary = strings.TrimSpace(summary)
+	return withWriteLock(ctx, s.LockManager, "finish run", func(ctx context.Context) (contracts.RunSnapshot, error) {
+		run, err := s.Runs.LoadRun(ctx, runID)
+		if err != nil {
+			return contracts.RunSnapshot{}, err
 		}
+		if next == contracts.RunStatusCompleted {
+			ticket, err := s.Tickets.GetTicket(ctx, run.TicketID)
+			if err != nil {
+				return contracts.RunSnapshot{}, err
+			}
+			if len(ticket.OpenGateIDs) > 0 {
+				return contracts.RunSnapshot{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("run %s cannot complete while gates are open", run.RunID))
+			}
+			agent, _ := s.Agents.LoadAgent(ctx, run.AgentID)
+			changedFiles, known := permissionChangedFilesForRun(ctx, s.Runs, s.Root, run)
+			if _, err := s.requirePermission(ctx, permissionEvalInput{
+				Action:            contracts.PermissionActionRunComplete,
+				Actor:             actor,
+				Ticket:            ticket,
+				Run:               &run,
+				ActorAgent:        maybeAgentProfile(agent),
+				Runbook:           permissionRunbook(ticket, &run),
+				ChangedFiles:      changedFiles,
+				ChangedFilesKnown: known,
+			}); err != nil {
+				return contracts.RunSnapshot{}, err
+			}
+		}
+		return s.transitionRun(ctx, runID, actor, reason, eventType, next, func(run *contracts.RunSnapshot) {
+			run.CompletedAt = s.now()
+			run.Result = result
+			if strings.TrimSpace(summary) != "" {
+				run.Summary = strings.TrimSpace(summary)
+			}
+		})
 	})
 }
 

@@ -27,7 +27,7 @@ func TestInstallCodexCreatesManagedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read guide: %v", err)
 	}
-	if !strings.Contains(string(guide), "tracker ticket claim <ID>") {
+	if !strings.Contains(string(guide), "tracker ticket claim <ID>") || !strings.Contains(string(guide), "tracker run launch <RUN-ID>") {
 		t.Fatalf("unexpected guide content: %s", string(guide))
 	}
 }
@@ -55,6 +55,13 @@ func TestInstallClaudeReplacesOnlyManagedBlock(t *testing.T) {
 	}
 	if !strings.Contains(content, "tracker review-queue --actor <actor> --json") {
 		t.Fatalf("updated managed block missing guidance: %s", content)
+	}
+	guide, err := os.ReadFile(filepath.Join(root, ".tracker", "integrations", "claude-guide.md"))
+	if err != nil {
+		t.Fatalf("read guide: %v", err)
+	}
+	if !strings.Contains(string(guide), "tracker run attach <RUN-ID> --provider claude --session-ref <session>") {
+		t.Fatalf("expected launch flow guidance, got: %s", string(guide))
 	}
 }
 

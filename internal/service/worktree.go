@@ -30,14 +30,12 @@ func (m WorktreeManager) Prepare(ctx context.Context, project contracts.Project,
 	if !repo.Present {
 		return run, nil
 	}
-	if cfg.RequireCleanMain || project.Defaults.ExecutionSafety.RequireCleanRepo {
-		dirty, err := worktreeDirtySourceRepo(ctx, scm)
-		if err != nil {
-			return contracts.RunSnapshot{}, err
-		}
-		if dirty {
-			return contracts.RunSnapshot{}, apperr.New(apperr.CodeConflict, "source repo is dirty; clean it before dispatch")
-		}
+	dirty, err := dispatchRepoDirtyBlocker(ctx, m.Root, project)
+	if err != nil {
+		return contracts.RunSnapshot{}, err
+	}
+	if dirty {
+		return contracts.RunSnapshot{}, apperr.New(apperr.CodeConflict, "source repo is dirty; clean it before dispatch")
 	}
 	if strings.TrimSpace(run.BranchName) == "" {
 		run.BranchName = runBranchName(ticket.ID, run.RunID)
@@ -202,20 +200,17 @@ func (m WorktreeManager) Inspect(ctx context.Context, run contracts.RunSnapshot)
 }
 
 func effectiveWorktreeConfig(cfg contracts.WorktreeConfig) contracts.WorktreeConfig {
-	if cfg == (contracts.WorktreeConfig{}) {
-		return contracts.WorktreeConfig{Enabled: true, DefaultMode: contracts.WorktreeModePerRun, RequireCleanMain: true}
-	}
 	if cfg.DefaultMode == "" {
 		cfg.DefaultMode = contracts.WorktreeModePerRun
 	}
-	if !cfg.Enabled && cfg.DefaultMode == contracts.WorktreeModeDisabled {
-		return cfg
-	}
-	if !cfg.Enabled {
+	if !cfg.EnabledConfigured() {
 		cfg.Enabled = true
 	}
-	if !cfg.RequireCleanMain {
+	if !cfg.RequireCleanMainConfigured() {
 		cfg.RequireCleanMain = true
+	}
+	if cfg.DefaultMode == contracts.WorktreeModeDisabled {
+		cfg.Enabled = false
 	}
 	return cfg
 }
@@ -256,6 +251,25 @@ func worktreeDirtySourceRepo(ctx context.Context, scm SCMService) (bool, error) 
 		}
 	}
 	return false, nil
+}
+
+func dispatchRepoDirtyBlocker(ctx context.Context, root string, project contracts.Project) (bool, error) {
+	cfg := effectiveWorktreeConfig(project.Defaults.Worktrees)
+	if !cfg.Enabled || cfg.DefaultMode == contracts.WorktreeModeDisabled {
+		return false, nil
+	}
+	scm := SCMService{Root: root}
+	repo, err := scm.RepoStatus(ctx)
+	if err != nil {
+		return false, err
+	}
+	if !repo.Present {
+		return false, nil
+	}
+	if !cfg.RequireCleanMain && !project.Defaults.ExecutionSafety.RequireCleanRepo {
+		return false, nil
+	}
+	return worktreeDirtySourceRepo(ctx, scm)
 }
 
 func isAtlasWorkspacePath(path string) bool {
