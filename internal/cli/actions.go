@@ -36,6 +36,10 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
+	root, err = service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return nil, err
+	}
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
 	eventLog := &eventstore.Log{RootDir: root}
 	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
@@ -47,14 +51,6 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	notifier, err := service.BuildNotifier(root, cfg, os.Stderr)
-	if err != nil {
-		return nil, err
-	}
-	automation := &service.AutomationEngine{
-		Store:    service.AutomationStore{Root: root},
-		Notifier: notifier,
-	}
 	w := &workspace{
 		root:       root,
 		project:    projectStore,
@@ -63,8 +59,19 @@ func openWorkspace() (*workspace, error) {
 		projection: projection,
 		locks:      service.FileLockManager{Root: root},
 	}
-	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
 	w.queries = service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
+	notifier, err := service.BuildNotifier(root, cfg, os.Stderr, service.SubscriptionResolver{
+		Store:   service.SubscriptionStore{Root: root},
+		Queries: w.queries,
+	})
+	if err != nil {
+		return nil, err
+	}
+	automation := &service.AutomationEngine{
+		Store:    service.AutomationStore{Root: root},
+		Notifier: notifier,
+	}
+	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
 	return w, nil
 }
 
@@ -145,6 +152,11 @@ func defaultNow() time.Time {
 }
 
 func ensureInitArtifacts(root string) error {
+	var err error
+	root, err = service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(storage.TrackerDir(root), 0o755); err != nil {
 		return err
 	}
@@ -155,6 +167,9 @@ func ensureInitArtifacts(root string) error {
 		return err
 	}
 	if err := os.MkdirAll(storage.ViewsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.SubscriptionsDir(root), 0o755); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "templates"), 0o755); err != nil {

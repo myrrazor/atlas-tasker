@@ -459,3 +459,27 @@ func TestActionServiceMutateAndDeleteTrackedTicket(t *testing.T) {
 		t.Fatalf("expected final close event, got %s", got)
 	}
 }
+
+func TestNewEventRequiresWriteLock(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 3, 24, 14, 0, 0, 0, time.UTC)
+	eventsLog := &eventstore.Log{RootDir: root}
+	actions := NewActionService(root, nil, nil, eventsLog, nil, func() time.Time { return now }, FileLockManager{Root: root}, nil, nil)
+
+	if _, err := actions.newEvent(context.Background(), "APP", now, contracts.Actor("human:owner"), "seed", contracts.EventTicketCreated, "APP-1", map[string]any{"ok": true}); err == nil {
+		t.Fatal("expected unlocked event allocation to fail")
+	}
+
+	if err := WithWriteLock(context.Background(), actions.LockManager, "new event test", func(ctx context.Context) error {
+		event, err := actions.newEvent(ctx, "APP", now, contracts.Actor("human:owner"), "seed", contracts.EventTicketCreated, "APP-1", map[string]any{"ok": true})
+		if err != nil {
+			return err
+		}
+		if event.EventID != 1 {
+			t.Fatalf("expected first event id under lock, got %#v", event)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("allocate event with lock: %v", err)
+	}
+}

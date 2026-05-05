@@ -32,11 +32,20 @@ Success payload is an array of delivery records with:
 - `delivered`
 - `error` when delivery failed
 - `event`
+- `recipients`
+- `targets`
 - `sink`
 - `timestamp`
 
 ## `tracker notify dead-letter --json`
 Success payload matches `notify log`, but only includes final failed deliveries.
+
+## `tracker watch list --json`
+Success payload is an array of watcher rules with:
+- `actor`
+- `target_kind`
+- `target`
+- `event_types`
 
 ## `tracker views run <NAME> --json`
 Success payload includes:
@@ -47,6 +56,30 @@ Success payload includes:
   - `next`
   - `tickets`
 - `actor` when the saved view resolves through actor-aware queue or next logic
+
+## `tracker bulk * --json`
+Success payload includes:
+- `batch_id`
+- `preview`
+  - `kind`
+  - `actor`
+  - `assignee` when the batch assigns
+  - `status` when the batch moves
+  - `ticket_ids`
+  - `ticket_count`
+  - `dry_run`
+- `summary`
+  - `succeeded`
+  - `failed`
+  - `skipped`
+  - `total`
+- `results`
+  - `ticket_id`
+  - `ok`
+  - `dry_run`
+  - `reason`
+  - `ticket` when the operation succeeded
+  - `code` and `error` when a single ticket failed validation or mutation
 
 ## Error payloads
 Commands invoked with `--json` emit the standard error envelope on stderr.

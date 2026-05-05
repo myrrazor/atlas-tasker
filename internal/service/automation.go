@@ -10,6 +10,10 @@ import (
 
 type automationDepthKey struct{}
 type automationRulesKey struct{}
+type automationRootActorKey struct{}
+type automationState struct {
+	SeenByCorrelation map[string]map[string]struct{}
+}
 
 type AutomationResult struct {
 	Rule      contracts.AutomationRule  `json:"rule"`
@@ -55,6 +59,7 @@ func (e AutomationEngine) Run(ctx context.Context, actions *ActionService, queri
 	if err != nil {
 		return nil, err
 	}
+	ctx = markAutomationRuleSeen(ctx, event, "")
 	results := make([]AutomationResult, 0)
 	for _, rule := range rules {
 		if !rule.Enabled {
@@ -70,6 +75,7 @@ func (e AutomationEngine) Run(ctx context.Context, actions *ActionService, queri
 		if err := e.apply(ctx, actions, rule, event, result.Ticket); err != nil {
 			return nil, err
 		}
+		ctx = markAutomationRuleSeen(ctx, event, rule.Name)
 		results = append(results, result)
 	}
 	return results, nil
@@ -123,20 +129,31 @@ func (e AutomationEngine) apply(ctx context.Context, actions *ActionService, rul
 	if depth >= 3 {
 		return nil
 	}
-	seen, _ := ctx.Value(automationRulesKey{}).([]string)
-	for _, name := range seen {
+	correlationID := firstNonEmpty(event.Metadata.CorrelationID, event.Metadata.MutationID)
+	rootActor := firstActor(event.Metadata.RootActor, event.Actor)
+	storedRootActor, _ := ctx.Value(automationRootActorKey{}).(contracts.Actor)
+	if storedRootActor != "" && rootActor != "" && storedRootActor != rootActor {
+		return nil
+	}
+	state := automationGuardState(ctx)
+	if state.SeenByCorrelation[correlationID] == nil {
+		state.SeenByCorrelation[correlationID] = map[string]struct{}{}
+	}
+	for name := range state.SeenByCorrelation[correlationID] {
 		if name == rule.Name {
 			return nil
 		}
 	}
+	state.SeenByCorrelation[correlationID][rule.Name] = struct{}{}
 	automationActor := contracts.Actor("agent:automation")
 	childCtx := context.WithValue(ctx, automationDepthKey{}, depth+1)
-	childCtx = context.WithValue(childCtx, automationRulesKey{}, append(append([]string{}, seen...), rule.Name))
+	childCtx = context.WithValue(childCtx, automationRulesKey{}, state)
+	childCtx = context.WithValue(childCtx, automationRootActorKey{}, rootActor)
 	childCtx = WithEventMetadata(childCtx, EventMetaContext{
 		Surface:          contracts.EventSurfaceAutomation,
-		CorrelationID:    event.Metadata.CorrelationID,
+		CorrelationID:    correlationID,
 		CausationEventID: event.EventID,
-		RootActor:        firstActor(event.Metadata.RootActor, event.Actor),
+		RootActor:        rootActor,
 	})
 	for _, action := range rule.Actions {
 		switch action.Kind {
@@ -237,4 +254,44 @@ func firstActor(values ...contracts.Actor) contracts.Actor {
 		}
 	}
 	return ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func markAutomationRuleSeen(ctx context.Context, event contracts.Event, ruleName string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	correlationID := firstNonEmpty(event.Metadata.CorrelationID, event.Metadata.MutationID)
+	if correlationID == "" {
+		return ctx
+	}
+	rootActor := firstActor(event.Metadata.RootActor, event.Actor)
+	storedRootActor, _ := ctx.Value(automationRootActorKey{}).(contracts.Actor)
+	if storedRootActor == "" && rootActor != "" {
+		ctx = context.WithValue(ctx, automationRootActorKey{}, rootActor)
+	}
+	state := automationGuardState(ctx)
+	if strings.TrimSpace(ruleName) != "" {
+		if state.SeenByCorrelation[correlationID] == nil {
+			state.SeenByCorrelation[correlationID] = map[string]struct{}{}
+		}
+		state.SeenByCorrelation[correlationID][ruleName] = struct{}{}
+	}
+	return context.WithValue(ctx, automationRulesKey{}, state)
+}
+
+func automationGuardState(ctx context.Context) *automationState {
+	state, _ := ctx.Value(automationRulesKey{}).(*automationState)
+	if state != nil {
+		return state
+	}
+	return &automationState{SeenByCorrelation: map[string]map[string]struct{}{}}
 }

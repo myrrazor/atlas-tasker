@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -15,7 +16,10 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/integrations"
 	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
+	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
+	sqlitestore "github.com/myrrazor/atlas-tasker/internal/storage/sqlite"
 	"github.com/myrrazor/atlas-tasker/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -59,6 +63,9 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newNotifyCommand())
 	root.AddCommand(newGitCommand())
 	root.AddCommand(newViewsCommand())
+	root.AddCommand(newWatchCommand())
+	root.AddCommand(newUnwatchCommand())
+	root.AddCommand(newBulkCommand())
 	root.AddCommand(newTemplatesCommand())
 	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
@@ -609,6 +616,74 @@ func newViewsCommand() *cobra.Command {
 	run.Flags().String("actor", "", "Actor override for queue/next views")
 	cmd.AddCommand(list, view, save, remove, run)
 	return cmd
+}
+
+func newWatchCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "watch", Short: "Manage notification watchers"}
+	list := &cobra.Command{Use: "list", Short: "List watcher rules", RunE: runWatchList}
+	list.Flags().String("actor", "", "Only show watchers for this actor")
+	addReadOutputFlags(list, &outputFlags{})
+	cmd.AddCommand(list)
+	for _, spec := range []struct {
+		use        string
+		short      string
+		targetKind contracts.SubscriptionTargetKind
+		run        func(*cobra.Command, []string) error
+	}{
+		{use: "ticket <ID>", short: "Watch one ticket", targetKind: contracts.SubscriptionTargetTicket, run: runWatchTicket},
+		{use: "project <KEY>", short: "Watch one project", targetKind: contracts.SubscriptionTargetProject, run: runWatchProject},
+		{use: "view <NAME>", short: "Watch one saved view", targetKind: contracts.SubscriptionTargetSavedView, run: runWatchView},
+	} {
+		sub := &cobra.Command{Use: spec.use, Args: cobra.ExactArgs(1), Short: spec.short, RunE: spec.run}
+		sub.Flags().String("actor", "", "Watcher actor")
+		sub.Flags().StringArray("event", nil, "Only notify on these event types")
+		addReadOutputFlags(sub, &outputFlags{})
+		cmd.AddCommand(sub)
+	}
+	return cmd
+}
+
+func newUnwatchCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "unwatch", Short: "Remove notification watchers"}
+	for _, spec := range []struct {
+		use   string
+		short string
+		run   func(*cobra.Command, []string) error
+	}{
+		{use: "ticket <ID>", short: "Unwatch one ticket", run: runUnwatchTicket},
+		{use: "project <KEY>", short: "Unwatch one project", run: runUnwatchProject},
+		{use: "view <NAME>", short: "Unwatch one saved view", run: runUnwatchView},
+	} {
+		sub := &cobra.Command{Use: spec.use, Args: cobra.ExactArgs(1), Short: spec.short, RunE: spec.run}
+		sub.Flags().String("actor", "", "Watcher actor")
+		addReadOutputFlags(sub, &outputFlags{})
+		cmd.AddCommand(sub)
+	}
+	return cmd
+}
+
+func newBulkCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "bulk", Short: "Run one mutation across many tickets"}
+	move := &cobra.Command{Use: "move <STATUS>", Args: cobra.ExactArgs(1), Short: "Move many tickets", RunE: runBulkMove}
+	assign := &cobra.Command{Use: "assign <ACTOR>", Args: cobra.ExactArgs(1), Short: "Assign many tickets", RunE: runBulkAssign}
+	requestReview := &cobra.Command{Use: "request-review", Short: "Request review for many tickets", RunE: runBulkRequestReview}
+	complete := &cobra.Command{Use: "complete", Short: "Complete many tickets", RunE: runBulkComplete}
+	claim := &cobra.Command{Use: "claim", Short: "Claim many tickets", RunE: runBulkClaim}
+	release := &cobra.Command{Use: "release", Short: "Release many tickets", RunE: runBulkRelease}
+	for _, sub := range []*cobra.Command{move, assign, requestReview, complete, claim, release} {
+		addBulkTargetFlags(sub)
+		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
+		addReadOutputFlags(sub, &outputFlags{})
+		cmd.AddCommand(sub)
+	}
+	return cmd
+}
+
+func addBulkTargetFlags(cmd *cobra.Command) {
+	cmd.Flags().StringArray("ticket", nil, "Ticket ID to include; repeatable")
+	cmd.Flags().String("view", "", "Saved view used to resolve ticket IDs")
+	cmd.Flags().Bool("dry-run", false, "Preview the batch without mutating")
+	cmd.Flags().Bool("yes", false, "Apply the batch without prompting")
 }
 
 func newRenderCommand() *cobra.Command {
@@ -1306,27 +1381,53 @@ func runProjectPolicySet(cmd *cobra.Command, args []string) error {
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
-	workspace, err := openWorkspace()
+	root, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	defer workspace.close()
-	cfg, err := config.Load(workspace.root)
+	root, err = service.CanonicalWorkspaceRoot(root)
 	if err != nil {
 		return err
 	}
-	events, err := workspace.events.StreamEvents(ctx, "", 0)
+	repair, _ := cmd.Flags().GetBool("repair")
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
+	eventLog := &eventstore.Log{RootDir: root}
+	cfg, err := config.Load(root)
 	if err != nil {
 		return err
 	}
-	projects, err := workspace.project.ListProjects(ctx)
+	events, err := eventLog.StreamEvents(ctx, "", 0)
 	if err != nil {
 		return err
 	}
-	tickets, err := workspace.ticket.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	projects, err := projectStore.ListProjects(ctx)
 	if err != nil {
 		return err
 	}
+	tickets, err := ticketStore.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	if err != nil {
+		return err
+	}
+	projectionPath := filepath.Join(storage.TrackerDir(root), "index.sqlite")
+	projection, err := sqlitestore.Open(projectionPath, ticketStore, eventLog)
+	repairActions := make([]string, 0)
+	if err != nil {
+		if !repair {
+			return err
+		}
+		for _, candidate := range []string{projectionPath, projectionPath + "-wal", projectionPath + "-shm"} {
+			if removeErr := os.Remove(candidate); removeErr != nil && !os.IsNotExist(removeErr) {
+				return removeErr
+			}
+		}
+		projection, err = sqlitestore.Open(projectionPath, ticketStore, eventLog)
+		if err != nil {
+			return err
+		}
+		repairActions = append(repairActions, "reset corrupted projection")
+	}
+	defer func() { _ = projection.Close() }()
 	projectIssues := 0
 	for _, project := range projects {
 		if err := project.Validate(); err != nil {
@@ -1356,31 +1457,28 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	repairReport := service.RepairReport{}
-	if _, err := workspace.projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
-		repair, _ := cmd.Flags().GetBool("repair")
+	if _, err := projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
 		if !repair {
 			return err
 		}
-		if rebuildErr := workspace.withWriteLock(ctx, "doctor repair", func(ctx context.Context) error {
+		if rebuildErr := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 			var err error
-			repairReport, err = service.RepairWorkspace(ctx, workspace.root, workspace.actions.Clock, workspace.events, workspace.projection)
+			repairReport, err = service.RepairWorkspace(ctx, root, defaultNow, eventLog, projection)
 			return err
 		}); rebuildErr != nil {
 			return rebuildErr
 		}
 	} else {
-		repair, _ := cmd.Flags().GetBool("repair")
 		if repair {
-			if err := workspace.withWriteLock(ctx, "doctor repair", func(ctx context.Context) error {
+			if err := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 				var err error
-				repairReport, err = service.RepairWorkspace(ctx, workspace.root, workspace.actions.Clock, workspace.events, workspace.projection)
+				repairReport, err = service.RepairWorkspace(ctx, root, defaultNow, eventLog, projection)
 				return err
 			}); err != nil {
 				return err
 			}
 		}
 	}
-	repair, _ := cmd.Flags().GetBool("repair")
 	message := fmt.Sprintf("doctor ok: %d events scanned, %d projects, %d tickets", len(events), len(projects), len(tickets))
 	payload := map[string]any{
 		"ok":             true,
@@ -1388,7 +1486,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"projects":       len(projects),
 		"tickets":        len(tickets),
 		"repair_ran":     repair,
-		"repair_actions": append([]string{}, repairReport.Actions...),
+		"repair_actions": append(append([]string{}, repairActions...), repairReport.Actions...),
 		"repair_pending": repairReport.Pending,
 		"config":         cfg,
 		"issue_codes":    []string{},
@@ -2022,7 +2120,10 @@ func runNotifySend(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	notifier, err := service.BuildNotifier(workspace.root, cfg, cmd.ErrOrStderr())
+	notifier, err := service.BuildNotifier(workspace.root, cfg, cmd.ErrOrStderr(), service.SubscriptionResolver{
+		Store:   service.SubscriptionStore{Root: workspace.root},
+		Queries: workspace.queries,
+	})
 	if err != nil {
 		return err
 	}
@@ -2411,6 +2512,328 @@ func runViewsRun(cmd *cobra.Command, args []string) error {
 	default:
 		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unsupported saved view kind: %s", result.View.Kind))
 	}
+}
+
+func runWatchList(cmd *cobra.Command, _ []string) error {
+	ctx := context.Background()
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	var actor contracts.Actor
+	if strings.TrimSpace(actorRaw) != "" {
+		actor, err = workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+		if err != nil {
+			return err
+		}
+	}
+	subscriptions, err := workspace.queries.ListSubscriptions(actor)
+	if err != nil {
+		return err
+	}
+	md := "## Watchers\n\n"
+	pretty := "watchers:\n"
+	for _, subscription := range subscriptions {
+		events := "all notify-worthy events"
+		if len(subscription.EventTypes) > 0 {
+			events = strings.Join(eventTypesToStrings(subscription.EventTypes), ", ")
+		}
+		md += fmt.Sprintf("- %s watches %s `%s` (%s)\n", subscription.Actor, subscription.TargetKind, subscription.Target, events)
+		pretty += fmt.Sprintf("- %s -> %s %s [%s]\n", subscription.Actor, subscription.TargetKind, subscription.Target, events)
+	}
+	return writeCommandOutput(cmd, subscriptions, md, pretty)
+}
+
+func runWatchTicket(cmd *cobra.Command, args []string) error {
+	return saveSubscription(cmd, contracts.SubscriptionTargetTicket, args[0])
+}
+
+func runWatchProject(cmd *cobra.Command, args []string) error {
+	return saveSubscription(cmd, contracts.SubscriptionTargetProject, args[0])
+}
+
+func runWatchView(cmd *cobra.Command, args []string) error {
+	return saveSubscription(cmd, contracts.SubscriptionTargetSavedView, args[0])
+}
+
+func saveSubscription(cmd *cobra.Command, kind contracts.SubscriptionTargetKind, target string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	subscription, err := buildSubscriptionFromFlags(ctx, workspace, kind, target, cmd)
+	if err != nil {
+		return err
+	}
+	store := service.SubscriptionStore{Root: workspace.root}
+	if err := workspace.withWriteLock(ctx, "save watcher", func(_ context.Context) error {
+		return store.SaveSubscription(subscription)
+	}); err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("%s watches %s %s", subscription.Actor, subscription.TargetKind, subscription.Target)
+	md := fmt.Sprintf("## Watcher Saved\n\n- Actor: %s\n- Target: %s %s\n", subscription.Actor, subscription.TargetKind, subscription.Target)
+	return writeCommandOutput(cmd, subscription, md, pretty)
+}
+
+func runUnwatchTicket(cmd *cobra.Command, args []string) error {
+	return deleteSubscription(cmd, contracts.SubscriptionTargetTicket, args[0])
+}
+
+func runUnwatchProject(cmd *cobra.Command, args []string) error {
+	return deleteSubscription(cmd, contracts.SubscriptionTargetProject, args[0])
+}
+
+func runUnwatchView(cmd *cobra.Command, args []string) error {
+	return deleteSubscription(cmd, contracts.SubscriptionTargetSavedView, args[0])
+}
+
+func deleteSubscription(cmd *cobra.Command, kind contracts.SubscriptionTargetKind, target string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	subscription := contracts.Subscription{
+		Actor:      actor,
+		TargetKind: kind,
+		Target:     strings.TrimSpace(target),
+	}
+	store := service.SubscriptionStore{Root: workspace.root}
+	if err := workspace.withWriteLock(ctx, "delete watcher", func(_ context.Context) error {
+		return store.DeleteSubscription(subscription)
+	}); err != nil {
+		return err
+	}
+	payload := map[string]any{"ok": true, "actor": subscription.Actor, "target_kind": subscription.TargetKind, "target": subscription.Target}
+	return writeCommandOutput(cmd, payload, fmt.Sprintf("## Watcher Removed\n\n- Actor: %s\n- Target: %s %s\n", subscription.Actor, subscription.TargetKind, subscription.Target), fmt.Sprintf("removed watcher %s %s %s", subscription.Actor, subscription.TargetKind, subscription.Target))
+}
+
+func runBulkMove(cmd *cobra.Command, args []string) error {
+	status := contracts.Status(strings.TrimSpace(args[0]))
+	if !status.IsValid() {
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid status: %s", args[0]))
+	}
+	return runBulkOperation(cmd, service.BulkOperation{Kind: service.BulkOperationMove, Status: status})
+}
+
+func runBulkAssign(cmd *cobra.Command, args []string) error {
+	assignee := normalizeActor(args[0])
+	if args[0] != "" && !assignee.IsValid() {
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid assignee actor: %s", args[0]))
+	}
+	return runBulkOperation(cmd, service.BulkOperation{Kind: service.BulkOperationAssign, Assignee: assignee})
+}
+
+func runBulkRequestReview(cmd *cobra.Command, _ []string) error {
+	return runBulkOperation(cmd, service.BulkOperation{Kind: service.BulkOperationRequestReview})
+}
+
+func runBulkComplete(cmd *cobra.Command, _ []string) error {
+	return runBulkOperation(cmd, service.BulkOperation{Kind: service.BulkOperationComplete})
+}
+
+func runBulkClaim(cmd *cobra.Command, _ []string) error {
+	return runBulkOperation(cmd, service.BulkOperation{Kind: service.BulkOperationClaim})
+}
+
+func runBulkRelease(cmd *cobra.Command, _ []string) error {
+	return runBulkOperation(cmd, service.BulkOperation{Kind: service.BulkOperationRelease})
+}
+
+func runBulkOperation(cmd *cobra.Command, base service.BulkOperation) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	confirm, _ := cmd.Flags().GetBool("yes")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ticketIDs, source, err := bulkTargetTicketIDs(ctx, workspace, cmd)
+	if err != nil {
+		return err
+	}
+	base.Actor = actor
+	base.Reason = reason
+	base.TicketIDs = ticketIDs
+	base.DryRun = dryRun
+	base.Confirm = confirm
+	result, err := workspace.actions.RunBulk(ctx, base)
+	if err != nil {
+		return err
+	}
+	md, pretty := bulkOutput(result, source)
+	return writeCommandOutput(cmd, result, md, pretty)
+}
+
+func bulkTargetTicketIDs(ctx context.Context, workspace *workspace, cmd *cobra.Command) ([]string, string, error) {
+	ticketIDs, _ := cmd.Flags().GetStringArray("ticket")
+	viewName, _ := cmd.Flags().GetString("view")
+	targets := append([]string{}, ticketIDs...)
+	source := fmt.Sprintf("%d explicit tickets", len(ticketIDs))
+	if strings.TrimSpace(viewName) != "" {
+		result, err := workspace.queries.RunSavedView(ctx, strings.TrimSpace(viewName), "")
+		if err != nil {
+			return nil, "", err
+		}
+		targets = append(targets, savedViewTicketIDs(result)...)
+		if len(ticketIDs) == 0 {
+			source = fmt.Sprintf("saved view %s", viewName)
+		} else {
+			source = fmt.Sprintf("%d explicit tickets + saved view %s", len(ticketIDs), viewName)
+		}
+	}
+	normalized := uniqueStrings(targets)
+	if len(normalized) == 0 {
+		return nil, "", apperr.New(apperr.CodeInvalidInput, "bulk operations require --ticket or --view with at least one ticket")
+	}
+	return normalized, source, nil
+}
+
+func savedViewTicketIDs(result service.SavedViewResult) []string {
+	ticketIDs := make([]string, 0)
+	switch result.View.Kind {
+	case contracts.SavedViewKindSearch:
+		for _, ticket := range result.Tickets {
+			ticketIDs = append(ticketIDs, ticket.ID)
+		}
+	case contracts.SavedViewKindQueue:
+		if result.Queue == nil {
+			return ticketIDs
+		}
+		for _, entries := range result.Queue.Categories {
+			for _, entry := range entries {
+				ticketIDs = append(ticketIDs, entry.Ticket.ID)
+			}
+		}
+	case contracts.SavedViewKindNext:
+		if result.Next == nil {
+			return ticketIDs
+		}
+		for _, entry := range result.Next.Entries {
+			ticketIDs = append(ticketIDs, entry.Entry.Ticket.ID)
+		}
+	case contracts.SavedViewKindBoard:
+		if result.Board == nil {
+			return ticketIDs
+		}
+		for _, column := range result.Board.Board.Columns {
+			for _, ticket := range column {
+				ticketIDs = append(ticketIDs, ticket.ID)
+			}
+		}
+	}
+	return ticketIDs
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	sort.Strings(normalized)
+	return normalized
+}
+
+func bulkOutput(result service.BulkOperationResult, source string) (string, string) {
+	md := fmt.Sprintf("## Bulk %s\n\n- Batch: `%s`\n- Source: %s\n- Dry Run: %t\n- Tickets: %d\n- Succeeded: %d\n- Failed: %d\n- Skipped: %d\n\n", result.Preview.Kind, result.BatchID, source, result.Preview.DryRun, result.Preview.TicketCount, result.Summary.Succeeded, result.Summary.Failed, result.Summary.Skipped)
+	pretty := fmt.Sprintf("bulk %s batch=%s tickets=%d ok=%d failed=%d skipped=%d", result.Preview.Kind, result.BatchID, result.Preview.TicketCount, result.Summary.Succeeded, result.Summary.Failed, result.Summary.Skipped)
+	for _, entry := range result.Results {
+		status := "ok"
+		if !entry.OK {
+			status = "failed"
+		} else if entry.DryRun {
+			status = "preview"
+		}
+		md += fmt.Sprintf("- `%s` %s", entry.TicketID, status)
+		pretty += fmt.Sprintf("\n- %s %s", entry.TicketID, status)
+		if entry.Code != "" {
+			md += fmt.Sprintf(" [%s]", entry.Code)
+			pretty += fmt.Sprintf(" [%s]", entry.Code)
+		}
+		if strings.TrimSpace(entry.Reason) != "" {
+			md += fmt.Sprintf(": %s", entry.Reason)
+			pretty += fmt.Sprintf(": %s", entry.Reason)
+		}
+		if strings.TrimSpace(entry.Error) != "" {
+			md += fmt.Sprintf(" (%s)", entry.Error)
+			pretty += fmt.Sprintf(" (%s)", entry.Error)
+		}
+		md += "\n"
+	}
+	return md, pretty
+}
+
+func buildSubscriptionFromFlags(ctx context.Context, workspace *workspace, kind contracts.SubscriptionTargetKind, target string, cmd *cobra.Command) (contracts.Subscription, error) {
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return contracts.Subscription{}, err
+	}
+	if kind == contracts.SubscriptionTargetSavedView {
+		if _, err := workspace.queries.SavedView(strings.TrimSpace(target)); err != nil {
+			return contracts.Subscription{}, err
+		}
+	}
+	if kind == contracts.SubscriptionTargetTicket {
+		if _, err := workspace.ticket.GetTicket(ctx, strings.TrimSpace(target)); err != nil {
+			return contracts.Subscription{}, err
+		}
+	}
+	if kind == contracts.SubscriptionTargetProject {
+		if _, err := workspace.project.GetProject(ctx, strings.TrimSpace(target)); err != nil {
+			return contracts.Subscription{}, err
+		}
+	}
+	eventTypesRaw, _ := cmd.Flags().GetStringArray("event")
+	subscription := contracts.Subscription{
+		Actor:      actor,
+		TargetKind: kind,
+		Target:     strings.TrimSpace(target),
+		EventTypes: make([]contracts.EventType, 0, len(eventTypesRaw)),
+	}
+	for _, raw := range eventTypesRaw {
+		eventType := contracts.EventType(strings.TrimSpace(raw))
+		if !eventType.IsValid() {
+			return contracts.Subscription{}, fmt.Errorf("invalid event type: %s", raw)
+		}
+		subscription.EventTypes = append(subscription.EventTypes, eventType)
+	}
+	return subscription, subscription.Validate()
+}
+
+func eventTypesToStrings(values []contracts.EventType) []string {
+	items := make([]string, 0, len(values))
+	for _, value := range values {
+		items = append(items, string(value))
+	}
+	return items
 }
 
 func runRender(cmd *cobra.Command, args []string) error {

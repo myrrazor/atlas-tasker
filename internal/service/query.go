@@ -49,8 +49,109 @@ func (s *QueryService) ListSavedViews() ([]contracts.SavedView, error) {
 	return s.Views.ListViews()
 }
 
+func (s *QueryService) NotificationLog(limit int) ([]NotificationDelivery, error) {
+	cfg, err := config.Load(s.Root)
+	if err != nil {
+		return nil, err
+	}
+	records, err := ReadNotificationLog(s.Root, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return tailNotificationRecords(records, limit), nil
+}
+
+func (s *QueryService) DeadLetters(limit int) ([]NotificationDelivery, error) {
+	cfg, err := config.Load(s.Root)
+	if err != nil {
+		return nil, err
+	}
+	records, err := ReadDeadLetters(s.Root, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return tailNotificationRecords(records, limit), nil
+}
+
+func tailNotificationRecords(records []NotificationDelivery, limit int) []NotificationDelivery {
+	if limit <= 0 || len(records) <= limit {
+		return records
+	}
+	return append([]NotificationDelivery{}, records[len(records)-limit:]...)
+}
+
+func (s *QueryService) AutomationRules() ([]contracts.AutomationRule, error) {
+	return (AutomationEngine{Store: AutomationStore{Root: s.Root}}).ListRules()
+}
+
+func (s *QueryService) ExplainAutomationRules(ctx context.Context, ticketID string) ([]AutomationResult, error) {
+	if strings.TrimSpace(ticketID) == "" {
+		return []AutomationResult{}, nil
+	}
+	rules, err := s.AutomationRules()
+	if err != nil {
+		return nil, err
+	}
+	if len(rules) == 0 {
+		return []AutomationResult{}, nil
+	}
+	detail, err := s.TicketDetail(ctx, ticketID)
+	if err != nil {
+		return nil, err
+	}
+	eventType := contracts.EventTicketUpdated
+	actor := contracts.Actor("human:owner")
+	if len(detail.History) > 0 {
+		last := detail.History[len(detail.History)-1]
+		eventType = last.Type
+		actor = last.Actor
+	}
+	event := contracts.Event{
+		EventID:       1,
+		Timestamp:     s.now(),
+		Actor:         actor,
+		Type:          eventType,
+		Project:       detail.Ticket.Project,
+		TicketID:      detail.Ticket.ID,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	engine := AutomationEngine{Store: AutomationStore{Root: s.Root}}
+	results := make([]AutomationResult, 0, len(rules))
+	for _, rule := range rules {
+		result, err := engine.Explain(ctx, s, rule, event, ticketID)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, result)
+	}
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Matched != results[j].Matched {
+			return results[i].Matched
+		}
+		return results[i].Rule.Name < results[j].Rule.Name
+	})
+	return results, nil
+}
+
 func (s *QueryService) SavedView(name string) (contracts.SavedView, error) {
 	return s.Views.LoadView(name)
+}
+
+func (s *QueryService) ListSubscriptions(actor contracts.Actor) ([]contracts.Subscription, error) {
+	subscriptions, err := SubscriptionStore{Root: s.Root}.ListSubscriptions()
+	if err != nil {
+		return nil, err
+	}
+	if actor == "" {
+		return subscriptions, nil
+	}
+	filtered := make([]contracts.Subscription, 0, len(subscriptions))
+	for _, subscription := range subscriptions {
+		if subscription.Actor == actor {
+			filtered = append(filtered, subscription)
+		}
+	}
+	return filtered, nil
 }
 
 func (s *QueryService) History(ctx context.Context, ticketID string) (HistoryView, error) {
