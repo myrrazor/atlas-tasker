@@ -64,6 +64,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newExportCommand())
 	root.AddCommand(newArchiveCommand())
 	root.AddCommand(newCompactCommand())
+	root.AddCommand(newDashboardCommand())
+	root.AddCommand(newTimelineCommand())
 	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())

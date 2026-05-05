@@ -67,6 +67,39 @@ type HistoryView struct {
 	Events   []contracts.Event `json:"events"`
 }
 
+type DashboardBucket struct {
+	Count     int      `json:"count"`
+	TicketIDs []string `json:"ticket_ids,omitempty"`
+}
+
+type DashboardSummaryView struct {
+	GeneratedAt      time.Time       `json:"generated_at"`
+	ActiveRuns       int             `json:"active_runs"`
+	AwaitingReview   DashboardBucket `json:"awaiting_review"`
+	AwaitingOwner    DashboardBucket `json:"awaiting_owner"`
+	MergeReady       DashboardBucket `json:"merge_ready"`
+	BlockedByChecks  DashboardBucket `json:"blocked_by_checks"`
+	StaleWorktrees   []string        `json:"stale_worktrees,omitempty"`
+	RetentionTargets []string        `json:"retention_targets,omitempty"`
+}
+
+type TimelineEntry struct {
+	Timestamp time.Time           `json:"timestamp"`
+	EventID   int64               `json:"event_id"`
+	Type      contracts.EventType `json:"type"`
+	Actor     contracts.Actor     `json:"actor"`
+	TicketID  string              `json:"ticket_id,omitempty"`
+	Summary   string              `json:"summary"`
+}
+
+type TimelineView struct {
+	TicketID    string                     `json:"ticket_id"`
+	GeneratedAt time.Time                  `json:"generated_at"`
+	Entries     []TimelineEntry            `json:"entries"`
+	ChangeReady contracts.ChangeReadyState `json:"change_ready"`
+	OpenGateIDs []string                   `json:"open_gate_ids,omitempty"`
+}
+
 type InspectView struct {
 	Ticket          contracts.TicketSnapshot `json:"ticket"`
 	BoardStatus     contracts.Status         `json:"board_status"`
