@@ -213,7 +213,9 @@ func runRunLaunch(cmd *cobra.Command, args []string) error {
 	}
 	defer workspace.close()
 	refresh, _ := cmd.Flags().GetBool("refresh")
-	view, err := workspace.actions.LaunchRun(ctx, args[0], refresh)
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.LaunchRun(ctx, args[0], refresh, normalizeActor(actorRaw), reason)
 	if err != nil {
 		return err
 	}
@@ -472,6 +474,22 @@ func formatRunDetail(detail service.RunDetailView) string {
 		lines = append(lines, "", fmt.Sprintf("gates=%d", len(detail.Gates)))
 		for _, gate := range detail.Gates {
 			lines = append(lines, fmt.Sprintf("- %s [%s/%s]", gate.GateID, gate.Kind, gate.State))
+		}
+	}
+	if len(detail.Changes) > 0 {
+		lines = append(lines, "", fmt.Sprintf("changes=%d", len(detail.Changes)))
+		for _, change := range detail.Changes {
+			line := fmt.Sprintf("- %s [%s]", change.ChangeID, change.Status)
+			if change.BranchName != "" {
+				line += " branch=" + change.BranchName
+			}
+			lines = append(lines, line)
+		}
+	}
+	if len(detail.Checks) > 0 {
+		lines = append(lines, "", fmt.Sprintf("checks=%d", len(detail.Checks)))
+		for _, check := range detail.Checks {
+			lines = append(lines, fmt.Sprintf("- %s [%s/%s] %s", check.CheckID, check.Status, check.Conclusion, check.Name))
 		}
 	}
 	if len(detail.Evidence) > 0 {
