@@ -29,6 +29,9 @@ tracker tui --actor agent:builder-1
 
 ## Docs
 
+- [v1.3 implementation plan](docs/v1.3-implementation-plan.md)
+- [v1.3 PR breakdown](docs/v1.3-pr-breakdown.md)
+- [v1.3 decision log](docs/v1.3-decision-log.md)
 - [v1.2 implementation plan](docs/v1.2-implementation-plan.md)
 - [v1.2 PR breakdown](docs/v1.2-ticket-breakdown.md)
 - [v1.2 decision log](docs/v1.2-decision-log.md)
@@ -37,6 +40,9 @@ tracker tui --actor agent:builder-1
 - [Decision log](docs/v1-decision-log.md)
 - [Architecture](docs/architecture.md)
 - [Command reference](docs/command-reference.md)
+- [Operator manual](docs/operator-manual.md)
+- [Upgrade guide](docs/upgrade-v1.2-to-v1.3.md)
+- [Troubleshooting](docs/troubleshooting.md)
 - [Release guide](docs/release.md)
 - [Agent rules](AGENTS.md)
 
