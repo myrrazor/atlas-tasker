@@ -99,6 +99,66 @@ func RuntimeLaunchFile(root string, runID string, provider string) string {
 	return filepath.Join(RuntimeDir(root, runID), "launch."+provider+".txt")
 }
 
+func ChangesDir(root string) string {
+	return filepath.Join(TrackerDir(root), "changes")
+}
+
+func ChangeFile(root string, changeID string) string {
+	return filepath.Join(ChangesDir(root), changeID+".md")
+}
+
+func ChecksDir(root string) string {
+	return filepath.Join(TrackerDir(root), "checks")
+}
+
+func CheckFile(root string, checkID string) string {
+	return filepath.Join(ChecksDir(root), checkID+".md")
+}
+
+func PermissionProfilesDir(root string) string {
+	return filepath.Join(TrackerDir(root), "permission-profiles")
+}
+
+func PermissionProfileFile(root string, profileID string) string {
+	return filepath.Join(PermissionProfilesDir(root), profileID+".toml")
+}
+
+func ImportsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "imports")
+}
+
+func ImportJobFile(root string, jobID string) string {
+	return filepath.Join(ImportsDir(root), jobID+".md")
+}
+
+func ExportsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "exports")
+}
+
+func ExportBundleFile(root string, bundleID string) string {
+	return filepath.Join(ExportsDir(root), bundleID+".md")
+}
+
+func RetentionPoliciesDir(root string) string {
+	return filepath.Join(TrackerDir(root), "retention")
+}
+
+func RetentionPolicyFile(root string, policyID string) string {
+	return filepath.Join(RetentionPoliciesDir(root), policyID+".toml")
+}
+
+func ArchivesDir(root string) string {
+	return filepath.Join(TrackerDir(root), "archives")
+}
+
+func ArchiveRecordFile(root string, archiveID string) string {
+	return filepath.Join(ArchivesDir(root), archiveID+".md")
+}
+
+func ArchivePayloadDir(root string, archiveID string) string {
+	return filepath.Join(ArchivesDir(root), archiveID)
+}
+
 func ProjectDir(root string, key string) string {
 	return filepath.Join(ProjectsDir(root), key)
 }

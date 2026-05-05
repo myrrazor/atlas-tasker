@@ -203,6 +203,8 @@ func (m model) runSlashMutation(input string) tea.Cmd {
 		return m.runMutation("", func(ctx context.Context, actor contracts.Actor) (string, error) {
 			return m.executeSlash(ctx, args, actor)
 		})
+	case "run":
+		return m.runRunSlash(args[1:])
 	case "bulk":
 		return m.runBulkSlash(args[1:])
 	case "views":
@@ -211,7 +213,57 @@ func (m model) runSlashMutation(input string) tea.Cmd {
 		}
 		return failMutation(fmt.Errorf("supported view command: /views run <NAME>"))
 	default:
-		return failMutation(fmt.Errorf("TUI command palette currently supports /ticket, /bulk, and /views run"))
+		return failMutation(fmt.Errorf("TUI command palette currently supports /ticket, /run, /bulk, and /views run"))
+	}
+}
+
+func (m model) runRunSlash(args []string) tea.Cmd {
+	if len(args) < 2 {
+		return failMutation(fmt.Errorf("supported run commands: /run open <RUN-ID> | /run launch <RUN-ID> [--refresh]"))
+	}
+	runID := strings.TrimSpace(args[1])
+	if runID == "" {
+		return failMutation(fmt.Errorf("run id is required"))
+	}
+	switch strings.TrimSpace(args[0]) {
+	case "open":
+		return func() tea.Msg {
+			view, err := m.queries.RunOpen(context.Background(), runID)
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+			msg := loadedMsg{status: fmt.Sprintf("opened runtime paths for %s", runID)}
+			if focusRunIDForTicket(m.detail.Ticket, m.runs) == runID {
+				msg.runLaunch = view
+			}
+			return msg
+		}
+	case "launch":
+		refresh := len(args) > 2 && strings.TrimSpace(args[2]) == "--refresh"
+		return func() tea.Msg {
+			ctx := service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: contracts.EventSurfaceTUI})
+			actor, err := m.queries.ResolveActor(ctx, m.actor)
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+			view, err := m.actions.LaunchRun(ctx, runID, refresh, actor, "tui run launch")
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+			msg := m.reload(m.selectedID, strings.TrimSpace(m.search.Value()), fmt.Sprintf("launched runtime artifacts for %s", runID))()
+			loaded, ok := msg.(loadedMsg)
+			if !ok {
+				return loadedMsg{runLaunch: view, status: fmt.Sprintf("launched runtime artifacts for %s", runID)}
+			}
+			if focusRunIDForTicket(m.detail.Ticket, m.runs) == runID {
+				loaded.runLaunch = view
+			}
+			loaded.status = fmt.Sprintf("launched runtime artifacts for %s", runID)
+			loaded.actor = actor
+			return loaded
+		}
+	default:
+		return failMutation(fmt.Errorf("supported run commands: /run open <RUN-ID> | /run launch <RUN-ID> [--refresh]"))
 	}
 }
 

@@ -22,14 +22,6 @@ func (s *QueryService) DispatchSuggest(ctx context.Context, ticketID string) (Di
 	eligibleCount := 0
 	autoRoute := ""
 	for i := range report.Entries {
-		runbook, stage, runbookErr := s.resolveRunbookForAgent(ctx, ticket, report.Entries[i].Agent)
-		if runbookErr != nil {
-			report.Entries[i].Eligible = false
-			report.Entries[i].ReasonCodes = appendReasonCode(report.Entries[i].ReasonCodes, "runbook_requirement_unsatisfied")
-		} else {
-			report.Entries[i].Runbook = runbook.Name
-			report.Entries[i].Stage = stage
-		}
 		for _, code := range commonReasons {
 			report.Entries[i].Eligible = false
 			report.Entries[i].ReasonCodes = appendReasonCode(report.Entries[i].ReasonCodes, code)
