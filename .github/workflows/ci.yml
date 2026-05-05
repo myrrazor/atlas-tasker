@@ -17,5 +17,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Run vet
+        run: go vet ./...
+      - name: Check install script syntax
+        run: sh -n scripts/install.sh
       - name: Run tests
         run: go test ./...
