@@ -1,16 +1,16 @@
 ?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/apperr	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/cli	3.329s
-ok  	github.com/myrrazor/atlas-tasker/internal/config	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/contracts	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/domain	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/render	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/service	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/apperr	0.153s
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	4.386s
+ok  	github.com/myrrazor/atlas-tasker/internal/config	1.182s
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	1.269s
+ok  	github.com/myrrazor/atlas-tasker/internal/domain	0.360s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations	0.729s
+ok  	github.com/myrrazor/atlas-tasker/internal/render	0.621s
+ok  	github.com/myrrazor/atlas-tasker/internal/service	2.193s
 ?   	github.com/myrrazor/atlas-tasker/internal/slashcmd	[no test files]
 ?   	github.com/myrrazor/atlas-tasker/internal/storage	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/testutil	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	0.475s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	1.002s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	1.501s
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	1.198s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	1.612s
