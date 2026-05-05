@@ -9,8 +9,16 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/domain"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/slashcmd"
 )
+
+func (m model) now() time.Time {
+	if m.actions != nil && m.actions.Clock != nil {
+		return m.actions.Clock().UTC()
+	}
+	return time.Now().UTC()
+}
 
 func (m model) toggleClaimSelected() tea.Cmd {
 	ticket, ok := m.selectedTicket()
@@ -18,7 +26,7 @@ func (m model) toggleClaimSelected() tea.Cmd {
 		return nil
 	}
 	return m.runMutation(ticket.ID, func(ctx context.Context, actor contracts.Actor) (string, error) {
-		if ticket.Lease.Actor == actor && ticket.Lease.Active(time.Now().UTC()) {
+		if ticket.Lease.Actor == actor && ticket.Lease.Active(m.now()) {
 			_, err := m.actions.ReleaseTicket(ctx, ticket.ID, actor, "released from TUI")
 			return fmt.Sprintf("released %s", ticket.ID), err
 		}
@@ -119,6 +127,8 @@ func (m model) runPromptMutation(dialog dialogState) tea.Cmd {
 			_, err := m.actions.UnlinkTickets(ctx, dialog.TicketID, otherID, actor, "unlinked from TUI")
 			return fmt.Sprintf("unlinked %s from %s", dialog.TicketID, otherID), err
 		})
+	case dialogBulk:
+		return m.previewBulkAction(value)
 	default:
 		return failMutation(fmt.Errorf("unsupported dialog action: %s", dialog.Action))
 	}
@@ -139,7 +149,7 @@ func (m model) runFormMutation(dialog dialogState) tea.Cmd {
 			return failMutation(fmt.Errorf("invalid ticket type: %s", values["type"]))
 		}
 		return m.runMutation("", func(ctx context.Context, actor contracts.Actor) (string, error) {
-			now := time.Now().UTC()
+			now := m.now()
 			ticket := contracts.TicketSnapshot{
 				Project:            values["project"],
 				Title:              values["title"],
@@ -168,7 +178,7 @@ func (m model) runFormMutation(dialog dialogState) tea.Cmd {
 			ticket.Title = values["title"]
 			ticket.Summary = values["title"]
 			ticket.Description = values["description"]
-			ticket.UpdatedAt = time.Now().UTC()
+			ticket.UpdatedAt = m.now()
 			_, err = m.actions.SaveTrackedTicket(ctx, ticket, actor, "edited from TUI")
 			if err != nil {
 				return "", err
@@ -188,14 +198,26 @@ func (m model) runSlashMutation(input string) tea.Cmd {
 	if len(args) == 0 {
 		return nil
 	}
-	return m.runMutation("", func(ctx context.Context, actor contracts.Actor) (string, error) {
-		return m.executeSlash(ctx, args, actor)
-	})
+	switch args[0] {
+	case "ticket":
+		return m.runMutation("", func(ctx context.Context, actor contracts.Actor) (string, error) {
+			return m.executeSlash(ctx, args, actor)
+		})
+	case "bulk":
+		return m.runBulkSlash(args[1:])
+	case "views":
+		if len(args) == 3 && args[1] == "run" {
+			return m.loadSavedView(args[2])
+		}
+		return failMutation(fmt.Errorf("supported view command: /views run <NAME>"))
+	default:
+		return failMutation(fmt.Errorf("TUI command palette currently supports /ticket, /bulk, and /views run"))
+	}
 }
 
 func (m model) runMutation(fallbackSelectedID string, fn func(context.Context, contracts.Actor) (string, error)) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
+		ctx := service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: contracts.EventSurfaceTUI})
 		actor, err := m.queries.ResolveActor(ctx, m.actor)
 		if err != nil {
 			return loadedMsg{err: err}
@@ -224,6 +246,111 @@ func (m model) runMutation(fallbackSelectedID string, fn func(context.Context, c
 func failMutation(err error) tea.Cmd {
 	return func() tea.Msg {
 		return loadedMsg{err: err}
+	}
+}
+
+func (m model) previewBulkAction(raw string) tea.Cmd {
+	op, err := m.buildBulkOperation(strings.Fields(strings.TrimSpace(raw)))
+	if err != nil {
+		return failMutation(err)
+	}
+	return m.runBulk(op, false)
+}
+
+func (m model) applyPendingBulk() tea.Cmd {
+	if m.pendingBulk == nil {
+		return nil
+	}
+	op := *m.pendingBulk
+	return m.runBulk(op, true)
+}
+
+func (m model) runBulkSlash(args []string) tea.Cmd {
+	op, err := m.buildBulkOperation(args)
+	if err != nil {
+		return failMutation(err)
+	}
+	return m.runBulk(op, false)
+}
+
+func (m model) runBulk(op service.BulkOperation, apply bool) tea.Cmd {
+	return func() tea.Msg {
+		ctx := service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: contracts.EventSurfaceTUI})
+		actor, err := m.queries.ResolveActor(ctx, m.actor)
+		if err != nil {
+			return bulkMsg{err: err}
+		}
+		op.Actor = actor
+		if len(op.TicketIDs) == 0 {
+			op.TicketIDs = m.currentBulkTicketIDs()
+		}
+		op.BatchID = service.NewOpaqueID()
+		if apply {
+			op.DryRun = false
+			op.Confirm = true
+		} else {
+			op.DryRun = true
+			op.Confirm = false
+		}
+		result, err := m.actions.RunBulk(ctx, op)
+		return bulkMsg{result: result, op: op, applied: apply, err: err}
+	}
+}
+
+func (m model) buildBulkOperation(args []string) (service.BulkOperation, error) {
+	if len(args) == 0 {
+		return service.BulkOperation{}, fmt.Errorf("bulk action is required")
+	}
+	op := service.BulkOperation{Reason: "bulk action from TUI"}
+	switch strings.TrimSpace(args[0]) {
+	case "move":
+		if len(args) != 2 {
+			return service.BulkOperation{}, fmt.Errorf("usage: move <STATUS>")
+		}
+		status := contracts.Status(args[1])
+		if !status.IsValid() {
+			return service.BulkOperation{}, fmt.Errorf("invalid status: %s", args[1])
+		}
+		op.Kind = service.BulkOperationMove
+		op.Status = status
+	case "assign":
+		if len(args) != 2 {
+			return service.BulkOperation{}, fmt.Errorf("usage: assign <ACTOR>")
+		}
+		assignee := contracts.Actor(args[1])
+		if args[1] != "" && !assignee.IsValid() {
+			return service.BulkOperation{}, fmt.Errorf("invalid assignee actor: %s", args[1])
+		}
+		op.Kind = service.BulkOperationAssign
+		op.Assignee = assignee
+	case "request-review":
+		op.Kind = service.BulkOperationRequestReview
+	case "complete":
+		op.Kind = service.BulkOperationComplete
+	case "claim":
+		op.Kind = service.BulkOperationClaim
+	case "release":
+		op.Kind = service.BulkOperationRelease
+	default:
+		return service.BulkOperation{}, fmt.Errorf("unsupported bulk action: %s", args[0])
+	}
+	return op, nil
+}
+
+func (m model) currentBulkTicketIDs() []string {
+	switch m.screen {
+	case screenDetail:
+		if m.detail.Ticket.ID != "" {
+			return []string{m.detail.Ticket.ID}
+		}
+		return nil
+	default:
+		items := m.itemsForScreen()
+		ids := make([]string, 0, len(items))
+		for _, ticket := range items {
+			ids = append(ids, ticket.ID)
+		}
+		return ids
 	}
 }
 
@@ -347,7 +474,7 @@ func (m model) executeSlash(ctx context.Context, args []string, actor contracts.
 		if project == "" || title == "" || !typeValue.IsValid() {
 			return "", fmt.Errorf("usage: /ticket create --project <KEY> --title <TEXT> --type <TYPE> [--description <TEXT>]")
 		}
-		now := time.Now().UTC()
+		now := m.now()
 		ticket := contracts.TicketSnapshot{Project: project, Title: title, Summary: title, Description: description, Type: typeValue, Status: contracts.StatusBacklog, Priority: contracts.PriorityMedium, CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion, AcceptanceCriteria: []string{}}
 		created, err := m.actions.CreateTrackedTicket(ctx, ticket, actor, reason)
 		if err != nil {
@@ -369,7 +496,7 @@ func (m model) executeSlash(ctx context.Context, args []string, actor contracts.
 		if flags["description"] != nil {
 			ticket.Description = firstFlag(flags, "description")
 		}
-		ticket.UpdatedAt = time.Now().UTC()
+		ticket.UpdatedAt = m.now()
 		updated, err := m.actions.SaveTrackedTicket(ctx, ticket, actor, reason)
 		if err != nil {
 			return "", err
