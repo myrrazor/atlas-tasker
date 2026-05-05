@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -268,7 +270,7 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 	distDir := t.TempDir()
 	workDir := t.TempDir()
 	binDir := t.TempDir()
-	version := "v1.4.0-rc1"
+	version := "v1.5.0-rc1"
 	archive := filepath.Join(distDir, packagedArchiveName(version))
 
 	build := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(distDir, "tracker"), "./cmd/tracker")
@@ -280,8 +282,27 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 	if output, err := tarCmd.CombinedOutput(); err != nil {
 		t.Fatalf("tar packaged tracker: %v\n%s", err, output)
 	}
+	archiveBytes, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatalf("read packaged archive: %v", err)
+	}
+	sum := sha256.Sum256(archiveBytes)
+	if err := os.WriteFile(filepath.Join(distDir, "checksums.txt"), []byte(fmt.Sprintf("%x  %s\n", sum, filepath.Base(archive))), 0o644); err != nil {
+		t.Fatalf("write checksums.txt: %v", err)
+	}
 	server := httptest.NewServer(http.FileServer(http.Dir(distDir)))
 	defer server.Close()
+
+	verify := exec.Command("sh", filepath.Join(repoRoot, "scripts", "verify-release.sh"), archive)
+	verify.Dir = repoRoot
+	verify.Env = append(os.Environ(),
+		"VERSION="+version,
+		"RELEASE_BASE_URL="+server.URL,
+		"VERIFY_ATTESTATIONS=0",
+	)
+	if output, err := verify.CombinedOutput(); err != nil {
+		t.Fatalf("verify packaged tracker: %v\n%s", err, output)
+	}
 
 	install := exec.Command("sh", filepath.Join(repoRoot, "scripts", "install.sh"))
 	install.Dir = repoRoot
@@ -336,6 +357,21 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 	runInstalled("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
 	runInstalled("run", "checkpoint", runID, "--title", "Smoke checkpoint", "--body", "runtime + worktree ready", "--actor", "human:owner")
 	runInstalled("run", "evidence", "add", runID, "--type", "note", "--title", "Smoke evidence", "--body", "packaged rehearsal", "--actor", "human:owner")
+	changeJSON := runInstalled("change", "create", runID, "--actor", "human:owner", "--json")
+	var createdChange struct {
+		Payload struct {
+			Change struct {
+				ChangeID string `json:"change_id"`
+			} `json:"change"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(changeJSON), &createdChange); err != nil {
+		t.Fatalf("parse packaged change create: %v\n%s", err, changeJSON)
+	}
+	if createdChange.Payload.Change.ChangeID == "" {
+		t.Fatalf("expected packaged change id, got %s", changeJSON)
+	}
+	runInstalled("change", "status", createdChange.Payload.Change.ChangeID, "--json")
 	runInstalled("run", "handoff", runID, "--next-actor", "agent:reviewer-1", "--next-gate", "review", "--actor", "human:owner")
 
 	approvalsJSON := runInstalled("approvals", "--json")
@@ -358,6 +394,32 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 	runInstalled("ticket", "request-review", "APP-1", "--actor", "agent:builder-1")
 	runInstalled("ticket", "approve", "APP-1", "--actor", "agent:reviewer-1")
 	runInstalled("ticket", "complete", "APP-1", "--actor", "human:owner")
+	runInstalled("export", "create", "--scope", "workspace", "--actor", "human:owner")
+	runtimeDir := filepath.Join(workDir, ".tracker", "runtime", runID)
+	old := time.Date(2020, 1, 1, 1, 1, 0, 0, time.UTC)
+	if err := filepath.Walk(runtimeDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		return os.Chtimes(path, old, old)
+	}); err != nil {
+		t.Fatalf("backdate runtime dir: %v", err)
+	}
+	runInstalled("archive", "plan", "--target", "runtime", "--project", "APP")
+	runInstalled("archive", "apply", "--target", "runtime", "--project", "APP", "--yes", "--actor", "human:owner")
+	archiveJSON := runInstalled("archive", "list", "--target", "runtime", "--json")
+	var archives struct {
+		Items []struct {
+			ArchiveID string `json:"archive_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(archiveJSON), &archives); err != nil {
+		t.Fatalf("parse packaged archive list: %v\n%s", err, archiveJSON)
+	}
+	if len(archives.Items) == 0 || archives.Items[0].ArchiveID == "" {
+		t.Fatalf("expected packaged runtime archive, got %s", archiveJSON)
+	}
+	runInstalled("archive", "restore", archives.Items[0].ArchiveID, "--actor", "human:owner")
 	runInstalled("run", "cleanup", runID, "--actor", "human:owner")
 
 	inspect := runInstalled("inspect", "APP-1", "--actor", "human:owner", "--json")
