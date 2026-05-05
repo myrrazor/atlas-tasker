@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +26,7 @@ type workspace struct {
 	ticket     mdstore.TicketStore
 	events     *eventstore.Log
 	projection *sqlitestore.Store
+	locks      service.WriteLockManager
 	actions    *service.ActionService
 	queries    *service.QueryService
 }
@@ -36,7 +36,11 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	ticketStore := mdstore.TicketStore{RootDir: root}
+	root, err = service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
 	eventLog := &eventstore.Log{RootDir: root}
 	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
 	if err != nil {
@@ -47,19 +51,27 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	notifier, err := service.BuildNotifier(root, cfg, os.Stderr)
-	if err != nil {
-		return nil, err
-	}
 	w := &workspace{
 		root:       root,
 		project:    projectStore,
 		ticket:     ticketStore,
 		events:     eventLog,
 		projection: projection,
+		locks:      service.FileLockManager{Root: root},
 	}
-	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, notifier)
 	w.queries = service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
+	notifier, err := service.BuildNotifier(root, cfg, os.Stderr, service.SubscriptionResolver{
+		Store:   service.SubscriptionStore{Root: root},
+		Queries: w.queries,
+	})
+	if err != nil {
+		return nil, err
+	}
+	automation := &service.AutomationEngine{
+		Store:    service.AutomationStore{Root: root},
+		Notifier: notifier,
+	}
+	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
 	return w, nil
 }
 
@@ -67,6 +79,10 @@ func (w *workspace) close() {
 	if w.projection != nil {
 		_ = w.projection.Close()
 	}
+}
+
+func (w *workspace) withWriteLock(ctx context.Context, purpose string, fn func(context.Context) error) error {
+	return service.WithWriteLock(ctx, w.locks, purpose, fn)
 }
 
 func (w *workspace) nextEventID(ctx context.Context, project string) (int64, error) {
@@ -111,22 +127,6 @@ func parseLabels(raw string) []string {
 	return labels
 }
 
-func nextTicketID(project string, existing []contracts.TicketSnapshot) string {
-	max := 0
-	prefix := project + "-"
-	for _, ticket := range existing {
-		if !strings.HasPrefix(ticket.ID, prefix) {
-			continue
-		}
-		raw := strings.TrimPrefix(ticket.ID, prefix)
-		n, err := strconv.Atoi(raw)
-		if err == nil && n > max {
-			max = n
-		}
-	}
-	return fmt.Sprintf("%s-%d", project, max+1)
-}
-
 func listTicketEvents(ctx context.Context, w *workspace, ticketID string) ([]contracts.Event, error) {
 	events, err := w.events.StreamEvents(ctx, "", 0)
 	if err != nil {
@@ -152,10 +152,24 @@ func defaultNow() time.Time {
 }
 
 func ensureInitArtifacts(root string) error {
+	var err error
+	root, err = service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(storage.TrackerDir(root), 0o755); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(storage.EventsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.AutomationsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.ViewsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.SubscriptionsDir(root), 0o755); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "templates"), 0o755); err != nil {

@@ -24,6 +24,7 @@ const ticketSelectColumns = `
 
 // Store is a SQLite-backed projection and query engine.
 type Store struct {
+	Path         string
 	DB           *sql.DB
 	TicketSource contracts.TicketStore
 	EventSource  contracts.EventLog
@@ -35,11 +36,23 @@ func Open(path string, ticketSource contracts.TicketStore, eventSource contracts
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create sqlite dir: %w", err)
 	}
+	db, err := openDB(path)
+	if err != nil {
+		return nil, err
+	}
+	store := &Store{Path: path, DB: db, TicketSource: ticketSource, EventSource: eventSource}
+	if err := store.migrate(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+func openDB(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	store := &Store{DB: db, TicketSource: ticketSource, EventSource: eventSource}
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("set journal mode: %w", err)
@@ -48,11 +61,7 @@ func Open(path string, ticketSource contracts.TicketStore, eventSource contracts
 		_ = db.Close()
 		return nil, fmt.Errorf("set sync mode: %w", err)
 	}
-	if err := store.migrate(); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	return store, nil
+	return db, nil
 }
 
 func (s *Store) Close() error {
@@ -111,6 +120,7 @@ func (s *Store) migrate() error {
 			reason TEXT,
 			type TEXT NOT NULL,
 			payload_json TEXT,
+			metadata_json TEXT NOT NULL DEFAULT '{}',
 			schema_version INTEGER NOT NULL,
 			PRIMARY KEY (project, event_id)
 		);`,
@@ -142,6 +152,9 @@ func (s *Store) migrate() error {
 		if err := s.ensureTicketColumn(column.name, column.definition); err != nil {
 			return err
 		}
+	}
+	if err := s.ensureEventColumn("metadata_json", `TEXT NOT NULL DEFAULT '{}'`); err != nil {
+		return err
 	}
 	return nil
 }
@@ -177,6 +190,37 @@ func (s *Store) ensureTicketColumn(name string, definition string) error {
 	return nil
 }
 
+func (s *Store) ensureEventColumn(name string, definition string) error {
+	rows, err := s.DB.Query(`PRAGMA table_info(events)`)
+	if err != nil {
+		return fmt.Errorf("inspect events schema: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			cid        int
+			columnName string
+			typ        string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err := rows.Scan(&cid, &columnName, &typ, &notNull, &defaultVal, &pk); err != nil {
+			return fmt.Errorf("scan events table info: %w", err)
+		}
+		if columnName == name {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate events table info: %w", err)
+	}
+	if _, err := s.DB.Exec(`ALTER TABLE events ADD COLUMN ` + name + ` ` + definition); err != nil {
+		return fmt.Errorf("add events.%s: %w", name, err)
+	}
+	return nil
+}
+
 func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 	if err := event.Validate(); err != nil {
 		return err
@@ -193,6 +237,13 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 }
 
 func (s *Store) Rebuild(ctx context.Context, project string) error {
+	if project == "" && s.Path != "" {
+		return s.rebuildBySwap(ctx)
+	}
+	return s.rebuildInPlace(ctx, project)
+}
+
+func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 	if s.TicketSource == nil || s.EventSource == nil {
 		return fmt.Errorf("rebuild requires ticket and event sources")
 	}
@@ -238,6 +289,47 @@ func (s *Store) Rebuild(ctx context.Context, project string) error {
 	}
 
 	return nil
+}
+
+func (s *Store) rebuildBySwap(ctx context.Context) error {
+	if s.TicketSource == nil || s.EventSource == nil {
+		return fmt.Errorf("rebuild requires ticket and event sources")
+	}
+	tempPath := s.Path + ".rebuild"
+	for _, candidate := range []string{tempPath, tempPath + "-wal", tempPath + "-shm"} {
+		_ = os.Remove(candidate)
+	}
+	tempStore, err := Open(tempPath, s.TicketSource, s.EventSource)
+	if err != nil {
+		return err
+	}
+	if err := tempStore.rebuildInPlace(ctx, ""); err != nil {
+		_ = tempStore.Close()
+		return err
+	}
+	if err := tempStore.Close(); err != nil {
+		return fmt.Errorf("close rebuilt temp projection: %w", err)
+	}
+	if err := s.Close(); err != nil {
+		return fmt.Errorf("close existing projection: %w", err)
+	}
+	for _, candidate := range []string{s.Path, s.Path + "-wal", s.Path + "-shm"} {
+		_ = os.Remove(candidate)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		src := tempPath + suffix
+		if _, err := os.Stat(src); err == nil {
+			if err := os.Rename(src, s.Path+suffix); err != nil {
+				return fmt.Errorf("swap projection file %s: %w", filepath.Base(src), err)
+			}
+		}
+	}
+	db, err := openDB(s.Path)
+	if err != nil {
+		return err
+	}
+	s.DB = db
+	return s.migrate()
 }
 
 func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions) (contracts.BoardView, error) {
@@ -339,7 +431,7 @@ func (s *Store) QuerySearch(ctx context.Context, query contracts.SearchQuery) ([
 
 func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.Event, error) {
 	rows, err := s.DB.QueryContext(ctx, `
-		SELECT event_id, ts, actor, reason, type, project, ticket_id, payload_json, schema_version
+		SELECT event_id, ts, actor, reason, type, project, ticket_id, payload_json, metadata_json, schema_version
 		FROM events
 		WHERE ticket_id = ?
 		ORDER BY event_id ASC
@@ -352,13 +444,14 @@ func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.
 	events := make([]contracts.Event, 0)
 	for rows.Next() {
 		var (
-			event       contracts.Event
-			ts          string
-			actor       string
-			eventType   string
-			payloadJSON sql.NullString
+			event        contracts.Event
+			ts           string
+			actor        string
+			eventType    string
+			payloadJSON  sql.NullString
+			metadataJSON sql.NullString
 		)
-		if err := rows.Scan(&event.EventID, &ts, &actor, &event.Reason, &eventType, &event.Project, &event.TicketID, &payloadJSON, &event.SchemaVersion); err != nil {
+		if err := rows.Scan(&event.EventID, &ts, &actor, &event.Reason, &eventType, &event.Project, &event.TicketID, &payloadJSON, &metadataJSON, &event.SchemaVersion); err != nil {
 			return nil, err
 		}
 		parsedTS, err := time.Parse(time.RFC3339Nano, ts)
@@ -374,6 +467,11 @@ func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.
 				return nil, fmt.Errorf("decode event payload: %w", err)
 			}
 			event.Payload = payload
+		}
+		if metadataJSON.Valid && metadataJSON.String != "" {
+			if err := json.Unmarshal([]byte(metadataJSON.String), &event.Metadata); err != nil {
+				return nil, fmt.Errorf("decode event metadata: %w", err)
+			}
 		}
 		events = append(events, event)
 	}
@@ -478,11 +576,17 @@ func (s *Store) insertEventOnly(ctx context.Context, event contracts.Event) erro
 		}
 		payloadJSON = string(raw)
 	}
+	metadataJSON := "{}"
+	if raw, err := json.Marshal(event.Metadata); err == nil {
+		metadataJSON = string(raw)
+	} else {
+		return fmt.Errorf("marshal event metadata: %w", err)
+	}
 	_, err := s.DB.ExecContext(ctx, `
-		INSERT INTO events (project, event_id, ticket_id, ts, actor, reason, type, payload_json, schema_version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO events (project, event_id, ticket_id, ts, actor, reason, type, payload_json, metadata_json, schema_version)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(project, event_id) DO NOTHING
-	`, event.Project, event.EventID, event.TicketID, event.Timestamp.UTC().Format(time.RFC3339Nano), string(event.Actor), event.Reason, string(event.Type), payloadJSON, event.SchemaVersion)
+	`, event.Project, event.EventID, event.TicketID, event.Timestamp.UTC().Format(time.RFC3339Nano), string(event.Actor), event.Reason, string(event.Type), payloadJSON, metadataJSON, event.SchemaVersion)
 	if err != nil {
 		return fmt.Errorf("insert event: %w", err)
 	}

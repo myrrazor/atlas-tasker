@@ -1,0 +1,566 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
+	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
+	"github.com/myrrazor/atlas-tasker/internal/testutil"
+)
+
+func TestDualGateFlowRejectsAndCompletes(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("project", "policy", "set", "APP", "--completion-mode", "dual_gate", "--lease-ttl", "45", "--required-reviewer", "agent:reviewer-1", "--allowed-workers", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Flow", "--type", "task", "--reviewer", "agent:reviewer-1", "--actor", "human:owner")
+	must("ticket", "claim", "APP-1", "--actor", "agent:builder-1")
+	must("ticket", "move", "APP-1", "ready", "--actor", "agent:builder-1")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "agent:builder-1")
+	must("ticket", "request-review", "APP-1", "--actor", "agent:builder-1")
+	must("ticket", "reject", "APP-1", "--actor", "agent:reviewer-1", "--reason", "missing test coverage")
+
+	history := must("ticket", "history", "APP-1", "--json")
+	if !strings.Contains(history, "ticket.rejected") || !strings.Contains(history, "missing test coverage") {
+		t.Fatalf("history should keep reject event and reason: %s", history)
+	}
+
+	must("ticket", "request-review", "APP-1", "--actor", "agent:builder-1")
+	must("ticket", "approve", "APP-1", "--actor", "agent:reviewer-1")
+	ownerQueue := must("owner-queue", "--pretty")
+	if !strings.Contains(ownerQueue, "APP-1") {
+		t.Fatalf("owner queue missing approved dual_gate ticket: %s", ownerQueue)
+	}
+	if _, err := runCLI(t, "ticket", "complete", "APP-1", "--actor", "agent:reviewer-1"); err == nil {
+		t.Fatal("expected reviewer completion to fail in dual_gate")
+	}
+	must("ticket", "complete", "APP-1", "--actor", "human:owner")
+	inspect := must("inspect", "APP-1", "--actor", "human:owner", "--json")
+	if !strings.Contains(inspect, "\"status\": \"done\"") {
+		t.Fatalf("inspect should show done after owner completion: %s", inspect)
+	}
+}
+
+func TestExpiredClaimCanBeSweptAndReclaimed(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Lease", "--type", "task", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("ticket", "claim", "APP-1", "--actor", "agent:builder-1")
+
+	store := mdstore.TicketStore{RootDir: mustGetwd(t)}
+	ticket, err := store.GetTicket(context.Background(), "APP-1")
+	if err != nil {
+		t.Fatalf("load claimed ticket: %v", err)
+	}
+	ticket.Lease.ExpiresAt = time.Now().UTC().Add(-2 * time.Hour)
+	ticket.Lease.LastHeartbeatAt = ticket.Lease.ExpiresAt
+	ticket.UpdatedAt = time.Now().UTC().Add(-2 * time.Hour)
+	if err := store.UpdateTicket(context.Background(), ticket); err != nil {
+		t.Fatalf("persist expired lease: %v", err)
+	}
+
+	sweep := must("sweep", "--actor", "human:owner", "--reason", "cleanup")
+	if !strings.Contains(sweep, "expired 1 lease(s)") {
+		t.Fatalf("unexpected sweep output: %s", sweep)
+	}
+	must("ticket", "claim", "APP-1", "--actor", "agent:builder-2")
+	who := must("who", "--json")
+	if !strings.Contains(who, "agent:builder-2") || strings.Contains(who, "agent:builder-1") {
+		t.Fatalf("who should show only the reclaimed lease holder: %s", who)
+	}
+}
+
+func TestPolicyPrecedenceAcrossProjectEpicAndTicket(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("project", "policy", "set", "APP", "--completion-mode", "owner_gate", "--lease-ttl", "45", "--required-reviewer", "agent:reviewer-1", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Epic", "--type", "epic", "--actor", "human:owner")
+	must("ticket", "policy", "set", "APP-1", "--completion-mode", "dual_gate", "--required-reviewer", "agent:reviewer-2", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Child", "--type", "task", "--parent", "APP-1", "--actor", "human:owner")
+
+	policyJSON := must("ticket", "policy", "get", "APP-2", "--json")
+	var payload struct {
+		EffectivePolicy struct {
+			CompletionMode   string `json:"completion_mode"`
+			RequiredReviewer string `json:"required_reviewer"`
+		} `json:"effective_policy"`
+	}
+	if err := json.Unmarshal([]byte(policyJSON), &payload); err != nil {
+		t.Fatalf("parse ticket policy output: %v\n%s", err, policyJSON)
+	}
+	if payload.EffectivePolicy.CompletionMode != string(contracts.CompletionModeDualGate) || payload.EffectivePolicy.RequiredReviewer != "agent:reviewer-2" {
+		t.Fatalf("unexpected effective policy from project+epic inheritance: %#v", payload.EffectivePolicy)
+	}
+
+	must("ticket", "policy", "set", "APP-2", "--completion-mode", "review_gate", "--actor", "human:owner")
+	policyJSON = must("ticket", "policy", "get", "APP-2", "--json")
+	if err := json.Unmarshal([]byte(policyJSON), &payload); err != nil {
+		t.Fatalf("parse ticket override output: %v\n%s", err, policyJSON)
+	}
+	if payload.EffectivePolicy.CompletionMode != string(contracts.CompletionModeReviewGate) {
+		t.Fatalf("ticket override should win precedence: %#v", payload.EffectivePolicy)
+	}
+}
+
+func TestFixtureUpgradeRepairReindexAndIntegrations(t *testing.T) {
+	root := t.TempDir()
+	if err := testutil.CopyDir(testutil.FixturePath("app_sample"), root); err != nil {
+		t.Fatalf("copy fixture: %v", err)
+	}
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("chdir fixture: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWD) }()
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	doctor := must("doctor", "--repair", "--pretty")
+	if !strings.Contains(doctor, "doctor ok:") {
+		t.Fatalf("doctor should pass on repaired fixture: %s", doctor)
+	}
+	history := must("ticket", "history", "APP-1", "--json")
+	if !strings.Contains(history, "\"schema_version\": 1") {
+		t.Fatalf("fixture history should keep legacy schema event: %s", history)
+	}
+	must("reindex")
+	board := must("board", "--project", "APP", "--pretty")
+	if !strings.Contains(board, "APP-1") {
+		t.Fatalf("board should survive fixture reindex: %s", board)
+	}
+	must("integrations", "install", "codex")
+	must("integrations", "install", "claude")
+	if _, err := os.Stat(filepath.Join(root, "AGENTS.md")); err != nil {
+		t.Fatalf("expected AGENTS.md after install: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "CLAUDE.md")); err != nil {
+		t.Fatalf("expected CLAUDE.md after install: %v", err)
+	}
+}
+
+func TestDoctorRepairIsIdempotentAfterJournalReplayAndProjectionCorruption(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Repair me", "--type", "task", "--actor", "human:owner")
+
+	root := mustGetwd(t)
+	store := mdstore.TicketStore{RootDir: root}
+	ticket, err := store.GetTicket(context.Background(), "APP-1")
+	if err != nil {
+		t.Fatalf("load ticket: %v", err)
+	}
+	now := time.Now().UTC()
+	ticket.Status = contracts.StatusReady
+	ticket.UpdatedAt = now
+	if err := store.UpdateTicket(context.Background(), ticket); err != nil {
+		t.Fatalf("update ticket: %v", err)
+	}
+	journal := service.MutationJournal{Root: root, Clock: func() time.Time { return now }}
+	entry := service.MutationJournalEntry{
+		Purpose:       "repair replay",
+		CanonicalKind: "ticket_snapshot",
+		Event: contracts.Event{
+			EventID:       2,
+			Timestamp:     now,
+			Actor:         contracts.Actor("human:owner"),
+			Type:          contracts.EventTicketUpdated,
+			Project:       "APP",
+			TicketID:      "APP-1",
+			Payload:       ticket,
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		},
+		Stage: service.MutationStageCanonicalWritten,
+	}
+	if err := testutil.SeedPendingMutationJournal(root, journal, entry); err != nil {
+		t.Fatalf("seed pending journal: %v", err)
+	}
+	if err := testutil.CorruptProjection(root); err != nil {
+		t.Fatalf("corrupt projection: %v", err)
+	}
+
+	first := must("doctor", "--repair", "--json")
+	second := must("doctor", "--repair", "--json")
+	if !strings.Contains(first, "\"repair_pending\": 1") {
+		t.Fatalf("expected first repair to see one pending journal entry: %s", first)
+	}
+	if !strings.Contains(second, "\"repair_pending\": 0") {
+		t.Fatalf("expected second repair to be idempotent: %s", second)
+	}
+
+	history := must("ticket", "history", "APP-1", "--json")
+	if strings.Count(history, "\"event_id\": 2") != 1 {
+		t.Fatalf("expected replayed event to exist exactly once: %s", history)
+	}
+	board := must("board", "--pretty")
+	if !strings.Contains(board, "APP-1") {
+		t.Fatalf("expected board to recover after repair: %s", board)
+	}
+}
+
+func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
+	repoRoot := testutil.RepoRoot()
+	distDir := t.TempDir()
+	workDir := t.TempDir()
+	binDir := t.TempDir()
+	version := "v1.3.0-rc1"
+	archive := filepath.Join(distDir, packagedArchiveName(version))
+
+	build := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(distDir, "tracker"), "./cmd/tracker")
+	build.Dir = repoRoot
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build packaged tracker: %v\n%s", err, output)
+	}
+	tarCmd := exec.Command("tar", "-czf", archive, "-C", distDir, "tracker")
+	if output, err := tarCmd.CombinedOutput(); err != nil {
+		t.Fatalf("tar packaged tracker: %v\n%s", err, output)
+	}
+	server := httptest.NewServer(http.FileServer(http.Dir(distDir)))
+	defer server.Close()
+
+	install := exec.Command("sh", filepath.Join(repoRoot, "scripts", "install.sh"))
+	install.Dir = repoRoot
+	install.Env = append(os.Environ(),
+		"VERSION="+version,
+		"BIN_DIR="+binDir,
+		"RELEASE_BASE_URL="+server.URL,
+	)
+	if output, err := install.CombinedOutput(); err != nil {
+		t.Fatalf("install packaged tracker: %v\n%s", err, output)
+	}
+
+	trackerBin := filepath.Join(binDir, "tracker")
+	runInstalled := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command(trackerBin, args...)
+		cmd.Dir = workDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("installed tracker %v failed: %v\n%s", args, err, output)
+		}
+		return string(output)
+	}
+
+	runInstalled("init")
+	runInstalled("project", "create", "APP", "App Project")
+	runInstalled("ticket", "create", "--project", "APP", "--title", "Smoke", "--type", "task", "--actor", "human:owner")
+	runInstalled("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	queue := runInstalled("queue", "--actor", "human:owner", "--json")
+	if !strings.Contains(queue, "APP-1") {
+		t.Fatalf("expected packaged queue output to include APP-1: %s", queue)
+	}
+}
+
+func TestLongSessionSoakKeepsReadSurfacesConsistent(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("project", "policy", "set", "APP", "--completion-mode", "dual_gate", "--required-reviewer", "agent:reviewer-1", "--allowed-workers", "agent:builder-1", "--actor", "human:owner")
+	for i := 1; i <= 6; i++ {
+		must("ticket", "create", "--project", "APP", "--title", "Soak", "--type", "task", "--reviewer", "agent:reviewer-1", "--actor", "human:owner")
+		id := "APP-" + strconv.Itoa(i)
+		must("ticket", "move", id, "ready", "--actor", "human:owner")
+		must("ticket", "claim", id, "--actor", "agent:builder-1")
+		must("ticket", "move", id, "in_progress", "--actor", "agent:builder-1")
+		must("ticket", "comment", id, "--body", "loop "+strconv.Itoa(i), "--actor", "agent:builder-1")
+		must("ticket", "request-review", id, "--actor", "agent:builder-1")
+		if i%2 == 0 {
+			must("ticket", "approve", id, "--actor", "agent:reviewer-1")
+			must("ticket", "complete", id, "--actor", "human:owner")
+		} else {
+			must("ticket", "reject", id, "--actor", "agent:reviewer-1", "--reason", "rework")
+		}
+	}
+
+	for _, id := range []string{"APP-1", "APP-2", "APP-3", "APP-4", "APP-5", "APP-6"} {
+		view := must("ticket", "view", id, "--json")
+		inspect := must("inspect", id, "--actor", "human:owner", "--json")
+		history := must("ticket", "history", id, "--json")
+		if !strings.Contains(inspect, id) || !strings.Contains(view, id) || !strings.Contains(history, id) {
+			t.Fatalf("surface mismatch for %s\nview=%s\ninspect=%s\nhistory=%s", id, view, inspect, history)
+		}
+		if strings.Contains(view, "\"status\": \"done\"") != strings.Contains(inspect, "\"status\": \"done\"") {
+			t.Fatalf("status drift between view and inspect for %s\nview=%s\ninspect=%s", id, view, inspect)
+		}
+	}
+
+	queue := must("queue", "--actor", "agent:builder-1", "--json")
+	next := must("next", "--actor", "agent:builder-1", "--json")
+	board := must("board", "--json")
+	for _, id := range []string{"APP-2", "APP-4", "APP-6"} {
+		if !strings.Contains(queue, id) || !strings.Contains(next, id) {
+			t.Fatalf("expected approved dual-gate tickets to remain in awaiting_owner surfaces\nqueue=%s\nnext=%s", queue, next)
+		}
+		if !strings.Contains(board, id) {
+			t.Fatalf("expected board to retain completed ticket %s: %s", id, board)
+		}
+	}
+	for _, id := range []string{"APP-1", "APP-3", "APP-5"} {
+		if !strings.Contains(board, id) {
+			t.Fatalf("expected board to retain rejected in_progress ticket %s: %s", id, board)
+		}
+	}
+	must("reindex")
+	postReindexQueue := must("queue", "--actor", "agent:builder-1", "--json")
+	for _, id := range []string{"APP-2", "APP-4", "APP-6"} {
+		if !strings.Contains(postReindexQueue, id) {
+			t.Fatalf("expected awaiting_owner queue entries to survive reindex: %s", postReindexQueue)
+		}
+	}
+	postReindexBoard := must("board", "--json")
+	for _, id := range []string{"APP-1", "APP-3", "APP-5", "APP-2", "APP-4", "APP-6"} {
+		if !strings.Contains(postReindexBoard, id) {
+			t.Fatalf("expected board to survive reindex after soak: %s", postReindexBoard)
+		}
+	}
+	if strings.Contains(postReindexQueue, "APP-1") || strings.Contains(postReindexQueue, "APP-3") || strings.Contains(postReindexQueue, "APP-5") {
+		t.Fatalf("expected queue to survive reindex after soak: %s", postReindexQueue)
+	}
+}
+
+func TestReindexDoesNotRerunAutomation(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Replay safe", "--type", "task", "--actor", "human:owner")
+	must("automation", "create", "comment-on-comment", "--on", "ticket.commented", "--action", "comment:automation follow-up")
+	must("ticket", "comment", "APP-1", "--body", "seed", "--actor", "agent:builder-1")
+
+	historyBefore := must("ticket", "history", "APP-1", "--json")
+	if strings.Count(historyBefore, "\"type\": \"ticket.commented\"") != 2 {
+		t.Fatalf("expected one human comment and one automation comment before reindex: %s", historyBefore)
+	}
+
+	must("reindex")
+
+	historyAfter := must("ticket", "history", "APP-1", "--json")
+	if strings.Count(historyAfter, "\"type\": \"ticket.commented\"") != 2 {
+		t.Fatalf("expected reindex to avoid rerunning automation: %s", historyAfter)
+	}
+}
+
+func TestDoctorRepairDoesNotDuplicateNotificationsAndUsesWorkspaceLock(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("config", "set", "notifications.file_enabled", "true")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Repair without spam", "--type", "task", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
+	must("ticket", "request-review", "APP-1", "--actor", "human:owner")
+
+	root := mustGetwd(t)
+	before := must("notify", "log", "--json")
+
+	store := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
+	ticket, err := store.GetTicket(context.Background(), "APP-1")
+	if err != nil {
+		t.Fatalf("load ticket: %v", err)
+	}
+	now := time.Now().UTC()
+	ticket.Status = contracts.StatusReady
+	ticket.UpdatedAt = now
+	if err := store.UpdateTicket(context.Background(), ticket); err != nil {
+		t.Fatalf("update ticket: %v", err)
+	}
+	journal := service.MutationJournal{Root: root, Clock: func() time.Time { return now }}
+	entry := service.MutationJournalEntry{
+		Purpose:       "repair replay",
+		CanonicalKind: "ticket_snapshot",
+		Event: contracts.Event{
+			EventID:       3,
+			Timestamp:     now,
+			Actor:         contracts.Actor("human:owner"),
+			Type:          contracts.EventTicketUpdated,
+			Project:       "APP",
+			TicketID:      "APP-1",
+			Payload:       ticket,
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		},
+		Stage: service.MutationStageCanonicalWritten,
+	}
+	if err := testutil.SeedPendingMutationJournal(root, journal, entry); err != nil {
+		t.Fatalf("seed pending journal: %v", err)
+	}
+	if err := testutil.CorruptProjection(root); err != nil {
+		t.Fatalf("corrupt projection: %v", err)
+	}
+
+	locks := service.FileLockManager{Root: root, Wait: time.Second, RetryEvery: 10 * time.Millisecond}
+	unlock, err := locks.Acquire(context.Background(), "hold doctor repair lock")
+	if err != nil {
+		t.Fatalf("acquire lock: %v", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = unlock()
+		close(done)
+	}()
+	start := time.Now()
+	must("doctor", "--repair", "--json")
+	<-done
+	if time.Since(start) < 100*time.Millisecond {
+		t.Fatalf("expected doctor --repair to wait on the workspace lock")
+	}
+	must("doctor", "--repair", "--json")
+
+	after := must("notify", "log", "--json")
+	if before != after {
+		t.Fatalf("expected repair to avoid duplicate notifications\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+func TestReindexUsesWorkspaceLock(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+
+	root := mustGetwd(t)
+	locks := service.FileLockManager{Root: root, Wait: time.Second, RetryEvery: 10 * time.Millisecond}
+	unlock, err := locks.Acquire(context.Background(), "hold reindex lock")
+	if err != nil {
+		t.Fatalf("acquire lock: %v", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = unlock()
+		close(done)
+	}()
+	start := time.Now()
+	must("reindex")
+	<-done
+	if time.Since(start) < 100*time.Millisecond {
+		t.Fatalf("expected reindex to wait on the workspace lock")
+	}
+}
+
+func mustGetwd(t *testing.T) string {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	return cwd
+}
+
+func packagedArchiveName(version string) string {
+	return "tracker_" + strings.TrimPrefix(version, "v") + "_" + runtime.GOOS + "_" + runtimeArch(runtime.GOARCH) + ".tar.gz"
+}
+
+func runtimeArch(arch string) string {
+	switch arch {
+	case "amd64":
+		return "amd64"
+	case "arm64":
+		return "arm64"
+	default:
+		return arch
+	}
+}
