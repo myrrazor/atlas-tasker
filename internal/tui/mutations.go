@@ -246,7 +246,7 @@ func (m model) runRunSlash(args []string) tea.Cmd {
 			if err != nil {
 				return loadedMsg{err: err}
 			}
-			view, err := m.actions.LaunchRun(ctx, runID, refresh)
+			view, err := m.actions.LaunchRun(ctx, runID, refresh, actor, "tui run launch")
 			if err != nil {
 				return loadedMsg{err: err}
 			}

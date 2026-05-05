@@ -13,6 +13,16 @@ Safety posture:
 - git/worktrees are execution isolation only
 - project guidance stays stable; run context lives in runtime artifacts
 
+Git hygiene:
+- keep canonical markdown snapshots, events, and evidence markdown under version control when they matter to your workflow
+- ignore derived runtime state under `.tracker/runtime/`
+- ignore mutation journals under `.tracker/mutations/`
+- ignore notification log files under `.tracker/*.log`
+- ignore archive payload directories under `.tracker/archives/<ARCHIVE-ID>/` while keeping archive metadata markdown reviewable
+- ignore generated export bundle archives, manifests, and checksum sidecars under `.tracker/exports/` while keeping export metadata markdown reviewable
+- ignore linked worktree sandboxes under `.atlas-tasker-worktrees/`
+- ignore copied evidence artifacts under `.tracker/evidence/` while keeping the evidence markdown records reviewable
+
 Launch loop:
 1. `tracker run open <RUN-ID> --json` to inspect the canonical runtime, evidence, and worktree paths
 2. `tracker run launch <RUN-ID>` to write `brief.md`, `context.json`, `launch.codex.txt`, and `launch.claude.txt`

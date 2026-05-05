@@ -13,23 +13,30 @@ import (
 )
 
 type QueryService struct {
-	Root       string
-	Projects   contracts.ProjectStore
-	Tickets    contracts.TicketStore
-	Agents     contracts.AgentStore
-	Runs       contracts.RunStore
-	Runbooks   contracts.RunbookStore
-	Gates      contracts.GateStore
-	Evidence   contracts.EvidenceStore
-	Handoffs   contracts.HandoffStore
-	Events     contracts.EventLog
-	Projection contracts.ProjectionStore
-	Views      ViewStore
-	Clock      func() time.Time
+	Root               string
+	Projects           contracts.ProjectStore
+	Tickets            contracts.TicketStore
+	Agents             contracts.AgentStore
+	PermissionProfiles contracts.PermissionProfileStore
+	Runs               contracts.RunStore
+	Runbooks           contracts.RunbookStore
+	Gates              contracts.GateStore
+	Evidence           contracts.EvidenceStore
+	Handoffs           contracts.HandoffStore
+	Changes            contracts.ChangeStore
+	Checks             contracts.CheckStore
+	ImportJobs         contracts.ImportJobStore
+	ExportBundles      contracts.ExportBundleStore
+	RetentionPolicies  contracts.RetentionPolicyStore
+	Archives           contracts.ArchiveRecordStore
+	Events             contracts.EventLog
+	Projection         contracts.ProjectionStore
+	Views              ViewStore
+	Clock              func() time.Time
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
-	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Gates: GateStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
+	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Agents: AgentStore{Root: root}, PermissionProfiles: PermissionProfileStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Gates: GateStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Changes: ChangeStore{Root: root}, Checks: CheckStore{Root: root}, ImportJobs: ImportJobStore{Root: root}, ExportBundles: ExportBundleStore{Root: root}, RetentionPolicies: RetentionPolicyStore{Root: root}, Archives: ArchiveRecordStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
 }
 
 func (s *QueryService) now() time.Time {
@@ -93,6 +100,10 @@ func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (A
 	if err != nil {
 		return AgentEligibilityReport{}, err
 	}
+	project, err := s.Projects.GetProject(ctx, ticket.Project)
+	if err != nil {
+		project = contracts.Project{Key: ticket.Project}
+	}
 	profiles, err := s.Agents.ListAgents(ctx)
 	if err != nil {
 		return AgentEligibilityReport{}, err
@@ -107,6 +118,11 @@ func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (A
 		return AgentEligibilityReport{}, err
 	}
 	hasActiveRun := activeRunCountForTicket(ticketRuns) > 0
+	dirtyRepo, err := dispatchRepoDirtyBlocker(ctx, s.Root, project)
+	if err != nil {
+		return AgentEligibilityReport{}, err
+	}
+	evaluator := permissionEvaluator{root: s.Root, projects: s.Projects, tickets: s.Tickets, profiles: s.PermissionProfiles, agents: s.Agents, runbooks: s.Runbooks, clock: s.Clock}
 	items := make([]AgentEligibilityEntry, 0, len(profiles))
 	for _, profile := range profiles {
 		activeRuns := activeCounts[profile.AgentID]
@@ -135,13 +151,33 @@ func (s *QueryService) AgentEligibility(ctx context.Context, ticketID string) (A
 		if runbook, stage, runbookErr := s.resolveRunbookForAgent(ctx, ticket, profile); runbookErr == nil {
 			entry.Runbook = runbook.Name
 			entry.Stage = stage
+			decision, evalErr := evaluator.evaluate(ctx, permissionEvalInput{
+				Action:            contracts.PermissionActionDispatch,
+				Actor:             contracts.Actor("human:owner"),
+				Ticket:            ticket,
+				ActorAgent:        &profile,
+				Runbook:           runbook.Name,
+				ChangedFilesKnown: false,
+			})
+			if evalErr != nil {
+				return AgentEligibilityReport{}, evalErr
+			}
+			if !decision.Allowed {
+				entry.Eligible = false
+				entry.ReasonCodes = append(entry.ReasonCodes, decision.ReasonCodes...)
+			}
 		} else {
 			entry.Eligible = false
 			entry.ReasonCodes = append(entry.ReasonCodes, "runbook_requirement_unsatisfied")
 		}
 		if hasActiveRun && !ticket.AllowParallelRuns {
 			entry.Eligible = false
+			entry.ReasonCodes = append(entry.ReasonCodes, "active_run_exists")
 			entry.ReasonCodes = append(entry.ReasonCodes, "parallel_runs_disabled")
+		}
+		if dirtyRepo {
+			entry.Eligible = false
+			entry.ReasonCodes = append(entry.ReasonCodes, "dirty_repo")
 		}
 		items = append(items, entry)
 	}
@@ -340,11 +376,15 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
+	changes, checks, err := s.ticketChangeContext(ctx, ticket)
+	if err != nil {
+		return TicketDetailView{}, err
+	}
 	gitView, err := SCMService{Root: s.Root}.ContextForTicket(ctx, ticket)
 	if err != nil {
 		return TicketDetailView{}, err
 	}
-	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, Gates: gates, EffectivePolicy: policy, Git: gitView}, nil
+	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, Gates: gates, Changes: changes, Checks: checks, EffectivePolicy: policy, Git: gitView}, nil
 }
 
 func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor contracts.Actor) (InspectView, error) {
@@ -359,11 +399,18 @@ func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor
 		EffectivePolicy: detail.EffectivePolicy,
 		History:         detail.History,
 		Gates:           detail.Gates,
+		Changes:         detail.Changes,
+		Checks:          detail.Checks,
 		Git:             detail.Git,
 	}
 	if actor == "" {
 		return view, nil
 	}
+	permissions, err := s.PermissionsView(ctx, "ticket:"+ticketID, actor, "")
+	if err != nil {
+		return InspectView{}, err
+	}
+	view.Permissions = permissions.Decisions
 	queue, err := s.Queue(ctx, actor)
 	if err != nil {
 		return InspectView{}, err

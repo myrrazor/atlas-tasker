@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 type DispatchMode string
@@ -248,11 +250,80 @@ type WorktreeConfig struct {
 	DefaultMode      WorktreeMode `json:"default_mode,omitempty" yaml:"default_mode,omitempty" toml:"default_mode"`
 	AutoPrune        bool         `json:"auto_prune,omitempty" yaml:"auto_prune,omitempty" toml:"auto_prune"`
 	RequireCleanMain bool         `json:"require_clean_main,omitempty" yaml:"require_clean_main,omitempty" toml:"require_clean_main"`
+
+	enabledSet          bool `json:"-" yaml:"-" toml:"-"`
+	autoPruneSet        bool `json:"-" yaml:"-" toml:"-"`
+	requireCleanMainSet bool `json:"-" yaml:"-" toml:"-"`
 }
 
 func (c WorktreeConfig) Validate() error {
 	if c.DefaultMode != "" && !c.DefaultMode.IsValid() {
 		return fmt.Errorf("invalid worktree default_mode: %s", c.DefaultMode)
+	}
+	return nil
+}
+
+func (c WorktreeConfig) EnabledConfigured() bool {
+	return c.enabledSet
+}
+
+func (c WorktreeConfig) AutoPruneConfigured() bool {
+	return c.autoPruneSet
+}
+
+func (c WorktreeConfig) RequireCleanMainConfigured() bool {
+	return c.requireCleanMainSet
+}
+
+type worktreeConfigYAML struct {
+	Enabled          *bool        `yaml:"enabled,omitempty"`
+	Root             string       `yaml:"root,omitempty"`
+	DefaultMode      WorktreeMode `yaml:"default_mode,omitempty"`
+	AutoPrune        *bool        `yaml:"auto_prune,omitempty"`
+	RequireCleanMain *bool        `yaml:"require_clean_main,omitempty"`
+}
+
+func (c WorktreeConfig) MarshalYAML() (any, error) {
+	out := worktreeConfigYAML{
+		Root:        c.Root,
+		DefaultMode: c.DefaultMode,
+	}
+	if c.Enabled || c.enabledSet {
+		value := c.Enabled
+		out.Enabled = &value
+	}
+	if c.AutoPrune || c.autoPruneSet {
+		value := c.AutoPrune
+		out.AutoPrune = &value
+	}
+	if c.RequireCleanMain || c.requireCleanMainSet {
+		value := c.RequireCleanMain
+		out.RequireCleanMain = &value
+	}
+	return out, nil
+}
+
+func (c *WorktreeConfig) UnmarshalYAML(value *yaml.Node) error {
+	var raw worktreeConfigYAML
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	c.Root = raw.Root
+	c.DefaultMode = raw.DefaultMode
+	c.Enabled = false
+	c.AutoPrune = false
+	c.RequireCleanMain = false
+	c.enabledSet = raw.Enabled != nil
+	c.autoPruneSet = raw.AutoPrune != nil
+	c.requireCleanMainSet = raw.RequireCleanMain != nil
+	if raw.Enabled != nil {
+		c.Enabled = *raw.Enabled
+	}
+	if raw.AutoPrune != nil {
+		c.AutoPrune = *raw.AutoPrune
+	}
+	if raw.RequireCleanMain != nil {
+		c.RequireCleanMain = *raw.RequireCleanMain
 	}
 	return nil
 }

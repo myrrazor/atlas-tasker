@@ -39,6 +39,8 @@ type RunDetailView struct {
 	Run         contracts.RunSnapshot     `json:"run"`
 	Ticket      contracts.TicketSnapshot  `json:"ticket,omitempty"`
 	Gates       []contracts.GateSnapshot  `json:"gates,omitempty"`
+	Changes     []contracts.ChangeRef     `json:"changes,omitempty"`
+	Checks      []contracts.CheckResult   `json:"checks,omitempty"`
 	Evidence    []contracts.EvidenceItem  `json:"evidence,omitempty"`
 	Handoffs    []contracts.HandoffPacket `json:"handoffs,omitempty"`
 	GeneratedAt time.Time                 `json:"generated_at"`
