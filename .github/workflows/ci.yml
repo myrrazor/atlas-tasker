@@ -23,7 +23,9 @@ jobs:
       - name: Run vet
         run: go vet ./...
       - name: Check install script syntax
-        run: sh -n scripts/install.sh
+        run: |
+          sh -n scripts/install.sh
+          sh -n scripts/verify-release.sh
       - name: Run tests
         run: go test ./...
 

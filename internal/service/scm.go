@@ -219,10 +219,13 @@ func (s SCMService) BranchExists(ctx context.Context, branch string) (bool, erro
 	}
 	if _, err := s.gitOutput(ctx, "rev-parse", "--verify", "--quiet", branch); err != nil {
 		msg := strings.ToLower(err.Error())
-		if strings.Contains(msg, "unknown revision") || strings.Contains(msg, "needed a single revision") {
+		if strings.Contains(msg, "not a git repository") {
+			return false, err
+		}
+		if strings.Contains(msg, "unknown revision") || strings.Contains(msg, "needed a single revision") || strings.Contains(msg, "exit status 1") {
 			return false, nil
 		}
-		return false, err
+		return false, nil
 	}
 	return true, nil
 }
@@ -237,13 +240,16 @@ func (s SCMService) ChangedFiles(ctx context.Context) ([]string, error) {
 	}
 	seen := map[string]struct{}{}
 	files := make([]string, 0)
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		path := strings.TrimSpace(line)
-		if path == "" {
+	for _, raw := range strings.Split(strings.TrimRight(output, "\n"), "\n") {
+		line := strings.TrimRight(raw, "\r")
+		if strings.TrimSpace(line) == "" {
 			continue
 		}
+		path := line
 		if len(path) > 3 {
 			path = strings.TrimSpace(path[3:])
+		} else {
+			path = strings.TrimSpace(path)
 		}
 		if strings.Contains(path, " -> ") {
 			parts := strings.SplitN(path, " -> ", 2)

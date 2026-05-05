@@ -22,8 +22,11 @@ func (s *QueryService) RunOpen(ctx context.Context, runID string) (RunLaunchMani
 	return launchManifestView(s.Root, detail.Run, s.now()), nil
 }
 
-func (s *ActionService) LaunchRun(ctx context.Context, runID string, refresh bool) (RunLaunchManifestView, error) {
+func (s *ActionService) LaunchRun(ctx context.Context, runID string, refresh bool, actor contracts.Actor, reason string) (RunLaunchManifestView, error) {
 	return withWriteLock(ctx, s.LockManager, "launch run runtime", func(ctx context.Context) (RunLaunchManifestView, error) {
+		if !actor.IsValid() {
+			return RunLaunchManifestView{}, fmt.Errorf("invalid actor: %s", actor)
+		}
 		query := NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock)
 		detail, err := query.RunDetail(ctx, runID)
 		if err != nil {
@@ -31,6 +34,19 @@ func (s *ActionService) LaunchRun(ctx context.Context, runID string, refresh boo
 		}
 		view := launchManifestView(s.Root, detail.Run, s.now())
 		agent, _ := s.Agents.LoadAgent(ctx, detail.Run.AgentID)
+		changedFiles, known := permissionChangedFilesForRun(ctx, s.Runs, s.Root, detail.Run)
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionRunLaunch,
+			Actor:             actor,
+			Ticket:            detail.Ticket,
+			Run:               &detail.Run,
+			ActorAgent:        maybeAgentProfile(agent),
+			Runbook:           permissionRunbook(detail.Ticket, &detail.Run),
+			ChangedFiles:      changedFiles,
+			ChangedFilesKnown: known,
+		}); err != nil {
+			return RunLaunchManifestView{}, err
+		}
 		manifest, err := integrations.BuildRunManifest(integrations.RunManifestInput{
 			WorkspaceRoot:    s.Root,
 			Run:              detail.Run,
@@ -65,6 +81,7 @@ func (s *ActionService) LaunchRun(ctx context.Context, runID string, refresh boo
 		view.Created = created
 		view.Updated = updated
 		view.GeneratedAt = s.now()
+		_ = reason
 		return view, nil
 	})
 }

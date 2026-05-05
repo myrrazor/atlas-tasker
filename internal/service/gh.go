@@ -143,6 +143,53 @@ func (s GHService) PullRequestChecks(ctx context.Context, ref string) ([]GitHubC
 	return checks, nil
 }
 
+func (s GHService) RequestPullRequestReview(ctx context.Context, ref string) (GitHubPRView, error) {
+	capability, err := s.Capability(ctx)
+	if err != nil {
+		return GitHubPRView{}, err
+	}
+	if !capability.Installed {
+		return GitHubPRView{}, fmt.Errorf("gh CLI is not installed")
+	}
+	if !capability.Authenticated {
+		return GitHubPRView{}, fmt.Errorf("gh CLI is not authenticated")
+	}
+	pr, err := s.PullRequestView(ctx, ref)
+	if err != nil {
+		return GitHubPRView{}, err
+	}
+	if !pr.Draft {
+		return pr, nil
+	}
+	if _, err := s.ghRepoOutput(ctx, "pr", "ready", ref); err != nil {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "already ready for review") {
+			return GitHubPRView{}, err
+		}
+	}
+	return s.PullRequestView(ctx, ref)
+}
+
+func (s GHService) MergePullRequest(ctx context.Context, ref string) (GitHubPRView, error) {
+	capability, err := s.Capability(ctx)
+	if err != nil {
+		return GitHubPRView{}, err
+	}
+	if !capability.Installed {
+		return GitHubPRView{}, fmt.Errorf("gh CLI is not installed")
+	}
+	if !capability.Authenticated {
+		return GitHubPRView{}, fmt.Errorf("gh CLI is not authenticated")
+	}
+	if _, err := s.ghRepoOutput(ctx, "pr", "merge", ref, "--merge", "--delete-branch=false"); err != nil {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "already merged") {
+			return GitHubPRView{}, err
+		}
+	}
+	return s.PullRequestView(ctx, ref)
+}
+
 func (s GHService) ImportPullRequestURL(raw string) (string, int, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

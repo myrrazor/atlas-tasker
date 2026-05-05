@@ -213,7 +213,9 @@ func runRunLaunch(cmd *cobra.Command, args []string) error {
 	}
 	defer workspace.close()
 	refresh, _ := cmd.Flags().GetBool("refresh")
-	view, err := workspace.actions.LaunchRun(ctx, args[0], refresh)
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.LaunchRun(ctx, args[0], refresh, normalizeActor(actorRaw), reason)
 	if err != nil {
 		return err
 	}

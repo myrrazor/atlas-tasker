@@ -37,6 +37,32 @@ func (s *ActionService) decideGate(ctx context.Context, gateID string, actor con
 		if err != nil {
 			return contracts.GateSnapshot{}, err
 		}
+		var runContext *contracts.RunSnapshot
+		if gate.RunID != "" {
+			loadedRun, err := s.Runs.LoadRun(ctx, gate.RunID)
+			if err == nil {
+				runContext = &loadedRun
+			}
+		}
+		relevantAgent := (*contracts.AgentProfile)(nil)
+		if runContext != nil {
+			loadedAgent, err := s.Agents.LoadAgent(ctx, runContext.AgentID)
+			if err == nil {
+				relevantAgent = &loadedAgent
+			}
+		}
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionGateApprove,
+			Actor:             actor,
+			Ticket:            ticket,
+			Run:               runContext,
+			Gate:              &gate,
+			ActorAgent:        relevantAgent,
+			Runbook:           permissionRunbook(ticket, runContext),
+			ChangedFilesKnown: false,
+		}); err != nil {
+			return contracts.GateSnapshot{}, err
+		}
 		if err := canDecideGate(actor, ticket, gate); err != nil {
 			return contracts.GateSnapshot{}, err
 		}
@@ -118,8 +144,24 @@ func (s *ActionService) ensureGatesForHandoff(ctx context.Context, run contracts
 	if err != nil {
 		return nil, ticket, run, err
 	}
+	relevantAgent := (*contracts.AgentProfile)(nil)
+	loadedAgent, agentErr := s.Agents.LoadAgent(ctx, run.AgentID)
+	if agentErr == nil {
+		relevantAgent = &loadedAgent
+	}
 	opened := make([]contracts.GateSnapshot, 0, len(kinds))
 	for _, kind := range kinds {
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionGateOpen,
+			Actor:             actor,
+			Ticket:            ticket,
+			Run:               &run,
+			ActorAgent:        relevantAgent,
+			Runbook:           permissionRunbook(ticket, &run),
+			ChangedFilesKnown: false,
+		}); err != nil {
+			return nil, ticket, run, err
+		}
 		gate, created, err := s.ensureGateOpenLocked(ticket, run, existing, stage, actor, kind, nextActor)
 		if err != nil {
 			return nil, ticket, run, err

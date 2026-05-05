@@ -25,6 +25,12 @@ func newChangeCommand() *cobra.Command {
 	sync := &cobra.Command{Use: "sync <CHANGE-ID>", Args: cobra.ExactArgs(1), Short: "Sync provider-backed change status into Atlas", RunE: runChangeSync}
 	addMutationFlags(sync, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(sync, &outputFlags{})
+	reviewRequest := &cobra.Command{Use: "review-request <CHANGE-ID>", Args: cobra.ExactArgs(1), Short: "Request provider-side review for a change", RunE: runChangeReviewRequest}
+	addMutationFlags(reviewRequest, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(reviewRequest, &outputFlags{})
+	merge := &cobra.Command{Use: "merge <CHANGE-ID>", Args: cobra.ExactArgs(1), Short: "Merge a provider-backed change", RunE: runChangeMerge}
+	addMutationFlags(merge, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(merge, &outputFlags{})
 	link := &cobra.Command{Use: "link <TICKET-ID>", Args: cobra.ExactArgs(1), Short: "Link or update a change for a ticket", RunE: runChangeLink}
 	link.Flags().String("change-id", "", "Existing change id to update instead of creating one")
 	link.Flags().String("provider", string(contracts.ChangeProviderLocal), "Change provider: local|github")
@@ -48,7 +54,7 @@ func newChangeCommand() *cobra.Command {
 	unlink := &cobra.Command{Use: "unlink <TICKET-ID> <CHANGE-ID>", Args: cobra.ExactArgs(2), Short: "Remove a change link from a ticket", RunE: runChangeUnlink}
 	addMutationFlags(unlink, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(unlink, &outputFlags{})
-	cmd.AddCommand(list, view, create, status, sync, link, importURL, unlink)
+	cmd.AddCommand(list, view, create, status, sync, reviewRequest, merge, link, importURL, unlink)
 	return cmd
 }
 
@@ -158,6 +164,42 @@ func runChangeSync(cmd *cobra.Command, args []string) error {
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	view, err := workspace.actions.SyncChange(ctx, args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatChangeStatus(view)
+	data := map[string]any{"kind": "change_status", "generated_at": view.GeneratedAt, "reason_codes": view.ReasonCodes, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runChangeReviewRequest(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.RequestChangeReview(ctx, args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatChangeStatus(view)
+	data := map[string]any{"kind": "change_status", "generated_at": view.GeneratedAt, "reason_codes": view.ReasonCodes, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runChangeMerge(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.MergeChange(ctx, args[0], normalizeActor(actorRaw), reason)
 	if err != nil {
 		return err
 	}

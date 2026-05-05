@@ -49,6 +49,20 @@ func (s *ActionService) CreateChange(ctx context.Context, runID string, actor co
 		if strings.TrimSpace(branch) == "" {
 			return ChangeCreateResultView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("run %s does not have a checked-out branch", run.RunID))
 		}
+		agent, _ := s.Agents.LoadAgent(ctx, run.AgentID)
+		changedFiles, known := permissionChangedFilesForRun(ctx, s.Runs, s.Root, run)
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionChangeCreate,
+			Actor:             actor,
+			Ticket:            ticket,
+			Run:               &run,
+			ActorAgent:        maybeAgentProfile(agent),
+			Runbook:           permissionRunbook(ticket, &run),
+			ChangedFiles:      changedFiles,
+			ChangedFilesKnown: known,
+		}); err != nil {
+			return ChangeCreateResultView{}, err
+		}
 		existing, found, err := linkedChangeForRun(ctx, s.Changes, ticket, run.RunID)
 		if err != nil {
 			return ChangeCreateResultView{}, err
@@ -318,6 +332,138 @@ func (s *ActionService) SyncChangeChecks(ctx context.Context, changeID string, a
 	})
 }
 
+func (s *ActionService) RequestChangeReview(ctx context.Context, changeID string, actor contracts.Actor, reason string) (ChangeStatusView, error) {
+	return withWriteLock(ctx, s.LockManager, "request change review", func(ctx context.Context) (ChangeStatusView, error) {
+		if !actor.IsValid() {
+			return ChangeStatusView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+		}
+		change, ticket, observed, err := s.observeChange(ctx, changeID)
+		if err != nil {
+			return ChangeStatusView{}, err
+		}
+		if err := requireChangeReviewAuthority(ctx, s.Runs, change, actor); err != nil {
+			return ChangeStatusView{}, err
+		}
+		if change.Provider != contracts.ChangeProviderGitHub {
+			return ChangeStatusView{}, apperr.New(apperr.CodeConflict, "change review request requires a github-backed change")
+		}
+		if observed.PullRequest == nil {
+			return ChangeStatusView{}, apperr.New(apperr.CodeConflict, "change review request blocked: provider_pull_missing")
+		}
+		switch observed.ObservedStatus {
+		case contracts.ChangeStatusMerged, contracts.ChangeStatusClosed, contracts.ChangeStatusSuperseded:
+			return ChangeStatusView{}, apperr.New(apperr.CodeConflict, "change review request blocked: change_not_reviewable")
+		}
+		reviewTargets := reviewRequestTargets(ticket)
+		if len(reviewTargets) > 0 {
+			change.ReviewRequestedFrom = reviewTargets
+		}
+		change.ReviewSummary = strings.TrimSpace(firstNonEmpty(change.ReviewSummary, reason))
+
+		defaults, err := resolveSCMDefaults(ctx, s.Root, s.Projects, ticket.Project)
+		if err != nil {
+			return ChangeStatusView{}, err
+		}
+		scmRoot, _, _, err := changeSCMTarget(ctx, s.Runs, s.Root, change)
+		if err != nil {
+			return ChangeStatusView{}, err
+		}
+		gh := GHService{Root: scmRoot.Root, Repo: defaults.Repo}
+		if _, err := gh.RequestPullRequestReview(ctx, observed.PullRequest.URL); err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "not authenticated") {
+				return ChangeStatusView{}, apperr.New(apperr.CodeConflict, "change review request blocked: provider_unauthenticated")
+			}
+			if strings.Contains(strings.ToLower(err.Error()), "not installed") {
+				return ChangeStatusView{}, apperr.New(apperr.CodeConflict, "change review request blocked: provider_unavailable")
+			}
+			return ChangeStatusView{}, err
+		}
+		return s.persistObservedChangeAfterProviderWrite(ctx, change, ticket, actor, reason, contracts.EventChangeReviewRequested, "request change review", "review_requested")
+	})
+}
+
+func (s *ActionService) MergeChange(ctx context.Context, changeID string, actor contracts.Actor, reason string) (ChangeStatusView, error) {
+	return withWriteLock(ctx, s.LockManager, "merge change", func(ctx context.Context) (ChangeStatusView, error) {
+		if !actor.IsValid() {
+			return ChangeStatusView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+		}
+		change, ticket, observed, err := s.observeChange(ctx, changeID)
+		if err != nil {
+			return ChangeStatusView{}, err
+		}
+		if err := requireChangeMergeAuthority(ticket, actor); err != nil {
+			return ChangeStatusView{}, err
+		}
+		if change.Provider != contracts.ChangeProviderGitHub {
+			return ChangeStatusView{}, apperr.New(apperr.CodeConflict, "change merge requires a github-backed change")
+		}
+		if observed.PullRequest == nil {
+			return ChangeStatusView{}, apperr.New(apperr.CodeConflict, "change merge blocked: provider_pull_missing")
+		}
+		var run *contracts.RunSnapshot
+		if strings.TrimSpace(change.RunID) != "" {
+			loadedRun, err := s.Runs.LoadRun(ctx, change.RunID)
+			if err == nil {
+				run = &loadedRun
+			}
+		}
+		var relevantAgent *contracts.AgentProfile
+		if run != nil {
+			loadedAgent, err := s.Agents.LoadAgent(ctx, run.AgentID)
+			if err == nil {
+				relevantAgent = &loadedAgent
+			}
+		}
+		changedFiles, known := permissionChangedFilesForChange(ctx, s.Runs, s.Root, change)
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionChangeMerge,
+			Actor:             actor,
+			Ticket:            ticket,
+			Run:               run,
+			Change:            &change,
+			ActorAgent:        relevantAgent,
+			Runbook:           permissionRunbook(ticket, run),
+			ChangedFiles:      changedFiles,
+			ChangedFilesKnown: known,
+		}); err != nil {
+			return ChangeStatusView{}, err
+		}
+		candidateTicket := ticket
+		candidateChange := change
+		candidateChange.Status = observed.ObservedStatus
+		candidateChange.ChecksStatus = observed.ObservedChecksStatus
+		if err := s.previewTicketChangeState(ctx, &candidateTicket, &candidateChange, nil); err != nil {
+			return ChangeStatusView{}, err
+		}
+		if observed.ObservedStatus != contracts.ChangeStatusMerged && candidateTicket.ChangeReadyState != contracts.ChangeReadyMergeReady {
+			return ChangeStatusView{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("change merge blocked: %s", candidateTicket.ChangeReadyState))
+		}
+		if observed.ObservedStatus == contracts.ChangeStatusMerged {
+			return s.persistObservedChangeAfterProviderWrite(ctx, change, ticket, actor, reason, contracts.EventChangeMerged, "record merged change", "already_merged")
+		}
+
+		defaults, err := resolveSCMDefaults(ctx, s.Root, s.Projects, ticket.Project)
+		if err != nil {
+			return ChangeStatusView{}, err
+		}
+		scmRoot, _, _, err := changeSCMTarget(ctx, s.Runs, s.Root, change)
+		if err != nil {
+			return ChangeStatusView{}, err
+		}
+		gh := GHService{Root: scmRoot.Root, Repo: defaults.Repo}
+		if _, err := gh.MergePullRequest(ctx, observed.PullRequest.URL); err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "not authenticated") {
+				return ChangeStatusView{}, apperr.New(apperr.CodeConflict, "change merge blocked: provider_unauthenticated")
+			}
+			if strings.Contains(strings.ToLower(err.Error()), "not installed") {
+				return ChangeStatusView{}, apperr.New(apperr.CodeConflict, "change merge blocked: provider_unavailable")
+			}
+			return ChangeStatusView{}, err
+		}
+		return s.persistObservedChangeAfterProviderWrite(ctx, change, ticket, actor, reason, contracts.EventChangeMerged, "merge change", "merged")
+	})
+}
+
 func (s *QueryService) ChangeStatus(ctx context.Context, changeID string) (ChangeStatusView, error) {
 	change, err := s.Changes.LoadChange(ctx, changeID)
 	if err != nil {
@@ -351,6 +497,40 @@ func (s *ActionService) observeChange(ctx context.Context, changeID string) (con
 		return contracts.ChangeRef{}, contracts.TicketSnapshot{}, ChangeStatusView{}, err
 	}
 	return change, ticket, view, nil
+}
+
+func (s *ActionService) persistObservedChangeAfterProviderWrite(ctx context.Context, change contracts.ChangeRef, ticket contracts.TicketSnapshot, actor contracts.Actor, reason string, eventType contracts.EventType, purpose string, extraReasons ...string) (ChangeStatusView, error) {
+	observer := changeObserver{root: s.Root, projects: s.Projects, runs: s.Runs}
+	view, err := observer.observe(ctx, change, ticket)
+	if err != nil {
+		return ChangeStatusView{}, err
+	}
+	nextStatus, drifted := reconcileObservedChangeStatus(change.Status, view.ObservedStatus)
+	if drifted {
+		view.ReasonCodes = append(view.ReasonCodes, "provider_state_conflict")
+		nextStatus = contracts.ChangeStatusExternalDrifted
+		eventType = contracts.EventChangeExternalDrifted
+		purpose = "record change drift"
+	}
+	change.Status = nextStatus
+	change.ChecksStatus = view.ObservedChecksStatus
+	change.UpdatedAt = s.now()
+	if view.PullRequest != nil {
+		change.URL = firstNonEmpty(strings.TrimSpace(view.PullRequest.URL), change.URL)
+		change.ExternalID = firstNonEmpty(strconv.Itoa(view.PullRequest.Number), change.ExternalID)
+		change.HeadRef = firstNonEmpty(strings.TrimSpace(view.PullRequest.HeadRef), change.HeadRef)
+		change.BranchName = firstNonEmpty(strings.TrimSpace(view.PullRequest.HeadRef), change.BranchName)
+		change.BaseBranch = firstNonEmpty(strings.TrimSpace(view.PullRequest.BaseRef), change.BaseBranch)
+	}
+	saved, updatedTicket, err := s.upsertLinkedChangeLocked(ctx, ticket, change, actor, reason, eventType, purpose)
+	if err != nil {
+		return ChangeStatusView{}, err
+	}
+	view.Change = saved
+	view.Ticket = updatedTicket
+	view.GeneratedAt = s.now()
+	view.ReasonCodes = dedupeStrings(append(view.ReasonCodes, extraReasons...))
+	return view, nil
 }
 
 func (o changeObserver) observe(ctx context.Context, change contracts.ChangeRef, ticket contracts.TicketSnapshot) (ChangeStatusView, error) {
@@ -703,6 +883,40 @@ func stableProviderCheckID(changeID string, workflow string, name string) string
 		parts = append(parts, name)
 	}
 	return "check_" + strings.Join(parts, "_")
+}
+
+func requireChangeReviewAuthority(ctx context.Context, runs contracts.RunStore, change contracts.ChangeRef, actor contracts.Actor) error {
+	if actor == contracts.Actor("human:owner") {
+		return nil
+	}
+	if strings.TrimSpace(change.RunID) == "" {
+		return apperr.New(apperr.CodePermissionDenied, "change review request blocked: review_request_not_authorized")
+	}
+	run, err := runs.LoadRun(ctx, change.RunID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(run.AgentID) == "" || actor != contracts.Actor(run.AgentID) {
+		return apperr.New(apperr.CodePermissionDenied, "change review request blocked: review_request_not_authorized")
+	}
+	return nil
+}
+
+func requireChangeMergeAuthority(ticket contracts.TicketSnapshot, actor contracts.Actor) error {
+	if actor == contracts.Actor("human:owner") {
+		return nil
+	}
+	if ticket.Reviewer != "" && actor == ticket.Reviewer {
+		return nil
+	}
+	return apperr.New(apperr.CodePermissionDenied, "change merge blocked: merge_not_authorized")
+}
+
+func reviewRequestTargets(ticket contracts.TicketSnapshot) []contracts.Actor {
+	if ticket.Reviewer != "" {
+		return []contracts.Actor{ticket.Reviewer}
+	}
+	return []contracts.Actor{contracts.Actor("human:owner")}
 }
 
 func firstNonEmptyProvider(values ...contracts.ChangeProvider) contracts.ChangeProvider {
