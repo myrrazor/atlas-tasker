@@ -34,3 +34,17 @@ If Atlas cannot verify the relevant changed-file set for a protected action, it 
 - the effective allow/deny result
 - the checkpoint being evaluated
 - the exact reason codes for any block or owner-override requirement
+
+## Command inventory
+- `tracker permission-profile list`
+- `tracker permission-profile view <PROFILE-ID>`
+- `tracker permission-profile create <PROFILE-ID>`
+- `tracker permission-profile edit <PROFILE-ID>`
+- `tracker permission-profile bind <PROFILE-ID>`
+- `tracker permission-profile unbind <PROFILE-ID>`
+- `tracker permissions view <TARGET>`
+
+## Current implementation notes
+- project binding updates both the profile metadata and the project's default permission-profile list so dispatch and explain surfaces stay in sync after reindex
+- direct ticket bindings live on the ticket snapshot and win late in the evaluation chain, after workspace, project, agent, and runbook layers
+- dispatch evaluates the operator actor for authority and the selected agent for capability-gated profiles

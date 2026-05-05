@@ -17,6 +17,20 @@ func newChangeCommand() *cobra.Command {
 	addReadOutputFlags(list, &outputFlags{})
 	view := &cobra.Command{Use: "view <CHANGE-ID>", Args: cobra.ExactArgs(1), Short: "Show one change", RunE: runChangeView}
 	addReadOutputFlags(view, &outputFlags{})
+	create := &cobra.Command{Use: "create <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Create or refresh the local change tied to a run", RunE: runChangeCreate}
+	addMutationFlags(create, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(create, &outputFlags{})
+	status := &cobra.Command{Use: "status <CHANGE-ID>", Args: cobra.ExactArgs(1), Short: "Observe local/provider status for one change", RunE: runChangeStatus}
+	addReadOutputFlags(status, &outputFlags{})
+	sync := &cobra.Command{Use: "sync <CHANGE-ID>", Args: cobra.ExactArgs(1), Short: "Sync provider-backed change status into Atlas", RunE: runChangeSync}
+	addMutationFlags(sync, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(sync, &outputFlags{})
+	reviewRequest := &cobra.Command{Use: "review-request <CHANGE-ID>", Args: cobra.ExactArgs(1), Short: "Request provider-side review for a change", RunE: runChangeReviewRequest}
+	addMutationFlags(reviewRequest, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(reviewRequest, &outputFlags{})
+	merge := &cobra.Command{Use: "merge <CHANGE-ID>", Args: cobra.ExactArgs(1), Short: "Merge a provider-backed change", RunE: runChangeMerge}
+	addMutationFlags(merge, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(merge, &outputFlags{})
 	link := &cobra.Command{Use: "link <TICKET-ID>", Args: cobra.ExactArgs(1), Short: "Link or update a change for a ticket", RunE: runChangeLink}
 	link.Flags().String("change-id", "", "Existing change id to update instead of creating one")
 	link.Flags().String("provider", string(contracts.ChangeProviderLocal), "Change provider: local|github")
@@ -32,10 +46,15 @@ func newChangeCommand() *cobra.Command {
 	link.Flags().String("review-summary", "", "Human summary for the linked change")
 	addMutationFlags(link, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(link, &outputFlags{})
+	importURL := &cobra.Command{Use: "import-url <TICKET-ID>", Args: cobra.ExactArgs(1), Short: "Import a GitHub pull request URL as a linked change", RunE: runChangeImportURL}
+	importURL.Flags().String("url", "", "GitHub pull request URL")
+	_ = importURL.MarkFlagRequired("url")
+	addMutationFlags(importURL, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(importURL, &outputFlags{})
 	unlink := &cobra.Command{Use: "unlink <TICKET-ID> <CHANGE-ID>", Args: cobra.ExactArgs(2), Short: "Remove a change link from a ticket", RunE: runChangeUnlink}
 	addMutationFlags(unlink, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(unlink, &outputFlags{})
-	cmd.AddCommand(list, view, link, unlink)
+	cmd.AddCommand(list, view, create, status, sync, reviewRequest, merge, link, importURL, unlink)
 	return cmd
 }
 
@@ -64,7 +83,10 @@ func newChecksCommand() *cobra.Command {
 	_ = record.MarkFlagRequired("name")
 	addMutationFlags(record, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(record, &outputFlags{})
-	cmd.AddCommand(list, view, record)
+	sync := &cobra.Command{Use: "sync <CHANGE-ID>", Args: cobra.ExactArgs(1), Short: "Sync provider checks for a change", RunE: runChecksSync}
+	addMutationFlags(sync, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(sync, &outputFlags{})
+	cmd.AddCommand(list, view, record, sync)
 	return cmd
 }
 
@@ -99,6 +121,93 @@ func runChangeView(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
+func runChangeCreate(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	result, err := workspace.actions.CreateChange(ctx, args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatChangeCreateResult(result)
+	data := map[string]any{"kind": "change_create_result", "generated_at": result.GeneratedAt, "reason_codes": result.ReasonCodes, "payload": result}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runChangeStatus(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	view, err := workspace.queries.ChangeStatus(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := formatChangeStatus(view)
+	data := map[string]any{"kind": "change_status", "generated_at": view.GeneratedAt, "reason_codes": view.ReasonCodes, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runChangeSync(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.SyncChange(ctx, args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatChangeStatus(view)
+	data := map[string]any{"kind": "change_status", "generated_at": view.GeneratedAt, "reason_codes": view.ReasonCodes, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runChangeReviewRequest(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.RequestChangeReview(ctx, args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatChangeStatus(view)
+	data := map[string]any{"kind": "change_status", "generated_at": view.GeneratedAt, "reason_codes": view.ReasonCodes, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runChangeMerge(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	view, err := workspace.actions.MergeChange(ctx, args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatChangeStatus(view)
+	data := map[string]any{"kind": "change_status", "generated_at": view.GeneratedAt, "reason_codes": view.ReasonCodes, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
 func runChangeLink(cmd *cobra.Command, args []string) error {
 	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
@@ -122,6 +231,25 @@ func runChangeLink(cmd *cobra.Command, args []string) error {
 	}
 	pretty := formatChangeDetail(view)
 	data := map[string]any{"kind": "change_detail", "generated_at": view.GeneratedAt, "payload": view}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runChangeImportURL(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	rawURL, _ := cmd.Flags().GetString("url")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	result, err := workspace.actions.ImportChangeURL(ctx, args[0], rawURL, normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatChangeCreateResult(result)
+	data := map[string]any{"kind": "change_create_result", "generated_at": result.GeneratedAt, "reason_codes": result.ReasonCodes, "payload": result}
 	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
@@ -201,6 +329,24 @@ func runChecksRecord(cmd *cobra.Command, _ []string) error {
 	}
 	pretty := formatCheckDetail(saved)
 	data := map[string]any{"kind": "check_detail", "generated_at": saved.UpdatedAt, "payload": saved}
+	return writeCommandOutput(cmd, data, pretty, pretty)
+}
+
+func runChecksSync(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	result, err := workspace.actions.SyncChangeChecks(ctx, args[0], normalizeActor(actorRaw), reason)
+	if err != nil {
+		return err
+	}
+	pretty := formatCheckSyncResult(result)
+	data := map[string]any{"kind": "check_sync_result", "generated_at": result.GeneratedAt, "reason_codes": result.ReasonCodes, "payload": result}
 	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
@@ -311,6 +457,12 @@ func formatChangeDetail(view service.ChangeDetailView) string {
 			lines = append(lines, fmt.Sprintf("- %s [%s/%s] %s", check.CheckID, check.Status, check.Conclusion, check.Name))
 		}
 	}
+	if len(view.ChangedFiles) > 0 {
+		lines = append(lines, "", "changed files:")
+		for _, file := range view.ChangedFiles {
+			lines = append(lines, "- "+file)
+		}
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -337,6 +489,71 @@ func formatCheckDetail(check contracts.CheckResult) string {
 	}
 	if check.Summary != "" {
 		lines = append(lines, "", check.Summary)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatChangeCreateResult(result service.ChangeCreateResultView) string {
+	action := "created"
+	if !result.Created {
+		action = "reused"
+	}
+	lines := []string{
+		fmt.Sprintf("%s %s for %s", action, result.Change.ChangeID, result.Ticket.ID),
+		fmt.Sprintf("provider=%s status=%s", result.Change.Provider, result.Change.Status),
+	}
+	if result.Change.RunID != "" {
+		lines = append(lines, "run="+result.Change.RunID)
+	}
+	if result.Change.BranchName != "" {
+		lines = append(lines, "branch="+result.Change.BranchName)
+	}
+	if result.Change.URL != "" {
+		lines = append(lines, "url="+result.Change.URL)
+	}
+	if len(result.ReasonCodes) > 0 {
+		lines = append(lines, "", "reasons: "+strings.Join(result.ReasonCodes, ", "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatChangeStatus(view service.ChangeStatusView) string {
+	lines := []string{
+		fmt.Sprintf("change %s", view.Change.ChangeID),
+		fmt.Sprintf("stored=%s observed=%s checks=%s", view.Change.Status, view.ObservedStatus, view.ObservedChecksStatus),
+		fmt.Sprintf("provider=%s branch_exists=%t detached_head=%t", view.Change.Provider, view.LocalBranchExists, view.DetachedHEAD),
+	}
+	if view.CurrentBranch != "" {
+		lines = append(lines, "current_branch="+view.CurrentBranch)
+	}
+	if view.PullRequest != nil {
+		lines = append(lines, fmt.Sprintf("pr=#%d state=%s review=%s draft=%t", view.PullRequest.Number, view.PullRequest.State, view.PullRequest.ReviewDecision, view.PullRequest.Draft))
+		if view.PullRequest.URL != "" {
+			lines = append(lines, "url="+view.PullRequest.URL)
+		}
+	}
+	if len(view.ChangedFiles) > 0 {
+		lines = append(lines, "", "changed files:")
+		for _, file := range view.ChangedFiles {
+			lines = append(lines, "- "+file)
+		}
+	}
+	if len(view.ReasonCodes) > 0 {
+		lines = append(lines, "", "reasons: "+strings.Join(view.ReasonCodes, ", "))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatCheckSyncResult(result service.CheckSyncResultView) string {
+	lines := []string{
+		fmt.Sprintf("synced checks for %s", result.Change.ChangeID),
+		fmt.Sprintf("aggregate=%s checks=%d", result.Aggregate, len(result.Checks)),
+	}
+	for _, check := range result.Checks {
+		lines = append(lines, fmt.Sprintf("- %s [%s/%s] %s", check.CheckID, check.Status, check.Conclusion, check.Name))
+	}
+	if len(result.ReasonCodes) > 0 {
+		lines = append(lines, "", "reasons: "+strings.Join(result.ReasonCodes, ", "))
 	}
 	return strings.Join(lines, "\n")
 }

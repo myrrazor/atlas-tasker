@@ -36,7 +36,15 @@ func (s *QueryService) ChangeDetail(ctx context.Context, changeID string) (Chang
 	if err != nil {
 		return ChangeDetailView{}, err
 	}
-	return ChangeDetailView{Change: change, Ticket: ticket, Checks: checks, GeneratedAt: s.now()}, nil
+	scm, branch, currentBranch, err := changeSCMTarget(ctx, s.Runs, s.Root, change)
+	if err != nil {
+		return ChangeDetailView{}, err
+	}
+	changedFiles, err := observedChangedFiles(ctx, scm, change, branch, currentBranch)
+	if err != nil {
+		return ChangeDetailView{}, err
+	}
+	return ChangeDetailView{Change: change, Ticket: ticket, Checks: checks, ChangedFiles: changedFiles, GeneratedAt: s.now()}, nil
 }
 
 func (s *QueryService) ListChecks(ctx context.Context, scope contracts.CheckScope, scopeID string) ([]contracts.CheckResult, error) {
