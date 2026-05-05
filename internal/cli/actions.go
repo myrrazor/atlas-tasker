@@ -36,6 +36,10 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
+	root, err = service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return nil, err
+	}
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
 	eventLog := &eventstore.Log{RootDir: root}
 	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
@@ -148,6 +152,11 @@ func defaultNow() time.Time {
 }
 
 func ensureInitArtifacts(root string) error {
+	var err error
+	root, err = service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(storage.TrackerDir(root), 0o755); err != nil {
 		return err
 	}
