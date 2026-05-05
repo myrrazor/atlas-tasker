@@ -14,6 +14,31 @@
 - `tracker automation delete <NAME>`
 - `tracker automation dry-run <NAME> [--ticket <ID>] [--event-type <TYPE>] [--actor <ACTOR>]`
 - `tracker automation explain <NAME> [--ticket <ID>] [--event-type <TYPE>] [--actor <ACTOR>]`
+- `tracker notify send --event-type <TYPE> [--ticket <ID>] [--project <KEY>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker notify log [--limit <N>]`
+- `tracker notify dead-letter [--limit <N>]`
+- `tracker git status`
+- `tracker git branch-name <ID>`
+- `tracker git refs <ID>`
+- `tracker git commit <ID> --message <TEXT>`
+- `tracker views list`
+- `tracker views view <NAME>`
+- `tracker views save <NAME> --kind <board|search|queue|next> [flags]`
+- `tracker views delete <NAME>`
+- `tracker views run <NAME> [--actor <ACTOR>]`
+- `tracker watch list [--actor <ACTOR>]`
+- `tracker watch ticket <ID> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker watch project <KEY> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker watch view <NAME> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker unwatch ticket <ID> [--actor <ACTOR>]`
+- `tracker unwatch project <KEY> [--actor <ACTOR>]`
+- `tracker unwatch view <NAME> [--actor <ACTOR>]`
+- `tracker bulk move <STATUS> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk assign <ACTOR> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk request-review [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk complete [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk claim [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk release [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
 - `tracker templates list`
 - `tracker templates view <NAME>`
 - `tracker integrations install codex [--force]`
@@ -69,22 +94,72 @@
 
 ## Views
 
-- `tracker board`
+- `tracker board [--view <NAME>]`
 - `tracker backlog`
-- `tracker next [--actor <ACTOR>]`
+- `tracker next [--actor <ACTOR>] [--view <NAME>]`
 - `tracker blocked`
-- `tracker queue [--actor <ACTOR>]`
+- `tracker queue [--actor <ACTOR>] [--view <NAME>]`
 - `tracker review-queue [--actor <ACTOR>]`
 - `tracker owner-queue`
 - `tracker who`
 - `tracker search <QUERY>`
+- `tracker search --view <NAME>`
 - `tracker render <ID>`
+
+## Saved Views
+
+- `tracker views list`
+- `tracker views view <NAME>`
+- `tracker views save <NAME> --kind <board|search|queue|next> [--title <TEXT>] [--project <KEY>] [--assignee <ACTOR>] [--type <TYPE>] [--actor <ACTOR>] [--query <QUERY>] [--column <STATUS>] [--queue-category <CATEGORY>]`
+- `tracker views delete <NAME>`
+- `tracker views run <NAME> [--actor <ACTOR>]`
+
+## Watchers
+
+- `tracker watch list [--actor <ACTOR>]`
+- `tracker watch ticket <ID> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker watch project <KEY> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker watch view <NAME> [--actor <ACTOR>] [--event <TYPE>]`
+- `tracker unwatch ticket <ID> [--actor <ACTOR>]`
+- `tracker unwatch project <KEY> [--actor <ACTOR>]`
+- `tracker unwatch view <NAME> [--actor <ACTOR>]`
+
+## Bulk Operations
+
+- `tracker bulk move <STATUS> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk assign <ACTOR> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk request-review [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk complete [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk claim [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk release [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+
+Rules:
+
+- `--dry-run` previews the batch without mutating anything
+- live bulk mutations require `--yes`
+- `--ticket` may be repeated
+- `--view` expands any saved board/search/queue/next view into ticket IDs
+- duplicate ticket IDs are deduplicated before the batch runs
+- every committed per-ticket event carries the same `metadata.batch_id`
 
 ## Maintenance
 
 - `tracker sweep`
 - `tracker doctor --repair`
 - `tracker inspect <ID>`
+
+## Notify
+
+- `tracker notify send --event-type <TYPE> [--ticket <ID>] [--project <KEY>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker notify log [--limit <N>]`
+- `tracker notify dead-letter [--limit <N>]`
+
+## Git
+
+- `tracker git status`
+- `tracker git branch-name <ID>`
+- `tracker git refs <ID>`
+- `tracker git commit <ID> --message <TEXT>`
 
 ## Automation
 
@@ -120,6 +195,8 @@ Slash command examples:
 Once `tracker tui` is running:
 
 - `/` opens the slash command palette
+- `b` previews a bulk action against the current ticket list
+- `y` applies the last bulk preview
 - `n` opens the create-ticket form
 - `e` edits the selected ticket
 - `m` opens the move prompt
@@ -136,6 +213,18 @@ Once `tracker tui` is running:
 - `j` / `k` or arrow keys move the list cursor
 - `enter` opens detail or submits the active dialog
 - `esc` cancels the active dialog
+
+TUI tabs:
+
+- `Board`
+- `Queues`
+- `Detail`
+- `Search`
+- `Review`
+- `Owner`
+- `Inbox`
+- `Views`
+- `Ops`
 
 ## Common Flags
 
@@ -157,3 +246,8 @@ Useful config keys:
 - `notifications.terminal`
 - `notifications.file_enabled`
 - `notifications.file_path`
+- `notifications.webhook_url`
+- `notifications.webhook_timeout_seconds`
+- `notifications.webhook_retries`
+- `notifications.delivery_log_path`
+- `notifications.dead_letter_path`
