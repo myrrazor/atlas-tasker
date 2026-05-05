@@ -36,8 +36,9 @@ const (
 )
 
 type QueueEntry struct {
-	Ticket contracts.TicketSnapshot `json:"ticket"`
-	Reason string                   `json:"reason"`
+	Ticket  contracts.TicketSnapshot `json:"ticket"`
+	Reason  string                   `json:"reason"`
+	GitHint string                   `json:"git_hint,omitempty"`
 }
 
 type QueueView struct {
@@ -55,6 +56,7 @@ type TicketDetailView struct {
 	Comments        []string                 `json:"comments"`
 	History         []contracts.Event        `json:"history"`
 	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
+	Git             GitContextView           `json:"git"`
 }
 
 type HistoryView struct {
@@ -68,6 +70,7 @@ type InspectView struct {
 	LeaseActive     bool                     `json:"lease_active"`
 	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
 	History         []contracts.Event        `json:"history"`
+	Git             GitContextView           `json:"git"`
 	QueueCategories []QueueCategory          `json:"queue_categories,omitempty"`
 }
 
@@ -93,4 +96,90 @@ type NextEntry struct {
 type NextView struct {
 	Actor   contracts.Actor `json:"actor"`
 	Entries []NextEntry     `json:"entries"`
+}
+
+type SavedViewResult struct {
+	View    contracts.SavedView        `json:"view"`
+	Actor   contracts.Actor            `json:"actor,omitempty"`
+	Board   *BoardViewModel            `json:"board,omitempty"`
+	Queue   *QueueView                 `json:"queue,omitempty"`
+	Next    *NextView                  `json:"next,omitempty"`
+	Tickets []contracts.TicketSnapshot `json:"tickets,omitempty"`
+}
+
+type BulkOperationKind string
+
+const (
+	BulkOperationMove          BulkOperationKind = "move"
+	BulkOperationAssign        BulkOperationKind = "assign"
+	BulkOperationRequestReview BulkOperationKind = "request_review"
+	BulkOperationComplete      BulkOperationKind = "complete"
+	BulkOperationClaim         BulkOperationKind = "claim"
+	BulkOperationRelease       BulkOperationKind = "release"
+)
+
+type BulkOperation struct {
+	Kind      BulkOperationKind `json:"kind"`
+	Actor     contracts.Actor   `json:"actor"`
+	Assignee  contracts.Actor   `json:"assignee,omitempty"`
+	Status    contracts.Status  `json:"status,omitempty"`
+	Reason    string            `json:"reason,omitempty"`
+	TicketIDs []string          `json:"ticket_ids"`
+	DryRun    bool              `json:"dry_run"`
+	Confirm   bool              `json:"confirm"`
+	BatchID   string            `json:"batch_id,omitempty"`
+}
+
+type BulkPreview struct {
+	Kind        BulkOperationKind `json:"kind"`
+	Actor       contracts.Actor   `json:"actor"`
+	Assignee    contracts.Actor   `json:"assignee,omitempty"`
+	Status      contracts.Status  `json:"status,omitempty"`
+	TicketIDs   []string          `json:"ticket_ids"`
+	TicketCount int               `json:"ticket_count"`
+	DryRun      bool              `json:"dry_run"`
+}
+
+type BulkTicketResult struct {
+	TicketID string                    `json:"ticket_id"`
+	OK       bool                      `json:"ok"`
+	DryRun   bool                      `json:"dry_run"`
+	Code     string                    `json:"code,omitempty"`
+	Error    string                    `json:"error,omitempty"`
+	Reason   string                    `json:"reason,omitempty"`
+	Ticket   *contracts.TicketSnapshot `json:"ticket,omitempty"`
+}
+
+type BulkSummary struct {
+	Succeeded int `json:"succeeded"`
+	Failed    int `json:"failed"`
+	Skipped   int `json:"skipped"`
+	Total     int `json:"total"`
+}
+
+type BulkOperationResult struct {
+	BatchID string             `json:"batch_id"`
+	Preview BulkPreview        `json:"preview"`
+	Summary BulkSummary        `json:"summary"`
+	Results []BulkTicketResult `json:"results"`
+}
+
+type GitRepoView struct {
+	Branch  string `json:"branch,omitempty"`
+	Dirty   bool   `json:"dirty"`
+	Present bool   `json:"present"`
+	Root    string `json:"root,omitempty"`
+}
+
+type GitCommitView struct {
+	AuthorDate time.Time `json:"author_date"`
+	Hash       string    `json:"hash"`
+	Subject    string    `json:"subject"`
+}
+
+type GitContextView struct {
+	CurrentBranchMatches bool            `json:"current_branch_matches"`
+	Repo                 GitRepoView     `json:"repo"`
+	SuggestedBranch      string          `json:"suggested_branch,omitempty"`
+	Refs                 []GitCommitView `json:"refs,omitempty"`
 }

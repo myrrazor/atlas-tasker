@@ -252,6 +252,43 @@ func TestClaimQueueAndSweepCommands(t *testing.T) {
 	}
 }
 
+func TestIntegrationsInstallCommands(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("integrations", "install", "codex")
+	if _, err := os.Stat("AGENTS.md"); err != nil {
+		t.Fatalf("expected AGENTS.md to exist: %v", err)
+	}
+	body, err := os.ReadFile("AGENTS.md")
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(body), "Atlas Tasker (Codex)") {
+		t.Fatalf("unexpected AGENTS.md: %s", string(body))
+	}
+
+	must("integrations", "install", "claude")
+	if _, err := os.Stat("CLAUDE.md"); err != nil {
+		t.Fatalf("expected CLAUDE.md to exist: %v", err)
+	}
+	guide, err := os.ReadFile(".tracker/integrations/claude-guide.md")
+	if err != nil {
+		t.Fatalf("read claude guide: %v", err)
+	}
+	if !strings.Contains(string(guide), "tracker review-queue --actor agent:reviewer-1 --json") {
+		t.Fatalf("unexpected claude guide: %s", string(guide))
+	}
+}
+
 func TestReviewCommandsAndPolicyCommands(t *testing.T) {
 	withTempWorkspace(t)
 

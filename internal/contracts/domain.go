@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -215,14 +216,36 @@ func (c ActorConfig) Validate() error {
 
 // NotificationsConfig controls the built-in v1.2 notifier sinks.
 type NotificationsConfig struct {
-	Terminal    bool   `json:"terminal"`
-	FileEnabled bool   `json:"file_enabled,omitempty"`
-	FilePath    string `json:"file_path,omitempty"`
+	Terminal              bool   `json:"terminal"`
+	FileEnabled           bool   `json:"file_enabled,omitempty"`
+	FilePath              string `json:"file_path,omitempty"`
+	WebhookURL            string `json:"webhook_url,omitempty"`
+	WebhookTimeoutSeconds int    `json:"webhook_timeout_seconds,omitempty"`
+	WebhookRetries        int    `json:"webhook_retries,omitempty"`
+	DeliveryLogPath       string `json:"delivery_log_path,omitempty"`
+	DeadLetterPath        string `json:"dead_letter_path,omitempty"`
 }
 
 func (c NotificationsConfig) Validate() error {
 	if c.FileEnabled && strings.TrimSpace(c.FilePath) == "" {
 		return fmt.Errorf("notifications.file_path is required when file notifications are enabled")
+	}
+	if strings.TrimSpace(c.WebhookURL) != "" {
+		if _, err := url.ParseRequestURI(strings.TrimSpace(c.WebhookURL)); err != nil {
+			return fmt.Errorf("invalid notifications.webhook_url: %w", err)
+		}
+	}
+	if c.WebhookTimeoutSeconds < 0 {
+		return fmt.Errorf("notifications.webhook_timeout_seconds must be >= 0")
+	}
+	if c.WebhookRetries < 0 {
+		return fmt.Errorf("notifications.webhook_retries must be >= 0")
+	}
+	if strings.TrimSpace(c.DeliveryLogPath) == "" {
+		return fmt.Errorf("notifications.delivery_log_path is required")
+	}
+	if strings.TrimSpace(c.DeadLetterPath) == "" {
+		return fmt.Errorf("notifications.dead_letter_path is required")
 	}
 	return nil
 }

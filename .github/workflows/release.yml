@@ -1,0 +1,71 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+          - goos: darwin
+            goarch: amd64
+            runner: macos-latest
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          set -eu
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o dist/tracker ./cmd/tracker
+          archive="tracker_${version}_${GOOS}_${GOARCH}.tar.gz"
+          tar -czf "dist/${archive}" -C dist tracker
+          shasum -a 256 "dist/${archive}" > "dist/${archive}.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Build checksums file
+        run: |
+          set -eu
+          cat dist/*.sha256 > dist/checksums.txt
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+            scripts/install.sh
