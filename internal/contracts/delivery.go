@@ -544,3 +544,57 @@ func (p RetentionPolicy) Validate() error {
 	}
 	return nil
 }
+
+type ArchiveRecordState string
+
+const (
+	ArchiveRecordArchived ArchiveRecordState = "archived"
+	ArchiveRecordRestored ArchiveRecordState = "restored"
+)
+
+var validArchiveRecordStates = map[ArchiveRecordState]struct{}{
+	ArchiveRecordArchived: {},
+	ArchiveRecordRestored: {},
+}
+
+func (s ArchiveRecordState) IsValid() bool {
+	_, ok := validArchiveRecordStates[s]
+	return ok
+}
+
+type ArchiveRecord struct {
+	ArchiveID     string             `json:"archive_id" yaml:"archive_id"`
+	Target        RetentionTarget    `json:"target" yaml:"target"`
+	Scope         string             `json:"scope,omitempty" yaml:"scope,omitempty"`
+	ProjectKey    string             `json:"project_key,omitempty" yaml:"project_key,omitempty"`
+	SourcePaths   []string           `json:"source_paths,omitempty" yaml:"source_paths,omitempty"`
+	PayloadDir    string             `json:"payload_dir,omitempty" yaml:"payload_dir,omitempty"`
+	ItemCount     int                `json:"item_count,omitempty" yaml:"item_count,omitempty"`
+	TotalBytes    int64              `json:"total_bytes,omitempty" yaml:"total_bytes,omitempty"`
+	State         ArchiveRecordState `json:"state" yaml:"state"`
+	Warnings      []string           `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	CreatedAt     time.Time          `json:"created_at" yaml:"created_at"`
+	RestoredAt    time.Time          `json:"restored_at,omitempty" yaml:"restored_at,omitempty"`
+	SchemaVersion int                `json:"schema_version" yaml:"schema_version"`
+}
+
+func (r ArchiveRecord) Validate() error {
+	if strings.TrimSpace(r.ArchiveID) == "" {
+		return fmt.Errorf("archive_id is required")
+	}
+	if !r.Target.IsValid() {
+		return fmt.Errorf("invalid archive target: %s", r.Target)
+	}
+	if !r.State.IsValid() {
+		return fmt.Errorf("invalid archive state: %s", r.State)
+	}
+	if len(r.SourcePaths) == 0 {
+		return fmt.Errorf("source_paths must not be empty")
+	}
+	for _, path := range r.SourcePaths {
+		if strings.TrimSpace(path) == "" {
+			return fmt.Errorf("source_paths must not contain empty values")
+		}
+	}
+	return nil
+}

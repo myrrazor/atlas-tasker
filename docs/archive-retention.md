@@ -37,3 +37,9 @@
 - item-level preservation markers can only preserve more, not less
 - `archive plan` is always dry-run and exact
 - `archive apply` is always auditable and journaling-aware
+
+## Git hygiene
+- keep archive metadata markdown under `.tracker/archives/*.md` if you want archive state reviewable in Git
+- ignore archive payload directories under `.tracker/archives/<ARCHIVE-ID>/`
+- keep export bundle metadata markdown under `.tracker/exports/*.md` if you want export history reviewable in Git
+- ignore generated export artifacts, manifests, and checksum sidecars under `.tracker/exports/`
