@@ -82,19 +82,21 @@ func (s *QueryService) ArchivePlan(ctx context.Context, target contracts.Retenti
 	}, nil
 }
 
-func (s *QueryService) ListArchiveRecords(ctx context.Context, target contracts.RetentionTarget) ([]contracts.ArchiveRecord, error) {
+func (s *QueryService) ListArchiveRecords(ctx context.Context, target contracts.RetentionTarget, projectKey string) ([]contracts.ArchiveRecord, error) {
 	records, err := s.Archives.ListArchiveRecords(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if target == "" {
-		return records, nil
-	}
+	projectKey = strings.TrimSpace(projectKey)
 	filtered := make([]contracts.ArchiveRecord, 0, len(records))
 	for _, record := range records {
-		if record.Target == target {
-			filtered = append(filtered, record)
+		if target != "" && record.Target != target {
+			continue
 		}
+		if projectKey != "" && record.ProjectKey != projectKey {
+			continue
+		}
+		filtered = append(filtered, record)
 	}
 	return filtered, nil
 }
