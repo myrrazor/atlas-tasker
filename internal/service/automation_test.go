@@ -185,3 +185,46 @@ func TestAutomationNotifyActionUsesNotifier(t *testing.T) {
 		t.Fatalf("unexpected notifier event: %#v", last)
 	}
 }
+
+func TestAutomationLoopGuardStopsCorrelationChainPingPong(t *testing.T) {
+	ctx, actions, _, projection, ticket, _ := setupAutomationTest(t)
+	for _, rule := range []contracts.AutomationRule{
+		{
+			Name:    "comment-a",
+			Enabled: true,
+			Trigger: contracts.AutomationTrigger{EventTypes: []contracts.EventType{contracts.EventTicketCommented}},
+			Actions: []contracts.AutomationAction{{Kind: contracts.AutomationActionComment, Body: "a"}},
+		},
+		{
+			Name:    "comment-b",
+			Enabled: true,
+			Trigger: contracts.AutomationTrigger{EventTypes: []contracts.EventType{contracts.EventTicketCommented}},
+			Actions: []contracts.AutomationAction{{Kind: contracts.AutomationActionComment, Body: "b"}},
+		},
+	} {
+		if err := actions.Automation.SaveRule(rule); err != nil {
+			t.Fatalf("save rule %s: %v", rule.Name, err)
+		}
+	}
+
+	if err := actions.CommentTicket(WithEventMetadata(ctx, EventMetaContext{Surface: contracts.EventSurfaceCLI}), ticket.ID, "human", contracts.Actor("agent:builder-1"), "seed"); err != nil {
+		t.Fatalf("comment ticket: %v", err)
+	}
+
+	history, err := projection.QueryHistory(ctx, ticket.ID)
+	if err != nil {
+		t.Fatalf("query history: %v", err)
+	}
+	if len(history) != 4 {
+		t.Fatalf("expected create + human comment + two automation comments, got %#v", history)
+	}
+	commentCount := 0
+	for _, event := range history {
+		if event.Type == contracts.EventTicketCommented {
+			commentCount++
+		}
+	}
+	if commentCount != 3 {
+		t.Fatalf("expected exactly three comment events, got %#v", history)
+	}
+}
