@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 )
 
@@ -139,4 +140,106 @@ func TestDispatchSuggestQueueAndBulkAutoRoute(t *testing.T) {
 			t.Fatalf("expected APP-1 preview to fail because it already has an active run, got %#v", bulk.Payload.Items)
 		}
 	}
+}
+
+func TestDispatchSuggestReportsDirtyRepoAndActiveRunReasonCodes(t *testing.T) {
+	withTempWorkspace(t)
+	gitRunCLI(t, "init", "-b", "main")
+	gitRunCLI(t, "config", "user.email", "atlas@example.com")
+	gitRunCLI(t, "config", "user.name", "Atlas")
+	writeGitFile(t, "README.md", "# atlas\n")
+	gitRunCLI(t, "add", "README.md")
+	gitRunCLI(t, "commit", "-m", "init")
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Dispatch me", "--type", "task", "--actor", "human:owner")
+	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--default-runbook", "implement", "--actor", "human:owner")
+
+	if err := os.WriteFile("dirty.txt", []byte("repo drift\n"), 0o644); err != nil {
+		t.Fatalf("write dirty repo file: %v", err)
+	}
+
+	suggestOut := must("dispatch", "suggest", "APP-1", "--json")
+	var dirtySuggest struct {
+		Payload struct {
+			AutoRouteAgentID string `json:"auto_route_agent_id"`
+			Suggestions      []struct {
+				Agent struct {
+					AgentID string `json:"agent_id"`
+				} `json:"agent"`
+				Eligible    bool     `json:"eligible"`
+				ReasonCodes []string `json:"reason_codes"`
+			} `json:"suggestions"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(suggestOut), &dirtySuggest); err != nil {
+		t.Fatalf("parse dirty dispatch suggestion: %v\nraw=%s", err, suggestOut)
+	}
+	if dirtySuggest.Payload.AutoRouteAgentID != "" {
+		t.Fatalf("expected dirty repo to block auto-route, got %#v", dirtySuggest.Payload)
+	}
+	if len(dirtySuggest.Payload.Suggestions) != 1 || dirtySuggest.Payload.Suggestions[0].Eligible {
+		t.Fatalf("expected dirty repo to make builder ineligible, got %#v", dirtySuggest.Payload.Suggestions)
+	}
+	if !containsString(dirtySuggest.Payload.Suggestions[0].ReasonCodes, "dirty_repo") {
+		t.Fatalf("expected dirty_repo reason code, got %#v", dirtySuggest.Payload.Suggestions[0].ReasonCodes)
+	}
+
+	gitRunCLI(t, "add", "dirty.txt")
+	gitRunCLI(t, "commit", "-m", "clean repo")
+	dispatchOut := must("dispatch", "run", "APP-1", "--actor", "human:owner", "--json")
+	var dispatch struct {
+		Payload struct {
+			RunID string `json:"run_id"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(dispatchOut), &dispatch); err != nil {
+		t.Fatalf("parse dispatch output: %v\nraw=%s", err, dispatchOut)
+	}
+	if dispatch.Payload.RunID == "" {
+		t.Fatalf("expected run id after dispatch, got %#v", dispatch)
+	}
+
+	activeOut := must("dispatch", "suggest", "APP-1", "--json")
+	var activeSuggest struct {
+		Payload struct {
+			Suggestions []struct {
+				Agent struct {
+					AgentID string `json:"agent_id"`
+				} `json:"agent"`
+				Eligible    bool     `json:"eligible"`
+				ReasonCodes []string `json:"reason_codes"`
+			} `json:"suggestions"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(activeOut), &activeSuggest); err != nil {
+		t.Fatalf("parse active-run dispatch suggestion: %v\nraw=%s", err, activeOut)
+	}
+	if len(activeSuggest.Payload.Suggestions) != 1 || activeSuggest.Payload.Suggestions[0].Eligible {
+		t.Fatalf("expected active run to make builder ineligible, got %#v", activeSuggest.Payload.Suggestions)
+	}
+	for _, code := range []string{"active_run_exists", "parallel_runs_disabled"} {
+		if !containsString(activeSuggest.Payload.Suggestions[0].ReasonCodes, code) {
+			t.Fatalf("expected %s reason code, got %#v", code, activeSuggest.Payload.Suggestions[0].ReasonCodes)
+		}
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

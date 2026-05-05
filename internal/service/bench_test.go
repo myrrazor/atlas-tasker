@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -92,6 +93,58 @@ func BenchmarkAutomationExplain(b *testing.B) {
 	}
 }
 
+func BenchmarkDispatchSuggest(b *testing.B) {
+	root, queries, _, projection := benchmarkQueryService(b)
+	_ = root
+	_ = projection
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := queries.DispatchSuggest(ctx, "APP-1"); err != nil {
+			b.Fatalf("dispatch suggest: %v", err)
+		}
+	}
+}
+
+func BenchmarkRunDetail(b *testing.B) {
+	root, queries, _, projection := benchmarkQueryService(b)
+	_ = root
+	_ = projection
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := queries.RunDetail(ctx, "run_bench"); err != nil {
+			b.Fatalf("run detail: %v", err)
+		}
+	}
+}
+
+func BenchmarkApprovals(b *testing.B) {
+	root, queries, _, projection := benchmarkQueryService(b)
+	_ = root
+	_ = projection
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := queries.Approvals(ctx); err != nil {
+			b.Fatalf("approvals: %v", err)
+		}
+	}
+}
+
+func BenchmarkWorktreeList(b *testing.B) {
+	root, queries, _, projection := benchmarkQueryService(b)
+	_ = root
+	_ = projection
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := queries.WorktreeList(ctx); err != nil {
+			b.Fatalf("worktree list: %v", err)
+		}
+	}
+}
+
 func benchmarkQueryService(b *testing.B) (string, *QueryService, *ActionService, *sqlitestore.Store) {
 	b.Helper()
 	root := b.TempDir()
@@ -134,6 +187,48 @@ func benchmarkQueryService(b *testing.B) (string, *QueryService, *ActionService,
 		if _, err := actions.CreateTrackedTicket(ctx, ticket, contracts.Actor("human:owner"), "seed"); err != nil {
 			b.Fatalf("create tracked ticket %d: %v", i, err)
 		}
+	}
+	if err := (AgentStore{Root: root}).SaveAgent(ctx, contracts.AgentProfile{
+		AgentID:       "builder-1",
+		DisplayName:   "Builder One",
+		Provider:      contracts.AgentProviderCodex,
+		Enabled:       true,
+		Capabilities:  []string{"go"},
+		MaxActiveRuns: 2,
+	}); err != nil {
+		b.Fatalf("save agent: %v", err)
+	}
+	run := normalizeRunSnapshot(contracts.RunSnapshot{
+		RunID:          "run_bench",
+		TicketID:       "APP-1",
+		Project:        "APP",
+		AgentID:        "builder-1",
+		Provider:       contracts.AgentProviderCodex,
+		Status:         contracts.RunStatusAwaitingReview,
+		Kind:           contracts.RunKindWork,
+		BlueprintStage: "implement",
+		WorktreePath:   filepath.Join(root, "bench-worktree"),
+		CreatedAt:      now,
+	})
+	if err := os.MkdirAll(run.WorktreePath, 0o755); err != nil {
+		b.Fatalf("mkdir worktree: %v", err)
+	}
+	if err := (RunStore{Root: root}).SaveRun(ctx, run); err != nil {
+		b.Fatalf("save run: %v", err)
+	}
+	if err := (GateStore{Root: root}).SaveGate(ctx, contracts.GateSnapshot{
+		GateID:          "gate_bench",
+		TicketID:        "APP-1",
+		RunID:           run.RunID,
+		Kind:            contracts.GateKindReview,
+		State:           contracts.GateStateOpen,
+		RequiredRole:    contracts.AgentRoleReviewer,
+		RequiredAgentID: "agent:reviewer-1",
+		CreatedBy:       contracts.Actor("human:owner"),
+		CreatedAt:       now,
+		SchemaVersion:   contracts.CurrentSchemaVersion,
+	}); err != nil {
+		b.Fatalf("save gate: %v", err)
 	}
 	return root, NewQueryService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return now }), actions, projection
 }

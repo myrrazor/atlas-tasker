@@ -39,6 +39,30 @@ func (s *QueryService) RunDetail(ctx context.Context, runID string) (RunDetailVi
 	if err != nil {
 		return RunDetailView{}, err
 	}
+	changes, err := s.Changes.ListChanges(ctx, run.TicketID)
+	if err != nil {
+		return RunDetailView{}, err
+	}
+	filteredChanges := make([]contracts.ChangeRef, 0, len(changes))
+	for _, change := range changes {
+		if change.RunID == runID {
+			filteredChanges = append(filteredChanges, change)
+		}
+	}
+	checks, err := s.Checks.ListChecks(ctx, contracts.CheckScopeRun, runID)
+	if err != nil {
+		return RunDetailView{}, err
+	}
+	gates, err := s.Gates.ListGates(ctx, run.TicketID)
+	if err != nil {
+		return RunDetailView{}, err
+	}
+	filteredGates := make([]contracts.GateSnapshot, 0, len(gates))
+	for _, gate := range gates {
+		if gate.RunID == "" || gate.RunID == runID {
+			filteredGates = append(filteredGates, gate)
+		}
+	}
 	handoffs, err := s.Handoffs.ListHandoffs(ctx, run.TicketID)
 	if err != nil {
 		return RunDetailView{}, err
@@ -49,7 +73,7 @@ func (s *QueryService) RunDetail(ctx context.Context, runID string) (RunDetailVi
 			filteredHandoffs = append(filteredHandoffs, handoff)
 		}
 	}
-	return RunDetailView{Run: run, Ticket: ticket, Evidence: evidence, Handoffs: filteredHandoffs, GeneratedAt: s.now()}, nil
+	return RunDetailView{Run: run, Ticket: ticket, Gates: filteredGates, Changes: filteredChanges, Checks: checks, Evidence: evidence, Handoffs: filteredHandoffs, GeneratedAt: s.now()}, nil
 }
 
 func (s *QueryService) WorktreeDetail(ctx context.Context, runID string) (WorktreeStatusView, error) {

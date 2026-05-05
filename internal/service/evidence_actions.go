@@ -127,23 +127,41 @@ func (s *ActionService) CreateHandoff(ctx context.Context, runID string, actor c
 		if err != nil {
 			return contracts.HandoffPacket{}, err
 		}
+		openedGates, nextTicket, nextRun, err := s.ensureGatesForHandoff(ctx, run, ticket, actor, nextActor, nextGate)
+		if err != nil {
+			return contracts.HandoffPacket{}, err
+		}
+		ticket = nextTicket
+		run = nextRun
 		ticket.LatestHandoffID = packet.HandoffID
 		run.HandoffTo = strings.TrimSpace(nextActor)
-		payload := runMutationPayload{Run: run, Ticket: ticket, Handoff: packet}
+		payload := runMutationPayload{Run: run, Ticket: ticket, Handoff: packet, Gates: openedGates}
 		event, err := s.newEvent(ctx, run.Project, s.now(), actor, reason, contracts.EventRunHandoffRequested, run.TicketID, payload)
 		if err != nil {
 			return contracts.HandoffPacket{}, err
 		}
 		if err := s.commitMutation(ctx, "create handoff", "handoff", event, func(ctx context.Context) error {
+			rollback := func() {
+				_ = os.Remove(storage.HandoffFile(s.Root, packet.HandoffID))
+				for _, gate := range openedGates {
+					_ = os.Remove(storage.GateFile(s.Root, gate.GateID))
+				}
+			}
 			if err := s.Handoffs.SaveHandoff(ctx, packet); err != nil {
 				return err
 			}
+			for _, gate := range openedGates {
+				if err := s.Gates.SaveGate(ctx, gate); err != nil {
+					rollback()
+					return err
+				}
+			}
 			if err := s.Runs.SaveRun(ctx, run); err != nil {
-				_ = os.Remove(storage.HandoffFile(s.Root, packet.HandoffID))
+				rollback()
 				return err
 			}
 			if err := s.UpdateTicket(ctx, ticket); err != nil {
-				_ = os.Remove(storage.HandoffFile(s.Root, packet.HandoffID))
+				rollback()
 				return err
 			}
 			return nil
@@ -171,7 +189,11 @@ func copyEvidenceArtifact(root string, runID string, evidenceID string, source s
 	if base == "" {
 		base = evidenceID
 	}
-	target := filepath.Join(storage.EvidenceDir(root, runID), base+ext)
+	artifactName := evidenceID
+	if base != evidenceID {
+		artifactName += "-" + base
+	}
+	target := filepath.Join(storage.EvidenceDir(root, runID), artifactName+ext)
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return "", fmt.Errorf("create artifact dir: %w", err)
 	}
@@ -180,13 +202,43 @@ func copyEvidenceArtifact(root string, runID string, evidenceID string, source s
 		return "", fmt.Errorf("open artifact: %w", err)
 	}
 	defer in.Close()
-	out, err := os.Create(target)
+	temp, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".tmp-*")
 	if err != nil {
 		return "", fmt.Errorf("create artifact copy: %w", err)
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, in); err != nil {
-		return "", fmt.Errorf("copy artifact: %w", err)
+	defer func() {
+		_ = temp.Close()
+		_ = os.Remove(temp.Name())
+	}()
+	// Copy into a temp file so failed evidence writes do not leave a partial artifact behind.
+	buf := make([]byte, 32*1024)
+	var copied int64
+	for {
+		n, readErr := in.Read(buf)
+		if n > 0 {
+			written, writeErr := temp.Write(buf[:n])
+			copied += int64(written)
+			if writeErr != nil {
+				return "", fmt.Errorf("copy artifact: %w", writeErr)
+			}
+			if testEvidenceArtifactCopyHook != nil {
+				if err := testEvidenceArtifactCopyHook(target, copied); err != nil {
+					return "", err
+				}
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return "", fmt.Errorf("copy artifact: %w", readErr)
+		}
+	}
+	if err := temp.Close(); err != nil {
+		return "", fmt.Errorf("close artifact copy: %w", err)
+	}
+	if err := os.Rename(temp.Name(), target); err != nil {
+		return "", fmt.Errorf("finalize artifact copy: %w", err)
 	}
 	return target, nil
 }
