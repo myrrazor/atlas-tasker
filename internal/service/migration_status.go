@@ -514,11 +514,18 @@ func scanExportBundleMigrationStatus(root string) MigrationEntityStatusView {
 
 func scanArchiveMigrationStatus(root string) MigrationEntityStatusView {
 	counter := migrationCounter{}
-	_ = filepath.WalkDir(storage.ArchivesDir(root), func(path string, d fs.DirEntry, err error) error {
+	archivesRoot := storage.ArchivesDir(root)
+	_ = filepath.WalkDir(archivesRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".md") {
+		if d.IsDir() {
+			if path != archivesRoot {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Dir(path) != archivesRoot || !strings.HasSuffix(path, ".md") {
 			return nil
 		}
 		fmRaw, sample, err := readMarkdownFrontmatter(path)
