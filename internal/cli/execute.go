@@ -26,8 +26,10 @@ func executeWithSurface(args []string, stdout io.Writer, stderr io.Writer, surfa
 	root.SetContext(service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: surface}))
 	if err := root.Execute(); err != nil {
 		if wantsJSON(args) {
-			raw, marshalErr := json.MarshalIndent(apperr.Envelope(err), "", "  ")
-			if marshalErr == nil {
+			payload, payloadErr := versionedJSONPayload(apperr.Envelope(err))
+			if payloadErr != nil {
+				fmt.Fprintln(stderr, err.Error())
+			} else if raw, marshalErr := json.MarshalIndent(payload, "", "  "); marshalErr == nil {
 				fmt.Fprintln(stderr, string(raw))
 			} else {
 				fmt.Fprintln(stderr, err.Error())

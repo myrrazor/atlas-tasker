@@ -286,3 +286,135 @@ func TestAuditOrchestrationAcceptsCompactedRuntimeWithoutLaunchFiles(t *testing.
 		t.Fatalf("expected compacted runtime launch files to be acceptable, got %#v", report.IssueCodes)
 	}
 }
+
+func TestAuditOrchestrationReportsV16CollaborationAndSyncIssues(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 29, 9, 0, 0, 0, time.UTC)
+
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return now }}
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket := contracts.TicketSnapshot{
+		ID:            "APP-1",
+		Project:       "APP",
+		Title:         "Doctor v1.6.1",
+		Summary:       "Doctor v1.6.1",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusReady,
+		Priority:      contracts.PriorityMedium,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+
+	if _, err := os.Stat(storage.CollaboratorsDir(root)); os.IsNotExist(err) {
+		if err := os.MkdirAll(storage.CollaboratorsDir(root), 0o755); err != nil {
+			t.Fatalf("mkdir collaborators dir: %v", err)
+		}
+	}
+	if err := os.WriteFile(storage.CollaboratorFile(root, "broken"), []byte("---\ncollaborator_id: broken\nstatus: [\n"), 0o644); err != nil {
+		t.Fatalf("write broken collaborator: %v", err)
+	}
+	if err := (CollaboratorStore{Root: root}).SaveCollaborator(ctx, contracts.CollaboratorProfile{
+		CollaboratorID: "rev-1",
+		DisplayName:    "Reviewer One",
+		Status:         contracts.CollaboratorStatusActive,
+		TrustState:     contracts.CollaboratorTrustStateTrusted,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		SchemaVersion:  contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save collaborator: %v", err)
+	}
+	if err := (MembershipStore{Root: root}).SaveMembership(ctx, contracts.MembershipBinding{
+		MembershipUID:  "membership_bad",
+		CollaboratorID: "ghost",
+		ScopeKind:      contracts.MembershipScopeProject,
+		ScopeID:        "NOPE",
+		Role:           contracts.MembershipRoleReviewer,
+		Status:         contracts.MembershipStatusActive,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("save bad membership: %v", err)
+	}
+	if err := (MentionStore{Root: root}).SaveMention(ctx, contracts.Mention{
+		MentionUID:        "mention_bad",
+		CollaboratorID:    "ghost",
+		SourceKind:        "ticket_comment",
+		SourceID:          "comment_1",
+		SourceEventUID:    "event_1",
+		TicketID:          "APP-99",
+		OriginWorkspaceID: "ws-1",
+		CreatedAt:         now,
+	}); err != nil {
+		t.Fatalf("save bad mention: %v", err)
+	}
+	if err := (SyncRemoteStore{Root: root}).SaveSyncRemote(ctx, contracts.SyncRemote{
+		RemoteID:      "origin",
+		Kind:          contracts.SyncRemoteKindPath,
+		Location:      filepath.Join(root, ".tracker", "sync"),
+		Enabled:       true,
+		DefaultAction: contracts.SyncDefaultActionPull,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}); err != nil {
+		t.Fatalf("save bad sync remote: %v", err)
+	}
+	if err := (SyncJobStore{Root: root}).SaveSyncJob(ctx, contracts.SyncJob{
+		JobID:         "sync_pull_1",
+		RemoteID:      "missing-remote",
+		Mode:          contracts.SyncJobModePull,
+		State:         contracts.SyncJobStateFailed,
+		StartedAt:     now,
+		FinishedAt:    now.Add(time.Minute),
+		ConflictIDs:   []string{"conflict_missing"},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save bad sync job: %v", err)
+	}
+	if err := (ConflictStore{Root: root}).SaveConflict(ctx, contracts.ConflictRecord{
+		ConflictID:    "conflict_1",
+		EntityKind:    "ticket",
+		EntityUID:     contracts.TicketUID("APP", "APP-1"),
+		ConflictType:  contracts.ConflictTypeScalarDivergence,
+		LocalRef:      filepath.Join(root, "missing-local.json"),
+		RemoteRef:     filepath.Join(root, "missing-remote.json"),
+		Status:        contracts.ConflictStatusOpen,
+		OpenedByJob:   "missing-job",
+		OpenedAt:      now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save bad conflict: %v", err)
+	}
+
+	report, err := AuditOrchestration(ctx, root, ticketStore)
+	if err != nil {
+		t.Fatalf("audit orchestration: %v", err)
+	}
+	for _, code := range []string{
+		"collaborator_doc_corrupt",
+		"membership_collaborator_missing",
+		"membership_scope_missing",
+		"mention_collaborator_missing",
+		"mention_ticket_missing",
+		"sync_remote_invalid",
+		"sync_job_remote_missing",
+		"sync_job_conflict_missing",
+		"conflict_job_missing",
+		"conflict_snapshot_missing",
+	} {
+		if !stringSliceContains(report.IssueCodes, code) {
+			t.Fatalf("expected issue code %s in %#v", code, report.IssueCodes)
+		}
+	}
+	if report.CollaboratorIssues == 0 || report.MembershipIssues == 0 || report.MentionIssues == 0 || report.SyncIssues == 0 || report.ConflictIssues == 0 {
+		t.Fatalf("expected v1.6 issue buckets to be populated, got %#v", report)
+	}
+}

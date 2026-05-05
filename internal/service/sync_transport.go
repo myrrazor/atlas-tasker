@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
+	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
@@ -35,7 +36,11 @@ type syncMigrationState struct {
 }
 
 func (s *QueryService) ListSyncRemotes(ctx context.Context) ([]contracts.SyncRemote, error) {
-	return s.SyncRemotes.ListSyncRemotes(ctx)
+	items, err := s.SyncRemotes.ListSyncRemotes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return sanitizeSyncRemotes(items), nil
 }
 
 func (s *QueryService) SyncRemoteDetail(ctx context.Context, remoteID string) (SyncRemoteDetailView, error) {
@@ -47,7 +52,7 @@ func (s *QueryService) SyncRemoteDetail(ctx context.Context, remoteID string) (S
 	if err != nil {
 		return SyncRemoteDetailView{}, err
 	}
-	return SyncRemoteDetailView{Remote: remote, Publications: publications, GeneratedAt: s.now()}, nil
+	return SyncRemoteDetailView{Remote: sanitizeSyncRemote(remote), Publications: publications, GeneratedAt: s.now()}, nil
 }
 
 func (s *QueryService) ListSyncJobs(ctx context.Context, remoteID string) ([]contracts.SyncJob, error) {
@@ -127,7 +132,7 @@ func (s *QueryService) SyncStatus(ctx context.Context, remoteID string) (SyncSta
 		if err != nil {
 			return SyncStatusView{}, err
 		}
-		items = append(items, SyncStatusRemoteView{Remote: remote, Publications: publications})
+		items = append(items, SyncStatusRemoteView{Remote: sanitizeSyncRemote(remote), Publications: publications})
 	}
 	return SyncStatusView{
 		WorkspaceID:       migration.WorkspaceID,
@@ -596,7 +601,7 @@ func (s *ActionService) persistCompletedSyncJob(ctx context.Context, _ contracts
 	if err := s.SyncRemotes.SaveSyncRemote(ctx, remote); err != nil {
 		return SyncJobDetailView{}, err
 	}
-	return SyncJobDetailView{Job: job, Remote: remote, Publication: publication, GeneratedAt: s.now()}, nil
+	return SyncJobDetailView{Job: job, Remote: sanitizeSyncRemote(remote), Publication: publication, GeneratedAt: s.now()}, nil
 }
 
 func (s *ActionService) ensureSyncMigrationStamp(ctx context.Context) error {
@@ -867,10 +872,18 @@ func verifySyncBundle(artifactPath string) (SyncBundleVerifyView, error) {
 	}
 	entries := map[string]bundleFileRecord{}
 	for _, item := range manifest.Files {
+		if !isSyncableRelativePath(item.Path) {
+			view.Errors = append(view.Errors, "unsafe_sync_entry:"+item.Path)
+			continue
+		}
 		entries[item.Path] = item
 	}
 	for path, raw := range files {
 		if path == "manifest.json" {
+			continue
+		}
+		if !isSyncableRelativePath(path) {
+			view.Errors = append(view.Errors, "unsafe_sync_entry:"+path)
 			continue
 		}
 		expected, ok := entries[path]
@@ -1222,10 +1235,10 @@ func normalizeSyncRemoteLocation(root string, kind contracts.SyncRemoteKind, loc
 		return "", apperr.New(apperr.CodeInvalidInput, "remote location is required")
 	}
 	if kind == contracts.SyncRemoteKindGit {
+		if remoteLocationHasEmbeddedCredentials(location) {
+			return "", apperr.New(apperr.CodeInvalidInput, "git remote URL cannot embed credentials")
+		}
 		if parsed, err := url.Parse(location); err == nil && parsed.Scheme != "" {
-			if parsed.User != nil {
-				return "", apperr.New(apperr.CodeInvalidInput, "git remote URL cannot embed credentials")
-			}
 			return location, nil
 		}
 	}
@@ -1303,9 +1316,9 @@ func gitSyncShowFile(repoDir string, ref string, name string) ([]byte, error) {
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		message := strings.TrimSpace(string(output))
+		message := redactRemoteSecrets(strings.TrimSpace(string(output)))
 		if message == "" {
-			message = err.Error()
+			message = redactRemoteSecrets(err.Error())
 		}
 		return nil, fmt.Errorf("git show %s:%s: %s", ref, name, message)
 	}
@@ -1321,9 +1334,9 @@ func gitSyncOutput(dir string, env []string, args ...string) (string, error) {
 	cmd.Env = append(cmd.Env, env...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		message := strings.TrimSpace(string(output))
+		message := redactRemoteSecrets(strings.TrimSpace(string(output)))
 		if message == "" {
-			message = err.Error()
+			message = redactRemoteSecrets(err.Error())
 		}
 		return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), message)
 	}
@@ -1427,4 +1440,65 @@ func isSyncableRelativePath(rel string) bool {
 	default:
 		return false
 	}
+}
+
+func sanitizeSyncRemotes(items []contracts.SyncRemote) []contracts.SyncRemote {
+	if len(items) == 0 {
+		return []contracts.SyncRemote{}
+	}
+	sanitized := make([]contracts.SyncRemote, 0, len(items))
+	for _, item := range items {
+		sanitized = append(sanitized, sanitizeSyncRemote(item))
+	}
+	return sanitized
+}
+
+func sanitizeSyncRemote(remote contracts.SyncRemote) contracts.SyncRemote {
+	remote.Location = redactRemoteSecrets(remote.Location)
+	return remote
+}
+
+func redactRemoteSecrets(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	if idx := strings.Index(value, "@"); idx > 0 {
+		prefix := value[:idx]
+		if strings.Contains(prefix, ":") && !strings.Contains(prefix, "://") {
+			parts := strings.SplitN(prefix, ":", 2)
+			user := strings.TrimSpace(parts[0])
+			if user == "" {
+				user = "***"
+			}
+			value = user + ":***" + value[idx:]
+		}
+	}
+	return config.MaskSecretsInText(value)
+}
+
+func remoteLocationHasEmbeddedCredentials(location string) bool {
+	location = strings.TrimSpace(location)
+	if location == "" {
+		return false
+	}
+	if idx := strings.Index(location, "@"); idx > 0 && !strings.Contains(location[:idx], "://") {
+		prefix := location[:idx]
+		if strings.Contains(prefix, ":") {
+			return true
+		}
+	}
+	if parsed, err := url.Parse(location); err == nil && parsed.Scheme != "" {
+		if parsed.User != nil {
+			return true
+		}
+		for key := range parsed.Query() {
+			lower := strings.ToLower(strings.TrimSpace(key))
+			if strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "key") || strings.Contains(lower, "password") {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
