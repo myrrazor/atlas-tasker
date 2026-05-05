@@ -36,6 +36,7 @@ func TestAcceptanceFlowWithRecovery(t *testing.T) {
 	if _, err := runCLI(t, "ticket", "move", "APP-2", "done", "--actor", "agent:builder-1"); err == nil {
 		t.Fatal("expected owner_gate to block agent completion")
 	}
+	must("ticket", "approve", "APP-2", "--actor", "human:owner")
 	must("ticket", "move", "APP-2", "done", "--actor", "human:owner")
 
 	must("ticket", "comment", "APP-4", "--body", "first", "--actor", "agent:builder-1")
