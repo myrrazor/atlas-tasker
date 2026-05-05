@@ -56,6 +56,16 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newApprovalsCommand())
 	root.AddCommand(newGateCommand())
 	root.AddCommand(newInboxCommand())
+	root.AddCommand(newChangeCommand())
+	root.AddCommand(newChecksCommand())
+	root.AddCommand(newPermissionProfileCommand())
+	root.AddCommand(newPermissionsCommand())
+	root.AddCommand(newImportCommand())
+	root.AddCommand(newExportCommand())
+	root.AddCommand(newArchiveCommand())
+	root.AddCommand(newCompactCommand())
+	root.AddCommand(newDashboardCommand())
+	root.AddCommand(newTimelineCommand())
 	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())
@@ -411,6 +421,7 @@ func newProjectCommand() *cobra.Command {
 	policySet.Flags().Int("lease-ttl", 0, "Default lease TTL in minutes")
 	policySet.Flags().String("allowed-workers", "", "Comma-separated allowed actors")
 	policySet.Flags().String("required-reviewer", "", "Default required reviewer actor")
+	policySet.Flags().StringArray("retention-policy", nil, "Bound retention policy ID; repeat to set multiple")
 	addMutationFlags(policySet, &mutationFlags{Actor: "human:owner"})
 	policy.AddCommand(policySet)
 	cmd.AddCommand(policy)
@@ -436,6 +447,9 @@ func newTicketCommand() *cobra.Command {
 	create.Flags().String("reviewer", "", "Reviewer actor")
 	create.Flags().String("description", "", "Ticket description")
 	create.Flags().StringArray("acceptance", []string{}, "Acceptance criterion (repeatable)")
+	create.Flags().StringArray("permission-profile", nil, "Permission profile applied directly to this ticket")
+	create.Flags().Bool("protected", false, "Mark the ticket as protected")
+	create.Flags().Bool("sensitive", false, "Mark the ticket as sensitive")
 	_ = create.MarkFlagRequired("project")
 	_ = create.MarkFlagRequired("title")
 	cmd.AddCommand(create)
@@ -452,6 +466,9 @@ func newTicketCommand() *cobra.Command {
 	edit.Flags().String("labels", "", "Comma-separated labels")
 	edit.Flags().String("assignee", "", "Assignee actor")
 	edit.Flags().String("reviewer", "", "Reviewer actor")
+	edit.Flags().StringArray("permission-profile", nil, "Replace direct ticket permission profiles")
+	edit.Flags().Bool("protected", false, "Mark the ticket as protected")
+	edit.Flags().Bool("sensitive", false, "Mark the ticket as sensitive")
 	addMutationFlags(edit, &mutationFlags{Actor: "human:owner"})
 	cmd.AddCommand(edit)
 
@@ -792,6 +809,9 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	reviewerRaw, _ := cmd.Flags().GetString("reviewer")
 	description, _ := cmd.Flags().GetString("description")
 	acceptance, _ := cmd.Flags().GetStringArray("acceptance")
+	permissionProfiles, _ := cmd.Flags().GetStringArray("permission-profile")
+	protected, _ := cmd.Flags().GetBool("protected")
+	sensitive, _ := cmd.Flags().GetBool("sensitive")
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	actor := normalizeActor(actorRaw)
@@ -845,6 +865,9 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 		Summary:            title,
 		Description:        description,
 		AcceptanceCriteria: acceptance,
+		PermissionProfiles: append([]string{}, permissionProfiles...),
+		Protected:          protected,
+		Sensitive:          sensitive,
 		Template:           strings.TrimSpace(templateName),
 	}
 	if len(ticket.Labels) == 0 && len(template.Labels) > 0 {
@@ -914,8 +937,20 @@ func runTicketView(cmd *cobra.Command, args []string) error {
 			rawMD += fmt.Sprintf("- %s [%s/%s]\n", gate.GateID, gate.Kind, gate.State)
 		}
 	}
-	pretty := fmt.Sprintf("%s [%s] %s open_gates=%d", detail.Ticket.ID, detail.Ticket.Status, detail.Ticket.Title, len(detail.Ticket.OpenGateIDs))
-	payload := map[string]any{"ticket": detail.Ticket, "comments": detail.Comments, "gates": detail.Gates, "effective_policy": detail.EffectivePolicy}
+	if len(detail.Changes) > 0 {
+		rawMD += "\n## Changes\n\n"
+		for _, change := range detail.Changes {
+			rawMD += fmt.Sprintf("- %s [%s]\n", change.ChangeID, change.Status)
+		}
+	}
+	if len(detail.Checks) > 0 {
+		rawMD += "\n## Checks\n\n"
+		for _, check := range detail.Checks {
+			rawMD += fmt.Sprintf("- %s [%s/%s] %s\n", check.CheckID, check.Status, check.Conclusion, check.Name)
+		}
+	}
+	pretty := fmt.Sprintf("%s [%s] %s open_gates=%d change_ready=%s", detail.Ticket.ID, detail.Ticket.Status, detail.Ticket.Title, len(detail.Ticket.OpenGateIDs), detail.Ticket.ChangeReadyState)
+	payload := map[string]any{"ticket": detail.Ticket, "comments": detail.Comments, "gates": detail.Gates, "changes": detail.Changes, "checks": detail.Checks, "effective_policy": detail.EffectivePolicy}
 	return writeCommandOutput(cmd, payload, rawMD, pretty)
 }
 
@@ -973,6 +1008,18 @@ func runTicketEdit(cmd *cobra.Command, args []string) error {
 			if reviewer == "" {
 				ticket.Reviewer = ""
 			}
+		}
+		if cmd.Flags().Changed("permission-profile") {
+			profiles, _ := cmd.Flags().GetStringArray("permission-profile")
+			ticket.PermissionProfiles = append([]string{}, profiles...)
+		}
+		if cmd.Flags().Changed("protected") {
+			protected, _ := cmd.Flags().GetBool("protected")
+			ticket.Protected = protected
+		}
+		if cmd.Flags().Changed("sensitive") {
+			sensitive, _ := cmd.Flags().GetBool("sensitive")
+			ticket.Sensitive = sensitive
 		}
 		return nil
 	})
@@ -1536,6 +1583,21 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			}
 		}
 	}
+	orchestrationRepairActions := []string{}
+	if repair {
+		if err := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair orchestration", func(ctx context.Context) error {
+			var err error
+			orchestrationRepairActions, err = service.RepairOrchestration(ctx, root)
+			return err
+		}); err != nil {
+			return err
+		}
+	}
+	orchestrationReport, err := service.AuditOrchestration(ctx, root, ticketStore)
+	if err != nil {
+		return err
+	}
+	issueCodes := append([]string{}, orchestrationReport.IssueCodes...)
 	message := fmt.Sprintf("doctor ok: %d events scanned, %d projects, %d tickets", len(events), len(projects), len(tickets))
 	payload := map[string]any{
 		"ok":             true,
@@ -1543,13 +1605,14 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"projects":       len(projects),
 		"tickets":        len(tickets),
 		"repair_ran":     repair,
-		"repair_actions": append(append([]string{}, repairActions...), repairReport.Actions...),
+		"repair_actions": append(append(append([]string{}, repairActions...), repairReport.Actions...), orchestrationRepairActions...),
 		"repair_pending": repairReport.Pending,
 		"config":         config.MaskTrackerConfig(cfg),
-		"issue_codes":    []string{},
+		"issue_codes":    issueCodes,
 		"issues": map[string]any{
 			"project_issues": projectIssues,
 			"ticket_issues":  ticketIssues,
+			"orchestration":  orchestrationReport,
 		},
 	}
 	return writeCommandOutput(cmd, payload, message, message)
@@ -1571,8 +1634,14 @@ func runInspect(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Lease Active: %t\n- Completion: %s\n- Open Gates: %d\n", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs))
-	pretty := fmt.Sprintf("inspect %s -> board=%s lease_active=%t completion=%s open_gates=%d", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs))
+	blockedActions := 0
+	for _, decision := range view.Permissions {
+		if !decision.Allowed {
+			blockedActions++
+		}
+	}
+	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Lease Active: %t\n- Completion: %s\n- Open Gates: %d\n- Change Ready: %s\n- Blocked Actions: %d\n", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState, blockedActions)
+	pretty := fmt.Sprintf("inspect %s -> board=%s lease_active=%t completion=%s open_gates=%d change_ready=%s blocked_actions=%d", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState, blockedActions)
 	return writeCommandOutput(cmd, view, md, pretty)
 }
 
@@ -3316,6 +3385,10 @@ func projectPolicyFromFlags(cmd *cobra.Command, defaults contracts.ProjectDefaul
 				return contracts.ProjectDefaults{}, fmt.Errorf("invalid required reviewer: %s", value)
 			}
 		}
+	}
+	if cmd.Flags().Changed("retention-policy") {
+		value, _ := cmd.Flags().GetStringArray("retention-policy")
+		defaults.RetentionPolicies = append([]string{}, value...)
 	}
 	return defaults, defaults.Validate()
 }

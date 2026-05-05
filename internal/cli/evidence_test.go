@@ -184,3 +184,79 @@ func TestRunEvidenceAndHandoffCommands(t *testing.T) {
 		t.Fatalf("expected stored handoff markdown to exist: %v", err)
 	}
 }
+
+func TestRunEvidenceArtifactsKeepDistinctCopiesPerEvidence(t *testing.T) {
+	withTempWorkspace(t)
+	gitRunCLI(t, "init", "-b", "main")
+	gitRunCLI(t, "config", "user.email", "atlas@example.com")
+	gitRunCLI(t, "config", "user.name", "Atlas")
+	writeGitFile(t, "README.md", "# atlas\n")
+	gitRunCLI(t, "add", "README.md")
+	gitRunCLI(t, "commit", "-m", "init")
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Collect proof", "--type", "task", "--actor", "human:owner")
+	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")
+
+	dispatchOut := must("run", "dispatch", "APP-1", "--agent", "builder-1", "--actor", "human:owner", "--json")
+	var dispatch struct {
+		Payload struct {
+			RunID string `json:"run_id"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(dispatchOut), &dispatch); err != nil {
+		t.Fatalf("parse dispatch output: %v\nraw=%s", err, dispatchOut)
+	}
+	must("run", "start", dispatch.Payload.RunID, "--actor", "human:owner")
+
+	writeGitFile(t, "proof.log", "first artifact\n")
+	firstOut := must("run", "evidence", "add", dispatch.Payload.RunID, "--type", "artifact_ref", "--title", "first", "--artifact", "proof.log", "--actor", "human:owner", "--json")
+	var first struct {
+		Payload struct {
+			EvidenceID   string `json:"evidence_id"`
+			ArtifactPath string `json:"artifact_path"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(firstOut), &first); err != nil {
+		t.Fatalf("parse first evidence output: %v\nraw=%s", err, firstOut)
+	}
+
+	writeGitFile(t, "proof.log", "second artifact\n")
+	secondOut := must("run", "evidence", "add", dispatch.Payload.RunID, "--type", "artifact_ref", "--title", "second", "--artifact", "proof.log", "--actor", "human:owner", "--json")
+	var second struct {
+		Payload struct {
+			EvidenceID   string `json:"evidence_id"`
+			ArtifactPath string `json:"artifact_path"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(secondOut), &second); err != nil {
+		t.Fatalf("parse second evidence output: %v\nraw=%s", err, secondOut)
+	}
+	if first.Payload.ArtifactPath == second.Payload.ArtifactPath {
+		t.Fatalf("expected unique artifact paths, got %q", first.Payload.ArtifactPath)
+	}
+	firstBytes, err := os.ReadFile(first.Payload.ArtifactPath)
+	if err != nil {
+		t.Fatalf("read first artifact: %v", err)
+	}
+	secondBytes, err := os.ReadFile(second.Payload.ArtifactPath)
+	if err != nil {
+		t.Fatalf("read second artifact: %v", err)
+	}
+	if string(firstBytes) != "first artifact\n" {
+		t.Fatalf("expected first artifact bytes to remain intact, got %q", string(firstBytes))
+	}
+	if string(secondBytes) != "second artifact\n" {
+		t.Fatalf("expected second artifact bytes to remain intact, got %q", string(secondBytes))
+	}
+}

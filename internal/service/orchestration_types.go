@@ -39,6 +39,8 @@ type RunDetailView struct {
 	Run         contracts.RunSnapshot     `json:"run"`
 	Ticket      contracts.TicketSnapshot  `json:"ticket,omitempty"`
 	Gates       []contracts.GateSnapshot  `json:"gates,omitempty"`
+	Changes     []contracts.ChangeRef     `json:"changes,omitempty"`
+	Checks      []contracts.CheckResult   `json:"checks,omitempty"`
 	Evidence    []contracts.EvidenceItem  `json:"evidence,omitempty"`
 	Handoffs    []contracts.HandoffPacket `json:"handoffs,omitempty"`
 	GeneratedAt time.Time                 `json:"generated_at"`
@@ -71,6 +73,22 @@ type DispatchResult struct {
 	ReasonCodes  []string  `json:"reason_codes,omitempty"`
 	WorktreePath string    `json:"worktree_path,omitempty"`
 	GeneratedAt  time.Time `json:"generated_at"`
+}
+
+type RunLaunchManifestView struct {
+	RunID            string    `json:"run_id"`
+	TicketID         string    `json:"ticket_id"`
+	AgentID          string    `json:"agent_id"`
+	RuntimeDir       string    `json:"runtime_dir"`
+	WorktreePath     string    `json:"worktree_path,omitempty"`
+	EvidenceDir      string    `json:"evidence_dir"`
+	BriefPath        string    `json:"brief_path"`
+	ContextPath      string    `json:"context_path"`
+	CodexLaunchPath  string    `json:"codex_launch_path"`
+	ClaudeLaunchPath string    `json:"claude_launch_path"`
+	Created          []string  `json:"created,omitempty"`
+	Updated          []string  `json:"updated,omitempty"`
+	GeneratedAt      time.Time `json:"generated_at"`
 }
 
 type WorktreeStatusView struct {

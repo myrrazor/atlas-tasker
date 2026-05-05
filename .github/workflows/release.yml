@@ -52,6 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -62,6 +64,12 @@ jobs:
         run: |
           set -eu
           cat dist/*.sha256 > dist/checksums.txt
+      - name: Attest release archives
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/checksums.txt
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
