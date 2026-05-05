@@ -1418,6 +1418,10 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	root, err = service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return err
+	}
 	repair, _ := cmd.Flags().GetBool("repair")
 	projectStore := mdstore.ProjectStore{RootDir: root}
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
