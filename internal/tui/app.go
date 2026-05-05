@@ -32,9 +32,12 @@ const (
 	screenSearch
 	screenReview
 	screenOwner
+	screenInbox
+	screenViews
+	screenOps
 )
 
-var screenNames = []string{"Board", "Queues", "Detail", "Search", "Review", "Owner"}
+var screenNames = []string{"Board", "Queues", "Detail", "Search", "Review", "Owner", "Inbox", "Views", "Ops"}
 
 type dialogKind int
 
@@ -56,6 +59,7 @@ const (
 	dialogUnlink  dialogAction = "unlink"
 	dialogComment dialogAction = "comment"
 	dialogReject  dialogAction = "reject"
+	dialogBulk    dialogAction = "bulk"
 )
 
 type keyMap struct {
@@ -78,19 +82,21 @@ type keyMap struct {
 	Approve       key.Binding
 	Reject        key.Binding
 	Complete      key.Binding
+	BulkPreview   key.Binding
+	BulkApply     key.Binding
 	Cancel        key.Binding
 	Quit          key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Palette, k.New, k.Claim, k.RequestReview, k.Refresh, k.Quit}
+	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Palette, k.New, k.BulkPreview, k.Refresh, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Left, k.Right, k.Up, k.Down, k.Select, k.Refresh, k.Quit, k.Cancel},
 		{k.Palette, k.New, k.Edit, k.Move, k.Assign, k.Link, k.Unlink},
-		{k.Claim, k.Comment, k.RequestReview, k.Approve, k.Reject, k.Complete},
+		{k.Claim, k.Comment, k.RequestReview, k.Approve, k.Reject, k.Complete, k.BulkPreview, k.BulkApply},
 	}
 }
 
@@ -118,47 +124,69 @@ func (d dialogState) active() bool {
 }
 
 type model struct {
-	root       string
-	actions    *service.ActionService
-	queries    *service.QueryService
-	projection *sqlitestore.Store
-	actor      contracts.Actor
-	actorErr   string
-	keys       keyMap
-	help       help.Model
-	screen     screen
-	width      int
-	height     int
-	board      service.BoardViewModel
-	queue      service.QueueView
-	review     service.QueueView
-	owner      service.QueueView
-	detail     service.TicketDetailView
-	search     textinput.Model
-	searchHits []contracts.TicketSnapshot
-	selectedID string
-	cursor     int
-	status     string
-	dialog     dialogState
+	root              string
+	actions           *service.ActionService
+	queries           *service.QueryService
+	projection        *sqlitestore.Store
+	actor             contracts.Actor
+	actorErr          string
+	keys              keyMap
+	help              help.Model
+	screen            screen
+	width             int
+	height            int
+	board             service.BoardViewModel
+	queue             service.QueueView
+	review            service.QueueView
+	owner             service.QueueView
+	inbox             []service.NotificationDelivery
+	deadLetters       []service.NotificationDelivery
+	savedViews        []contracts.SavedView
+	automations       []contracts.AutomationRule
+	automationExplain []service.AutomationResult
+	detail            service.TicketDetailView
+	search            textinput.Model
+	searchHits        []contracts.TicketSnapshot
+	selectedID        string
+	selectedView      string
+	cursor            int
+	status            string
+	dialog            dialogState
+	lastBulk          *service.BulkOperationResult
+	pendingBulk       *service.BulkOperation
 }
 
 type loadedMsg struct {
-	board      service.BoardViewModel
-	queue      service.QueueView
-	review     service.QueueView
-	owner      service.QueueView
-	detail     service.TicketDetailView
-	searchHits []contracts.TicketSnapshot
-	selectedID string
-	actor      contracts.Actor
-	actorErr   string
-	status     string
-	err        error
+	board             service.BoardViewModel
+	queue             service.QueueView
+	review            service.QueueView
+	owner             service.QueueView
+	inbox             []service.NotificationDelivery
+	deadLetters       []service.NotificationDelivery
+	savedViews        []contracts.SavedView
+	automations       []contracts.AutomationRule
+	automationExplain []service.AutomationResult
+	detail            service.TicketDetailView
+	searchHits        []contracts.TicketSnapshot
+	selectedID        string
+	selectedView      string
+	actor             contracts.Actor
+	actorErr          string
+	status            string
+	switchScreen      *screen
+	err               error
 }
 
 type detailMsg struct {
 	detail service.TicketDetailView
 	err    error
+}
+
+type bulkMsg struct {
+	result  service.BulkOperationResult
+	op      service.BulkOperation
+	applied bool
+	err     error
 }
 
 func Run(root string, explicitActor contracts.Actor) error {
@@ -173,7 +201,8 @@ func Run(root string, explicitActor contracts.Actor) error {
 }
 
 func newModel(root string, explicitActor contracts.Actor) (model, error) {
-	ticketStore := mdstore.TicketStore{RootDir: root}
+	clock := func() time.Time { return time.Now().UTC() }
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: clock}
 	eventLog := &eventstore.Log{RootDir: root}
 	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
 	if err != nil {
@@ -184,12 +213,17 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 	if err != nil {
 		return model{}, err
 	}
-	notifier, err := service.BuildNotifier(root, cfg, os.Stderr)
+	locks := service.FileLockManager{Root: root}
+	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, clock)
+	notifier, err := service.BuildNotifier(root, cfg, os.Stderr, service.SubscriptionResolver{
+		Store:   service.SubscriptionStore{Root: root},
+		Queries: queries,
+	})
 	if err != nil {
 		return model{}, err
 	}
-	actions := service.NewActionService(root, projectStore, ticketStore, eventLog, projection, time.Now, notifier)
-	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, time.Now)
+	automation := &service.AutomationEngine{Store: service.AutomationStore{Root: root}, Notifier: notifier}
+	actions := service.NewActionService(root, projectStore, ticketStore, eventLog, projection, clock, locks, notifier, automation)
 	km := keyMap{
 		Left:          key.NewBinding(key.WithKeys("left", "shift+tab"), key.WithHelp("←/shift+tab", "prev tab")),
 		Right:         key.NewBinding(key.WithKeys("right", "tab"), key.WithHelp("→/tab", "next tab")),
@@ -210,6 +244,8 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		Approve:       key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "approve")),
 		Reject:        key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "reject")),
 		Complete:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "complete")),
+		BulkPreview:   key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "bulk preview")),
+		BulkApply:     key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "apply bulk")),
 		Cancel:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel dialog")),
 		Quit:          key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
@@ -258,6 +294,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.owner.Categories != nil {
 			m.owner = msg.owner
 		}
+		if msg.inbox != nil {
+			m.inbox = msg.inbox
+		}
+		if msg.deadLetters != nil {
+			m.deadLetters = msg.deadLetters
+		}
+		if msg.savedViews != nil {
+			m.savedViews = msg.savedViews
+		}
+		if msg.automations != nil {
+			m.automations = msg.automations
+		}
+		if msg.automationExplain != nil {
+			m.automationExplain = msg.automationExplain
+		}
 		if msg.detail.Ticket.ID != "" {
 			m.detail = msg.detail
 		}
@@ -267,6 +318,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.selectedID != "" {
 			m.selectedID = msg.selectedID
 			m.syncCursor()
+		}
+		if msg.selectedView != "" {
+			m.selectedView = msg.selectedView
+		}
+		if msg.switchScreen != nil {
+			m.screen = *msg.switchScreen
 		}
 		if msg.actor != "" {
 			m.actor = msg.actor
@@ -289,6 +346,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.selectedID = msg.detail.Ticket.ID
 		m.screen = screenDetail
 		m.status = "detail synced"
+		return m, nil
+	case bulkMsg:
+		if msg.err != nil {
+			m.status = msg.err.Error()
+			return m, nil
+		}
+		result := msg.result
+		m.lastBulk = &result
+		op := msg.op
+		m.pendingBulk = &op
+		if msg.applied {
+			m.pendingBulk = nil
+			m.status = fmt.Sprintf("bulk %s applied", result.Preview.Kind)
+			return m, m.reload(m.selectedID, strings.TrimSpace(m.search.Value()), m.status)
+		}
+		m.screen = screenOps
+		m.status = fmt.Sprintf("bulk %s previewed", result.Preview.Kind)
 		return m, nil
 	case tea.KeyMsg:
 		if m.dialog.active() {
@@ -319,6 +393,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Select):
 			if m.screen == screenSearch {
 				return m, m.searchCmd()
+			}
+			if m.screen == screenViews {
+				selected := m.selectedViewName()
+				if selected == "" {
+					return m, nil
+				}
+				return m, m.loadSavedView(selected)
 			}
 			selected := m.selectedTicketID()
 			if selected == "" {
@@ -377,6 +458,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keys.Complete):
 			return m, m.completeSelected()
+		case key.Matches(msg, m.keys.BulkPreview):
+			if len(m.currentBulkTicketIDs()) == 0 {
+				m.status = "no tickets in the current view to batch"
+				return m, nil
+			}
+			m.dialog = newPromptDialog(dialogBulk, "", "Bulk Action", "move in_progress | assign agent:builder-1 | request-review | complete | claim | release", "")
+			return m, nil
+		case key.Matches(msg, m.keys.BulkApply):
+			return m, m.applyPendingBulk()
 		}
 	}
 	return m, nil
@@ -421,7 +511,7 @@ func (m model) bodyView() string {
 		if m.detail.Ticket.ID == "" {
 			return render.EmptyState("Detail", "No ticket selected yet.")
 		}
-		return render.TicketPretty(m.detail.Ticket, m.detail.Comments)
+		return detailWithGit(m.detail)
 	case screenSearch:
 		body := m.search.View() + "\n\n"
 		if len(m.searchHits) == 0 {
@@ -435,6 +525,12 @@ func (m model) bodyView() string {
 		return ticketsListView("Review Inbox", m.itemsForScreen(), m.cursor)
 	case screenOwner:
 		return ticketsListView("Owner Attention", m.itemsForScreen(), m.cursor)
+	case screenInbox:
+		return inboxView(m.inbox, m.deadLetters)
+	case screenViews:
+		return savedViewsPanel(m.savedViews, m.selectedViewName(), m.cursor)
+	case screenOps:
+		return opsView(m.automations, m.automationExplain, m.lastBulk, m.pendingBulk)
 	default:
 		return ""
 	}
@@ -497,7 +593,34 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 				return loadedMsg{err: err}
 			}
 		}
-		return loadedMsg{board: board, queue: queue, review: review, owner: owner, detail: detail, searchHits: searchHits, selectedID: selectedID, actor: actor, actorErr: actorErr, status: status}
+		inbox, err := m.queries.NotificationLog(12)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		deadLetters, err := m.queries.DeadLetters(6)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		savedViews, err := m.queries.ListSavedViews()
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		automations, err := m.queries.AutomationRules()
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		automationExplain := []service.AutomationResult{}
+		if selectedID != "" {
+			automationExplain, err = m.queries.ExplainAutomationRules(ctx, selectedID)
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+		}
+		selectedView := m.selectedView
+		if selectedView == "" && len(savedViews) > 0 {
+			selectedView = savedViews[0].Name
+		}
+		return loadedMsg{board: board, queue: queue, review: review, owner: owner, inbox: inbox, deadLetters: deadLetters, savedViews: savedViews, automations: automations, automationExplain: automationExplain, detail: detail, searchHits: searchHits, selectedID: selectedID, selectedView: selectedView, actor: actor, actorErr: actorErr, status: status}
 	}
 }
 
@@ -510,6 +633,59 @@ func (m model) loadDetail(ticketID string) tea.Cmd {
 	return func() tea.Msg {
 		detail, err := m.queries.TicketDetail(context.Background(), ticketID)
 		return detailMsg{detail: detail, err: err}
+	}
+}
+
+func (m model) loadSavedView(name string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := m.queries.RunSavedView(context.Background(), name, m.actor)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		msg := loadedMsg{selectedView: name, status: fmt.Sprintf("loaded view %s", name)}
+		switch result.View.Kind {
+		case contracts.SavedViewKindBoard:
+			target := screenBoard
+			msg.switchScreen = &target
+			if result.Board != nil {
+				msg.board = *result.Board
+				msg.selectedID = firstBoardTicketID(*result.Board)
+				msg.detail = service.TicketDetailView{}
+			}
+			msg.status = fmt.Sprintf("loaded board view %s", name)
+		case contracts.SavedViewKindSearch:
+			target := screenSearch
+			msg.switchScreen = &target
+			msg.searchHits = result.Tickets
+			if len(result.Tickets) > 0 {
+				msg.selectedID = result.Tickets[0].ID
+			}
+			msg.status = fmt.Sprintf("loaded search view %s", name)
+		case contracts.SavedViewKindQueue:
+			target := screenQueues
+			msg.switchScreen = &target
+			if result.Queue != nil {
+				msg.queue = *result.Queue
+				items := queueItems(*result.Queue)
+				if len(items) > 0 {
+					msg.selectedID = items[0].ID
+				}
+			}
+			msg.actor = result.Actor
+			msg.status = fmt.Sprintf("loaded queue view %s", name)
+		case contracts.SavedViewKindNext:
+			target := screenSearch
+			msg.switchScreen = &target
+			if result.Next != nil {
+				msg.searchHits = nextTickets(*result.Next)
+				if len(msg.searchHits) > 0 {
+					msg.selectedID = msg.searchHits[0].ID
+				}
+			}
+			msg.actor = result.Actor
+			msg.status = fmt.Sprintf("loaded next view %s", name)
+		}
+		return msg
 	}
 }
 
@@ -541,6 +717,27 @@ func (m model) itemsForScreen() []contracts.TicketSnapshot {
 }
 
 func (m *model) syncCursor() {
+	if m.screen == screenViews {
+		if len(m.savedViews) == 0 {
+			m.cursor = 0
+			m.selectedView = ""
+			return
+		}
+		for idx, view := range m.savedViews {
+			if view.Name == m.selectedView {
+				m.cursor = idx
+				return
+			}
+		}
+		if m.cursor >= len(m.savedViews) {
+			m.cursor = len(m.savedViews) - 1
+		}
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+		m.selectedView = m.savedViews[m.cursor].Name
+		return
+	}
 	items := m.itemsForScreen()
 	if len(items) == 0 {
 		m.cursor = 0
@@ -562,6 +759,26 @@ func (m *model) syncCursor() {
 }
 
 func (m model) moveCursor(delta int) model {
+	if m.screen == screenViews {
+		if len(m.savedViews) == 0 {
+			return m
+		}
+		if m.cursor >= len(m.savedViews) {
+			m.cursor = len(m.savedViews) - 1
+		}
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+		m.cursor += delta
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+		if m.cursor >= len(m.savedViews) {
+			m.cursor = len(m.savedViews) - 1
+		}
+		m.selectedView = m.savedViews[m.cursor].Name
+		return m
+	}
 	items := m.itemsForScreen()
 	if len(items) == 0 {
 		return m
@@ -584,6 +801,11 @@ func (m model) moveCursor(delta int) model {
 }
 
 func (m model) selectedTicketID() string {
+	switch m.screen {
+	case screenBoard, screenQueues, screenDetail, screenSearch, screenReview, screenOwner:
+	default:
+		return ""
+	}
 	if strings.TrimSpace(m.selectedID) != "" {
 		return m.selectedID
 	}
@@ -599,6 +821,23 @@ func (m model) selectedTicketID() string {
 	}
 	m.selectedID = items[m.cursor].ID
 	return m.selectedID
+}
+
+func (m model) selectedViewName() string {
+	if strings.TrimSpace(m.selectedView) != "" {
+		return m.selectedView
+	}
+	if len(m.savedViews) == 0 {
+		return ""
+	}
+	if m.cursor >= len(m.savedViews) {
+		m.cursor = len(m.savedViews) - 1
+	}
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	m.selectedView = m.savedViews[m.cursor].Name
+	return m.selectedView
 }
 
 func (m model) selectedTicket() (contracts.TicketSnapshot, bool) {
@@ -788,6 +1027,125 @@ func queueItems(queue service.QueueView) []contracts.TicketSnapshot {
 	return items
 }
 
+func nextTickets(next service.NextView) []contracts.TicketSnapshot {
+	items := make([]contracts.TicketSnapshot, 0, len(next.Entries))
+	for _, entry := range next.Entries {
+		items = append(items, entry.Entry.Ticket)
+	}
+	return items
+}
+
+func detailWithGit(detail service.TicketDetailView) string {
+	body := render.TicketPretty(detail.Ticket, detail.Comments)
+	gitLines := []string{"Git Context:"}
+	if !detail.Git.Repo.Present {
+		gitLines = append(gitLines, "- repo: not detected")
+		return body + "\n\n" + strings.Join(gitLines, "\n")
+	}
+	gitLines = append(gitLines,
+		fmt.Sprintf("- branch: %s", optionalString(detail.Git.Repo.Branch, "detached")),
+		fmt.Sprintf("- dirty: %t", detail.Git.Repo.Dirty),
+		fmt.Sprintf("- suggested: %s", optionalString(detail.Git.SuggestedBranch, "n/a")),
+		fmt.Sprintf("- current matches ticket: %t", detail.Git.CurrentBranchMatches),
+	)
+	if len(detail.Git.Refs) == 0 {
+		gitLines = append(gitLines, "- refs: none")
+	} else {
+		gitLines = append(gitLines, "- refs:")
+		for _, ref := range detail.Git.Refs {
+			gitLines = append(gitLines, fmt.Sprintf("  - %s %s", shortHash(ref.Hash), ref.Subject))
+		}
+	}
+	return body + "\n\n" + strings.Join(gitLines, "\n")
+}
+
+func inboxView(records []service.NotificationDelivery, deadLetters []service.NotificationDelivery) string {
+	if len(records) == 0 && len(deadLetters) == 0 {
+		return render.EmptyState("Inbox", "No notification traffic yet.")
+	}
+	lines := []string{"Recent Deliveries:"}
+	if len(records) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, record := range records {
+			lines = append(lines, fmt.Sprintf("- %s %s %s via %s", record.Timestamp.Format(time.RFC3339), record.Event.Type, optionalString(record.Event.TicketID, record.Event.Project), record.Sink))
+		}
+	}
+	lines = append(lines, "", "Dead Letters:")
+	if len(deadLetters) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, record := range deadLetters {
+			lines = append(lines, fmt.Sprintf("- %s %s via %s (%s)", record.Timestamp.Format(time.RFC3339), record.Event.Type, record.Sink, record.Error))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) string {
+	if len(views) == 0 {
+		return render.EmptyState("Views", "No saved views yet.")
+	}
+	lines := []string{"Saved Views:"}
+	for idx, view := range views {
+		prefix := "  "
+		if idx == cursor {
+			prefix = "> "
+		}
+		title := view.Title
+		if strings.TrimSpace(title) == "" {
+			title = view.Name
+		}
+		lines = append(lines, fmt.Sprintf("%s%s [%s] %s", prefix, view.Name, view.Kind, title))
+	}
+	if strings.TrimSpace(selected) != "" {
+		lines = append(lines, "", fmt.Sprintf("enter runs %s into the matching tab", selected))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func opsView(rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation) string {
+	lines := []string{"Automation Rules:"}
+	if len(rules) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, rule := range rules {
+			state := "disabled"
+			if rule.Enabled {
+				state = "enabled"
+			}
+			lines = append(lines, fmt.Sprintf("- %s [%s]", rule.Name, state))
+		}
+	}
+	lines = append(lines, "", "Automation Explain:")
+	if len(explain) == 0 {
+		lines = append(lines, "- select a ticket to inspect rule matches")
+	} else {
+		for _, result := range explain {
+			state := "skip"
+			if result.Matched {
+				state = "match"
+			}
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", result.Rule.Name, state, strings.Join(result.Actions, ", ")))
+		}
+	}
+	lines = append(lines, "", "Bulk Preview:")
+	switch {
+	case lastBulk != nil:
+		lines = append(lines,
+			fmt.Sprintf("- last batch: %s", lastBulk.BatchID),
+			fmt.Sprintf("- kind: %s", lastBulk.Preview.Kind),
+			fmt.Sprintf("- total: %d ok=%d failed=%d skipped=%d", lastBulk.Summary.Total, lastBulk.Summary.Succeeded, lastBulk.Summary.Failed, lastBulk.Summary.Skipped),
+		)
+	case pendingBulk != nil:
+		lines = append(lines, fmt.Sprintf("- pending %s on %d tickets", pendingBulk.Kind, len(pendingBulk.TicketIDs)))
+	default:
+		lines = append(lines, "- press b to preview a bulk action for the current ticket list")
+	}
+	lines = append(lines, "- press y to apply the last preview")
+	return strings.Join(lines, "\n")
+}
+
 func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor int) string {
 	if len(tickets) == 0 {
 		return render.EmptyState(title, "No items in this view yet.")
@@ -801,6 +1159,21 @@ func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor in
 		lines = append(lines, fmt.Sprintf("%s%s [%s/%s] %s", prefix, ticket.ID, ticket.Status, ticket.Priority, ticket.Title))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func optionalString(value string, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func shortHash(hash string) string {
+	hash = strings.TrimSpace(hash)
+	if len(hash) <= 8 {
+		return hash
+	}
+	return hash[:8]
 }
 
 func optionalActor(actor contracts.Actor, fallback string) string {
