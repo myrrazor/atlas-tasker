@@ -2,8 +2,16 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
 func TestExecuteUsesStructuredJSONErrorsAndExitCodes(t *testing.T) {
@@ -83,6 +91,153 @@ func TestDoctorJSONReportsStructuredSuccess(t *testing.T) {
 	}
 	if payload.RepairActions == nil {
 		t.Fatal("expected repair_actions field to be present")
+	}
+}
+
+func TestDoctorJSONReportsOrchestrationIntegrityIssues(t *testing.T) {
+	withTempWorkspace(t)
+
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if _, err := runCLI(t, "project", "create", "APP", "App Project"); err != nil {
+		t.Fatalf("project create failed: %v", err)
+	}
+	if _, err := runCLI(t, "ticket", "create", "--project", "APP", "--title", "Doctor drift", "--type", "task", "--actor", "human:owner"); err != nil {
+		t.Fatalf("ticket create failed: %v", err)
+	}
+
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	now := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+	run := contracts.RunSnapshot{
+		RunID:         "run_1",
+		TicketID:      "APP-1",
+		Project:       "APP",
+		Status:        contracts.RunStatusActive,
+		Kind:          contracts.RunKindWork,
+		CreatedAt:     now,
+		WorktreePath:  filepath.Join(root, "missing-worktree"),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := (service.RunStore{Root: root}).SaveRun(context.Background(), run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	if err := os.MkdirAll(storage.RuntimeDir(root, run.RunID), 0o755); err != nil {
+		t.Fatalf("mkdir runtime: %v", err)
+	}
+	if err := os.WriteFile(storage.RuntimeBriefFile(root, run.RunID), []byte("brief"), 0o644); err != nil {
+		t.Fatalf("write runtime brief: %v", err)
+	}
+	evidence := contracts.EvidenceItem{
+		EvidenceID:    "evidence_missing",
+		RunID:         run.RunID,
+		TicketID:      "APP-1",
+		Type:          contracts.EvidenceTypeLogExcerpt,
+		Title:         "missing artifact",
+		Body:          "artifact drift",
+		ArtifactPath:  filepath.Join(storage.EvidenceDir(root, run.RunID), "missing.log"),
+		Actor:         contracts.Actor("human:owner"),
+		CreatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := (service.EvidenceStore{Root: root}).SaveEvidence(context.Background(), evidence); err != nil {
+		t.Fatalf("save evidence: %v", err)
+	}
+
+	out, err := runCLI(t, "doctor", "--json")
+	if err != nil {
+		t.Fatalf("doctor failed: %v", err)
+	}
+	var payload struct {
+		IssueCodes []string `json:"issue_codes"`
+		Issues     struct {
+			Orchestration struct {
+				RuntimeIssues  int `json:"runtime_issues"`
+				WorktreeIssues int `json:"worktree_issues"`
+				EvidenceIssues int `json:"evidence_issues"`
+			} `json:"orchestration"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("parse doctor payload: %v\nraw=%s", err, out)
+	}
+	for _, code := range []string{"runtime_artifacts_partial", "worktree_missing", "evidence_artifact_missing"} {
+		found := false
+		for _, got := range payload.IssueCodes {
+			if got == code {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected issue code %s in %v", code, payload.IssueCodes)
+		}
+	}
+	if payload.Issues.Orchestration.RuntimeIssues == 0 || payload.Issues.Orchestration.WorktreeIssues == 0 || payload.Issues.Orchestration.EvidenceIssues == 0 {
+		t.Fatalf("expected orchestration issue counts, got %#v", payload.Issues.Orchestration)
+	}
+}
+
+func TestDoctorRepairReportsCorruptOrchestrationDocsWithoutFailing(t *testing.T) {
+	withTempWorkspace(t)
+
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if _, err := runCLI(t, "project", "create", "APP", "App Project"); err != nil {
+		t.Fatalf("project create failed: %v", err)
+	}
+	if _, err := runCLI(t, "ticket", "create", "--project", "APP", "--title", "Doctor corruption", "--type", "task", "--actor", "human:owner"); err != nil {
+		t.Fatalf("ticket create failed: %v", err)
+	}
+
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	for _, item := range []struct {
+		path string
+		body string
+	}{
+		{storage.RunFile(root, "run_broken"), "---\nrun_id: run_broken\nstatus: [\n"},
+		{storage.GateFile(root, "gate_broken"), "---\ngate_id: gate_broken\nkind: review\nstate: [\n"},
+	} {
+		if err := os.MkdirAll(filepath.Dir(item.path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", item.path, err)
+		}
+		if err := os.WriteFile(item.path, []byte(item.body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", item.path, err)
+		}
+	}
+
+	out, err := runCLI(t, "doctor", "--repair", "--json")
+	if err != nil {
+		t.Fatalf("doctor --repair failed: %v\n%s", err, out)
+	}
+	var payload struct {
+		OK         bool     `json:"ok"`
+		IssueCodes []string `json:"issue_codes"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("parse doctor payload: %v\nraw=%s", err, out)
+	}
+	if !payload.OK {
+		t.Fatalf("expected doctor ok=true, got %#v", payload)
+	}
+	for _, code := range []string{"run_doc_corrupt", "gate_doc_corrupt"} {
+		found := false
+		for _, got := range payload.IssueCodes {
+			if got == code {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected doctor issue code %s in %v", code, payload.IssueCodes)
+		}
 	}
 }
 
