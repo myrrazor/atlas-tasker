@@ -84,7 +84,7 @@ func (s *ActionService) newEvent(ctx context.Context, project string, at time.Ti
 	}
 	return contracts.NormalizeEvent(contracts.Event{
 		EventID:           eventID,
-		EventUID:          contracts.DeterministicUID("event", workspaceID, fmt.Sprintf("%d", logicalClock), fmt.Sprintf("%d", eventID), string(eventType), project, ticketID, at.UTC().Format(time.RFC3339Nano)),
+		EventUID:          contracts.CanonicalEventUID(contracts.Event{EventID: eventID, Timestamp: at.UTC(), OriginWorkspaceID: workspaceID, LogicalClock: logicalClock, Type: eventType, Project: project, TicketID: ticketID, SchemaVersion: contracts.CurrentSchemaVersion}),
 		Timestamp:         at.UTC(),
 		OriginWorkspaceID: workspaceID,
 		LogicalClock:      logicalClock,
@@ -328,7 +328,7 @@ func (s *ActionService) normalizeAppendOnlyEvent(ctx context.Context, event cont
 		event.LogicalClock = next
 	}
 	if event.EventUID == "" {
-		event.EventUID = contracts.DeterministicUID("event", event.OriginWorkspaceID, fmt.Sprintf("%d", event.LogicalClock), fmt.Sprintf("%d", event.EventID), string(event.Type), event.Project, event.TicketID, event.Timestamp.UTC().Format(time.RFC3339Nano))
+		event.EventUID = contracts.CanonicalEventUID(event)
 	}
 	return contracts.NormalizeEvent(event), nil
 }

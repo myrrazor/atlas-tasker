@@ -73,6 +73,9 @@ func TestDoctorJSONReportsStructuredSuccess(t *testing.T) {
 		RepairActions []string `json:"repair_actions"`
 		IssueCodes    []string `json:"issue_codes"`
 		EventsCount   int      `json:"events_scanned"`
+		Migration     struct {
+			State string `json:"state"`
+		} `json:"migration"`
 	}
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		t.Fatalf("parse doctor payload: %v\nraw=%s", err, out)
@@ -91,6 +94,9 @@ func TestDoctorJSONReportsStructuredSuccess(t *testing.T) {
 	}
 	if payload.RepairActions == nil {
 		t.Fatal("expected repair_actions field to be present")
+	}
+	if payload.Migration.State == "" {
+		t.Fatal("expected migration field to be present")
 	}
 }
 
@@ -178,6 +184,68 @@ func TestDoctorJSONReportsOrchestrationIntegrityIssues(t *testing.T) {
 	}
 	if payload.Issues.Orchestration.RuntimeIssues == 0 || payload.Issues.Orchestration.WorktreeIssues == 0 || payload.Issues.Orchestration.EvidenceIssues == 0 {
 		t.Fatalf("expected orchestration issue counts, got %#v", payload.Issues.Orchestration)
+	}
+}
+
+func TestExecuteUsesStructuredJSONErrorsForV16CommandFamilies(t *testing.T) {
+	withTempWorkspace(t)
+
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if _, err := runCLI(t, "project", "create", "APP", "App Project"); err != nil {
+		t.Fatalf("project create failed: %v", err)
+	}
+
+	type errorCase struct {
+		name string
+		args []string
+		code string
+		exit int
+	}
+	cases := []errorCase{
+		{name: "collaborator", args: []string{"collaborator", "view", "ghost", "--json"}, code: "not_found", exit: 3},
+		{name: "membership", args: []string{"membership", "unbind", "membership_missing", "--json"}, code: "not_found", exit: 3},
+		{name: "remote", args: []string{"remote", "view", "origin", "--json"}, code: "not_found", exit: 3},
+		{name: "sync", args: []string{"sync", "view", "sync_missing", "--json"}, code: "not_found", exit: 3},
+		{name: "bundle", args: []string{"bundle", "view", "bundle_missing", "--json"}, code: "not_found", exit: 3},
+		{name: "conflict", args: []string{"conflict", "view", "conflict_missing", "--json"}, code: "not_found", exit: 3},
+		{name: "mentions", args: []string{"mentions", "view", "mention_missing", "--json"}, code: "not_found", exit: 3},
+		{name: "timeline", args: []string{"timeline", "APP-99", "--collaborator", "ghost", "--json"}, code: "not_found", exit: 3},
+		{name: "codeowners", args: []string{"project", "codeowners", "render", "NOPE", "--json"}, code: "not_found", exit: 3},
+		{name: "rules", args: []string{"project", "rules", "render", "NOPE", "--json"}, code: "not_found", exit: 3},
+		{name: "remote_add_invalid", args: []string{"remote", "add", "origin", "--kind", "git", "--location", "https://user:secret@example.com/acme/repo.git", "--json"}, code: "invalid_input", exit: 2},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			exit := Execute(tc.args, &stdout, &stderr)
+			if exit != tc.exit {
+				t.Fatalf("expected exit %d, got %d\nstdout=%s\nstderr=%s", tc.exit, exit, stdout.String(), stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("expected no stdout on error, got %s", stdout.String())
+			}
+			var envelope struct {
+				FormatVersion string `json:"format_version"`
+				OK            bool   `json:"ok"`
+				Error         struct {
+					Code string `json:"code"`
+					Exit int    `json:"exit"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+				t.Fatalf("parse json error envelope: %v\nraw=%s", err, stderr.String())
+			}
+			if envelope.FormatVersion != jsonFormatVersion || envelope.OK {
+				t.Fatalf("unexpected envelope header: %#v", envelope)
+			}
+			if envelope.Error.Code != tc.code || envelope.Error.Exit != tc.exit {
+				t.Fatalf("unexpected envelope for %s: %#v", tc.name, envelope)
+			}
+		})
 	}
 }
 

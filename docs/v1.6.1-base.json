@@ -1,0 +1,8 @@
+{
+  "format_version": "v1",
+  "kind": "v1.6.1_base",
+  "label": "v1.6.1-base-f58869c",
+  "base_branch": "codex/pr-608-release-proof-upgrade",
+  "base_sha": "f58869c3ed3067d391ee0ee002d5fb2c2445f8b8",
+  "recorded_at": "2026-03-29T00:00:00Z"
+}

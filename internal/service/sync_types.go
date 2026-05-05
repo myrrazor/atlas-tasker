@@ -6,6 +6,44 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
 
+type MigrationState string
+
+const (
+	MigrationStateUnstamped MigrationState = "unstamped"
+	MigrationStateStamped   MigrationState = "stamped"
+	MigrationStateDivergent MigrationState = "divergent"
+	MigrationStateUnknown   MigrationState = "unknown"
+)
+
+type MigrationDiagnosticView struct {
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	NextStep string `json:"next_step"`
+}
+
+type MigrationEntityStatusView struct {
+	Kind      string         `json:"kind"`
+	State     MigrationState `json:"state"`
+	Total     int            `json:"total"`
+	Stamped   int            `json:"stamped"`
+	Unstamped int            `json:"unstamped,omitempty"`
+	Divergent int            `json:"divergent,omitempty"`
+	Unknown   int            `json:"unknown,omitempty"`
+	Examples  []string       `json:"examples,omitempty"`
+}
+
+type MigrationStatusView struct {
+	WorkspaceID   string                      `json:"workspace_id,omitempty"`
+	State         MigrationState              `json:"state"`
+	Ready         bool                        `json:"ready"`
+	ReasonCodes   []string                    `json:"reason_codes,omitempty"`
+	Diagnostics   []MigrationDiagnosticView   `json:"diagnostics,omitempty"`
+	Entities      []MigrationEntityStatusView `json:"entities,omitempty"`
+	StampedAt     time.Time                   `json:"stamped_at,omitempty"`
+	SchemaVersion int                         `json:"schema_version,omitempty"`
+	CheckedAt     time.Time                   `json:"checked_at"`
+}
+
 type SyncPublication struct {
 	WorkspaceID    string    `json:"workspace_id"`
 	BundleID       string    `json:"bundle_id"`
@@ -36,6 +74,7 @@ type SyncStatusRemoteView struct {
 type SyncStatusView struct {
 	WorkspaceID       string                 `json:"workspace_id"`
 	MigrationComplete bool                   `json:"migration_complete"`
+	Migration         MigrationStatusView    `json:"migration"`
 	ReasonCodes       []string               `json:"reason_codes,omitempty"`
 	Remotes           []SyncStatusRemoteView `json:"remotes,omitempty"`
 	GeneratedAt       time.Time              `json:"generated_at"`

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
+	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
@@ -29,12 +30,17 @@ const (
 type syncMigrationState struct {
 	Complete      bool      `json:"complete"`
 	WorkspaceID   string    `json:"workspace_id"`
+	State         string    `json:"state,omitempty"`
 	StampedAt     time.Time `json:"stamped_at"`
 	SchemaVersion int       `json:"schema_version"`
 }
 
 func (s *QueryService) ListSyncRemotes(ctx context.Context) ([]contracts.SyncRemote, error) {
-	return s.SyncRemotes.ListSyncRemotes(ctx)
+	items, err := s.SyncRemotes.ListSyncRemotes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return sanitizeSyncRemotes(items), nil
 }
 
 func (s *QueryService) SyncRemoteDetail(ctx context.Context, remoteID string) (SyncRemoteDetailView, error) {
@@ -46,7 +52,7 @@ func (s *QueryService) SyncRemoteDetail(ctx context.Context, remoteID string) (S
 	if err != nil {
 		return SyncRemoteDetailView{}, err
 	}
-	return SyncRemoteDetailView{Remote: remote, Publications: publications, GeneratedAt: s.now()}, nil
+	return SyncRemoteDetailView{Remote: sanitizeSyncRemote(remote), Publications: publications, GeneratedAt: s.now()}, nil
 }
 
 func (s *QueryService) ListSyncJobs(ctx context.Context, remoteID string) ([]contracts.SyncJob, error) {
@@ -108,11 +114,7 @@ func (s *QueryService) BundleDetail(ctx context.Context, bundleRef string) (Sync
 }
 
 func (s *QueryService) SyncStatus(ctx context.Context, remoteID string) (SyncStatusView, error) {
-	workspaceID, err := loadWorkspaceIdentity(s.Root)
-	if err != nil {
-		return SyncStatusView{}, err
-	}
-	migrationComplete, err := syncMigrationComplete(s.Root)
+	migration, err := s.MigrationStatus(ctx)
 	if err != nil {
 		return SyncStatusView{}, err
 	}
@@ -130,14 +132,16 @@ func (s *QueryService) SyncStatus(ctx context.Context, remoteID string) (SyncSta
 		if err != nil {
 			return SyncStatusView{}, err
 		}
-		items = append(items, SyncStatusRemoteView{Remote: remote, Publications: publications})
+		items = append(items, SyncStatusRemoteView{Remote: sanitizeSyncRemote(remote), Publications: publications})
 	}
-	reasonCodes := []string{}
-	if strings.TrimSpace(workspaceID) == "" || !migrationComplete {
-		reasonCodes = append(reasonCodes, "migration_incomplete")
-		migrationComplete = false
-	}
-	return SyncStatusView{WorkspaceID: workspaceID, MigrationComplete: migrationComplete, ReasonCodes: reasonCodes, Remotes: items, GeneratedAt: s.now()}, nil
+	return SyncStatusView{
+		WorkspaceID:       migration.WorkspaceID,
+		MigrationComplete: migration.Ready,
+		Migration:         migration,
+		ReasonCodes:       append([]string{}, migration.ReasonCodes...),
+		Remotes:           items,
+		GeneratedAt:       s.now(),
+	}, nil
 }
 
 func (s *ActionService) AddSyncRemote(ctx context.Context, remote contracts.SyncRemote, actor contracts.Actor, reason string) (contracts.SyncRemote, error) {
@@ -244,6 +248,9 @@ func (s *ActionService) CreateSyncBundle(ctx context.Context, actor contracts.Ac
 			return SyncJobDetailView{}, err
 		}
 		if err := s.ensureSyncMigrationStamp(ctx); err != nil {
+			return SyncJobDetailView{}, err
+		}
+		if err := s.ensureSyncMigrationReady(ctx); err != nil {
 			return SyncJobDetailView{}, err
 		}
 		bundleID := "syncbundle_" + NewOpaqueID()
@@ -362,6 +369,9 @@ func (s *ActionService) ImportSyncBundle(ctx context.Context, bundleRef string, 
 		if err := s.ensureSyncMigrationStamp(ctx); err != nil {
 			return SyncJobDetailView{}, err
 		}
+		if err := s.ensureSyncMigrationReady(ctx); err != nil {
+			return SyncJobDetailView{}, err
+		}
 		artifactPath := resolveSyncBundlePath(s.Root, bundleRef)
 		jobID := "import_" + NewOpaqueID()
 		verifyView, err := verifySyncBundle(artifactPath)
@@ -383,7 +393,7 @@ func (s *ActionService) ImportSyncBundle(ctx context.Context, bundleRef string, 
 		if err != nil {
 			return SyncJobDetailView{}, err
 		}
-		if err := writeSyncMigrationState(syncMigrationPath(s.Root), syncMigrationState{Complete: true, WorkspaceID: workspaceID, StampedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		if err := writeSyncMigrationState(syncMigrationPath(s.Root), syncMigrationState{Complete: true, WorkspaceID: workspaceID, State: string(MigrationStateStamped), StampedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
 			return SyncJobDetailView{}, err
 		}
 		if s.Projection != nil {
@@ -591,7 +601,7 @@ func (s *ActionService) persistCompletedSyncJob(ctx context.Context, _ contracts
 	if err := s.SyncRemotes.SaveSyncRemote(ctx, remote); err != nil {
 		return SyncJobDetailView{}, err
 	}
-	return SyncJobDetailView{Job: job, Remote: remote, Publication: publication, GeneratedAt: s.now()}, nil
+	return SyncJobDetailView{Job: job, Remote: sanitizeSyncRemote(remote), Publication: publication, GeneratedAt: s.now()}, nil
 }
 
 func (s *ActionService) ensureSyncMigrationStamp(ctx context.Context) error {
@@ -735,11 +745,14 @@ func (s *ActionService) ensureSyncMigrationStamp(ctx context.Context) error {
 			return err
 		}
 	}
+	if err := restampLegacyEventFiles(s.Root); err != nil {
+		return err
+	}
 	workspaceID, err := ensureWorkspaceIdentity(s.Root)
 	if err != nil {
 		return err
 	}
-	return writeSyncMigrationState(path, syncMigrationState{Complete: true, WorkspaceID: workspaceID, StampedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion})
+	return writeSyncMigrationState(path, syncMigrationState{Complete: true, WorkspaceID: workspaceID, State: string(MigrationStateStamped), StampedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion})
 }
 
 func syncMigrationPath(root string) string {
@@ -747,17 +760,9 @@ func syncMigrationPath(root string) string {
 }
 
 func syncMigrationComplete(root string) (bool, error) {
-	path := syncMigrationPath(root)
-	raw, err := os.ReadFile(path)
+	state, _, err := loadSyncMigrationState(root)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, fmt.Errorf("read sync migration state: %w", err)
-	}
-	var state syncMigrationState
-	if err := json.Unmarshal(raw, &state); err != nil {
-		return false, fmt.Errorf("decode sync migration state: %w", err)
+		return false, err
 	}
 	return state.Complete, nil
 }
@@ -867,10 +872,18 @@ func verifySyncBundle(artifactPath string) (SyncBundleVerifyView, error) {
 	}
 	entries := map[string]bundleFileRecord{}
 	for _, item := range manifest.Files {
+		if !isSyncableRelativePath(item.Path) {
+			view.Errors = append(view.Errors, "unsafe_sync_entry:"+item.Path)
+			continue
+		}
 		entries[item.Path] = item
 	}
 	for path, raw := range files {
 		if path == "manifest.json" {
+			continue
+		}
+		if !isSyncableRelativePath(path) {
+			view.Errors = append(view.Errors, "unsafe_sync_entry:"+path)
 			continue
 		}
 		expected, ok := entries[path]
@@ -1222,10 +1235,10 @@ func normalizeSyncRemoteLocation(root string, kind contracts.SyncRemoteKind, loc
 		return "", apperr.New(apperr.CodeInvalidInput, "remote location is required")
 	}
 	if kind == contracts.SyncRemoteKindGit {
+		if remoteLocationHasEmbeddedCredentials(location) {
+			return "", apperr.New(apperr.CodeInvalidInput, "git remote URL cannot embed credentials")
+		}
 		if parsed, err := url.Parse(location); err == nil && parsed.Scheme != "" {
-			if parsed.User != nil {
-				return "", apperr.New(apperr.CodeInvalidInput, "git remote URL cannot embed credentials")
-			}
 			return location, nil
 		}
 	}
@@ -1303,9 +1316,9 @@ func gitSyncShowFile(repoDir string, ref string, name string) ([]byte, error) {
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		message := strings.TrimSpace(string(output))
+		message := redactRemoteSecrets(strings.TrimSpace(string(output)))
 		if message == "" {
-			message = err.Error()
+			message = redactRemoteSecrets(err.Error())
 		}
 		return nil, fmt.Errorf("git show %s:%s: %s", ref, name, message)
 	}
@@ -1321,9 +1334,9 @@ func gitSyncOutput(dir string, env []string, args ...string) (string, error) {
 	cmd.Env = append(cmd.Env, env...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		message := strings.TrimSpace(string(output))
+		message := redactRemoteSecrets(strings.TrimSpace(string(output)))
 		if message == "" {
-			message = err.Error()
+			message = redactRemoteSecrets(err.Error())
 		}
 		return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), message)
 	}
@@ -1427,4 +1440,65 @@ func isSyncableRelativePath(rel string) bool {
 	default:
 		return false
 	}
+}
+
+func sanitizeSyncRemotes(items []contracts.SyncRemote) []contracts.SyncRemote {
+	if len(items) == 0 {
+		return []contracts.SyncRemote{}
+	}
+	sanitized := make([]contracts.SyncRemote, 0, len(items))
+	for _, item := range items {
+		sanitized = append(sanitized, sanitizeSyncRemote(item))
+	}
+	return sanitized
+}
+
+func sanitizeSyncRemote(remote contracts.SyncRemote) contracts.SyncRemote {
+	remote.Location = redactRemoteSecrets(remote.Location)
+	return remote
+}
+
+func redactRemoteSecrets(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	if idx := strings.Index(value, "@"); idx > 0 {
+		prefix := value[:idx]
+		if strings.Contains(prefix, ":") && !strings.Contains(prefix, "://") {
+			parts := strings.SplitN(prefix, ":", 2)
+			user := strings.TrimSpace(parts[0])
+			if user == "" {
+				user = "***"
+			}
+			value = user + ":***" + value[idx:]
+		}
+	}
+	return config.MaskSecretsInText(value)
+}
+
+func remoteLocationHasEmbeddedCredentials(location string) bool {
+	location = strings.TrimSpace(location)
+	if location == "" {
+		return false
+	}
+	if idx := strings.Index(location, "@"); idx > 0 && !strings.Contains(location[:idx], "://") {
+		prefix := location[:idx]
+		if strings.Contains(prefix, ":") {
+			return true
+		}
+	}
+	if parsed, err := url.Parse(location); err == nil && parsed.Scheme != "" {
+		if parsed.User != nil {
+			return true
+		}
+		for key := range parsed.Query() {
+			lower := strings.ToLower(strings.TrimSpace(key))
+			if strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "key") || strings.Contains(lower, "password") {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }

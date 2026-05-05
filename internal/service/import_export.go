@@ -23,8 +23,12 @@ import (
 )
 
 const (
-	exportBundleFormatV1 = "atlas_bundle_v1"
-	importMaxSourceBytes = 64 << 20
+	exportBundleFormatV1  = "atlas_bundle_v1"
+	importMaxSourceBytes  = 64 << 20
+	bundleArchiveMaxFiles = 2048
+	bundleArchiveMaxPath  = 1024
+	bundleArchiveMaxBytes = 128 << 20
+	bundleArchiveMaxRatio = 200
 )
 
 type ExportBundleDetailView struct {
@@ -965,6 +969,10 @@ func readBundleArchive(path string) (map[string][]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
 	gz, err := gzip.NewReader(file)
 	if err != nil {
 		return nil, apperr.New(apperr.CodeInvalidInput, "bundle archive is not a valid gzip stream")
@@ -972,6 +980,7 @@ func readBundleArchive(path string) (map[string][]byte, error) {
 	defer gz.Close()
 	tr := tar.NewReader(gz)
 	files := map[string][]byte{}
+	totalExpanded := int64(0)
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -984,15 +993,38 @@ func readBundleArchive(path string) (map[string][]byte, error) {
 		if invalidImportPath(name) {
 			return nil, apperr.New(apperr.CodeInvalidInput, "path traversal detected in bundle")
 		}
-		if header.Typeflag != tar.TypeReg {
+		if len(name) > bundleArchiveMaxPath {
+			return nil, apperr.New(apperr.CodeInvalidInput, "bundle path exceeds length limit")
+		}
+		switch header.Typeflag {
+		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeDir:
 			continue
+		case tar.TypeSymlink:
+			return nil, apperr.New(apperr.CodeInvalidInput, "bundle_symlink_rejected: symlink entries are not allowed")
+		case tar.TypeLink:
+			return nil, apperr.New(apperr.CodeInvalidInput, "bundle_hardlink_rejected: hardlink entries are not allowed")
+		case tar.TypeChar, tar.TypeBlock, tar.TypeFifo:
+			return nil, apperr.New(apperr.CodeInvalidInput, "bundle_device_rejected: special device entries are not allowed")
+		default:
+			return nil, apperr.New(apperr.CodeInvalidInput, "bundle entry type is not supported")
 		}
 		if header.Size > importMaxSourceBytes {
 			return nil, apperr.New(apperr.CodeInvalidInput, "bundle entry exceeds size limit")
 		}
+		totalExpanded += header.Size
+		if totalExpanded > bundleArchiveMaxBytes {
+			return nil, apperr.New(apperr.CodeInvalidInput, "bundle archive exceeds expanded size limit")
+		}
+		if info.Size() > 0 && totalExpanded > info.Size()*bundleArchiveMaxRatio {
+			return nil, apperr.New(apperr.CodeInvalidInput, "bundle archive exceeds compression ratio limit")
+		}
 		raw, err := io.ReadAll(tr)
 		if err != nil {
 			return nil, err
+		}
+		if len(files) >= bundleArchiveMaxFiles {
+			return nil, apperr.New(apperr.CodeInvalidInput, "bundle archive exceeds file count limit")
 		}
 		files[name] = raw
 	}

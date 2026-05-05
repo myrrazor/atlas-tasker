@@ -253,6 +253,203 @@ func TestRequireChangeMergeAuthorityAllowsReviewerMembership(t *testing.T) {
 	}
 }
 
+func TestCompleteRunBlocksUntrustedMappedCollaboratorAfterRunStart(t *testing.T) {
+	ctx := context.Background()
+	_, actions, queries, projectStore, _, _ := newImportExportHarness(t)
+	now := actions.now()
+
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket, err := actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project:       "APP",
+		Title:         "Finish run with trust revoked",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusInProgress,
+		Priority:      contracts.PriorityHigh,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}, contracts.Actor("human:owner"), "seed ticket")
+	if err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	run := normalizeRunSnapshot(contracts.RunSnapshot{
+		RunID:         "run_trust_flip",
+		TicketID:      ticket.ID,
+		Project:       ticket.Project,
+		AgentID:       "builder-1",
+		Status:        contracts.RunStatusActive,
+		Kind:          contracts.RunKindWork,
+		CreatedAt:     now,
+		StartedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	})
+	if err := actions.Runs.SaveRun(ctx, run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	if _, err := actions.AddCollaborator(ctx, contracts.CollaboratorProfile{
+		CollaboratorID: "builder-1",
+		DisplayName:    "Builder One",
+		AtlasActors:    []contracts.Actor{"agent:builder-1"},
+		TrustState:     contracts.CollaboratorTrustStateTrusted,
+	}, contracts.Actor("human:owner"), "seed collaborator"); err != nil {
+		t.Fatalf("add collaborator: %v", err)
+	}
+	if _, err := actions.BindMembership(ctx, contracts.MembershipBinding{
+		CollaboratorID: "builder-1",
+		ScopeKind:      contracts.MembershipScopeProject,
+		ScopeID:        "APP",
+		Role:           contracts.MembershipRoleContributor,
+	}, contracts.Actor("human:owner"), "bind contributor membership"); err != nil {
+		t.Fatalf("bind membership: %v", err)
+	}
+	if _, err := actions.SetCollaboratorTrust(ctx, "builder-1", false, contracts.Actor("human:owner"), "revoke trust mid-flight"); err != nil {
+		t.Fatalf("revoke collaborator trust: %v", err)
+	}
+
+	if _, err := actions.CompleteRun(ctx, run.RunID, contracts.Actor("agent:builder-1"), "finish with revoked trust", "done"); err == nil || apperr.CodeOf(err) != apperr.CodePermissionDenied {
+		t.Fatalf("expected run completion to be blocked, got %v", err)
+	}
+	view, err := queries.PermissionsView(ctx, "run:"+run.RunID, contracts.Actor("agent:builder-1"), contracts.PermissionActionRunComplete)
+	if err != nil {
+		t.Fatalf("permissions view: %v", err)
+	}
+	if len(view.Decisions) != 1 || !slices.Contains(view.Decisions[0].ReasonCodes, "collaborator_untrusted") {
+		t.Fatalf("expected collaborator_untrusted reason, got %#v", view.Decisions)
+	}
+	stored, err := actions.Runs.LoadRun(ctx, run.RunID)
+	if err != nil {
+		t.Fatalf("load run after denied completion: %v", err)
+	}
+	if stored.Status != contracts.RunStatusActive {
+		t.Fatalf("expected run to stay active after denied completion, got %#v", stored)
+	}
+}
+
+func TestCompleteRunBlocksWhenMembershipIsRemovedMidFlight(t *testing.T) {
+	ctx := context.Background()
+	_, actions, queries, projectStore, _, _ := newImportExportHarness(t)
+	now := actions.now()
+
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket, err := actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project:       "APP",
+		Title:         "Finish run with removed membership",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusInProgress,
+		Priority:      contracts.PriorityHigh,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}, contracts.Actor("human:owner"), "seed ticket")
+	if err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	run := normalizeRunSnapshot(contracts.RunSnapshot{
+		RunID:         "run_membership_flip",
+		TicketID:      ticket.ID,
+		Project:       ticket.Project,
+		AgentID:       "builder-1",
+		Status:        contracts.RunStatusActive,
+		Kind:          contracts.RunKindWork,
+		CreatedAt:     now,
+		StartedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	})
+	if err := actions.Runs.SaveRun(ctx, run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	if _, err := actions.AddCollaborator(ctx, contracts.CollaboratorProfile{
+		CollaboratorID: "builder-1",
+		DisplayName:    "Builder One",
+		AtlasActors:    []contracts.Actor{"agent:builder-1"},
+		TrustState:     contracts.CollaboratorTrustStateTrusted,
+	}, contracts.Actor("human:owner"), "seed collaborator"); err != nil {
+		t.Fatalf("add collaborator: %v", err)
+	}
+	membership, err := actions.BindMembership(ctx, contracts.MembershipBinding{
+		CollaboratorID: "builder-1",
+		ScopeKind:      contracts.MembershipScopeProject,
+		ScopeID:        "APP",
+		Role:           contracts.MembershipRoleContributor,
+	}, contracts.Actor("human:owner"), "bind contributor membership")
+	if err != nil {
+		t.Fatalf("bind membership: %v", err)
+	}
+	if _, err := actions.UnbindMembership(ctx, membership.MembershipUID, contracts.Actor("human:owner"), "remove membership mid-flight"); err != nil {
+		t.Fatalf("unbind membership: %v", err)
+	}
+
+	if _, err := actions.CompleteRun(ctx, run.RunID, contracts.Actor("agent:builder-1"), "finish without membership", "done"); err == nil || apperr.CodeOf(err) != apperr.CodePermissionDenied {
+		t.Fatalf("expected run completion to be blocked without membership, got %v", err)
+	}
+	view, err := queries.PermissionsView(ctx, "run:"+run.RunID, contracts.Actor("agent:builder-1"), contracts.PermissionActionRunComplete)
+	if err != nil {
+		t.Fatalf("permissions view: %v", err)
+	}
+	if len(view.Decisions) != 1 || !slices.Contains(view.Decisions[0].ReasonCodes, "missing_membership") {
+		t.Fatalf("expected missing_membership reason, got %#v", view.Decisions)
+	}
+}
+
+func TestRemovedCollaboratorStaysVisibleInMentionHistory(t *testing.T) {
+	ctx := context.Background()
+	_, actions, queries, projectStore, _, _ := newImportExportHarness(t)
+	now := actions.now()
+
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket, err := actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project:       "APP",
+		Title:         "Mention history survives removal",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusReady,
+		Priority:      contracts.PriorityHigh,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}, contracts.Actor("human:owner"), "seed ticket")
+	if err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	if _, err := actions.AddCollaborator(ctx, contracts.CollaboratorProfile{
+		CollaboratorID: "alana",
+		DisplayName:    "Alana",
+		AtlasActors:    []contracts.Actor{"agent:reviewer-1"},
+		TrustState:     contracts.CollaboratorTrustStateTrusted,
+	}, contracts.Actor("human:owner"), "seed collaborator"); err != nil {
+		t.Fatalf("add collaborator: %v", err)
+	}
+	if err := actions.CommentTicket(ctx, ticket.ID, "please review @alana", contracts.Actor("human:owner"), "mention reviewer"); err != nil {
+		t.Fatalf("comment ticket: %v", err)
+	}
+	if _, err := actions.SetCollaboratorStatus(ctx, "alana", contracts.CollaboratorStatusRemoved, contracts.Actor("human:owner"), "remove collaborator"); err != nil {
+		t.Fatalf("remove collaborator: %v", err)
+	}
+
+	detail, err := queries.TicketDetail(ctx, ticket.ID)
+	if err != nil {
+		t.Fatalf("ticket detail: %v", err)
+	}
+	if len(detail.Mentions) != 1 || detail.Mentions[0].CollaboratorID != "alana" {
+		t.Fatalf("expected historical mention to remain visible, got %#v", detail.Mentions)
+	}
+	collaborator, err := queries.CollaboratorDetail(ctx, "alana")
+	if err != nil {
+		t.Fatalf("collaborator detail: %v", err)
+	}
+	if collaborator.Collaborator.Status != contracts.CollaboratorStatusRemoved {
+		t.Fatalf("expected removed collaborator status, got %#v", collaborator.Collaborator)
+	}
+	if len(collaborator.Mentions) != 1 || collaborator.Mentions[0].CollaboratorID != "alana" {
+		t.Fatalf("expected collaborator mention history to remain visible, got %#v", collaborator.Mentions)
+	}
+}
+
 func seedOpenReviewGate(t *testing.T, ctx context.Context, actions *ActionService, ticket contracts.TicketSnapshot) contracts.GateSnapshot {
 	t.Helper()
 	gate := contracts.GateSnapshot{
