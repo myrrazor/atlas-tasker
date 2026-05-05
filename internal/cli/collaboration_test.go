@@ -323,6 +323,33 @@ func TestCollaboratorMembershipAndMentionsCommands(t *testing.T) {
 	if len(membershipResult.Items) != 1 || membershipResult.Items[0].Status != string(contractsMembershipStatusUnbound()) {
 		t.Fatalf("expected unbound membership, got %#v", membershipResult)
 	}
+
+	removedOut := must("collaborator", "remove", "alana", "--actor", "human:owner", "--json")
+	var removed struct {
+		Payload struct {
+			Collaborator struct {
+				CollaboratorID string `json:"collaborator_id"`
+				Status         string `json:"status"`
+			} `json:"collaborator"`
+			Mentions []struct {
+				MentionUID string `json:"mention_uid"`
+			} `json:"mentions"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(removedOut), &removed); err != nil {
+		t.Fatalf("parse collaborator remove: %v\nraw=%s", err, removedOut)
+	}
+	if removed.Payload.Collaborator.CollaboratorID != "alana" || removed.Payload.Collaborator.Status != "removed" || len(removed.Payload.Mentions) != 1 {
+		t.Fatalf("expected removed collaborator to retain mention history, got %#v", removed)
+	}
+
+	collaboratorAfterRemove := must("collaborator", "view", "alana", "--json")
+	if err := json.Unmarshal([]byte(collaboratorAfterRemove), &collaboratorDetail); err != nil {
+		t.Fatalf("parse collaborator detail after remove: %v\nraw=%s", err, collaboratorAfterRemove)
+	}
+	if collaboratorDetail.Payload.Collaborator.CollaboratorID != "alana" || len(collaboratorDetail.Payload.Mentions) != 1 {
+		t.Fatalf("expected removed collaborator detail to remain readable, got %#v", collaboratorDetail)
+	}
 }
 
 func TestCollaboratorFilteredInboxAndApprovals(t *testing.T) {

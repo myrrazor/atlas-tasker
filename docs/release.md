@@ -31,6 +31,7 @@ These deliverables are necessary, but they are not the same thing as a real host
 
 Release is not done until a real prerelease proves the published artifacts:
 
+0. run `sh scripts/preflight-release-proof.sh`
 1. cut a prerelease tag
 2. let GitHub publish the real archives and `checksums.txt`
 3. download the chosen archive
@@ -48,7 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 Optional overrides:
 
 ```bash
-VERSION=v1.6.0 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
+VERSION=v1.6.1 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
 
 ## Manual Install
@@ -62,8 +63,8 @@ VERSION=v1.6.0 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubuserconte
 Example:
 
 ```bash
-curl -fsSLO https://github.com/myrrazor/atlas-tasker/releases/download/v1.6.0/tracker_1.6.0_darwin_arm64.tar.gz
-VERSION=v1.6.0 ./scripts/verify-release.sh ./tracker_1.6.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/myrrazor/atlas-tasker/releases/download/v1.6.1/tracker_1.6.1_darwin_arm64.tar.gz
+VERSION=v1.6.1 ./scripts/verify-release.sh ./tracker_1.6.1_darwin_arm64.tar.gz
 ```
 
 If you already have the GitHub CLI authenticated, `scripts/verify-release.sh` also runs:
@@ -83,7 +84,8 @@ The release workflow runs on tags matching `v*` and:
 1. builds macOS and Linux archives for amd64 and arm64
 2. generates per-archive SHA256 files and a combined `checksums.txt`
 3. generates GitHub artifact attestations for the archives and checksum file
-4. uploads the archives, `checksums.txt`, and `scripts/install.sh` to the GitHub release
+4. publishes `-rc` tags as prereleases
+5. uploads the archives, `checksums.txt`, and `scripts/install.sh` to the GitHub release
 
 ## Prerelease Rehearsal
 
@@ -97,7 +99,7 @@ Before cutting a real prerelease:
 Local rehearsal command:
 
 ```bash
-VERSION=v1.6.0-rc1 ./scripts/release-rehearsal.sh
+VERSION=v1.6.1-rc1 ./scripts/release-rehearsal.sh
 sh scripts/stability-smoke.sh
 ```
 
@@ -190,6 +192,7 @@ The release rehearsal now proves the v1.6 collaboration surface with installed b
 - [ ] packaged collaboration smoke proves git sync, bundle fallback, and three-workspace convergence
 
 ### Post-merge prerelease gate
+- [ ] `sh scripts/preflight-release-proof.sh` passes
 - [ ] prerelease tag created
 - [ ] GitHub release artifacts published
 - [ ] chosen archive downloaded from the published release
@@ -207,3 +210,8 @@ Record the proof here for the actual release:
 - attestation verification:
 - smoke-flow result:
 - notes:
+
+For v1.6.1 closeout, also capture the hosted proof and merge order in:
+
+- `docs/v1.6.1-release-evidence.md`
+- `docs/v1.6.1-merge-order.md`
