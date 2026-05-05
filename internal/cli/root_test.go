@@ -1,6 +1,10 @@
 package cli
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
 
 func TestRootCommandIncludesRequiredTopLevelCommands(t *testing.T) {
 	root := NewRootCommand()
@@ -175,6 +179,48 @@ func TestRootCommandIncludesRequiredV16CommandsAndFlags(t *testing.T) {
 		}
 		if cmd.Flag("collaborator") == nil {
 			t.Fatalf("expected command %q to expose --collaborator", path)
+		}
+	}
+}
+
+func TestV16HelpTextIncludesKeyFlagsAndSubcommands(t *testing.T) {
+	root := NewRootCommand()
+	type helpCheck struct {
+		path     []string
+		snippets []string
+	}
+	checks := []helpCheck{
+		{path: []string{"collaborator"}, snippets: []string{"add", "trust", "remove"}},
+		{path: []string{"membership", "bind"}, snippets: []string{"--scope-kind", "--scope-id", "--role"}},
+		{path: []string{"remote", "add"}, snippets: []string{"--location", "--default-action"}},
+		{path: []string{"sync", "pull"}, snippets: []string{"--remote", "--workspace"}},
+		{path: []string{"bundle", "import"}, snippets: []string{"--json", "--actor", "--reason"}},
+		{path: []string{"conflict", "resolve"}, snippets: []string{"--resolution", "--actor", "--reason"}},
+		{path: []string{"mentions", "list"}, snippets: []string{"--collaborator", "--json"}},
+		{path: []string{"inbox"}, snippets: []string{"--collaborator", "--json"}},
+		{path: []string{"approvals"}, snippets: []string{"--collaborator", "--json"}},
+		{path: []string{"dashboard"}, snippets: []string{"--collaborator", "--json"}},
+		{path: []string{"timeline"}, snippets: []string{"--collaborator", "--json"}},
+		{path: []string{"project", "codeowners", "write"}, snippets: []string{"--actor", "--reason", "--json"}},
+		{path: []string{"project", "rules", "render"}, snippets: []string{"--json"}},
+	}
+
+	for _, check := range checks {
+		cmd, _, err := root.Find(check.path)
+		if err != nil {
+			t.Fatalf("find %q: %v", check.path, err)
+		}
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		if err := cmd.Help(); err != nil {
+			t.Fatalf("help for %q: %v", check.path, err)
+		}
+		help := buf.String()
+		for _, snippet := range check.snippets {
+			if !strings.Contains(help, snippet) {
+				t.Fatalf("expected help for %q to contain %q\n%s", check.path, snippet, help)
+			}
 		}
 	}
 }
