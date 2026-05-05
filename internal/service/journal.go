@@ -132,6 +132,7 @@ func (j MutationJournal) List() ([]MutationJournalEntry, error) {
 }
 
 func (j MutationJournal) Reconcile(ctx context.Context, events contracts.EventLog, projection contracts.ProjectionStore) ([]string, error) {
+	ctx = WithHistoricalReplay(ctx)
 	entries, err := j.List()
 	if err != nil {
 		return nil, err
@@ -172,6 +173,7 @@ func (j MutationJournal) Reconcile(ctx context.Context, events contracts.EventLo
 }
 
 func RepairWorkspace(ctx context.Context, root string, clock func() time.Time, events contracts.EventLog, projection contracts.ProjectionStore) (RepairReport, error) {
+	ctx = WithHistoricalReplay(ctx)
 	journal := MutationJournal{Root: root, Clock: clock}
 	entries, err := journal.List()
 	if err != nil {
