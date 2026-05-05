@@ -311,6 +311,113 @@ func TestShellParityForImportExportCommands(t *testing.T) {
 	}
 }
 
+func TestShellParityForChangeAndChecksCommands(t *testing.T) {
+	withTempWorkspace(t)
+	gitRunCLI(t, "init", "-b", "main")
+	gitRunCLI(t, "config", "user.email", "atlas@example.com")
+	gitRunCLI(t, "config", "user.name", "Atlas")
+	writeGitFile(t, "README.md", "# atlas\n")
+	gitRunCLI(t, "add", "README.md")
+	gitRunCLI(t, "commit", "-m", "init")
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("command failed %v: %v\noutput=%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("config", "set", "provider.default_scm_provider", "github")
+	must("config", "set", "provider.github_repo", "myrrazor/atlas-tasker")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Shell change parity", "--type", "task", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Shell import parity", "--type", "task", "--actor", "human:owner")
+	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")
+
+	dispatchOut := must("run", "dispatch", "APP-1", "--agent", "builder-1", "--actor", "human:owner", "--json")
+	var dispatch struct {
+		Payload struct {
+			RunID        string `json:"run_id"`
+			WorktreePath string `json:"worktree_path"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(dispatchOut), &dispatch); err != nil {
+		t.Fatalf("parse dispatch output: %v\nraw=%s", err, dispatchOut)
+	}
+	must("run", "start", dispatch.Payload.RunID, "--actor", "human:owner")
+	if err := os.MkdirAll(filepath.Join(dispatch.Payload.WorktreePath, "pkg"), 0o755); err != nil {
+		t.Fatalf("mkdir worktree dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dispatch.Payload.WorktreePath, "pkg", "feature.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write worktree file: %v", err)
+	}
+
+	runViewOut := must("run", "view", dispatch.Payload.RunID, "--json")
+	var runView struct {
+		Payload struct {
+			Run struct {
+				BranchName string `json:"branch_name"`
+			} `json:"run"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(runViewOut), &runView); err != nil {
+		t.Fatalf("parse run view: %v\nraw=%s", err, runViewOut)
+	}
+	installFakeGHProviderForCLI(t, runView.Payload.Run.BranchName)
+
+	runSlashShell(t, "/change create "+dispatch.Payload.RunID+" --actor human:owner")
+	changeListOut := must("change", "list", "--ticket", "APP-1", "--json")
+	var changeList struct {
+		Items []struct {
+			ChangeID string `json:"change_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(changeListOut), &changeList); err != nil {
+		t.Fatalf("parse change list: %v\nraw=%s", err, changeListOut)
+	}
+	if len(changeList.Items) != 1 || changeList.Items[0].ChangeID == "" {
+		t.Fatalf("expected one change, got %#v", changeList.Items)
+	}
+	changeID := changeList.Items[0].ChangeID
+
+	runSlashShell(t, "/change list --ticket APP-1")
+	runSlashShell(t, "/change view "+changeID)
+	runSlashShell(t, "/change status "+changeID)
+	runSlashShell(t, "/change sync "+changeID+" --actor human:owner")
+	runSlashShell(t, `/checks record --scope run --id `+dispatch.Payload.RunID+` --name "smoke" --status completed --conclusion success --actor human:owner`)
+	runSlashShell(t, "/checks sync "+changeID+" --actor human:owner")
+	runSlashShell(t, "/checks list --scope change --id "+changeID)
+
+	checkListOut := must("checks", "list", "--scope", "run", "--id", dispatch.Payload.RunID, "--json")
+	var checkList struct {
+		Items []struct {
+			CheckID string `json:"check_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(checkListOut), &checkList); err != nil {
+		t.Fatalf("parse check list: %v\nraw=%s", err, checkListOut)
+	}
+	if len(checkList.Items) == 0 || checkList.Items[0].CheckID == "" {
+		t.Fatalf("expected recorded run check, got %#v", checkList.Items)
+	}
+	runSlashShell(t, "/checks view "+checkList.Items[0].CheckID)
+
+	runSlashShell(t, "/change import-url APP-2 --url https://github.com/myrrazor/atlas-tasker/pull/43 --actor human:owner")
+	importedListOut := must("change", "list", "--ticket", "APP-2", "--json")
+	if err := json.Unmarshal([]byte(importedListOut), &changeList); err != nil {
+		t.Fatalf("parse imported change list: %v\nraw=%s", err, importedListOut)
+	}
+	if len(changeList.Items) != 1 || changeList.Items[0].ChangeID == "" {
+		t.Fatalf("expected imported change, got %#v", changeList.Items)
+	}
+	importedChangeID := changeList.Items[0].ChangeID
+	runSlashShell(t, "/change review-request "+importedChangeID+" --actor human:owner")
+	runSlashShell(t, "/change merge "+changeID+" --actor human:owner")
+}
+
 func TestShellParityForArchiveCommands(t *testing.T) {
 	withTempWorkspace(t)
 

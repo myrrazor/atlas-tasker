@@ -13,6 +13,10 @@ CLAW_REVIEW_*.md
 /.tracker/mutations/
 /.tracker/runtime/
 /.tracker/*.log
+/.tracker/archives/*
+!/.tracker/archives/*.md
+/.tracker/exports/*
+!/.tracker/exports/*.md
 /.tracker/evidence/**
 !/.tracker/evidence/
 !/.tracker/evidence/*/

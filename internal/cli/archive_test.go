@@ -127,3 +127,146 @@ func TestArchiveCommandsPlanApplyListAndRestore(t *testing.T) {
 		t.Fatalf("expected restored runtime artifact: %v", err)
 	}
 }
+
+func TestArchiveListFiltersByProject(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("project", "create", "OPS", "Ops Project")
+	must("ticket", "create", "--project", "APP", "--title", "Archive app", "--type", "task", "--actor", "human:owner")
+	must("ticket", "create", "--project", "OPS", "--title", "Archive ops", "--type", "task", "--actor", "human:owner")
+
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	old := time.Now().UTC().AddDate(0, 0, -10)
+	for _, run := range []contracts.RunSnapshot{
+		{RunID: "run_cli_archive_app", TicketID: "APP-1", Project: "APP", Status: contracts.RunStatusCompleted, Kind: contracts.RunKindWork, CreatedAt: old, CompletedAt: old, SchemaVersion: contracts.CurrentSchemaVersion},
+		{RunID: "run_cli_archive_ops", TicketID: "OPS-2", Project: "OPS", Status: contracts.RunStatusCompleted, Kind: contracts.RunKindWork, CreatedAt: old, CompletedAt: old, SchemaVersion: contracts.CurrentSchemaVersion},
+	} {
+		if err := (service.RunStore{Root: root}).SaveRun(context.Background(), run); err != nil {
+			t.Fatalf("save run %s: %v", run.RunID, err)
+		}
+		if err := os.MkdirAll(storage.RuntimeDir(root, run.RunID), 0o755); err != nil {
+			t.Fatalf("mkdir runtime dir %s: %v", run.RunID, err)
+		}
+		if err := os.WriteFile(storage.RuntimeBriefFile(root, run.RunID), []byte(run.Project), 0o644); err != nil {
+			t.Fatalf("write runtime brief %s: %v", run.RunID, err)
+		}
+		if err := os.Chtimes(storage.RuntimeDir(root, run.RunID), old, old); err != nil {
+			t.Fatalf("chtimes runtime dir %s: %v", run.RunID, err)
+		}
+		if err := os.Chtimes(storage.RuntimeBriefFile(root, run.RunID), old, old); err != nil {
+			t.Fatalf("chtimes runtime brief %s: %v", run.RunID, err)
+		}
+	}
+
+	must("archive", "apply", "--target", "runtime", "--project", "APP", "--yes", "--actor", "human:owner")
+	must("archive", "apply", "--target", "runtime", "--project", "OPS", "--yes", "--actor", "human:owner")
+
+	listOut := must("archive", "list", "--target", "runtime", "--project", "APP", "--json")
+	var listed struct {
+		Items []struct {
+			ProjectKey string `json:"project_key"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(listOut), &listed); err != nil {
+		t.Fatalf("parse filtered archive list: %v\nraw=%s", err, listOut)
+	}
+	if len(listed.Items) != 1 || listed.Items[0].ProjectKey != "APP" {
+		t.Fatalf("expected one APP archive, got %#v", listed.Items)
+	}
+}
+
+func TestArchiveRestoreAfterCompactSurvivesReindexAndDoctor(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Archive compact restore", "--type", "task", "--actor", "human:owner")
+
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	old := time.Now().UTC().AddDate(0, 0, -10)
+	run := contracts.RunSnapshot{RunID: "run_cli_archive_compact", TicketID: "APP-1", Project: "APP", Status: contracts.RunStatusCompleted, Kind: contracts.RunKindWork, CreatedAt: old, CompletedAt: old, SchemaVersion: contracts.CurrentSchemaVersion}
+	if err := (service.RunStore{Root: root}).SaveRun(context.Background(), run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	for _, item := range []struct {
+		path string
+		body string
+	}{
+		{storage.RuntimeBriefFile(root, run.RunID), "brief"},
+		{storage.RuntimeContextFile(root, run.RunID), "{}"},
+		{storage.RuntimeLaunchFile(root, run.RunID, "codex"), "codex"},
+		{storage.RuntimeLaunchFile(root, run.RunID, "claude"), "claude"},
+	} {
+		if err := os.MkdirAll(filepath.Dir(item.path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", item.path, err)
+		}
+		if err := os.WriteFile(item.path, []byte(item.body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", item.path, err)
+		}
+		if err := os.Chtimes(item.path, old, old); err != nil {
+			t.Fatalf("chtimes %s: %v", item.path, err)
+		}
+	}
+	if err := os.Chtimes(storage.RuntimeDir(root, run.RunID), old, old); err != nil {
+		t.Fatalf("chtimes runtime dir: %v", err)
+	}
+
+	must("archive", "apply", "--target", "runtime", "--project", "APP", "--yes", "--actor", "human:owner")
+	listOut := must("archive", "list", "--target", "runtime", "--project", "APP", "--json")
+	var listed struct {
+		Items []struct {
+			ArchiveID string `json:"archive_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(listOut), &listed); err != nil {
+		t.Fatalf("parse archive list: %v\nraw=%s", err, listOut)
+	}
+	if len(listed.Items) != 1 || listed.Items[0].ArchiveID == "" {
+		t.Fatalf("expected archive id, got %#v", listed.Items)
+	}
+
+	must("compact", "--yes", "--actor", "human:owner")
+	must("archive", "restore", listed.Items[0].ArchiveID, "--actor", "human:owner")
+	must("reindex")
+
+	doctorOut := must("doctor", "--json")
+	var doctor struct {
+		IssueCodes []string `json:"issue_codes"`
+	}
+	if err := json.Unmarshal([]byte(doctorOut), &doctor); err != nil {
+		t.Fatalf("parse doctor output: %v\nraw=%s", err, doctorOut)
+	}
+	for _, blocked := range []string{"runtime_artifacts_partial", "archive_restore_incomplete"} {
+		for _, code := range doctor.IssueCodes {
+			if code == blocked {
+				t.Fatalf("expected %s to stay clear after compact+restore, got %#v", blocked, doctor.IssueCodes)
+			}
+		}
+	}
+}

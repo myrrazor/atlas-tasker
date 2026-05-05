@@ -525,22 +525,41 @@ func auditRuntimeForRun(root string, run contracts.RunSnapshot, archivedPaths ma
 		addIssue("runtime_dir_missing", &report.RuntimeIssues)
 	}
 	if runtimeExists {
-		seen := 0
-		for _, path := range []string{
-			storage.RuntimeBriefFile(root, run.RunID),
-			storage.RuntimeContextFile(root, run.RunID),
-			storage.RuntimeLaunchFile(root, run.RunID, "codex"),
-			storage.RuntimeLaunchFile(root, run.RunID, "claude"),
-		} {
-			exists, statErr := regularFileExists(path)
-			if statErr != nil {
-				return statErr
-			}
-			if exists {
-				seen++
-			}
+		briefExists, err := regularFileExists(storage.RuntimeBriefFile(root, run.RunID))
+		if err != nil {
+			return err
 		}
-		if seen > 0 && seen < 4 {
+		contextExists, err := regularFileExists(storage.RuntimeContextFile(root, run.RunID))
+		if err != nil {
+			return err
+		}
+		codexLaunchExists, err := regularFileExists(storage.RuntimeLaunchFile(root, run.RunID, "codex"))
+		if err != nil {
+			return err
+		}
+		claudeLaunchExists, err := regularFileExists(storage.RuntimeLaunchFile(root, run.RunID, "claude"))
+		if err != nil {
+			return err
+		}
+
+		requiredSeen := 0
+		if briefExists {
+			requiredSeen++
+		}
+		if contextExists {
+			requiredSeen++
+		}
+		launchSeen := 0
+		if codexLaunchExists {
+			launchSeen++
+		}
+		if claudeLaunchExists {
+			launchSeen++
+		}
+
+		// brief/context are the restoreable runtime core; launch files are derived
+		// and can be compacted away cleanly as long as they disappear together.
+		if requiredSeen == 0 || requiredSeen == 1 || (requiredSeen == 2 && launchSeen == 1) || (requiredSeen == 0 && launchSeen > 0) {
 			addIssue("runtime_artifacts_partial", &report.RuntimeIssues)
 		}
 	}

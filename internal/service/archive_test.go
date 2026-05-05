@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,7 +68,7 @@ func TestArchiveApplyListAndRestoreRuntimeRoundTrip(t *testing.T) {
 		t.Fatalf("expected archived payload %s: %v", payloadPath, err)
 	}
 
-	archives, err := queries.ListArchiveRecords(ctx, contracts.RetentionTargetRuntime)
+	archives, err := queries.ListArchiveRecords(ctx, contracts.RetentionTargetRuntime, "APP")
 	if err != nil {
 		t.Fatalf("list archives: %v", err)
 	}
@@ -153,6 +154,73 @@ func TestArchivePlanUsesProjectRetentionPolicyBinding(t *testing.T) {
 	}
 }
 
+func TestArchiveListFiltersByProject(t *testing.T) {
+	root, actions, queries, projectStore, ticketStore, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	now := actions.now()
+	old := now.AddDate(0, 0, -10)
+
+	for _, project := range []contracts.Project{
+		{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion},
+		{Key: "OPS", Name: "Ops", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion},
+	} {
+		if err := projectStore.CreateProject(ctx, project); err != nil {
+			t.Fatalf("create project %s: %v", project.Key, err)
+		}
+	}
+	for _, ticket := range []contracts.TicketSnapshot{
+		{ID: "APP-1", Project: "APP", Title: "Archive app", Summary: "Archive app", Type: contracts.TicketTypeTask, Status: contracts.StatusDone, Priority: contracts.PriorityHigh, CreatedAt: old, UpdatedAt: old, SchemaVersion: contracts.CurrentSchemaVersion},
+		{ID: "OPS-1", Project: "OPS", Title: "Archive ops", Summary: "Archive ops", Type: contracts.TicketTypeTask, Status: contracts.StatusDone, Priority: contracts.PriorityHigh, CreatedAt: old, UpdatedAt: old, SchemaVersion: contracts.CurrentSchemaVersion},
+	} {
+		if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
+			t.Fatalf("create ticket %s: %v", ticket.ID, err)
+		}
+	}
+	for _, run := range []contracts.RunSnapshot{
+		normalizeRunSnapshot(contracts.RunSnapshot{RunID: "run_app", TicketID: "APP-1", Project: "APP", Status: contracts.RunStatusCompleted, Kind: contracts.RunKindWork, CreatedAt: old, CompletedAt: old, SchemaVersion: contracts.CurrentSchemaVersion}),
+		normalizeRunSnapshot(contracts.RunSnapshot{RunID: "run_ops", TicketID: "OPS-1", Project: "OPS", Status: contracts.RunStatusCompleted, Kind: contracts.RunKindWork, CreatedAt: old, CompletedAt: old, SchemaVersion: contracts.CurrentSchemaVersion}),
+	} {
+		if err := (RunStore{Root: root}).SaveRun(ctx, run); err != nil {
+			t.Fatalf("save run %s: %v", run.RunID, err)
+		}
+		if err := os.MkdirAll(storage.RuntimeDir(root, run.RunID), 0o755); err != nil {
+			t.Fatalf("mkdir runtime dir %s: %v", run.RunID, err)
+		}
+		if err := os.WriteFile(storage.RuntimeBriefFile(root, run.RunID), []byte(run.Project), 0o644); err != nil {
+			t.Fatalf("write runtime brief %s: %v", run.RunID, err)
+		}
+		if err := os.Chtimes(storage.RuntimeDir(root, run.RunID), old, old); err != nil {
+			t.Fatalf("chtimes runtime dir %s: %v", run.RunID, err)
+		}
+		if err := os.Chtimes(storage.RuntimeBriefFile(root, run.RunID), old, old); err != nil {
+			t.Fatalf("chtimes runtime brief %s: %v", run.RunID, err)
+		}
+	}
+
+	if _, err := actions.ApplyArchive(ctx, contracts.RetentionTargetRuntime, "APP", true, contracts.Actor("human:owner"), "archive app"); err != nil {
+		t.Fatalf("apply app archive: %v", err)
+	}
+	if _, err := actions.ApplyArchive(ctx, contracts.RetentionTargetRuntime, "OPS", true, contracts.Actor("human:owner"), "archive ops"); err != nil {
+		t.Fatalf("apply ops archive: %v", err)
+	}
+
+	appArchives, err := queries.ListArchiveRecords(ctx, contracts.RetentionTargetRuntime, "APP")
+	if err != nil {
+		t.Fatalf("list app archives: %v", err)
+	}
+	if len(appArchives) != 1 || appArchives[0].ProjectKey != "APP" {
+		t.Fatalf("expected one APP archive, got %#v", appArchives)
+	}
+
+	opsArchives, err := queries.ListArchiveRecords(ctx, contracts.RetentionTargetRuntime, "OPS")
+	if err != nil {
+		t.Fatalf("list ops archives: %v", err)
+	}
+	if len(opsArchives) != 1 || opsArchives[0].ProjectKey != "OPS" {
+		t.Fatalf("expected one OPS archive, got %#v", opsArchives)
+	}
+}
+
 func TestAuditOrchestrationSuppressesArchivedRuntimeAndEvidence(t *testing.T) {
 	root := t.TempDir()
 	ctx := context.Background()
@@ -205,5 +273,138 @@ func TestAuditOrchestrationSuppressesArchivedRuntimeAndEvidence(t *testing.T) {
 	}
 	if slices.Contains(report.IssueCodes, "evidence_artifact_missing") {
 		t.Fatalf("expected archived evidence artifact to suppress evidence_artifact_missing, got %#v", report.IssueCodes)
+	}
+}
+
+func TestArchiveRestoreBlocksOnLiveConflict(t *testing.T) {
+	root, actions, queries, projectStore, ticketStore, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	now := actions.now()
+	old := now.AddDate(0, 0, -10)
+
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if err := ticketStore.CreateTicket(ctx, contracts.TicketSnapshot{ID: "APP-1", Project: "APP", Title: "Restore conflict", Summary: "Restore conflict", Type: contracts.TicketTypeTask, Status: contracts.StatusDone, Priority: contracts.PriorityHigh, CreatedAt: old, UpdatedAt: old, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	run := normalizeRunSnapshot(contracts.RunSnapshot{RunID: "run_restore_conflict", TicketID: "APP-1", Project: "APP", Status: contracts.RunStatusCompleted, Kind: contracts.RunKindWork, CreatedAt: old, CompletedAt: old, SchemaVersion: contracts.CurrentSchemaVersion})
+	if err := (RunStore{Root: root}).SaveRun(ctx, run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	for _, item := range []struct {
+		path string
+		body string
+	}{
+		{storage.RuntimeBriefFile(root, run.RunID), "brief"},
+		{storage.RuntimeContextFile(root, run.RunID), "{}"},
+		{storage.RuntimeLaunchFile(root, run.RunID, "codex"), "codex"},
+		{storage.RuntimeLaunchFile(root, run.RunID, "claude"), "claude"},
+	} {
+		if err := os.MkdirAll(filepath.Dir(item.path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", item.path, err)
+		}
+		if err := os.WriteFile(item.path, []byte(item.body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", item.path, err)
+		}
+	}
+	applied, err := actions.ApplyArchive(ctx, contracts.RetentionTargetRuntime, "APP", true, contracts.Actor("human:owner"), "archive runtime")
+	if err != nil {
+		t.Fatalf("apply archive: %v", err)
+	}
+
+	if err := os.MkdirAll(storage.RuntimeDir(root, run.RunID), 0o755); err != nil {
+		t.Fatalf("mkdir conflicting runtime dir: %v", err)
+	}
+	if err := os.WriteFile(storage.RuntimeBriefFile(root, run.RunID), []byte("new brief"), 0o644); err != nil {
+		t.Fatalf("write conflicting runtime file: %v", err)
+	}
+
+	if _, err := actions.RestoreArchive(ctx, applied.Record.ArchiveID, contracts.Actor("human:owner"), "restore conflict"); err == nil || !strings.Contains(err.Error(), "restore target already exists") {
+		t.Fatalf("expected restore conflict, got %v", err)
+	}
+	archives, err := queries.ListArchiveRecords(ctx, contracts.RetentionTargetRuntime, "APP")
+	if err != nil {
+		t.Fatalf("list archives: %v", err)
+	}
+	if len(archives) != 1 || archives[0].State != contracts.ArchiveRecordArchived {
+		t.Fatalf("expected archive to remain archived after conflict, got %#v", archives)
+	}
+}
+
+func TestArchiveRestoreAfterCompactionIsIdempotent(t *testing.T) {
+	root, actions, _, projectStore, ticketStore, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	now := actions.now()
+	old := now.AddDate(0, 0, -10)
+
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if err := ticketStore.CreateTicket(ctx, contracts.TicketSnapshot{ID: "APP-1", Project: "APP", Title: "Restore compacted runtime", Summary: "Restore compacted runtime", Type: contracts.TicketTypeTask, Status: contracts.StatusDone, Priority: contracts.PriorityHigh, CreatedAt: old, UpdatedAt: old, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	run := normalizeRunSnapshot(contracts.RunSnapshot{RunID: "run_restore_compacted", TicketID: "APP-1", Project: "APP", Status: contracts.RunStatusCompleted, Kind: contracts.RunKindWork, CreatedAt: old, CompletedAt: old, SchemaVersion: contracts.CurrentSchemaVersion})
+	if err := (RunStore{Root: root}).SaveRun(ctx, run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	for _, item := range []struct {
+		path string
+		body string
+	}{
+		{storage.RuntimeBriefFile(root, run.RunID), "brief"},
+		{storage.RuntimeContextFile(root, run.RunID), "{}"},
+		{storage.RuntimeLaunchFile(root, run.RunID, "codex"), "codex"},
+		{storage.RuntimeLaunchFile(root, run.RunID, "claude"), "claude"},
+	} {
+		if err := os.MkdirAll(filepath.Dir(item.path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", item.path, err)
+		}
+		if err := os.WriteFile(item.path, []byte(item.body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", item.path, err)
+		}
+	}
+
+	applied, err := actions.ApplyArchive(ctx, contracts.RetentionTargetRuntime, "APP", true, contracts.Actor("human:owner"), "archive runtime")
+	if err != nil {
+		t.Fatalf("apply archive: %v", err)
+	}
+	if _, err := actions.CompactWorkspace(ctx, true, contracts.Actor("human:owner"), "compact archived launch files"); err != nil {
+		t.Fatalf("compact workspace: %v", err)
+	}
+
+	restored, err := actions.RestoreArchive(ctx, applied.Record.ArchiveID, contracts.Actor("human:owner"), "restore compacted runtime")
+	if err != nil {
+		t.Fatalf("restore archive: %v", err)
+	}
+	if restored.Record.State != contracts.ArchiveRecordRestored {
+		t.Fatalf("expected restored archive, got %#v", restored.Record)
+	}
+	if _, err := os.Stat(storage.RuntimeBriefFile(root, run.RunID)); err != nil {
+		t.Fatalf("expected restored brief: %v", err)
+	}
+	if _, err := os.Stat(storage.RuntimeContextFile(root, run.RunID)); err != nil {
+		t.Fatalf("expected restored context: %v", err)
+	}
+	for _, path := range []string{storage.RuntimeLaunchFile(root, run.RunID, "codex"), storage.RuntimeLaunchFile(root, run.RunID, "claude")} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected compacted launch artifact to stay absent after restore, got %s err=%v", path, err)
+		}
+	}
+
+	second, err := actions.RestoreArchive(ctx, applied.Record.ArchiveID, contracts.Actor("human:owner"), "restore compacted runtime again")
+	if err != nil {
+		t.Fatalf("repeat restore archive: %v", err)
+	}
+	if second.Record.State != contracts.ArchiveRecordRestored {
+		t.Fatalf("expected repeat restore to stay restored, got %#v", second.Record)
+	}
+
+	report, err := AuditOrchestration(ctx, root, ticketStore)
+	if err != nil {
+		t.Fatalf("audit orchestration after restore: %v", err)
+	}
+	if slices.Contains(report.IssueCodes, "runtime_artifacts_partial") {
+		t.Fatalf("expected compacted launch files to be accepted after restore, got %#v", report.IssueCodes)
 	}
 }
