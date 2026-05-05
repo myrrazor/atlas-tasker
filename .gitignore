@@ -8,3 +8,17 @@ CLAW_REVIEW_*.md
 
 # editor/system
 .DS_Store
+
+# atlas derived workspace state
+/.tracker/mutations/
+/.tracker/runtime/
+/.tracker/*.log
+/.tracker/archives/*
+!/.tracker/archives/*.md
+/.tracker/exports/*
+!/.tracker/exports/*.md
+/.tracker/evidence/**
+!/.tracker/evidence/
+!/.tracker/evidence/*/
+!/.tracker/evidence/**/*.md
+/.atlas-tasker-worktrees/

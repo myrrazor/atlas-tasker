@@ -29,3 +29,6 @@ Rules:
 - one active run per ticket by default
 - parallel runs require `allow_parallel_runs=true`
 - cleanup is only valid from completed, failed, or aborted runs
+- `run open` is read-only and never creates or rewrites runtime files
+- `run launch` writes run-scoped artifacts under `.tracker/runtime/<run-id>/` and is idempotent unless `--refresh` is used
+- `run attach` records an external session binding and rejects conflicting double-attachments unless explicitly replaced
