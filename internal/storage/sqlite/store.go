@@ -21,7 +21,9 @@ const ticketSelectColumns = `
 	lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
 	template, skill_hint, blueprint, progress_json,
 	required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
-	latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at
+	latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at,
+	change_ids_json, change_ready_state, change_ready_reasons_json, permission_profiles_json,
+	protected, sensitive
 `
 
 // Store is a SQLite-backed projection and query engine.
@@ -206,6 +208,97 @@ func (s *Store) migrate() error {
 			schema_version INTEGER NOT NULL
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_handoffs_ticket_generated ON handoffs(ticket_id, generated_at);`,
+		`CREATE TABLE IF NOT EXISTS changes (
+			change_id TEXT PRIMARY KEY,
+			provider TEXT NOT NULL,
+			ticket_id TEXT NOT NULL,
+			run_id TEXT,
+			branch_name TEXT,
+			base_branch TEXT,
+			head_ref TEXT,
+			url TEXT,
+			external_id TEXT,
+			status TEXT NOT NULL,
+			checks_status TEXT,
+			review_requested_from_json TEXT NOT NULL DEFAULT '[]',
+			review_summary TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_changes_ticket_status ON changes(ticket_id, status);`,
+		`CREATE TABLE IF NOT EXISTS checks (
+			check_id TEXT PRIMARY KEY,
+			source TEXT NOT NULL,
+			provider TEXT,
+			scope TEXT NOT NULL,
+			scope_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			status TEXT NOT NULL,
+			conclusion TEXT NOT NULL,
+			summary TEXT,
+			url TEXT,
+			started_at TEXT,
+			completed_at TEXT,
+			external_id TEXT,
+			updated_at TEXT NOT NULL,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_checks_scope ON checks(scope, scope_id);`,
+		`CREATE TABLE IF NOT EXISTS permission_profiles (
+			profile_id TEXT PRIMARY KEY,
+			display_name TEXT,
+			priority INTEGER NOT NULL DEFAULT 0,
+			workspace_default INTEGER NOT NULL DEFAULT 0,
+			projects_json TEXT NOT NULL DEFAULT '[]',
+			agents_json TEXT NOT NULL DEFAULT '[]',
+			runbooks_json TEXT NOT NULL DEFAULT '[]',
+			allowed_projects_json TEXT NOT NULL DEFAULT '[]',
+			allowed_ticket_types_json TEXT NOT NULL DEFAULT '[]',
+			allowed_runbooks_json TEXT NOT NULL DEFAULT '[]',
+			allowed_capabilities_json TEXT NOT NULL DEFAULT '[]',
+			allow_actions_json TEXT NOT NULL DEFAULT '[]',
+			deny_actions_json TEXT NOT NULL DEFAULT '[]',
+			allowed_paths_json TEXT NOT NULL DEFAULT '[]',
+			forbidden_paths_json TEXT NOT NULL DEFAULT '[]',
+			requires_owner_for_sensitive_ops INTEGER NOT NULL DEFAULT 0,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS import_jobs (
+			job_id TEXT PRIMARY KEY,
+			source_type TEXT NOT NULL,
+			status TEXT NOT NULL,
+			source_fingerprint TEXT,
+			summary TEXT,
+			warnings_json TEXT NOT NULL DEFAULT '[]',
+			errors_json TEXT NOT NULL DEFAULT '[]',
+			conflict_log_path TEXT,
+			partial_applied INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL,
+			completed_at TEXT,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS export_bundles (
+			bundle_id TEXT PRIMARY KEY,
+			scope TEXT,
+			format TEXT,
+			artifact_path TEXT,
+			manifest_path TEXT,
+			checksum_path TEXT,
+			status TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			schema_version INTEGER NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS retention_policies (
+			policy_id TEXT PRIMARY KEY,
+			target TEXT NOT NULL,
+			max_age_days INTEGER NOT NULL DEFAULT 0,
+			max_total_size_mb INTEGER NOT NULL DEFAULT 0,
+			keep_last_n INTEGER NOT NULL DEFAULT 0,
+			archive_instead_of_delete INTEGER NOT NULL DEFAULT 0,
+			requires_confirmation INTEGER NOT NULL DEFAULT 0,
+			schema_version INTEGER NOT NULL
+		);`,
 		`CREATE TABLE IF NOT EXISTS events (
 			project TEXT NOT NULL,
 			event_id INTEGER NOT NULL,
@@ -250,6 +343,12 @@ func (s *Store) migrate() error {
 		{name: "latest_handoff_id", definition: `TEXT`},
 		{name: "open_gate_ids_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
 		{name: "last_dispatch_at", definition: `TEXT`},
+		{name: "change_ids_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
+		{name: "change_ready_state", definition: `TEXT`},
+		{name: "change_ready_reasons_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
+		{name: "permission_profiles_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
+		{name: "protected", definition: `INTEGER NOT NULL DEFAULT 0`},
+		{name: "sensitive", definition: `INTEGER NOT NULL DEFAULT 0`},
 	}
 	for _, column := range columns {
 		if err := s.ensureTicketColumn(column.name, column.definition); err != nil {
@@ -341,6 +440,36 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 			return err
 		}
 	}
+	for _, run := range extractRunSnapshots(event.Payload) {
+		if err := s.upsertRun(ctx, run); err != nil {
+			return err
+		}
+	}
+	for _, change := range extractChangeRefs(event.Payload) {
+		if err := s.upsertChange(ctx, change); err != nil {
+			return err
+		}
+	}
+	for _, check := range extractCheckResults(event.Payload) {
+		if err := s.upsertCheck(ctx, check); err != nil {
+			return err
+		}
+	}
+	for _, gate := range extractGateSnapshots(event.Payload) {
+		if err := s.upsertGate(ctx, gate); err != nil {
+			return err
+		}
+	}
+	for _, evidence := range extractEvidenceItems(event.Payload) {
+		if err := s.upsertEvidence(ctx, evidence); err != nil {
+			return err
+		}
+	}
+	for _, handoff := range extractHandoffPackets(event.Payload) {
+		if err := s.upsertHandoff(ctx, handoff); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -358,6 +487,27 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 	if project == "" {
 		if _, err := s.DB.ExecContext(ctx, `DELETE FROM tickets`); err != nil {
 			return fmt.Errorf("clear tickets: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM agents`); err != nil {
+			return fmt.Errorf("clear agents: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM runs`); err != nil {
+			return fmt.Errorf("clear runs: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM changes`); err != nil {
+			return fmt.Errorf("clear changes: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM checks`); err != nil {
+			return fmt.Errorf("clear checks: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM gates`); err != nil {
+			return fmt.Errorf("clear gates: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM evidence`); err != nil {
+			return fmt.Errorf("clear evidence: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM handoffs`); err != nil {
+			return fmt.Errorf("clear handoffs: %w", err)
 		}
 		if _, err := s.DB.ExecContext(ctx, `DELETE FROM events`); err != nil {
 			return fmt.Errorf("clear events: %w", err)
@@ -381,6 +531,41 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 		}
 		for _, ticket := range extractTicketSnapshots(event.Payload) {
 			if err := s.upsertTicket(ctx, ticket); err != nil {
+				return err
+			}
+		}
+		for _, agent := range extractAgentProfiles(event.Payload) {
+			if err := s.upsertAgent(ctx, agent); err != nil {
+				return err
+			}
+		}
+		for _, run := range extractRunSnapshots(event.Payload) {
+			if err := s.upsertRun(ctx, run); err != nil {
+				return err
+			}
+		}
+		for _, change := range extractChangeRefs(event.Payload) {
+			if err := s.upsertChange(ctx, change); err != nil {
+				return err
+			}
+		}
+		for _, check := range extractCheckResults(event.Payload) {
+			if err := s.upsertCheck(ctx, check); err != nil {
+				return err
+			}
+		}
+		for _, gate := range extractGateSnapshots(event.Payload) {
+			if err := s.upsertGate(ctx, gate); err != nil {
+				return err
+			}
+		}
+		for _, evidence := range extractEvidenceItems(event.Payload) {
+			if err := s.upsertEvidence(ctx, evidence); err != nil {
+				return err
+			}
+		}
+		for _, handoff := range extractHandoffPackets(event.Payload) {
+			if err := s.upsertHandoff(ctx, handoff); err != nil {
 				return err
 			}
 		}
@@ -591,7 +776,7 @@ func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.
 
 func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapshot) error {
 	ticket = contracts.NormalizeTicketSnapshot(ticket)
-	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, err := marshalTicketJSON(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, changeIDsJSON, changeReadyReasonsJSON, permissionProfilesJSON, err := marshalTicketJSON(ticket)
 	if err != nil {
 		return err
 	}
@@ -603,8 +788,10 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 			lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
 			template, skill_hint, blueprint, progress_json,
 			required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
-			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at,
+			change_ids_json, change_ready_state, change_ready_reasons_json, permission_profiles_json,
+			protected, sensitive
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title=excluded.title,
 			type=excluded.type,
@@ -641,7 +828,13 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 			latest_run_id=excluded.latest_run_id,
 			latest_handoff_id=excluded.latest_handoff_id,
 			open_gate_ids_json=excluded.open_gate_ids_json,
-			last_dispatch_at=excluded.last_dispatch_at
+			last_dispatch_at=excluded.last_dispatch_at,
+			change_ids_json=excluded.change_ids_json,
+			change_ready_state=excluded.change_ready_state,
+			change_ready_reasons_json=excluded.change_ready_reasons_json,
+			permission_profiles_json=excluded.permission_profiles_json,
+			protected=excluded.protected,
+			sensitive=excluded.sensitive
 	`,
 		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
 		labelsJSON, nullable(string(ticket.Assignee)), nullable(string(ticket.Reviewer)), blockedByJSON, blocksJSON,
@@ -651,6 +844,8 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 		nullable(ticket.Template), nullable(ticket.SkillHint), nullable(ticket.Blueprint), progressJSON,
 		requiredCapabilitiesJSON, string(ticket.DispatchMode), boolToInt(ticket.AllowParallelRuns), nullable(ticket.Runbook),
 		nullable(ticket.LatestRunID), nullable(ticket.LatestHandoffID), openGateIDsJSON, nullableTime(ticket.LastDispatchAt),
+		changeIDsJSON, nullable(string(ticket.ChangeReadyState)), changeReadyReasonsJSON, permissionProfilesJSON,
+		boolToInt(ticket.Protected), boolToInt(ticket.Sensitive),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert ticket %s: %w", ticket.ID, err)
@@ -660,7 +855,7 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 
 func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.TicketSnapshot) error {
 	ticket = contracts.NormalizeTicketSnapshot(ticket)
-	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, err := marshalTicketJSON(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, changeIDsJSON, changeReadyReasonsJSON, permissionProfilesJSON, err := marshalTicketJSON(ticket)
 	if err != nil {
 		return err
 	}
@@ -672,8 +867,10 @@ func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.Tick
 			lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
 			template, skill_hint, blueprint, progress_json,
 			required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
-			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at,
+			change_ids_json, change_ready_state, change_ready_reasons_json, permission_profiles_json,
+			protected, sensitive
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
 	`,
 		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
@@ -684,6 +881,8 @@ func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.Tick
 		nullable(ticket.Template), nullable(ticket.SkillHint), nullable(ticket.Blueprint), progressJSON,
 		requiredCapabilitiesJSON, string(ticket.DispatchMode), boolToInt(ticket.AllowParallelRuns), nullable(ticket.Runbook),
 		nullable(ticket.LatestRunID), nullable(ticket.LatestHandoffID), openGateIDsJSON, nullableTime(ticket.LastDispatchAt),
+		changeIDsJSON, nullable(string(ticket.ChangeReadyState)), changeReadyReasonsJSON, permissionProfilesJSON,
+		boolToInt(ticket.Protected), boolToInt(ticket.Sensitive),
 	)
 	if err != nil {
 		return fmt.Errorf("insert missing ticket %s: %w", ticket.ID, err)
@@ -759,6 +958,301 @@ func (s *Store) upsertAgent(ctx context.Context, profile contracts.AgentProfile)
 	return nil
 }
 
+func (s *Store) upsertRun(ctx context.Context, run contracts.RunSnapshot) error {
+	if err := run.Validate(); err != nil {
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `
+		INSERT INTO runs (
+			run_id, ticket_id, project, agent_id, provider, status, kind, blueprint_stage,
+			worktree_path, branch_name, created_at, started_at, completed_at, last_heartbeat_at,
+			result, summary, handoff_to, supersedes_run_id, evidence_count, session_provider,
+			session_ref, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(run_id) DO UPDATE SET
+			ticket_id=excluded.ticket_id,
+			project=excluded.project,
+			agent_id=excluded.agent_id,
+			provider=excluded.provider,
+			status=excluded.status,
+			kind=excluded.kind,
+			blueprint_stage=excluded.blueprint_stage,
+			worktree_path=excluded.worktree_path,
+			branch_name=excluded.branch_name,
+			created_at=excluded.created_at,
+			started_at=excluded.started_at,
+			completed_at=excluded.completed_at,
+			last_heartbeat_at=excluded.last_heartbeat_at,
+			result=excluded.result,
+			summary=excluded.summary,
+			handoff_to=excluded.handoff_to,
+			supersedes_run_id=excluded.supersedes_run_id,
+			evidence_count=excluded.evidence_count,
+			session_provider=excluded.session_provider,
+			session_ref=excluded.session_ref,
+			schema_version=excluded.schema_version
+	`,
+		run.RunID,
+		run.TicketID,
+		run.Project,
+		nullable(run.AgentID),
+		nullable(string(run.Provider)),
+		string(run.Status),
+		string(run.Kind),
+		nullable(run.BlueprintStage),
+		nullable(run.WorktreePath),
+		nullable(run.BranchName),
+		run.CreatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTime(run.StartedAt),
+		nullableTime(run.CompletedAt),
+		nullableTime(run.LastHeartbeatAt),
+		nullable(run.Result),
+		nullable(run.Summary),
+		nullable(run.HandoffTo),
+		nullable(run.SupersedesRunID),
+		run.EvidenceCount,
+		nullable(string(run.SessionProvider)),
+		nullable(run.SessionRef),
+		run.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert run %s: %w", run.RunID, err)
+	}
+	return nil
+}
+
+func (s *Store) upsertChange(ctx context.Context, change contracts.ChangeRef) error {
+	if err := change.Validate(); err != nil {
+		return err
+	}
+	reviewRequestedFromJSON, err := json.Marshal(change.ReviewRequestedFrom)
+	if err != nil {
+		return fmt.Errorf("marshal change reviewers: %w", err)
+	}
+	_, err = s.DB.ExecContext(ctx, `
+		INSERT INTO changes (
+			change_id, provider, ticket_id, run_id, branch_name, base_branch, head_ref, url,
+			external_id, status, checks_status, review_requested_from_json, review_summary,
+			created_at, updated_at, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(change_id) DO UPDATE SET
+			provider=excluded.provider,
+			ticket_id=excluded.ticket_id,
+			run_id=excluded.run_id,
+			branch_name=excluded.branch_name,
+			base_branch=excluded.base_branch,
+			head_ref=excluded.head_ref,
+			url=excluded.url,
+			external_id=excluded.external_id,
+			status=excluded.status,
+			checks_status=excluded.checks_status,
+			review_requested_from_json=excluded.review_requested_from_json,
+			review_summary=excluded.review_summary,
+			created_at=excluded.created_at,
+			updated_at=excluded.updated_at,
+			schema_version=excluded.schema_version
+	`,
+		change.ChangeID,
+		string(change.Provider),
+		change.TicketID,
+		nullable(change.RunID),
+		nullable(change.BranchName),
+		nullable(change.BaseBranch),
+		nullable(change.HeadRef),
+		nullable(change.URL),
+		nullable(change.ExternalID),
+		string(change.Status),
+		nullable(string(change.ChecksStatus)),
+		string(reviewRequestedFromJSON),
+		nullable(change.ReviewSummary),
+		change.CreatedAt.UTC().Format(time.RFC3339Nano),
+		change.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		change.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert change %s: %w", change.ChangeID, err)
+	}
+	return nil
+}
+
+func (s *Store) upsertCheck(ctx context.Context, check contracts.CheckResult) error {
+	if err := check.Validate(); err != nil {
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `
+		INSERT INTO checks (
+			check_id, source, provider, scope, scope_id, name, status, conclusion,
+			summary, url, started_at, completed_at, external_id, updated_at, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(check_id) DO UPDATE SET
+			source=excluded.source,
+			provider=excluded.provider,
+			scope=excluded.scope,
+			scope_id=excluded.scope_id,
+			name=excluded.name,
+			status=excluded.status,
+			conclusion=excluded.conclusion,
+			summary=excluded.summary,
+			url=excluded.url,
+			started_at=excluded.started_at,
+			completed_at=excluded.completed_at,
+			external_id=excluded.external_id,
+			updated_at=excluded.updated_at,
+			schema_version=excluded.schema_version
+	`,
+		check.CheckID,
+		string(check.Source),
+		nullable(string(check.Provider)),
+		string(check.Scope),
+		check.ScopeID,
+		check.Name,
+		string(check.Status),
+		string(check.Conclusion),
+		nullable(check.Summary),
+		nullable(check.URL),
+		nullableTime(check.StartedAt),
+		nullableTime(check.CompletedAt),
+		nullable(check.ExternalID),
+		check.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		check.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert check %s: %w", check.CheckID, err)
+	}
+	return nil
+}
+
+func (s *Store) upsertGate(ctx context.Context, gate contracts.GateSnapshot) error {
+	if err := gate.Validate(); err != nil {
+		return err
+	}
+	evidenceRequirementsJSON, err := json.Marshal(gate.EvidenceRequirements)
+	if err != nil {
+		return fmt.Errorf("marshal gate evidence requirements: %w", err)
+	}
+	relatedRunIDsJSON, err := json.Marshal(gate.RelatedRunIDs)
+	if err != nil {
+		return fmt.Errorf("marshal gate related runs: %w", err)
+	}
+	_, err = s.DB.ExecContext(ctx, `
+		INSERT INTO gates (
+			gate_id, ticket_id, run_id, kind, state, required_role, required_agent_id,
+			created_by, decided_by, decision_reason, evidence_requirements_json,
+			related_run_ids_json, replaces_gate_id, created_at, decided_at, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(gate_id) DO UPDATE SET
+			ticket_id=excluded.ticket_id,
+			run_id=excluded.run_id,
+			kind=excluded.kind,
+			state=excluded.state,
+			required_role=excluded.required_role,
+			required_agent_id=excluded.required_agent_id,
+			created_by=excluded.created_by,
+			decided_by=excluded.decided_by,
+			decision_reason=excluded.decision_reason,
+			evidence_requirements_json=excluded.evidence_requirements_json,
+			related_run_ids_json=excluded.related_run_ids_json,
+			replaces_gate_id=excluded.replaces_gate_id,
+			created_at=excluded.created_at,
+			decided_at=excluded.decided_at,
+			schema_version=excluded.schema_version
+	`,
+		gate.GateID,
+		gate.TicketID,
+		nullable(gate.RunID),
+		string(gate.Kind),
+		string(gate.State),
+		nullable(string(gate.RequiredRole)),
+		nullable(gate.RequiredAgentID),
+		string(gate.CreatedBy),
+		nullable(string(gate.DecidedBy)),
+		nullable(gate.DecisionReason),
+		string(evidenceRequirementsJSON),
+		string(relatedRunIDsJSON),
+		nullable(gate.ReplacesGateID),
+		gate.CreatedAt.UTC().Format(time.RFC3339Nano),
+		nullableTime(gate.DecidedAt),
+		gate.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert gate %s: %w", gate.GateID, err)
+	}
+	return nil
+}
+
+func (s *Store) upsertEvidence(ctx context.Context, evidence contracts.EvidenceItem) error {
+	if err := evidence.Validate(); err != nil {
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `
+		INSERT INTO evidence (
+			evidence_id, run_id, ticket_id, type, title, body, artifact_path,
+			supersedes_evidence_id, actor, created_at, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(evidence_id) DO UPDATE SET
+			run_id=excluded.run_id,
+			ticket_id=excluded.ticket_id,
+			type=excluded.type,
+			title=excluded.title,
+			body=excluded.body,
+			artifact_path=excluded.artifact_path,
+			supersedes_evidence_id=excluded.supersedes_evidence_id,
+			actor=excluded.actor,
+			created_at=excluded.created_at,
+			schema_version=excluded.schema_version
+	`,
+		evidence.EvidenceID,
+		evidence.RunID,
+		evidence.TicketID,
+		string(evidence.Type),
+		nullable(evidence.Title),
+		nullable(evidence.Body),
+		nullable(evidence.ArtifactPath),
+		nullable(evidence.SupersedesEvidenceID),
+		string(evidence.Actor),
+		evidence.CreatedAt.UTC().Format(time.RFC3339Nano),
+		evidence.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert evidence %s: %w", evidence.EvidenceID, err)
+	}
+	return nil
+}
+
+func (s *Store) upsertHandoff(ctx context.Context, handoff contracts.HandoffPacket) error {
+	if err := handoff.Validate(); err != nil {
+		return err
+	}
+	payloadJSON, err := json.Marshal(handoff)
+	if err != nil {
+		return fmt.Errorf("marshal handoff payload: %w", err)
+	}
+	_, err = s.DB.ExecContext(ctx, `
+		INSERT INTO handoffs (
+			handoff_id, source_run_id, ticket_id, actor, payload_json, generated_at, schema_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(handoff_id) DO UPDATE SET
+			source_run_id=excluded.source_run_id,
+			ticket_id=excluded.ticket_id,
+			actor=excluded.actor,
+			payload_json=excluded.payload_json,
+			generated_at=excluded.generated_at,
+			schema_version=excluded.schema_version
+	`,
+		handoff.HandoffID,
+		handoff.SourceRunID,
+		handoff.TicketID,
+		string(handoff.Actor),
+		string(payloadJSON),
+		handoff.GeneratedAt.UTC().Format(time.RFC3339Nano),
+		handoff.SchemaVersion,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert handoff %s: %w", handoff.HandoffID, err)
+	}
+	return nil
+}
+
 type ticketScanner interface {
 	Scan(dest ...any) error
 }
@@ -786,6 +1280,12 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 		latestHandoffID          sql.NullString
 		openGateIDsJSON          string
 		lastDispatchAt           sql.NullString
+		changeIDsJSON            string
+		changeReadyState         sql.NullString
+		changeReadyReasonsJSON   string
+		permissionProfilesJSON   string
+		protected                int
+		sensitive                int
 		parent                   sql.NullString
 		assignee                 sql.NullString
 		reviewer                 sql.NullString
@@ -842,6 +1342,12 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 		&latestHandoffID,
 		&openGateIDsJSON,
 		&lastDispatchAt,
+		&changeIDsJSON,
+		&changeReadyState,
+		&changeReadyReasonsJSON,
+		&permissionProfilesJSON,
+		&protected,
+		&sensitive,
 	); err != nil {
 		return contracts.TicketSnapshot{}, err
 	}
@@ -889,6 +1395,24 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 	if err := json.Unmarshal([]byte(openGateIDsJSON), &ticket.OpenGateIDs); err != nil {
 		return contracts.TicketSnapshot{}, err
 	}
+	if strings.TrimSpace(changeIDsJSON) == "" {
+		changeIDsJSON = `[]`
+	}
+	if err := json.Unmarshal([]byte(changeIDsJSON), &ticket.ChangeIDs); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if strings.TrimSpace(changeReadyReasonsJSON) == "" {
+		changeReadyReasonsJSON = `[]`
+	}
+	if err := json.Unmarshal([]byte(changeReadyReasonsJSON), &ticket.ChangeReadyReasons); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if strings.TrimSpace(permissionProfilesJSON) == "" {
+		permissionProfilesJSON = `[]`
+	}
+	if err := json.Unmarshal([]byte(permissionProfilesJSON), &ticket.PermissionProfiles); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
 	ticket.Type = contracts.TicketType(typeValue)
 	ticket.Status = contracts.Status(statusValue)
 	ticket.Priority = contracts.Priority(priorityValue)
@@ -896,6 +1420,8 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 		ticket.DispatchMode = contracts.DispatchMode(dispatchMode.String)
 	}
 	ticket.AllowParallelRuns = allowParallelRuns == 1
+	ticket.Protected = protected == 1
+	ticket.Sensitive = sensitive == 1
 	ticket.CreatedAt = parsedCreatedAt
 	ticket.UpdatedAt = parsedUpdatedAt
 	ticket.Archived = archived == 1
@@ -968,43 +1494,58 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 			return contracts.TicketSnapshot{}, err
 		}
 	}
+	if changeReadyState.Valid {
+		ticket.ChangeReadyState = contracts.ChangeReadyState(changeReadyState.String)
+	}
 	return contracts.NormalizeTicketSnapshot(ticket), nil
 }
 
-func marshalTicketJSON(ticket contracts.TicketSnapshot) (labelsJSON string, blockedByJSON string, blocksJSON string, acceptanceJSON string, policyJSON string, progressJSON string, requiredCapabilitiesJSON string, openGateIDsJSON string, err error) {
+func marshalTicketJSON(ticket contracts.TicketSnapshot) (labelsJSON string, blockedByJSON string, blocksJSON string, acceptanceJSON string, policyJSON string, progressJSON string, requiredCapabilitiesJSON string, openGateIDsJSON string, changeIDsJSON string, changeReadyReasonsJSON string, permissionProfilesJSON string, err error) {
 	labelsRaw, err := json.Marshal(ticket.Labels)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal labels: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal labels: %w", err)
 	}
 	blockedByRaw, err := json.Marshal(ticket.BlockedBy)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocked_by: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocked_by: %w", err)
 	}
 	blocksRaw, err := json.Marshal(ticket.Blocks)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocks: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocks: %w", err)
 	}
 	acceptanceRaw, err := json.Marshal(ticket.AcceptanceCriteria)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal acceptance criteria: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal acceptance criteria: %w", err)
 	}
 	policyRaw, err := json.Marshal(ticket.Policy)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal policy: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal policy: %w", err)
 	}
 	progressRaw, err := json.Marshal(ticket.Progress)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal progress: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal progress: %w", err)
 	}
 	requiredCapabilitiesRaw, err := json.Marshal(ticket.RequiredCapabilities)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal required capabilities: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal required capabilities: %w", err)
 	}
 	openGateIDsRaw, err := json.Marshal(ticket.OpenGateIDs)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", fmt.Errorf("marshal open gate ids: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal open gate ids: %w", err)
 	}
-	return string(labelsRaw), string(blockedByRaw), string(blocksRaw), string(acceptanceRaw), string(policyRaw), string(progressRaw), string(requiredCapabilitiesRaw), string(openGateIDsRaw), nil
+	changeIDsRaw, err := json.Marshal(ticket.ChangeIDs)
+	if err != nil {
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal change ids: %w", err)
+	}
+	changeReadyReasonsRaw, err := json.Marshal(ticket.ChangeReadyReasons)
+	if err != nil {
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal change ready reasons: %w", err)
+	}
+	permissionProfilesRaw, err := json.Marshal(ticket.PermissionProfiles)
+	if err != nil {
+		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal permission profiles: %w", err)
+	}
+	return string(labelsRaw), string(blockedByRaw), string(blocksRaw), string(acceptanceRaw), string(policyRaw), string(progressRaw), string(requiredCapabilitiesRaw), string(openGateIDsRaw), string(changeIDsRaw), string(changeReadyReasonsRaw), string(permissionProfilesRaw), nil
 }
 
 func extractTicketSnapshots(payload any) []contracts.TicketSnapshot {
@@ -1063,6 +1604,193 @@ func extractAgentProfiles(payload any) []contracts.AgentProfile {
 		return nil
 	}
 	return []contracts.AgentProfile{profile}
+}
+
+func extractRunSnapshots(payload any) []contracts.RunSnapshot {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+
+	result := make([]contracts.RunSnapshot, 0, 1)
+	seen := map[string]struct{}{}
+	appendRun := func(run contracts.RunSnapshot) {
+		if run.SchemaVersion == 0 {
+			run.SchemaVersion = contracts.CurrentSchemaVersion
+		}
+		if run.Status == "" {
+			run.Status = contracts.RunStatusPlanned
+		}
+		if run.Kind == "" {
+			run.Kind = contracts.RunKindWork
+		}
+		if run.Validate() != nil {
+			return
+		}
+		if _, ok := seen[run.RunID]; ok {
+			return
+		}
+		seen[run.RunID] = struct{}{}
+		result = append(result, run)
+	}
+
+	var wrapped struct {
+		Run contracts.RunSnapshot `json:"run"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		appendRun(wrapped.Run)
+	}
+
+	var run contracts.RunSnapshot
+	if err := json.Unmarshal(raw, &run); err == nil {
+		appendRun(run)
+	}
+
+	return result
+}
+
+func extractChangeRefs(payload any) []contracts.ChangeRef {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	result := make([]contracts.ChangeRef, 0, 1)
+	seen := map[string]struct{}{}
+	appendChange := func(change contracts.ChangeRef) {
+		if change.Validate() != nil {
+			return
+		}
+		if _, ok := seen[change.ChangeID]; ok {
+			return
+		}
+		seen[change.ChangeID] = struct{}{}
+		result = append(result, change)
+	}
+	var wrapped struct {
+		Change contracts.ChangeRef `json:"change"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		appendChange(wrapped.Change)
+	}
+	var change contracts.ChangeRef
+	if err := json.Unmarshal(raw, &change); err == nil {
+		appendChange(change)
+	}
+	return result
+}
+
+func extractCheckResults(payload any) []contracts.CheckResult {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	result := make([]contracts.CheckResult, 0, 1)
+	seen := map[string]struct{}{}
+	appendCheck := func(check contracts.CheckResult) {
+		if check.Validate() != nil {
+			return
+		}
+		if _, ok := seen[check.CheckID]; ok {
+			return
+		}
+		seen[check.CheckID] = struct{}{}
+		result = append(result, check)
+	}
+	var wrapped struct {
+		Check contracts.CheckResult `json:"check"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		appendCheck(wrapped.Check)
+	}
+	var check contracts.CheckResult
+	if err := json.Unmarshal(raw, &check); err == nil {
+		appendCheck(check)
+	}
+	return result
+}
+
+func extractGateSnapshots(payload any) []contracts.GateSnapshot {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	var wrapped struct {
+		Gate  contracts.GateSnapshot   `json:"gate"`
+		Gates []contracts.GateSnapshot `json:"gates"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		items := make([]contracts.GateSnapshot, 0, 1+len(wrapped.Gates))
+		if wrapped.Gate.Validate() == nil {
+			items = append(items, wrapped.Gate)
+		}
+		for _, gate := range wrapped.Gates {
+			if gate.Validate() == nil {
+				items = append(items, gate)
+			}
+		}
+		if len(items) > 0 {
+			return items
+		}
+	}
+	var gate contracts.GateSnapshot
+	if err := json.Unmarshal(raw, &gate); err == nil && gate.Validate() == nil {
+		return []contracts.GateSnapshot{gate}
+	}
+	return nil
+}
+
+func extractEvidenceItems(payload any) []contracts.EvidenceItem {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	var wrapped struct {
+		Evidence contracts.EvidenceItem `json:"evidence"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil && wrapped.Evidence.Validate() == nil {
+		return []contracts.EvidenceItem{wrapped.Evidence}
+	}
+	var evidence contracts.EvidenceItem
+	if err := json.Unmarshal(raw, &evidence); err == nil && evidence.Validate() == nil {
+		return []contracts.EvidenceItem{evidence}
+	}
+	return nil
+}
+
+func extractHandoffPackets(payload any) []contracts.HandoffPacket {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	var wrapped struct {
+		Handoff contracts.HandoffPacket `json:"handoff"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil && wrapped.Handoff.Validate() == nil {
+		return []contracts.HandoffPacket{wrapped.Handoff}
+	}
+	var handoff contracts.HandoffPacket
+	if err := json.Unmarshal(raw, &handoff); err == nil && handoff.Validate() == nil {
+		return []contracts.HandoffPacket{handoff}
+	}
+	return nil
 }
 
 func nullable(value string) any {

@@ -207,6 +207,12 @@ Use Atlas Tasker as the local source of truth for work state.
 5. `+"`tracker ticket request-review <ID> --actor agent:builder-1`"+` when the diff is ready.
 6. `+"`tracker ticket approve|reject|complete ...`"+` based on the active completion policy.
 
+## Run-scoped launch flow
+
+- `+"`tracker run launch <RUN-ID>`"+` writes the current run brief plus provider launch files under `+"`.tracker/runtime/<run-id>/`"+`.
+- `+"`tracker run open <RUN-ID> --json`"+` shows the canonical runtime, evidence, and worktree paths without changing files.
+- When you attach to an external session, record it with `+"`tracker run attach <RUN-ID> --provider codex --session-ref <session>`"+`.
+
 ## JSON-first reads
 
 - `+"`tracker queue --actor <actor> --json`"+`
@@ -232,6 +238,12 @@ Use Atlas Tasker as the durable workflow layer for Claude Code sessions.
 3. `+"`tracker ticket claim <ID> --actor <actor>`"+` before you touch the task.
 4. `+"`tracker ticket comment <ID> --body \"decision or risk\" --actor <actor>`"+` when context should survive the session.
 5. `+"`tracker ticket request-review|approve|reject|complete ...`"+` instead of relying on status changes alone.
+
+## Run-scoped launch flow
+
+- `+"`tracker run launch <RUN-ID>`"+` writes the current brief and Claude launch text under `+"`.tracker/runtime/<run-id>/`"+`.
+- `+"`tracker run open <RUN-ID> --json`"+` shows the canonical runtime, evidence, and worktree paths without changing files.
+- Record the active Claude session with `+"`tracker run attach <RUN-ID> --provider claude --session-ref <session>`"+`.
 
 ## Debugging state
 

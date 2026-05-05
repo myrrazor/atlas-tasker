@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 type DispatchMode string
@@ -193,16 +195,16 @@ func (s GateState) IsValid() bool {
 type EvidenceType string
 
 const (
-	EvidenceTypeNote             EvidenceType = "note"
-	EvidenceTypeTestResult       EvidenceType = "test_result"
-	EvidenceTypeFileDiffSummary  EvidenceType = "file_diff_summary"
-	EvidenceTypeLogExcerpt       EvidenceType = "log_excerpt"
-	EvidenceTypeScreenshot       EvidenceType = "screenshot"
-	EvidenceTypeArtifactRef      EvidenceType = "artifact_ref"
-	EvidenceTypeCommitRef        EvidenceType = "commit_ref"
-	EvidenceTypeManualAssertion  EvidenceType = "manual_assertion"
+	EvidenceTypeNote               EvidenceType = "note"
+	EvidenceTypeTestResult         EvidenceType = "test_result"
+	EvidenceTypeFileDiffSummary    EvidenceType = "file_diff_summary"
+	EvidenceTypeLogExcerpt         EvidenceType = "log_excerpt"
+	EvidenceTypeScreenshot         EvidenceType = "screenshot"
+	EvidenceTypeArtifactRef        EvidenceType = "artifact_ref"
+	EvidenceTypeCommitRef          EvidenceType = "commit_ref"
+	EvidenceTypeManualAssertion    EvidenceType = "manual_assertion"
 	EvidenceTypeUnresolvedQuestion EvidenceType = "unresolved_question"
-	EvidenceTypeReviewChecklist  EvidenceType = "review_checklist"
+	EvidenceTypeReviewChecklist    EvidenceType = "review_checklist"
 )
 
 var validEvidenceTypes = map[EvidenceType]struct{}{
@@ -226,8 +228,8 @@ func (t EvidenceType) IsValid() bool {
 type WorktreeMode string
 
 const (
-	WorktreeModePerRun  WorktreeMode = "per_run"
-	WorktreeModeShared  WorktreeMode = "shared"
+	WorktreeModePerRun   WorktreeMode = "per_run"
+	WorktreeModeShared   WorktreeMode = "shared"
 	WorktreeModeDisabled WorktreeMode = "disabled"
 )
 
@@ -248,11 +250,80 @@ type WorktreeConfig struct {
 	DefaultMode      WorktreeMode `json:"default_mode,omitempty" yaml:"default_mode,omitempty" toml:"default_mode"`
 	AutoPrune        bool         `json:"auto_prune,omitempty" yaml:"auto_prune,omitempty" toml:"auto_prune"`
 	RequireCleanMain bool         `json:"require_clean_main,omitempty" yaml:"require_clean_main,omitempty" toml:"require_clean_main"`
+
+	enabledSet          bool `json:"-" yaml:"-" toml:"-"`
+	autoPruneSet        bool `json:"-" yaml:"-" toml:"-"`
+	requireCleanMainSet bool `json:"-" yaml:"-" toml:"-"`
 }
 
 func (c WorktreeConfig) Validate() error {
 	if c.DefaultMode != "" && !c.DefaultMode.IsValid() {
 		return fmt.Errorf("invalid worktree default_mode: %s", c.DefaultMode)
+	}
+	return nil
+}
+
+func (c WorktreeConfig) EnabledConfigured() bool {
+	return c.enabledSet
+}
+
+func (c WorktreeConfig) AutoPruneConfigured() bool {
+	return c.autoPruneSet
+}
+
+func (c WorktreeConfig) RequireCleanMainConfigured() bool {
+	return c.requireCleanMainSet
+}
+
+type worktreeConfigYAML struct {
+	Enabled          *bool        `yaml:"enabled,omitempty"`
+	Root             string       `yaml:"root,omitempty"`
+	DefaultMode      WorktreeMode `yaml:"default_mode,omitempty"`
+	AutoPrune        *bool        `yaml:"auto_prune,omitempty"`
+	RequireCleanMain *bool        `yaml:"require_clean_main,omitempty"`
+}
+
+func (c WorktreeConfig) MarshalYAML() (any, error) {
+	out := worktreeConfigYAML{
+		Root:        c.Root,
+		DefaultMode: c.DefaultMode,
+	}
+	if c.Enabled || c.enabledSet {
+		value := c.Enabled
+		out.Enabled = &value
+	}
+	if c.AutoPrune || c.autoPruneSet {
+		value := c.AutoPrune
+		out.AutoPrune = &value
+	}
+	if c.RequireCleanMain || c.requireCleanMainSet {
+		value := c.RequireCleanMain
+		out.RequireCleanMain = &value
+	}
+	return out, nil
+}
+
+func (c *WorktreeConfig) UnmarshalYAML(value *yaml.Node) error {
+	var raw worktreeConfigYAML
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	c.Root = raw.Root
+	c.DefaultMode = raw.DefaultMode
+	c.Enabled = false
+	c.AutoPrune = false
+	c.RequireCleanMain = false
+	c.enabledSet = raw.Enabled != nil
+	c.autoPruneSet = raw.AutoPrune != nil
+	c.requireCleanMainSet = raw.RequireCleanMain != nil
+	if raw.Enabled != nil {
+		c.Enabled = *raw.Enabled
+	}
+	if raw.AutoPrune != nil {
+		c.AutoPrune = *raw.AutoPrune
+	}
+	if raw.RequireCleanMain != nil {
+		c.RequireCleanMain = *raw.RequireCleanMain
 	}
 	return nil
 }
@@ -273,9 +344,9 @@ func (m RunbookMap) Validate() error {
 }
 
 type RoutingHint struct {
-	TicketType   TicketType `json:"ticket_type,omitempty" yaml:"ticket_type,omitempty" toml:"ticket_type"`
-	Capability   string     `json:"capability,omitempty" yaml:"capability,omitempty" toml:"capability"`
-	PreferredAgentID string  `json:"preferred_agent_id,omitempty" yaml:"preferred_agent_id,omitempty" toml:"preferred_agent_id"`
+	TicketType       TicketType `json:"ticket_type,omitempty" yaml:"ticket_type,omitempty" toml:"ticket_type"`
+	Capability       string     `json:"capability,omitempty" yaml:"capability,omitempty" toml:"capability"`
+	PreferredAgentID string     `json:"preferred_agent_id,omitempty" yaml:"preferred_agent_id,omitempty" toml:"preferred_agent_id"`
 }
 
 func (h RoutingHint) Validate() error {
@@ -289,9 +360,9 @@ func (h RoutingHint) Validate() error {
 }
 
 type GateTemplate struct {
-	Kind         GateKind `json:"kind" yaml:"kind" toml:"kind"`
-	RequiredRole AgentRole `json:"required_role,omitempty" yaml:"required_role,omitempty" toml:"required_role"`
-	RequiredAgentID string `json:"required_agent_id,omitempty" yaml:"required_agent_id,omitempty" toml:"required_agent_id"`
+	Kind            GateKind  `json:"kind" yaml:"kind" toml:"kind"`
+	RequiredRole    AgentRole `json:"required_role,omitempty" yaml:"required_role,omitempty" toml:"required_role"`
+	RequiredAgentID string    `json:"required_agent_id,omitempty" yaml:"required_agent_id,omitempty" toml:"required_agent_id"`
 }
 
 func (t GateTemplate) Validate() error {
@@ -359,26 +430,26 @@ func (p AgentProfile) Validate() error {
 }
 
 type RunSnapshot struct {
-	RunID           string     `json:"run_id" yaml:"run_id"`
-	TicketID        string     `json:"ticket_id" yaml:"ticket_id"`
-	Project         string     `json:"project" yaml:"project"`
-	AgentID         string     `json:"agent_id,omitempty" yaml:"agent_id,omitempty"`
+	RunID           string        `json:"run_id" yaml:"run_id"`
+	TicketID        string        `json:"ticket_id" yaml:"ticket_id"`
+	Project         string        `json:"project" yaml:"project"`
+	AgentID         string        `json:"agent_id,omitempty" yaml:"agent_id,omitempty"`
 	Provider        AgentProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
-	Status          RunStatus  `json:"status" yaml:"status"`
-	Kind            RunKind    `json:"kind" yaml:"kind"`
-	BlueprintStage  string     `json:"blueprint_stage,omitempty" yaml:"blueprint_stage,omitempty"`
-	WorktreePath    string     `json:"worktree_path,omitempty" yaml:"worktree_path,omitempty"`
-	BranchName      string     `json:"branch_name,omitempty" yaml:"branch_name,omitempty"`
-	CreatedAt       time.Time  `json:"created_at" yaml:"created_at"`
-	StartedAt       time.Time  `json:"started_at,omitempty" yaml:"started_at,omitempty"`
-	CompletedAt     time.Time  `json:"completed_at,omitempty" yaml:"completed_at,omitempty"`
-	LastHeartbeatAt time.Time  `json:"last_heartbeat_at,omitempty" yaml:"last_heartbeat_at,omitempty"`
-	Result          string     `json:"result,omitempty" yaml:"result,omitempty"`
-	Summary         string     `json:"summary,omitempty" yaml:"summary,omitempty"`
-	HandoffTo       string     `json:"handoff_to,omitempty" yaml:"handoff_to,omitempty"`
-	SupersedesRunID string     `json:"supersedes_run_id,omitempty" yaml:"supersedes_run_id,omitempty"`
-	EvidenceCount   int        `json:"evidence_count,omitempty" yaml:"evidence_count,omitempty"`
-	SchemaVersion   int        `json:"schema_version" yaml:"schema_version"`
+	Status          RunStatus     `json:"status" yaml:"status"`
+	Kind            RunKind       `json:"kind" yaml:"kind"`
+	BlueprintStage  string        `json:"blueprint_stage,omitempty" yaml:"blueprint_stage,omitempty"`
+	WorktreePath    string        `json:"worktree_path,omitempty" yaml:"worktree_path,omitempty"`
+	BranchName      string        `json:"branch_name,omitempty" yaml:"branch_name,omitempty"`
+	CreatedAt       time.Time     `json:"created_at" yaml:"created_at"`
+	StartedAt       time.Time     `json:"started_at,omitempty" yaml:"started_at,omitempty"`
+	CompletedAt     time.Time     `json:"completed_at,omitempty" yaml:"completed_at,omitempty"`
+	LastHeartbeatAt time.Time     `json:"last_heartbeat_at,omitempty" yaml:"last_heartbeat_at,omitempty"`
+	Result          string        `json:"result,omitempty" yaml:"result,omitempty"`
+	Summary         string        `json:"summary,omitempty" yaml:"summary,omitempty"`
+	HandoffTo       string        `json:"handoff_to,omitempty" yaml:"handoff_to,omitempty"`
+	SupersedesRunID string        `json:"supersedes_run_id,omitempty" yaml:"supersedes_run_id,omitempty"`
+	EvidenceCount   int           `json:"evidence_count,omitempty" yaml:"evidence_count,omitempty"`
+	SchemaVersion   int           `json:"schema_version" yaml:"schema_version"`
 	SessionProvider AgentProvider `json:"session_provider,omitempty" yaml:"session_provider,omitempty"`
 	SessionRef      string        `json:"session_ref,omitempty" yaml:"session_ref,omitempty"`
 }
@@ -452,12 +523,12 @@ func (s RunbookStage) Validate() error {
 }
 
 type Runbook struct {
-	Name                string         `json:"name" yaml:"name" toml:"name"`
-	DisplayName         string         `json:"display_name" yaml:"display_name" toml:"display_name"`
-	AppliesToTicketTypes []TicketType  `json:"applies_to_ticket_types,omitempty" yaml:"applies_to_ticket_types,omitempty" toml:"applies_to_ticket_types"`
-	DefaultInitialStage string         `json:"default_initial_stage,omitempty" yaml:"default_initial_stage,omitempty" toml:"default_initial_stage"`
-	HandoffTemplate     string         `json:"handoff_template,omitempty" yaml:"handoff_template,omitempty" toml:"handoff_template"`
-	Stages              []RunbookStage `json:"stages" yaml:"stages" toml:"stages"`
+	Name                 string         `json:"name" yaml:"name" toml:"name"`
+	DisplayName          string         `json:"display_name" yaml:"display_name" toml:"display_name"`
+	AppliesToTicketTypes []TicketType   `json:"applies_to_ticket_types,omitempty" yaml:"applies_to_ticket_types,omitempty" toml:"applies_to_ticket_types"`
+	DefaultInitialStage  string         `json:"default_initial_stage,omitempty" yaml:"default_initial_stage,omitempty" toml:"default_initial_stage"`
+	HandoffTemplate      string         `json:"handoff_template,omitempty" yaml:"handoff_template,omitempty" toml:"handoff_template"`
+	Stages               []RunbookStage `json:"stages" yaml:"stages" toml:"stages"`
 }
 
 func (r Runbook) Validate() error {
@@ -484,17 +555,17 @@ func (r Runbook) Validate() error {
 }
 
 type EvidenceItem struct {
-	EvidenceID          string       `json:"evidence_id" yaml:"evidence_id"`
-	RunID               string       `json:"run_id" yaml:"run_id"`
-	TicketID            string       `json:"ticket_id" yaml:"ticket_id"`
-	Type                EvidenceType `json:"type" yaml:"type"`
-	Title               string       `json:"title,omitempty" yaml:"title,omitempty"`
-	Body                string       `json:"body,omitempty" yaml:"body,omitempty"`
-	ArtifactPath        string       `json:"artifact_path,omitempty" yaml:"artifact_path,omitempty"`
-	SupersedesEvidenceID string      `json:"supersedes_evidence_id,omitempty" yaml:"supersedes_evidence_id,omitempty"`
-	Actor               Actor        `json:"actor" yaml:"actor"`
-	CreatedAt           time.Time    `json:"created_at" yaml:"created_at"`
-	SchemaVersion       int          `json:"schema_version" yaml:"schema_version"`
+	EvidenceID           string       `json:"evidence_id" yaml:"evidence_id"`
+	RunID                string       `json:"run_id" yaml:"run_id"`
+	TicketID             string       `json:"ticket_id" yaml:"ticket_id"`
+	Type                 EvidenceType `json:"type" yaml:"type"`
+	Title                string       `json:"title,omitempty" yaml:"title,omitempty"`
+	Body                 string       `json:"body,omitempty" yaml:"body,omitempty"`
+	ArtifactPath         string       `json:"artifact_path,omitempty" yaml:"artifact_path,omitempty"`
+	SupersedesEvidenceID string       `json:"supersedes_evidence_id,omitempty" yaml:"supersedes_evidence_id,omitempty"`
+	Actor                Actor        `json:"actor" yaml:"actor"`
+	CreatedAt            time.Time    `json:"created_at" yaml:"created_at"`
+	SchemaVersion        int          `json:"schema_version" yaml:"schema_version"`
 }
 
 func (e EvidenceItem) Validate() error {
@@ -520,22 +591,22 @@ func (e EvidenceItem) Validate() error {
 }
 
 type HandoffPacket struct {
-	HandoffID               string    `json:"handoff_id" yaml:"handoff_id"`
-	SourceRunID             string    `json:"source_run_id" yaml:"source_run_id"`
-	TicketID                string    `json:"ticket_id" yaml:"ticket_id"`
-	Actor                   Actor     `json:"actor" yaml:"actor"`
-	StatusSummary           string    `json:"status_summary,omitempty" yaml:"status_summary,omitempty"`
-	ChangedFiles            []string  `json:"changed_files,omitempty" yaml:"changed_files,omitempty"`
-	CommitRefs              []string  `json:"commit_refs,omitempty" yaml:"commit_refs,omitempty"`
-	Tests                   []string  `json:"tests,omitempty" yaml:"tests,omitempty"`
-	EvidenceLinks           []string  `json:"evidence_links,omitempty" yaml:"evidence_links,omitempty"`
-	OpenQuestions           []string  `json:"open_questions,omitempty" yaml:"open_questions,omitempty"`
-	Risks                   []string  `json:"risks,omitempty" yaml:"risks,omitempty"`
-	SuggestedNextActor      string    `json:"suggested_next_actor,omitempty" yaml:"suggested_next_actor,omitempty"`
-	SuggestedNextGate       GateKind  `json:"suggested_next_gate,omitempty" yaml:"suggested_next_gate,omitempty"`
-	SuggestedNextTicketStatus Status  `json:"suggested_next_ticket_status,omitempty" yaml:"suggested_next_ticket_status,omitempty"`
-	GeneratedAt             time.Time `json:"generated_at" yaml:"generated_at"`
-	SchemaVersion           int       `json:"schema_version" yaml:"schema_version"`
+	HandoffID                 string    `json:"handoff_id" yaml:"handoff_id"`
+	SourceRunID               string    `json:"source_run_id" yaml:"source_run_id"`
+	TicketID                  string    `json:"ticket_id" yaml:"ticket_id"`
+	Actor                     Actor     `json:"actor" yaml:"actor"`
+	StatusSummary             string    `json:"status_summary,omitempty" yaml:"status_summary,omitempty"`
+	ChangedFiles              []string  `json:"changed_files,omitempty" yaml:"changed_files,omitempty"`
+	CommitRefs                []string  `json:"commit_refs,omitempty" yaml:"commit_refs,omitempty"`
+	Tests                     []string  `json:"tests,omitempty" yaml:"tests,omitempty"`
+	EvidenceLinks             []string  `json:"evidence_links,omitempty" yaml:"evidence_links,omitempty"`
+	OpenQuestions             []string  `json:"open_questions,omitempty" yaml:"open_questions,omitempty"`
+	Risks                     []string  `json:"risks,omitempty" yaml:"risks,omitempty"`
+	SuggestedNextActor        string    `json:"suggested_next_actor,omitempty" yaml:"suggested_next_actor,omitempty"`
+	SuggestedNextGate         GateKind  `json:"suggested_next_gate,omitempty" yaml:"suggested_next_gate,omitempty"`
+	SuggestedNextTicketStatus Status    `json:"suggested_next_ticket_status,omitempty" yaml:"suggested_next_ticket_status,omitempty"`
+	GeneratedAt               time.Time `json:"generated_at" yaml:"generated_at"`
+	SchemaVersion             int       `json:"schema_version" yaml:"schema_version"`
 }
 
 func (h HandoffPacket) Validate() error {
@@ -561,22 +632,22 @@ func (h HandoffPacket) Validate() error {
 }
 
 type GateSnapshot struct {
-	GateID               string     `json:"gate_id" yaml:"gate_id"`
-	TicketID             string     `json:"ticket_id" yaml:"ticket_id"`
-	RunID                string     `json:"run_id,omitempty" yaml:"run_id,omitempty"`
-	Kind                 GateKind   `json:"kind" yaml:"kind"`
-	State                GateState  `json:"state" yaml:"state"`
-	RequiredRole         AgentRole  `json:"required_role,omitempty" yaml:"required_role,omitempty"`
-	RequiredAgentID      string     `json:"required_agent_id,omitempty" yaml:"required_agent_id,omitempty"`
-	CreatedBy            Actor      `json:"created_by" yaml:"created_by"`
-	DecidedBy            Actor      `json:"decided_by,omitempty" yaml:"decided_by,omitempty"`
-	DecisionReason       string     `json:"decision_reason,omitempty" yaml:"decision_reason,omitempty"`
+	GateID               string         `json:"gate_id" yaml:"gate_id"`
+	TicketID             string         `json:"ticket_id" yaml:"ticket_id"`
+	RunID                string         `json:"run_id,omitempty" yaml:"run_id,omitempty"`
+	Kind                 GateKind       `json:"kind" yaml:"kind"`
+	State                GateState      `json:"state" yaml:"state"`
+	RequiredRole         AgentRole      `json:"required_role,omitempty" yaml:"required_role,omitempty"`
+	RequiredAgentID      string         `json:"required_agent_id,omitempty" yaml:"required_agent_id,omitempty"`
+	CreatedBy            Actor          `json:"created_by" yaml:"created_by"`
+	DecidedBy            Actor          `json:"decided_by,omitempty" yaml:"decided_by,omitempty"`
+	DecisionReason       string         `json:"decision_reason,omitempty" yaml:"decision_reason,omitempty"`
 	EvidenceRequirements []EvidenceType `json:"evidence_requirements,omitempty" yaml:"evidence_requirements,omitempty"`
-	RelatedRunIDs        []string   `json:"related_run_ids,omitempty" yaml:"related_run_ids,omitempty"`
-	ReplacesGateID       string     `json:"replaces_gate_id,omitempty" yaml:"replaces_gate_id,omitempty"`
-	CreatedAt            time.Time  `json:"created_at" yaml:"created_at"`
-	DecidedAt            time.Time  `json:"decided_at,omitempty" yaml:"decided_at,omitempty"`
-	SchemaVersion        int        `json:"schema_version" yaml:"schema_version"`
+	RelatedRunIDs        []string       `json:"related_run_ids,omitempty" yaml:"related_run_ids,omitempty"`
+	ReplacesGateID       string         `json:"replaces_gate_id,omitempty" yaml:"replaces_gate_id,omitempty"`
+	CreatedAt            time.Time      `json:"created_at" yaml:"created_at"`
+	DecidedAt            time.Time      `json:"decided_at,omitempty" yaml:"decided_at,omitempty"`
+	SchemaVersion        int            `json:"schema_version" yaml:"schema_version"`
 }
 
 func (g GateSnapshot) Validate() error {
