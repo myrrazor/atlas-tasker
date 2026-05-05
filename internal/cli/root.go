@@ -60,6 +60,12 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newChecksCommand())
 	root.AddCommand(newPermissionProfileCommand())
 	root.AddCommand(newPermissionsCommand())
+	root.AddCommand(newImportCommand())
+	root.AddCommand(newExportCommand())
+	root.AddCommand(newArchiveCommand())
+	root.AddCommand(newCompactCommand())
+	root.AddCommand(newDashboardCommand())
+	root.AddCommand(newTimelineCommand())
 	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())
@@ -415,6 +421,7 @@ func newProjectCommand() *cobra.Command {
 	policySet.Flags().Int("lease-ttl", 0, "Default lease TTL in minutes")
 	policySet.Flags().String("allowed-workers", "", "Comma-separated allowed actors")
 	policySet.Flags().String("required-reviewer", "", "Default required reviewer actor")
+	policySet.Flags().StringArray("retention-policy", nil, "Bound retention policy ID; repeat to set multiple")
 	addMutationFlags(policySet, &mutationFlags{Actor: "human:owner"})
 	policy.AddCommand(policySet)
 	cmd.AddCommand(policy)
@@ -3378,6 +3385,10 @@ func projectPolicyFromFlags(cmd *cobra.Command, defaults contracts.ProjectDefaul
 				return contracts.ProjectDefaults{}, fmt.Errorf("invalid required reviewer: %s", value)
 			}
 		}
+	}
+	if cmd.Flags().Changed("retention-policy") {
+		value, _ := cmd.Flags().GetStringArray("retention-policy")
+		defaults.RetentionPolicies = append([]string{}, value...)
 	}
 	return defaults, defaults.Validate()
 }

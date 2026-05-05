@@ -74,3 +74,9 @@ type RetentionPolicyStore interface {
 	LoadRetentionPolicy(ctx context.Context, policyID string) (RetentionPolicy, error)
 	ListRetentionPolicies(ctx context.Context) ([]RetentionPolicy, error)
 }
+
+type ArchiveRecordStore interface {
+	SaveArchiveRecord(ctx context.Context, record ArchiveRecord) error
+	LoadArchiveRecord(ctx context.Context, archiveID string) (ArchiveRecord, error)
+	ListArchiveRecords(ctx context.Context) ([]ArchiveRecord, error)
+}
