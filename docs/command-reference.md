@@ -87,6 +87,21 @@
 - `tracker checks view <CHECK-ID>`
 - `tracker checks record --scope <run|change|ticket> --id <SCOPE-ID> --name <NAME> [flags]`
 - `tracker checks sync <CHANGE-ID>`
+- `tracker permission-profile list`
+- `tracker permission-profile view <PROFILE-ID>`
+- `tracker permission-profile create <PROFILE-ID>`
+- `tracker permission-profile edit <PROFILE-ID>`
+- `tracker permission-profile bind <PROFILE-ID>`
+- `tracker permission-profile unbind <PROFILE-ID>`
+- `tracker permissions view <TARGET>`
+- `tracker import preview <PATH>`
+- `tracker import apply <JOB-ID>`
+- `tracker import list`
+- `tracker import view <JOB-ID>`
+- `tracker export create [--scope <SCOPE>]`
+- `tracker export list`
+- `tracker export view <BUNDLE-ID>`
+- `tracker export verify <PATH|BUNDLE-ID>`
 - `tracker evidence list <RUN-ID>`
 - `tracker evidence view <EVIDENCE-ID>`
 - `tracker handoff view <HANDOFF-ID>`
@@ -232,6 +247,47 @@ Rules:
 - change-scoped and ticket-scoped checks feed the same readiness rollup used by `ticket view` and `inspect`
 - `checks sync` is the explicit provider-read path for change-scoped checks; replay, reindex, and repair never call providers
 - run-scoped checks appear in `run view` and `handoff view`
+
+## Permission Profiles
+
+- `tracker permission-profile list`
+- `tracker permission-profile view <PROFILE-ID>`
+- `tracker permission-profile create <PROFILE-ID> [--name <TEXT>] [--priority <N>] [--workspace-default] [--project <KEY>]... [--agent <ID>]... [--runbook <NAME>]... [--allow-project <KEY>]... [--allow-ticket-type <TYPE>]... [--allow-runbook <NAME>]... [--allow-capability <CAP>]... [--allow-action <ACTION>]... [--deny-action <ACTION>]... [--allow-path <GLOB>]... [--forbid-path <GLOB>]... [--require-owner-for-sensitive-ops] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker permission-profile edit <PROFILE-ID> [same flags as create]`
+- `tracker permission-profile bind <PROFILE-ID> (--workspace | --project <KEY> | --agent <ID> | --runbook <NAME> | --ticket <ID>) [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker permission-profile unbind <PROFILE-ID> (--workspace | --project <KEY> | --agent <ID> | --runbook <NAME> | --ticket <ID>) [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker permissions view <TARGET> [--actor <ACTOR>] [--action <ACTION>]`
+
+Rules:
+
+- explicit deny beats explicit allow across every matching profile
+- matching order is workspace default, project default, agent binding, runbook binding, then direct ticket overlays
+- `permissions view` returns the ordered profile matches, the effective allow or deny decision, and stable reason codes for every blocked checkpoint
+- protected and sensitive tickets can require `human:owner`; when the owner is the actor Atlas records an explicit override event instead of silently bypassing the profile
+- path restrictions normalize to repo-root-relative slash paths and block with `unverifiable_path_scope` when Atlas cannot verify the changed-file set for the action
+- enforcement currently happens at dispatch, run launch, change create, change merge, gate open, gate approve, run completion, and ticket completion
+
+## Import / Export
+
+- `tracker import preview <PATH> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker import apply <JOB-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker import list`
+- `tracker import view <JOB-ID>`
+- `tracker export create [--scope <SCOPE>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker export list`
+- `tracker export view <BUNDLE-ID>`
+- `tracker export verify <PATH|BUNDLE-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+
+Rules:
+
+- preview is deterministic and side-effect free with respect to imported canonical data; it records a persistent import-job snapshot and audit event
+- apply transitions the job through `validated`, `applying`, and then `applied` or `failed`
+- Atlas bundle export writes three sidecars under `.tracker/exports/`: the `.tar.gz` archive, `.manifest.json`, and `.sha256`
+- `export verify` works by bundle id or direct archive path and validates manifest membership plus per-file checksums
+- Atlas bundle import is snapshot-first: it restores canonical markdown snapshots into the target workspace, but it does not copy the source workspace's `.tracker/events/` files into the live target workspace
+- structured Jira CSV and GitHub JSON imports are create-only in v1.5; existing ticket ids are reported as conflicts during preview and block apply
+- GitHub JSON import is metadata-link import only; it creates Atlas tickets and preserves the external source URL as import provenance
+- Atlas bundle import rejects path traversal and staged-copy conflicts before canonical writes land
 
 ## Evidence
 

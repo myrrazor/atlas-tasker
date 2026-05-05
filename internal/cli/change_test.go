@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -464,6 +465,226 @@ func TestChangeCreateStatusSyncAndImportURLFlow(t *testing.T) {
 	}
 	if merged.Payload.Change.Status != "merged" || merged.Payload.ObservedStatus != "merged" {
 		t.Fatalf("expected merged provider change, got %#v", merged)
+	}
+}
+
+func TestChangeRepeatedProviderActionsRemainIdempotent(t *testing.T) {
+	withTempWorkspace(t)
+	gitRunCLI(t, "init", "-b", "main")
+	gitRunCLI(t, "config", "user.email", "atlas@example.com")
+	gitRunCLI(t, "config", "user.name", "Atlas")
+	writeGitFile(t, "README.md", "# atlas\n")
+	gitRunCLI(t, "add", "README.md")
+	gitRunCLI(t, "commit", "-m", "init")
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("config", "set", "provider.default_scm_provider", "github")
+	must("config", "set", "provider.github_repo", "myrrazor/atlas-tasker")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Merge provider change", "--type", "task", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Request review again", "--type", "task", "--actor", "human:owner")
+	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")
+
+	dispatchOut := must("run", "dispatch", "APP-1", "--agent", "builder-1", "--actor", "human:owner", "--json")
+	var dispatch struct {
+		Payload struct {
+			RunID        string `json:"run_id"`
+			WorktreePath string `json:"worktree_path"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(dispatchOut), &dispatch); err != nil {
+		t.Fatalf("parse dispatch output: %v\nraw=%s", err, dispatchOut)
+	}
+	must("run", "start", dispatch.Payload.RunID, "--actor", "human:owner")
+	if err := os.MkdirAll(filepath.Join(dispatch.Payload.WorktreePath, "pkg"), 0o755); err != nil {
+		t.Fatalf("mkdir worktree dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dispatch.Payload.WorktreePath, "pkg", "feature.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write worktree file: %v", err)
+	}
+	runViewOut := must("run", "view", dispatch.Payload.RunID, "--json")
+	var runView struct {
+		Payload struct {
+			Run struct {
+				BranchName string `json:"branch_name"`
+			} `json:"run"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(runViewOut), &runView); err != nil {
+		t.Fatalf("parse run view: %v\nraw=%s", err, runViewOut)
+	}
+	installFakeGHProviderForCLI(t, runView.Payload.Run.BranchName)
+
+	createOut := must("change", "create", dispatch.Payload.RunID, "--actor", "human:owner", "--json")
+	var created struct {
+		Payload struct {
+			Change struct {
+				ChangeID string `json:"change_id"`
+			} `json:"change"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(createOut), &created); err != nil {
+		t.Fatalf("parse change create: %v\nraw=%s", err, createOut)
+	}
+	changeID := created.Payload.Change.ChangeID
+	must("change", "sync", changeID, "--actor", "human:owner", "--json")
+	must("checks", "sync", changeID, "--actor", "human:owner", "--json")
+
+	firstMergeOut := must("change", "merge", changeID, "--actor", "human:owner", "--json")
+	var firstMerge struct {
+		ReasonCodes []string `json:"reason_codes"`
+		Payload     struct {
+			Change struct {
+				Status string `json:"status"`
+			} `json:"change"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(firstMergeOut), &firstMerge); err != nil {
+		t.Fatalf("parse first merge: %v\nraw=%s", err, firstMergeOut)
+	}
+	if firstMerge.Payload.Change.Status != "merged" {
+		t.Fatalf("expected first merge to merge change, got %#v", firstMerge)
+	}
+
+	secondMergeOut := must("change", "merge", changeID, "--actor", "human:owner", "--json")
+	var secondMerge struct {
+		ReasonCodes []string `json:"reason_codes"`
+		Payload     struct {
+			Change struct {
+				Status string `json:"status"`
+			} `json:"change"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(secondMergeOut), &secondMerge); err != nil {
+		t.Fatalf("parse second merge: %v\nraw=%s", err, secondMergeOut)
+	}
+	if secondMerge.Payload.Change.Status != "merged" || !containsString(secondMerge.ReasonCodes, "already_merged") {
+		t.Fatalf("expected idempotent merged response, got %#v", secondMerge)
+	}
+
+	importOut := must("change", "import-url", "APP-2", "--url", "https://github.com/myrrazor/atlas-tasker/pull/43", "--actor", "human:owner", "--json")
+	var imported struct {
+		Payload struct {
+			Change struct {
+				ChangeID string `json:"change_id"`
+			} `json:"change"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(importOut), &imported); err != nil {
+		t.Fatalf("parse import url: %v\nraw=%s", err, importOut)
+	}
+	firstReviewOut := must("change", "review-request", imported.Payload.Change.ChangeID, "--actor", "human:owner", "--json")
+	var firstReview struct {
+		Payload struct {
+			Change struct {
+				Status string `json:"status"`
+			} `json:"change"`
+			ObservedStatus string `json:"observed_status"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(firstReviewOut), &firstReview); err != nil {
+		t.Fatalf("parse first review-request: %v\nraw=%s", err, firstReviewOut)
+	}
+	if firstReview.Payload.Change.Status != "review_requested" || firstReview.Payload.ObservedStatus != "review_requested" {
+		t.Fatalf("expected review-request to move change into review, got %#v", firstReview)
+	}
+
+	secondReviewOut := must("change", "review-request", imported.Payload.Change.ChangeID, "--actor", "human:owner", "--json")
+	var secondReview struct {
+		Payload struct {
+			Change struct {
+				Status string `json:"status"`
+			} `json:"change"`
+			ObservedStatus string `json:"observed_status"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(secondReviewOut), &secondReview); err != nil {
+		t.Fatalf("parse second review-request: %v\nraw=%s", err, secondReviewOut)
+	}
+	if secondReview.Payload.Change.Status != "review_requested" || secondReview.Payload.ObservedStatus != "review_requested" {
+		t.Fatalf("expected second review-request to stay idempotent, got %#v", secondReview)
+	}
+}
+
+func TestChangeProviderUnavailableAfterLocalPreconditionsPass(t *testing.T) {
+	withTempWorkspace(t)
+	gitRunCLI(t, "init", "-b", "main")
+	gitRunCLI(t, "config", "user.email", "atlas@example.com")
+	gitRunCLI(t, "config", "user.name", "Atlas")
+	writeGitFile(t, "README.md", "# atlas\n")
+	gitRunCLI(t, "add", "README.md")
+	gitRunCLI(t, "commit", "-m", "init")
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("config", "set", "provider.default_scm_provider", "github")
+	must("config", "set", "provider.github_repo", "myrrazor/atlas-tasker")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Provider outage", "--type", "task", "--actor", "human:owner")
+	installFakeGHProviderForCLI(t, "ticket/app-1-provider-outage")
+
+	importOut := must("change", "import-url", "APP-1", "--url", "https://github.com/myrrazor/atlas-tasker/pull/43", "--actor", "human:owner", "--json")
+	var imported struct {
+		Payload struct {
+			Change struct {
+				ChangeID string `json:"change_id"`
+			} `json:"change"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(importOut), &imported); err != nil {
+		t.Fatalf("parse import url: %v\nraw=%s", err, importOut)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gh")
+	script := `#!/bin/sh
+set -eu
+case "$1 $2" in
+  "auth status")
+    exit 0
+    ;;
+  "repo view")
+    echo '{"nameWithOwner":"myrrazor/atlas-tasker","url":"https://github.com/myrrazor/atlas-tasker"}'
+    ;;
+  "pr view")
+    echo '{"number":43,"title":"APP-1: Provider outage","url":"https://github.com/myrrazor/atlas-tasker/pull/43","state":"OPEN","isDraft":true,"headRefName":"ticket/app-1-provider-outage","baseRefName":"main","reviewDecision":"REVIEW_REQUIRED","mergeStateStatus":"BLOCKED","mergedAt":""}'
+    ;;
+  "pr checks")
+    echo '[]'
+    ;;
+  "pr ready")
+    echo 'gh CLI is not installed' >&2
+    exit 1
+    ;;
+  *)
+    echo "unexpected gh args: $*" >&2
+    exit 1
+    ;;
+esac
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("write broken gh: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if out, err := runCLI(t, "change", "review-request", imported.Payload.Change.ChangeID, "--actor", "human:owner", "--json"); err == nil || !strings.Contains(out+err.Error(), "provider_unavailable") {
+		t.Fatalf("expected provider_unavailable, err=%v out=%s", err, out)
 	}
 }
 
