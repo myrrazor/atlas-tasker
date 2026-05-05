@@ -252,6 +252,43 @@ func TestClaimQueueAndSweepCommands(t *testing.T) {
 	}
 }
 
+func TestIntegrationsInstallCommands(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("integrations", "install", "codex")
+	if _, err := os.Stat("AGENTS.md"); err != nil {
+		t.Fatalf("expected AGENTS.md to exist: %v", err)
+	}
+	body, err := os.ReadFile("AGENTS.md")
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(body), "Atlas Tasker (Codex)") {
+		t.Fatalf("unexpected AGENTS.md: %s", string(body))
+	}
+
+	must("integrations", "install", "claude")
+	if _, err := os.Stat("CLAUDE.md"); err != nil {
+		t.Fatalf("expected CLAUDE.md to exist: %v", err)
+	}
+	guide, err := os.ReadFile(".tracker/integrations/claude-guide.md")
+	if err != nil {
+		t.Fatalf("read claude guide: %v", err)
+	}
+	if !strings.Contains(string(guide), "tracker review-queue --actor agent:reviewer-1 --json") {
+		t.Fatalf("unexpected claude guide: %s", string(guide))
+	}
+}
+
 func TestReviewCommandsAndPolicyCommands(t *testing.T) {
 	withTempWorkspace(t)
 
@@ -344,5 +381,41 @@ func TestDoctorRepairAndInspectCommands(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "ticket.review_requested") {
 		t.Fatalf("unexpected notify log contents: %s", string(raw))
+	}
+}
+
+func TestTemplatesAndQueueAwareNext(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("config", "set", "actor.default", "agent:builder-1")
+	must("project", "create", "APP", "App Project")
+	templates := must("templates", "list", "--pretty")
+	if !strings.Contains(templates, "design") || !strings.Contains(templates, "task") {
+		t.Fatalf("unexpected templates list: %s", templates)
+	}
+	view := must("templates", "view", "design", "--json")
+	if !strings.Contains(view, "\"blueprint\": \"design\"") {
+		t.Fatalf("unexpected template view: %s", view)
+	}
+
+	must("ticket", "create", "--project", "APP", "--title", "Template task", "--template", "design", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	next := must("next", "--json")
+	if !strings.Contains(next, "\"category\": \"ready_for_me\"") || !strings.Contains(next, "\"reason\": \"ready and assignable\"") {
+		t.Fatalf("unexpected next output: %s", next)
+	}
+	detail := must("ticket", "view", "APP-1", "--json")
+	if !strings.Contains(detail, "\"blueprint\": \"design\"") || !strings.Contains(detail, "\"skill_hint\": \"design\"") {
+		t.Fatalf("unexpected ticket detail output: %s", detail)
 	}
 }
