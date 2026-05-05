@@ -178,6 +178,48 @@ func ensureInitArtifacts(root string) error {
 	if err := os.MkdirAll(storage.SubscriptionsDir(root), 0o755); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(storage.AgentsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.RunbooksDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.RunsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.GatesDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.ChangesDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.ChecksDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.PermissionProfilesDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.HandoffsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.ImportsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.ExportsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.RetentionPoliciesDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.ArchivesDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "evidence"), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "runtime"), 0o755); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "templates"), 0o755); err != nil {
 		return err
 	}
