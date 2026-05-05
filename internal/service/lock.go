@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,10 +27,35 @@ type FileLockManager struct {
 
 type lockContextKey struct{}
 
+type lockContextValue struct {
+	Root string
+}
+
 type lockMetadata struct {
 	PID        int    `json:"pid"`
+	Hostname   string `json:"hostname"`
+	Root       string `json:"root"`
 	Purpose    string `json:"purpose"`
 	AcquiredAt string `json:"acquired_at"`
+}
+
+func CanonicalWorkspaceRoot(root string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		return "", fmt.Errorf("workspace root is required")
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace root: %w", err)
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err == nil {
+		abs = resolved
+	}
+	return filepath.Clean(abs), nil
+}
+
+func (m FileLockManager) canonicalRoot() (string, error) {
+	return CanonicalWorkspaceRoot(m.Root)
 }
 
 func (m FileLockManager) Acquire(ctx context.Context, purpose string) (func() error, error) {
@@ -49,13 +75,20 @@ func (m FileLockManager) Acquire(ctx context.Context, purpose string) (func() er
 		ctx, cancel = context.WithTimeout(ctx, wait)
 	}
 
-	if err := os.MkdirAll(storage.TrackerDir(m.Root), 0o755); err != nil {
+	root, err := m.canonicalRoot()
+	if err != nil {
+		if cancel != nil {
+			cancel()
+		}
+		return nil, apperr.Wrap(apperr.CodeInternal, err, "canonicalize workspace root for write lock")
+	}
+	if err := os.MkdirAll(storage.TrackerDir(root), 0o755); err != nil {
 		if cancel != nil {
 			cancel()
 		}
 		return nil, apperr.Wrap(apperr.CodeInternal, err, "create tracker dir for write lock")
 	}
-	path := filepath.Join(storage.TrackerDir(m.Root), "write.lock")
+	path := filepath.Join(storage.TrackerDir(root), "write.lock")
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		if cancel != nil {
@@ -87,7 +120,8 @@ func (m FileLockManager) Acquire(ctx context.Context, purpose string) (func() er
 		}
 	}
 
-	meta := lockMetadata{PID: os.Getpid(), Purpose: purpose, AcquiredAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	hostname, _ := os.Hostname()
+	meta := lockMetadata{PID: os.Getpid(), Hostname: hostname, Root: root, Purpose: purpose, AcquiredAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	if raw, err := json.Marshal(meta); err == nil {
 		if err := file.Truncate(0); err == nil {
 			_, _ = file.Seek(0, 0)
@@ -111,6 +145,11 @@ func (m FileLockManager) Acquire(ctx context.Context, purpose string) (func() er
 	}, nil
 }
 
+func lockHeld(ctx context.Context) bool {
+	_, ok := ctx.Value(lockContextKey{}).(lockContextValue)
+	return ok
+}
+
 func withWriteLock[T any](ctx context.Context, manager WriteLockManager, purpose string, fn func(context.Context) (T, error)) (T, error) {
 	var zero T
 	if ctx == nil {
@@ -119,7 +158,7 @@ func withWriteLock[T any](ctx context.Context, manager WriteLockManager, purpose
 	if manager == nil {
 		return fn(ctx)
 	}
-	if _, ok := ctx.Value(lockContextKey{}).(bool); ok {
+	if _, ok := ctx.Value(lockContextKey{}).(lockContextValue); ok {
 		return fn(ctx)
 	}
 	unlock, err := manager.Acquire(ctx, purpose)
@@ -129,7 +168,11 @@ func withWriteLock[T any](ctx context.Context, manager WriteLockManager, purpose
 	defer func() {
 		_ = unlock()
 	}()
-	lockedCtx := context.WithValue(ctx, lockContextKey{}, true)
+	root := ""
+	if fm, ok := manager.(FileLockManager); ok {
+		root, _ = fm.canonicalRoot()
+	}
+	lockedCtx := context.WithValue(ctx, lockContextKey{}, lockContextValue{Root: root})
 	return fn(lockedCtx)
 }
 

@@ -58,10 +58,12 @@ func TestDoctorJSONReportsStructuredSuccess(t *testing.T) {
 		t.Fatalf("doctor failed: %v", err)
 	}
 	var payload struct {
-		OK          bool     `json:"ok"`
-		RepairRan   bool     `json:"repair_ran"`
-		IssueCodes  []string `json:"issue_codes"`
-		EventsCount int      `json:"events_scanned"`
+		OK            bool     `json:"ok"`
+		RepairRan     bool     `json:"repair_ran"`
+		RepairPending int      `json:"repair_pending"`
+		RepairActions []string `json:"repair_actions"`
+		IssueCodes    []string `json:"issue_codes"`
+		EventsCount   int      `json:"events_scanned"`
 	}
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		t.Fatalf("parse doctor payload: %v\nraw=%s", err, out)
@@ -74,6 +76,9 @@ func TestDoctorJSONReportsStructuredSuccess(t *testing.T) {
 	}
 	if payload.IssueCodes == nil {
 		t.Fatal("expected issue_codes field to be present")
+	}
+	if payload.RepairActions == nil {
+		t.Fatal("expected repair_actions field to be present")
 	}
 }
 

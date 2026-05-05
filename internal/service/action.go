@@ -21,10 +21,19 @@ type ActionService struct {
 	Clock       func() time.Time
 	LockManager WriteLockManager
 	Notifier    Notifier
+	Automation  *AutomationEngine
 }
 
-func NewActionService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time, locks WriteLockManager, notifier Notifier) *ActionService {
-	return &ActionService{Root: root, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier}
+func NewActionService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time, locks WriteLockManager, notifier Notifier, automation *AutomationEngine) *ActionService {
+	canonicalRoot, err := CanonicalWorkspaceRoot(root)
+	if err != nil {
+		canonicalRoot = root
+	}
+	if fm, ok := locks.(FileLockManager); ok {
+		fm.Root = canonicalRoot
+		locks = fm
+	}
+	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
 }
 
 func (s *ActionService) now() time.Time {
@@ -32,6 +41,97 @@ func (s *ActionService) now() time.Time {
 		return s.Clock().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func (s *ActionService) journal() MutationJournal {
+	return MutationJournal{Root: s.Root, Clock: s.Clock}
+}
+
+func (s *ActionService) newEvent(ctx context.Context, project string, at time.Time, actor contracts.Actor, reason string, eventType contracts.EventType, ticketID string, payload any) (contracts.Event, error) {
+	if !lockHeld(ctx) {
+		return contracts.Event{}, apperr.New(apperr.CodeInternal, "event allocation requires workspace write lock")
+	}
+	eventID, err := s.NextEventID(ctx, project)
+	if err != nil {
+		return contracts.Event{}, err
+	}
+	return contracts.Event{
+		EventID:       eventID,
+		Timestamp:     at.UTC(),
+		Actor:         actor,
+		Reason:        reason,
+		Type:          eventType,
+		Project:       project,
+		TicketID:      ticketID,
+		Payload:       payload,
+		Metadata:      eventMetadataFromContext(ctx, actor),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}, nil
+}
+
+func (s *ActionService) commitMutation(ctx context.Context, purpose string, canonicalKind string, event contracts.Event, writeCanonical func(context.Context) error) error {
+	ctx = contextWithDefaultReplayMode(ctx)
+	journal, err := s.journal().Begin(purpose, canonicalKind, event)
+	if err != nil {
+		return err
+	}
+	if writeCanonical != nil {
+		if err := writeCanonical(ctx); err != nil {
+			_ = s.journal().Complete(journal.ID)
+			return err
+		}
+		updated, markErr := s.journal().Mark(journal, MutationStageCanonicalWritten, "")
+		if markErr != nil {
+			return apperr.Wrap(apperr.CodeRepairNeeded, markErr, "record canonical mutation stage")
+		}
+		journal = updated
+	}
+	if err := s.Events.AppendEvent(ctx, event); err != nil {
+		_, _ = s.journal().Mark(journal, journal.Stage, err.Error())
+		if writeCanonical != nil {
+			return apperr.Wrap(apperr.CodeRepairNeeded, err, "event append failed after canonical write")
+		}
+		return err
+	}
+	updated, markErr := s.journal().Mark(journal, MutationStageEventAppended, "")
+	if markErr != nil {
+		return apperr.Wrap(apperr.CodeRepairNeeded, markErr, "record event append stage")
+	}
+	journal = updated
+	if s.Projection != nil {
+		if err := s.Projection.ApplyEvent(ctx, event); err != nil {
+			_, _ = s.journal().Mark(journal, journal.Stage, err.Error())
+			return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection apply failed after event commit")
+		}
+		updated, markErr = s.journal().Mark(journal, MutationStageProjectionApplied, "")
+		if markErr != nil {
+			return apperr.Wrap(apperr.CodeRepairNeeded, markErr, "record projection stage")
+		}
+		journal = updated
+	}
+	if !historicalReplay(ctx) && s.Notifier != nil {
+		_ = s.Notifier.Notify(ctx, event)
+	}
+	if err := s.journal().Complete(journal.ID); err != nil {
+		return apperr.Wrap(apperr.CodeRepairNeeded, err, "finalize mutation journal")
+	}
+	if !historicalReplay(ctx) && s.Automation != nil {
+		_, _ = s.Automation.Run(ctx, s, NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock), event)
+	}
+	return nil
+}
+
+func (s *ActionService) commitTicketSnapshotEvent(ctx context.Context, purpose string, ticket contracts.TicketSnapshot, actor contracts.Actor, reason string, eventType contracts.EventType, payload any) error {
+	if payload == nil {
+		payload = ticket
+	}
+	event, err := s.newEvent(ctx, ticket.Project, ticket.UpdatedAt, actor, reason, eventType, ticket.ID, payload)
+	if err != nil {
+		return err
+	}
+	return s.commitMutation(ctx, purpose, "ticket_snapshot", event, func(ctx context.Context) error {
+		return s.UpdateTicket(ctx, ticket)
+	})
 }
 
 func (s *ActionService) NextEventID(ctx context.Context, project string) (int64, error) {
@@ -87,21 +187,7 @@ func (s *ActionService) SoftDeleteTicket(ctx context.Context, id string, actor c
 
 func (s *ActionService) AppendAndProject(ctx context.Context, event contracts.Event) error {
 	_, err := withWriteLock(ctx, s.LockManager, "append and project event", func(ctx context.Context) (struct{}, error) {
-		if err := s.Events.AppendEvent(ctx, event); err != nil {
-			return struct{}{}, err
-		}
-		if s.Projection != nil {
-			if err := s.Projection.ApplyEvent(ctx, event); err != nil {
-				return struct{}{}, apperr.Wrap(apperr.CodeRepairNeeded, err, "projection apply failed after event commit")
-			}
-		}
-		if s.Notifier != nil {
-			if err := s.Notifier.Notify(ctx, event); err != nil {
-				// Notification delivery is post-commit best effort. Keep the mutation committed.
-				return struct{}{}, nil
-			}
-		}
-		return struct{}{}, nil
+		return struct{}{}, s.commitMutation(ctx, "append and project event", "event_only", event, nil)
 	})
 	return err
 }
@@ -147,25 +233,13 @@ func (s *ActionService) CreateTrackedTicket(ctx context.Context, ticket contract
 		if normalized.SchemaVersion == 0 {
 			normalized.SchemaVersion = contracts.CurrentSchemaVersion
 		}
-		if err := s.CreateTicket(ctx, normalized); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, normalized.Project)
+		event, err := s.newEvent(ctx, normalized.Project, normalized.UpdatedAt, actor, reason, contracts.EventTicketCreated, normalized.ID, normalized)
 		if err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     normalized.UpdatedAt,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketCreated,
-			Project:       normalized.Project,
-			TicketID:      normalized.ID,
-			Payload:       normalized,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitMutation(ctx, "create tracked ticket", "ticket_snapshot", event, func(ctx context.Context) error {
+			return s.CreateTicket(ctx, normalized)
+		}); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return normalized, nil
@@ -178,25 +252,13 @@ func (s *ActionService) SaveTrackedTicket(ctx context.Context, ticket contracts.
 			return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
 		}
 		normalized := contracts.NormalizeTicketSnapshot(ticket)
-		if err := s.UpdateTicket(ctx, normalized); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, normalized.Project)
+		event, err := s.newEvent(ctx, normalized.Project, normalized.UpdatedAt, actor, reason, contracts.EventTicketUpdated, normalized.ID, normalized)
 		if err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     normalized.UpdatedAt,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketUpdated,
-			Project:       normalized.Project,
-			TicketID:      normalized.ID,
-			Payload:       normalized,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitMutation(ctx, "save tracked ticket", "ticket_snapshot", event, func(ctx context.Context) error {
+			return s.UpdateTicket(ctx, normalized)
+		}); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return normalized, nil
@@ -245,25 +307,13 @@ func (s *ActionService) DeleteTrackedTicket(ctx context.Context, ticketID string
 		} else {
 			ticket.Notes = strings.TrimSpace(ticket.Notes) + "\n\n" + auditLine
 		}
-		if err := s.UpdateTicket(ctx, ticket); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, ticket.Project)
+		event, err := s.newEvent(ctx, ticket.Project, now, actor, reason, contracts.EventTicketClosed, ticket.ID, ticket)
 		if err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     now,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketClosed,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       ticket,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitMutation(ctx, "delete tracked ticket", "ticket_snapshot", event, func(ctx context.Context) error {
+			return s.UpdateTicket(ctx, ticket)
+		}); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -302,22 +352,11 @@ func (s *ActionService) CommentTicket(ctx context.Context, ticketID string, body
 			return struct{}{}, err
 		}
 		now := s.now()
-		eventID, err := s.NextEventID(ctx, ticket.Project)
+		event, err := s.newEvent(ctx, ticket.Project, now, actor, reason, contracts.EventTicketCommented, ticket.ID, map[string]any{"body": body})
 		if err != nil {
 			return struct{}{}, err
 		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     now,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketCommented,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       map[string]any{"body": body},
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		return struct{}{}, s.AppendAndProject(ctx, event)
+		return struct{}{}, s.commitMutation(ctx, "comment ticket", "event_only", event, nil)
 	})
 	return err
 }
@@ -339,32 +378,25 @@ func (s *ActionService) LinkTickets(ctx context.Context, id string, otherID stri
 		for _, ticketID := range []string{strings.TrimSpace(id), trimmedOther} {
 			ticket := mapped[ticketID]
 			ticket.UpdatedAt = now
-			if err := s.UpdateTicket(ctx, ticket); err != nil {
-				return contracts.Event{}, err
-			}
 		}
-		eventID, err := s.NextEventID(ctx, mapped[strings.TrimSpace(id)].Project)
+		event, err := s.newEvent(ctx, mapped[strings.TrimSpace(id)].Project, now, actor, reason, contracts.EventTicketLinked, strings.TrimSpace(id), map[string]any{
+			"id":           strings.TrimSpace(id),
+			"other_id":     trimmedOther,
+			"kind":         kind,
+			"ticket":       mapped[strings.TrimSpace(id)],
+			"other_ticket": mapped[trimmedOther],
+		})
 		if err != nil {
 			return contracts.Event{}, err
 		}
-		event := contracts.Event{
-			EventID:   eventID,
-			Timestamp: now,
-			Actor:     actor,
-			Reason:    reason,
-			Type:      contracts.EventTicketLinked,
-			Project:   mapped[strings.TrimSpace(id)].Project,
-			TicketID:  strings.TrimSpace(id),
-			Payload: map[string]any{
-				"id":           strings.TrimSpace(id),
-				"other_id":     trimmedOther,
-				"kind":         kind,
-				"ticket":       mapped[strings.TrimSpace(id)],
-				"other_ticket": mapped[trimmedOther],
-			},
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitMutation(ctx, "link tickets", "multi_ticket_snapshot", event, func(ctx context.Context) error {
+			for _, ticketID := range []string{strings.TrimSpace(id), trimmedOther} {
+				if err := s.UpdateTicket(ctx, mapped[ticketID]); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
 			return contracts.Event{}, err
 		}
 		return event, nil
@@ -389,31 +421,24 @@ func (s *ActionService) UnlinkTickets(ctx context.Context, id string, otherID st
 		for _, ticketID := range []string{trimmedID, trimmedOther} {
 			ticket := mapped[ticketID]
 			ticket.UpdatedAt = now
-			if err := s.UpdateTicket(ctx, ticket); err != nil {
-				return contracts.Event{}, err
-			}
 		}
-		eventID, err := s.NextEventID(ctx, mapped[trimmedID].Project)
+		event, err := s.newEvent(ctx, mapped[trimmedID].Project, now, actor, reason, contracts.EventTicketUnlinked, trimmedID, map[string]any{
+			"id":           trimmedID,
+			"other_id":     trimmedOther,
+			"ticket":       mapped[trimmedID],
+			"other_ticket": mapped[trimmedOther],
+		})
 		if err != nil {
 			return contracts.Event{}, err
 		}
-		event := contracts.Event{
-			EventID:   eventID,
-			Timestamp: now,
-			Actor:     actor,
-			Reason:    reason,
-			Type:      contracts.EventTicketUnlinked,
-			Project:   mapped[trimmedID].Project,
-			TicketID:  trimmedID,
-			Payload: map[string]any{
-				"id":           trimmedID,
-				"other_id":     trimmedOther,
-				"ticket":       mapped[trimmedID],
-				"other_ticket": mapped[trimmedOther],
-			},
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitMutation(ctx, "unlink tickets", "multi_ticket_snapshot", event, func(ctx context.Context) error {
+			for _, ticketID := range []string{trimmedID, trimmedOther} {
+				if err := s.UpdateTicket(ctx, mapped[ticketID]); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
 			return contracts.Event{}, err
 		}
 		return event, nil
@@ -464,25 +489,7 @@ func (s *ActionService) ClaimTicket(ctx context.Context, ticketID string, actor 
 			LastHeartbeatAt: now,
 		}
 		ticket.UpdatedAt = now
-		if err := s.UpdateTicket(ctx, ticket); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, ticket.Project)
-		if err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     now,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketClaimed,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       ticket,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitTicketSnapshotEvent(ctx, "claim ticket", ticket, actor, reason, contracts.EventTicketClaimed, ticket); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -507,25 +514,7 @@ func (s *ActionService) ReleaseTicket(ctx context.Context, ticketID string, acto
 		now := s.now()
 		ticket.Lease = contracts.LeaseState{}
 		ticket.UpdatedAt = now
-		if err := s.UpdateTicket(ctx, ticket); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, ticket.Project)
-		if err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     now,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketReleased,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       ticket,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitTicketSnapshotEvent(ctx, "release ticket", ticket, actor, reason, contracts.EventTicketReleased, ticket); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -552,25 +541,7 @@ func (s *ActionService) HeartbeatTicket(ctx context.Context, ticketID string, ac
 		ticket.Lease.LastHeartbeatAt = now
 		ticket.Lease.ExpiresAt = now.Add(policy.LeaseTTL)
 		ticket.UpdatedAt = now
-		if err := s.UpdateTicket(ctx, ticket); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, ticket.Project)
-		if err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     now,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketHeartbeat,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       ticket,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitTicketSnapshotEvent(ctx, "heartbeat ticket", ticket, actor, reason, contracts.EventTicketHeartbeat, ticket); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -633,25 +604,8 @@ func (s *ActionService) MoveTicket(ctx context.Context, ticketID string, to cont
 			ticket.ReviewState = contracts.ReviewStatePending
 		}
 		ticket.UpdatedAt = now
-		if err := s.UpdateTicket(ctx, ticket); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, ticket.Project)
-		if err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     now,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketMoved,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       map[string]any{"from": from, "to": to, "ticket": ticket},
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		payload := map[string]any{"from": from, "to": to, "ticket": ticket}
+		if err := s.commitTicketSnapshotEvent(ctx, "move ticket", ticket, actor, reason, contracts.EventTicketMoved, payload); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -677,25 +631,7 @@ func (s *ActionService) RequestReview(ctx context.Context, ticketID string, acto
 			ticket.Lease = contracts.LeaseState{}
 		}
 		ticket.UpdatedAt = now
-		if err := s.UpdateTicket(ctx, ticket); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, ticket.Project)
-		if err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     now,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketReviewRequested,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       ticket,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitTicketSnapshotEvent(ctx, "request review", ticket, actor, reason, contracts.EventTicketReviewRequested, ticket); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -728,25 +664,7 @@ func (s *ActionService) ApproveTicket(ctx context.Context, ticketID string, acto
 			ticket.Status = contracts.StatusDone
 			ticket.Lease = contracts.LeaseState{}
 		}
-		if err := s.UpdateTicket(ctx, ticket); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, ticket.Project)
-		if err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     now,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketApproved,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       ticket,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitTicketSnapshotEvent(ctx, "approve ticket", ticket, actor, reason, contracts.EventTicketApproved, ticket); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -778,25 +696,7 @@ func (s *ActionService) RejectTicket(ctx context.Context, ticketID string, actor
 			ticket.Lease = contracts.LeaseState{}
 		}
 		ticket.UpdatedAt = now
-		if err := s.UpdateTicket(ctx, ticket); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, ticket.Project)
-		if err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     now,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketRejected,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       ticket,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitTicketSnapshotEvent(ctx, "reject ticket", ticket, actor, reason, contracts.EventTicketRejected, ticket); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -830,25 +730,8 @@ func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, act
 		ticket.Status = contracts.StatusDone
 		ticket.Lease = contracts.LeaseState{}
 		ticket.UpdatedAt = now
-		if err := s.UpdateTicket(ctx, ticket); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, ticket.Project)
-		if err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     now,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketMoved,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       map[string]any{"from": from, "to": contracts.StatusDone, "ticket": ticket},
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		payload := map[string]any{"from": from, "to": contracts.StatusDone, "ticket": ticket}
+		if err := s.commitTicketSnapshotEvent(ctx, "complete ticket", ticket, actor, reason, contracts.EventTicketMoved, payload); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -881,25 +764,7 @@ func (s *ActionService) SetTicketPolicy(ctx context.Context, ticketID string, po
 		}
 		ticket.Policy = policy
 		ticket.UpdatedAt = s.now()
-		if err := s.UpdateTicket(ctx, ticket); err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		eventID, err := s.NextEventID(ctx, ticket.Project)
-		if err != nil {
-			return contracts.TicketSnapshot{}, err
-		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     ticket.UpdatedAt,
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventTicketPolicyUpdated,
-			Project:       ticket.Project,
-			TicketID:      ticket.ID,
-			Payload:       ticket,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitTicketSnapshotEvent(ctx, "set ticket policy", ticket, actor, reason, contracts.EventTicketPolicyUpdated, ticket); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -927,24 +792,13 @@ func (s *ActionService) SetProjectPolicy(ctx context.Context, key string, defaul
 			return contracts.Project{}, err
 		}
 		project.Defaults = defaults
-		if err := s.UpdateProject(ctx, project); err != nil {
-			return contracts.Project{}, err
-		}
-		eventID, err := s.NextEventID(ctx, key)
+		event, err := s.newEvent(ctx, key, s.now(), actor, reason, contracts.EventProjectPolicyUpdated, "", project)
 		if err != nil {
 			return contracts.Project{}, err
 		}
-		event := contracts.Event{
-			EventID:       eventID,
-			Timestamp:     s.now(),
-			Actor:         actor,
-			Reason:        reason,
-			Type:          contracts.EventProjectPolicyUpdated,
-			Project:       key,
-			Payload:       project,
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		}
-		if err := s.AppendAndProject(ctx, event); err != nil {
+		if err := s.commitMutation(ctx, "set project policy", "project_snapshot", event, func(ctx context.Context) error {
+			return s.UpdateProject(ctx, project)
+		}); err != nil {
 			return contracts.Project{}, err
 		}
 		return project, nil
@@ -956,9 +810,6 @@ func (s *ActionService) expireLease(ctx context.Context, ticket *contracts.Ticke
 	expiredActor := ticket.Lease.Actor
 	ticket.Lease = contracts.LeaseState{}
 	ticket.UpdatedAt = now
-	if err := s.UpdateTicket(ctx, *ticket); err != nil {
-		return contracts.TicketSnapshot{}, err
-	}
 	eventID, err := s.NextEventID(ctx, ticket.Project)
 	if err != nil {
 		return contracts.TicketSnapshot{}, err
@@ -978,7 +829,9 @@ func (s *ActionService) expireLease(ctx context.Context, ticket *contracts.Ticke
 		Payload:       *ticket,
 		SchemaVersion: contracts.CurrentSchemaVersion,
 	}
-	if err := s.AppendAndProject(ctx, event); err != nil {
+	if err := s.commitMutation(ctx, "expire lease", "ticket_snapshot", event, func(ctx context.Context) error {
+		return s.UpdateTicket(ctx, *ticket)
+	}); err != nil {
 		return contracts.TicketSnapshot{}, err
 	}
 	return *ticket, nil

@@ -5,6 +5,7 @@ REPO="myrrazor/atlas-tasker"
 BIN_NAME="tracker"
 BIN_DIR="${BIN_DIR:-/usr/local/bin}"
 VERSION="${VERSION:-latest}"
+RELEASE_BASE_URL="${RELEASE_BASE_URL:-}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -53,7 +54,12 @@ fi
 
 VERSION_NO_V="${TAG#v}"
 ARCHIVE="${BIN_NAME}_${VERSION_NO_V}_${OS_NAME}_${ARCH_NAME}.tar.gz"
-URL="https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}"
+if [ -n "$RELEASE_BASE_URL" ]; then
+  BASE_URL="${RELEASE_BASE_URL%/}"
+  URL="${BASE_URL}/${ARCHIVE}"
+else
+  URL="https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}"
+fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
