@@ -1,9 +1,6 @@
 package cli
 
-import (
-	"encoding/json"
-	"testing"
-)
+import "testing"
 
 func TestNotifyCommands(t *testing.T) {
 	withTempWorkspace(t)
@@ -23,19 +20,16 @@ func TestNotifyCommands(t *testing.T) {
 	must("notify", "send", "--event-type", "ticket.approved", "--project", "APP", "--ticket", "APP-1", "--reason", "smoke")
 
 	logOut := must("notify", "log", "--json")
-	var deliveries []map[string]any
-	if err := json.Unmarshal([]byte(logOut), &deliveries); err != nil {
-		t.Fatalf("parse notify log: %v\nraw=%s", err, logOut)
-	}
+	deliveries := decodeJSONList[map[string]any](t, logOut)
 	if len(deliveries) == 0 {
 		t.Fatalf("expected notify log entries, got %s", logOut)
 	}
+	if deliveries[0]["event_summary"] == "" {
+		t.Fatalf("expected event summary in notify log, got %#v", deliveries[0])
+	}
 
 	deadOut := must("notify", "dead-letter", "--json")
-	var deadLetters []map[string]any
-	if err := json.Unmarshal([]byte(deadOut), &deadLetters); err != nil {
-		t.Fatalf("parse dead letters: %v\nraw=%s", err, deadOut)
-	}
+	deadLetters := decodeJSONList[map[string]any](t, deadOut)
 	if len(deadLetters) != 0 {
 		t.Fatalf("expected no dead letters, got %s", deadOut)
 	}

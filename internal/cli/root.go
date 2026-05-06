@@ -147,6 +147,10 @@ func newConfigCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			rootDir, err = service.CanonicalWorkspaceRoot(rootDir)
+			if err != nil {
+				return err
+			}
 			value, err := config.Get(rootDir, key)
 			if err != nil {
 				return err
@@ -1488,7 +1492,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"repair_ran":     repair,
 		"repair_actions": append(append([]string{}, repairActions...), repairReport.Actions...),
 		"repair_pending": repairReport.Pending,
-		"config":         cfg,
+		"config":         config.MaskTrackerConfig(cfg),
 		"issue_codes":    []string{},
 		"issues": map[string]any{
 			"project_issues": projectIssues,

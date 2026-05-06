@@ -20,6 +20,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const jsonFormatVersion = "v1"
+
 type workspace struct {
 	root       string
 	project    mdstore.ProjectStore
@@ -97,7 +99,11 @@ func writeCommandOutput(cmd *cobra.Command, data any, markdown string, pretty st
 	jsonMode, _ := cmd.Flags().GetBool("json")
 	mdMode, _ := cmd.Flags().GetBool("md")
 	if jsonMode {
-		raw, err := json.MarshalIndent(data, "", "  ")
+		payload, err := versionedJSONPayload(data)
+		if err != nil {
+			return err
+		}
+		raw, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -362,4 +368,30 @@ func normalizeActor(raw string) contracts.Actor {
 		return contracts.Actor("human:owner")
 	}
 	return contracts.Actor(actor)
+}
+
+func versionedJSONPayload(data any) (any, error) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, err
+	}
+	switch value := decoded.(type) {
+	case map[string]any:
+		value["format_version"] = jsonFormatVersion
+		return value, nil
+	case []any:
+		return map[string]any{
+			"format_version": jsonFormatVersion,
+			"items":          value,
+		}, nil
+	default:
+		return map[string]any{
+			"format_version": jsonFormatVersion,
+			"value":          value,
+		}, nil
+	}
 }

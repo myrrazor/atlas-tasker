@@ -28,8 +28,9 @@ func TestBulkCommandsSupportDryRunViewTargetsAndBatchMetadata(t *testing.T) {
 
 	dryRun := must("bulk", "move", "in_progress", "--view", "ready-search", "--ticket", "APP-2", "--dry-run", "--json")
 	var preview struct {
-		BatchID string `json:"batch_id"`
-		Preview struct {
+		FormatVersion string `json:"format_version"`
+		BatchID       string `json:"batch_id"`
+		Preview       struct {
 			TicketCount int      `json:"ticket_count"`
 			TicketIDs   []string `json:"ticket_ids"`
 			DryRun      bool     `json:"dry_run"`
@@ -42,6 +43,9 @@ func TestBulkCommandsSupportDryRunViewTargetsAndBatchMetadata(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(dryRun), &preview); err != nil {
 		t.Fatalf("parse dry-run json: %v\nraw=%s", err, dryRun)
+	}
+	if preview.FormatVersion != jsonFormatVersion {
+		t.Fatalf("unexpected format version: %s", preview.FormatVersion)
 	}
 	if preview.Preview.TicketCount != 2 || !preview.Preview.DryRun {
 		t.Fatalf("unexpected dry-run preview: %#v", preview)
@@ -57,7 +61,8 @@ func TestBulkCommandsSupportDryRunViewTargetsAndBatchMetadata(t *testing.T) {
 	must("bulk", "move", "in_progress", "--view", "ready-search", "--yes", "--json")
 	history := must("ticket", "history", "APP-1", "--json")
 	var payload struct {
-		Events []struct {
+		FormatVersion string `json:"format_version"`
+		Events        []struct {
 			Metadata struct {
 				BatchID string `json:"batch_id"`
 			} `json:"metadata"`
@@ -65,6 +70,9 @@ func TestBulkCommandsSupportDryRunViewTargetsAndBatchMetadata(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(history), &payload); err != nil {
 		t.Fatalf("parse history json: %v\nraw=%s", err, history)
+	}
+	if payload.FormatVersion != jsonFormatVersion {
+		t.Fatalf("unexpected format version: %s", payload.FormatVersion)
 	}
 	if payload.Events[len(payload.Events)-1].Metadata.BatchID == "" {
 		t.Fatalf("expected bulk history event to carry batch id: %#v", payload.Events[len(payload.Events)-1])

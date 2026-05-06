@@ -120,6 +120,9 @@ func TestBuildNotifierRetriesWebhookAndWritesDeadLetter(t *testing.T) {
 	if len(deadLetters) != 1 || deadLetters[0].Sink != "webhook" || deadLetters[0].Delivered {
 		t.Fatalf("unexpected dead letters: %#v", deadLetters)
 	}
+	if deadLetters[0].EventSummary == "" {
+		t.Fatalf("expected event summary in dead letter, got %#v", deadLetters[0])
+	}
 }
 
 func TestBuildNotifierWebhookPayload(t *testing.T) {
@@ -279,5 +282,69 @@ func TestBuildNotifierGracefullyDegradesOnResolverErrorForLegacyEvents(t *testin
 	}
 	if len(deliveries) != 1 || len(deliveries[0].Recipients) != 0 {
 		t.Fatalf("unexpected fallback delivery records: %#v", deliveries)
+	}
+}
+
+func TestBuildNotifierClampsWebhookBoundsAndMasksErrors(t *testing.T) {
+	root := t.TempDir()
+	notifier, err := BuildNotifier(root, contracts.TrackerConfig{
+		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
+		Notifications: contracts.NotificationsConfig{
+			WebhookURL:            "https://bot:secret@example.com/hook?token=abc123",
+			WebhookTimeoutSeconds: contracts.MaxWebhookTimeoutSeconds + 10,
+			WebhookRetries:        contracts.MaxWebhookRetries + 10,
+			DeliveryLogPath:       ".tracker/delivery.log",
+			DeadLetterPath:        ".tracker/dead.log",
+		},
+	}, nil, SubscriptionResolver{Store: SubscriptionStore{Root: root}})
+	if err != nil {
+		t.Fatalf("build notifier: %v", err)
+	}
+
+	event := contracts.Event{
+		EventID:       1,
+		Timestamp:     time.Date(2026, 3, 23, 4, 0, 0, 0, time.UTC),
+		Actor:         contracts.Actor("human:owner"),
+		Type:          contracts.EventTicketApproved,
+		Project:       "APP",
+		TicketID:      "APP-1",
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := notifier.Notify(context.Background(), event); err == nil {
+		t.Fatal("expected webhook notify to fail")
+	}
+
+	deliveries, err := ReadNotificationLog(root, contracts.TrackerConfig{
+		Notifications: contracts.NotificationsConfig{
+			DeliveryLogPath: ".tracker/delivery.log",
+			DeadLetterPath:  ".tracker/dead.log",
+		},
+	})
+	if err != nil {
+		t.Fatalf("read delivery log: %v", err)
+	}
+	if len(deliveries) != contracts.MaxWebhookRetries+1 {
+		t.Fatalf("expected retries to clamp to %d attempts, got %d", contracts.MaxWebhookRetries+1, len(deliveries))
+	}
+	for _, delivery := range deliveries {
+		if strings.Contains(delivery.Error, "secret") || strings.Contains(delivery.Error, "abc123") {
+			t.Fatalf("expected masked delivery error, got %#v", delivery)
+		}
+	}
+
+	deadLetters, err := ReadDeadLetters(root, contracts.TrackerConfig{
+		Notifications: contracts.NotificationsConfig{
+			DeliveryLogPath: ".tracker/delivery.log",
+			DeadLetterPath:  ".tracker/dead.log",
+		},
+	})
+	if err != nil {
+		t.Fatalf("read dead letters: %v", err)
+	}
+	if len(deadLetters) != 1 {
+		t.Fatalf("expected one dead letter, got %#v", deadLetters)
+	}
+	if strings.Contains(deadLetters[0].Error, "secret") || strings.Contains(deadLetters[0].Error, "abc123") {
+		t.Fatalf("expected masked dead letter error, got %#v", deadLetters[0])
 	}
 }

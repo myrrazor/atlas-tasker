@@ -27,21 +27,22 @@ func TestAutomationCLIWorkflow(t *testing.T) {
 	must("automation", "create", "review-ready", "--on", "ticket.moved", "--action", "request_review")
 
 	listOut := must("automation", "list", "--json")
-	var rules []contracts.AutomationRule
-	if err := json.Unmarshal([]byte(listOut), &rules); err != nil {
-		t.Fatalf("parse automation list: %v\nraw=%s", err, listOut)
-	}
+	rules := decodeJSONList[contracts.AutomationRule](t, listOut)
 	if len(rules) != 1 || rules[0].Name != "review-ready" {
 		t.Fatalf("unexpected rules: %#v", rules)
 	}
 
 	explainOut := must("automation", "explain", "review-ready", "--ticket", "APP-1", "--event-type", "ticket.moved", "--actor", "agent:builder-1", "--json")
 	var result struct {
-		Matched bool     `json:"matched"`
-		Actions []string `json:"actions"`
+		FormatVersion string   `json:"format_version"`
+		Matched       bool     `json:"matched"`
+		Actions       []string `json:"actions"`
 	}
 	if err := json.Unmarshal([]byte(explainOut), &result); err != nil {
 		t.Fatalf("parse automation explain: %v\nraw=%s", err, explainOut)
+	}
+	if result.FormatVersion != jsonFormatVersion {
+		t.Fatalf("unexpected format version: %s", result.FormatVersion)
 	}
 	if !result.Matched || len(result.Actions) != 1 {
 		t.Fatalf("unexpected explain result: %#v", result)

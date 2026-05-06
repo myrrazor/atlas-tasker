@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -11,6 +13,8 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	"github.com/pelletier/go-toml/v2"
 )
+
+var embeddedURLPattern = regexp.MustCompile(`https?://[^\s'"]+`)
 
 type fileConfig struct {
 	Workflow struct {
@@ -161,7 +165,7 @@ func Get(root string, key string) (string, error) {
 	case "notifications.file_path":
 		return cfg.Notifications.FilePath, nil
 	case "notifications.webhook_url":
-		return cfg.Notifications.WebhookURL, nil
+		return MaskSensitiveConfigValue("notifications.webhook_url", cfg.Notifications.WebhookURL), nil
 	case "notifications.webhook_timeout_seconds":
 		return fmt.Sprintf("%d", cfg.Notifications.WebhookTimeoutSeconds), nil
 	case "notifications.webhook_retries":
@@ -213,4 +217,47 @@ func Set(root string, key string, value string) error {
 		return fmt.Errorf("unsupported config key: %s", key)
 	}
 	return Save(root, cfg)
+}
+
+func MaskSensitiveConfigValue(key string, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	if strings.TrimSpace(key) != "notifications.webhook_url" {
+		return value
+	}
+	return maskSensitiveURL(value)
+}
+
+func MaskSecretsInText(value string) string {
+	return embeddedURLPattern.ReplaceAllStringFunc(value, maskSensitiveURL)
+}
+
+func MaskTrackerConfig(cfg contracts.TrackerConfig) contracts.TrackerConfig {
+	cfg.Notifications.WebhookURL = MaskSensitiveConfigValue("notifications.webhook_url", cfg.Notifications.WebhookURL)
+	return cfg
+}
+
+func maskSensitiveURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return raw
+	}
+	if parsed.User != nil {
+		user := parsed.User.Username()
+		if user == "" {
+			user = "***"
+		}
+		parsed.User = url.UserPassword(user, "***")
+	}
+	query := parsed.Query()
+	for key := range query {
+		lower := strings.ToLower(key)
+		if strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "key") || strings.Contains(lower, "password") {
+			query.Set(key, "***")
+		}
+	}
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }

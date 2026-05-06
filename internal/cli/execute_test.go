@@ -58,6 +58,7 @@ func TestDoctorJSONReportsStructuredSuccess(t *testing.T) {
 		t.Fatalf("doctor failed: %v", err)
 	}
 	var payload struct {
+		FormatVersion string   `json:"format_version"`
 		OK            bool     `json:"ok"`
 		RepairRan     bool     `json:"repair_ran"`
 		RepairPending int      `json:"repair_pending"`
@@ -67,6 +68,9 @@ func TestDoctorJSONReportsStructuredSuccess(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		t.Fatalf("parse doctor payload: %v\nraw=%s", err, out)
+	}
+	if payload.FormatVersion != jsonFormatVersion {
+		t.Fatalf("unexpected format version: %s", payload.FormatVersion)
 	}
 	if !payload.OK {
 		t.Fatal("expected doctor ok=true")
