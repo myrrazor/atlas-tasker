@@ -313,3 +313,91 @@ func TestSubscriptionResolverSkipsBrokenSavedViewWatchers(t *testing.T) {
 		t.Fatalf("expected healthy ticket watcher to survive broken saved view watcher, got %#v", audience)
 	}
 }
+
+func TestQueryServiceListSubscriptionsMarksInactiveTargets(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 24, 8, 0, 0, 0, time.UTC)
+
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root}
+	eventsLog := &eventstore.Log{RootDir: root}
+	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventsLog)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer projection.Close()
+
+	project := contracts.Project{Key: "APP", Name: "App", CreatedAt: now}
+	if err := projectStore.CreateProject(ctx, project); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket := contracts.TicketSnapshot{
+		ID:            "APP-1",
+		Project:       "APP",
+		Title:         "Watch me",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusReady,
+		Priority:      contracts.PriorityMedium,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	if err := (ViewStore{Root: root}).SaveView(contracts.SavedView{
+		Name:  "ready-search",
+		Kind:  contracts.SavedViewKindSearch,
+		Query: "status=ready",
+	}); err != nil {
+		t.Fatalf("save view: %v", err)
+	}
+	store := SubscriptionStore{Root: root}
+	for _, subscription := range []contracts.Subscription{
+		{Actor: contracts.Actor("agent:builder-1"), TargetKind: contracts.SubscriptionTargetTicket, Target: "APP-1"},
+		{Actor: contracts.Actor("agent:reviewer-1"), TargetKind: contracts.SubscriptionTargetProject, Target: "APP"},
+		{Actor: contracts.Actor("human:owner"), TargetKind: contracts.SubscriptionTargetSavedView, Target: "ready-search"},
+	} {
+		if err := store.SaveSubscription(subscription); err != nil {
+			t.Fatalf("save subscription: %v", err)
+		}
+	}
+
+	ticket.Archived = true
+	if err := ticketStore.UpdateTicket(ctx, ticket); err != nil {
+		t.Fatalf("archive ticket: %v", err)
+	}
+	if err := os.Remove(storage.ProjectFile(root, "APP")); err != nil {
+		t.Fatalf("remove project file: %v", err)
+	}
+	if err := os.Remove(filepath.Join(storage.ViewsDir(root), "ready-search.toml")); err != nil {
+		t.Fatalf("remove view file: %v", err)
+	}
+
+	queries := NewQueryService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return now })
+	items, err := queries.ListSubscriptions(ctx, "")
+	if err != nil {
+		t.Fatalf("list subscriptions: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("expected three subscriptions, got %#v", items)
+	}
+
+	reasons := map[contracts.SubscriptionTargetKind]string{}
+	for _, item := range items {
+		if item.Active {
+			t.Fatalf("expected all targets to be inactive, got %#v", items)
+		}
+		reasons[item.Subscription.TargetKind] = item.InactiveReason
+	}
+	if reasons[contracts.SubscriptionTargetTicket] != "ticket_inactive" {
+		t.Fatalf("unexpected ticket inactive reason: %#v", reasons)
+	}
+	if reasons[contracts.SubscriptionTargetProject] != "missing_project" {
+		t.Fatalf("unexpected project inactive reason: %#v", reasons)
+	}
+	if reasons[contracts.SubscriptionTargetSavedView] != "missing_saved_view" {
+		t.Fatalf("unexpected view inactive reason: %#v", reasons)
+	}
+}

@@ -1,5 +1,65 @@
 # JSON Contracts
 
+## Shared envelope rules for new v1.5 surfaces
+Success payloads use:
+- `format_version`
+- `kind`
+- `generated_at`
+- `payload` or `items`
+- optional `warnings`
+- optional `pagination`
+- optional `reason_codes`
+- optional `sync_status`
+
+Error payloads use:
+- `format_version`
+- `ok: false`
+- `generated_at`
+- `error`
+  - `code`
+  - `message`
+  - `details` when useful
+- optional `warnings`
+
+Warning items use:
+- `code`
+- `message`
+- `scope` when useful
+
+Pagination uses:
+- `limit`
+- `next_cursor`
+- `prev_cursor` when supported
+- `total_estimate` when available
+
+## Frozen v1.5 kinds
+- `change_list`
+- `change_detail`
+- `change_status`
+- `change_create_result`
+- `check_list`
+- `check_detail`
+- `check_sync_result`
+- `permission_profile_list`
+- `permission_profile_detail`
+- `permissions_effective_detail`
+- `permission_violation_report`
+- `import_preview`
+- `import_apply_result`
+- `import_job_list`
+- `import_job_detail`
+- `export_bundle_create_result`
+- `export_bundle_list`
+- `export_bundle_detail`
+- `export_verify_result`
+- `archive_plan`
+- `archive_apply_result`
+- `archive_list`
+- `archive_restore_result`
+- `compact_result`
+- `dashboard_summary`
+- `timeline_detail`
+
 ## `tracker doctor --json`
 Success payload includes:
 - `format_version` (`v1`)
@@ -34,6 +94,7 @@ Success payload is an object with `format_version` and `items`, where each item 
 - `delivered`
 - `error` when delivery failed
 - `event`
+- `event_summary`
 - `recipients`
 - `targets`
 - `sink`
@@ -43,11 +104,14 @@ Success payload is an object with `format_version` and `items`, where each item 
 Success payload matches `notify log`, but only includes final failed deliveries.
 
 ## `tracker watch list --json`
-Success payload is an object with `format_version` and `items`, where each item is a watcher rule with:
-- `actor`
-- `target_kind`
-- `target`
-- `event_types`
+Success payload is an object with `format_version` and `items`, where each item is a watcher entry with:
+- `subscription`
+  - `actor`
+  - `target_kind`
+  - `target`
+  - `event_types`
+- `active`
+- `inactive_reason` when the watched target no longer resolves
 
 ## `tracker views run <NAME> --json`
 Success payload includes:

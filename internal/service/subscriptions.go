@@ -59,6 +59,12 @@ func (r SubscriptionResolver) Audience(ctx context.Context, event contracts.Even
 }
 
 func (r SubscriptionResolver) matches(ctx context.Context, subscription contracts.Subscription, event contracts.Event) (bool, error) {
+	if r.Queries != nil {
+		view := r.Queries.subscriptionView(ctx, subscription)
+		if !view.Active {
+			return false, nil
+		}
+	}
 	if len(subscription.EventTypes) > 0 && !eventTypeInList(event.Type, subscription.EventTypes) {
 		return false, nil
 	}

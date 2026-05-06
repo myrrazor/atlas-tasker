@@ -37,49 +37,151 @@ func (s EventSurface) IsValid() bool {
 }
 
 const (
-	EventTicketCreated         EventType = "ticket.created"
-	EventTicketUpdated         EventType = "ticket.updated"
-	EventTicketMoved           EventType = "ticket.moved"
-	EventTicketCommented       EventType = "ticket.commented"
-	EventTicketLinked          EventType = "ticket.linked"
-	EventTicketUnlinked        EventType = "ticket.unlinked"
-	EventTicketClosed          EventType = "ticket.closed"
-	EventTicketClaimed         EventType = "ticket.claimed"
-	EventTicketReleased        EventType = "ticket.released"
-	EventTicketHeartbeat       EventType = "ticket.heartbeat"
-	EventTicketLeaseExpired    EventType = "ticket.lease_expired"
-	EventTicketReviewRequested EventType = "ticket.review_requested"
-	EventTicketApproved        EventType = "ticket.approved"
-	EventTicketRejected        EventType = "ticket.rejected"
-	EventTicketPolicyUpdated   EventType = "ticket.policy_updated"
-	EventTicketTemplateApplied EventType = "ticket.template_applied"
-	EventOwnerAttentionRaised  EventType = "ticket.owner_attention_required"
-	EventOwnerAttentionCleared EventType = "ticket.owner_attention_cleared"
-	EventProjectPolicyUpdated  EventType = "project.policy_updated"
-	EventConfigChanged         EventType = "config.changed"
+	EventTicketCreated                    EventType = "ticket.created"
+	EventTicketUpdated                    EventType = "ticket.updated"
+	EventTicketMoved                      EventType = "ticket.moved"
+	EventTicketCommented                  EventType = "ticket.commented"
+	EventTicketLinked                     EventType = "ticket.linked"
+	EventTicketUnlinked                   EventType = "ticket.unlinked"
+	EventTicketClosed                     EventType = "ticket.closed"
+	EventTicketClaimed                    EventType = "ticket.claimed"
+	EventTicketReleased                   EventType = "ticket.released"
+	EventTicketHeartbeat                  EventType = "ticket.heartbeat"
+	EventTicketLeaseExpired               EventType = "ticket.lease_expired"
+	EventTicketReviewRequested            EventType = "ticket.review_requested"
+	EventTicketApproved                   EventType = "ticket.approved"
+	EventTicketRejected                   EventType = "ticket.rejected"
+	EventTicketPolicyUpdated              EventType = "ticket.policy_updated"
+	EventTicketTemplateApplied            EventType = "ticket.template_applied"
+	EventOwnerAttentionRaised             EventType = "ticket.owner_attention_required"
+	EventOwnerAttentionCleared            EventType = "ticket.owner_attention_cleared"
+	EventProjectPolicyUpdated             EventType = "project.policy_updated"
+	EventConfigChanged                    EventType = "config.changed"
+	EventAgentCreated                     EventType = "agent.created"
+	EventAgentUpdated                     EventType = "agent.updated"
+	EventAgentEnabled                     EventType = "agent.enabled"
+	EventAgentDisabled                    EventType = "agent.disabled"
+	EventRunCreated                       EventType = "run.created"
+	EventRunDispatched                    EventType = "run.dispatched"
+	EventRunStarted                       EventType = "run.started"
+	EventRunAttached                      EventType = "run.attached"
+	EventRunCheckpointed                  EventType = "run.checkpointed"
+	EventRunEvidenceAdded                 EventType = "run.evidence_added"
+	EventRunHandoffRequested              EventType = "run.handoff_requested"
+	EventRunCompleted                     EventType = "run.completed"
+	EventRunFailed                        EventType = "run.failed"
+	EventRunAborted                       EventType = "run.aborted"
+	EventRunCleanedUp                     EventType = "run.cleaned_up"
+	EventWorktreeCreated                  EventType = "worktree.created"
+	EventWorktreePruned                   EventType = "worktree.pruned"
+	EventWorktreeRepaired                 EventType = "worktree.repaired"
+	EventGateOpened                       EventType = "gate.opened"
+	EventGateApproved                     EventType = "gate.approved"
+	EventGateRejected                     EventType = "gate.rejected"
+	EventGateWaived                       EventType = "gate.waived"
+	EventChangeLinked                     EventType = "change.linked"
+	EventChangeCreated                    EventType = "change.created"
+	EventChangeSynced                     EventType = "change.synced"
+	EventChangeUpdated                    EventType = "change.updated"
+	EventChangeReviewRequested            EventType = "change.review_requested"
+	EventChangeMerged                     EventType = "change.merged"
+	EventChangeUnlinked                   EventType = "change.unlinked"
+	EventChangeSuperseded                 EventType = "change.superseded"
+	EventChangeExternalDrifted            EventType = "change.external_drifted"
+	EventCheckRecorded                    EventType = "check.recorded"
+	EventCheckUpdated                     EventType = "check.updated"
+	EventCheckSynced                      EventType = "check.synced"
+	EventPermissionProfileCreated         EventType = "permission_profile.created"
+	EventPermissionProfileUpdated         EventType = "permission_profile.updated"
+	EventPermissionProfileBound           EventType = "permission_profile.bound"
+	EventPermissionProfileUnbound         EventType = "permission_profile.unbound"
+	EventPermissionProfileOverrideApplied EventType = "permission_profile.override_applied"
+	EventImportPreviewed                  EventType = "import.previewed"
+	EventImportValidated                  EventType = "import.validated"
+	EventImportStarted                    EventType = "import.started"
+	EventImportApplied                    EventType = "import.applied"
+	EventImportFailed                     EventType = "import.failed"
+	EventImportCanceled                   EventType = "import.canceled"
+	EventExportCreated                    EventType = "export.created"
+	EventExportVerified                   EventType = "export.verified"
+	EventArchivePlanned                   EventType = "archive.planned"
+	EventArchiveApplied                   EventType = "archive.applied"
+	EventArchiveRestored                  EventType = "archive.restored"
+	EventCompactCompleted                 EventType = "compact.completed"
 )
 
 var validEventTypes = map[EventType]struct{}{
-	EventTicketCreated:         {},
-	EventTicketUpdated:         {},
-	EventTicketMoved:           {},
-	EventTicketCommented:       {},
-	EventTicketLinked:          {},
-	EventTicketUnlinked:        {},
-	EventTicketClosed:          {},
-	EventTicketClaimed:         {},
-	EventTicketReleased:        {},
-	EventTicketHeartbeat:       {},
-	EventTicketLeaseExpired:    {},
-	EventTicketReviewRequested: {},
-	EventTicketApproved:        {},
-	EventTicketRejected:        {},
-	EventTicketPolicyUpdated:   {},
-	EventTicketTemplateApplied: {},
-	EventOwnerAttentionRaised:  {},
-	EventOwnerAttentionCleared: {},
-	EventProjectPolicyUpdated:  {},
-	EventConfigChanged:         {},
+	EventTicketCreated:                    {},
+	EventTicketUpdated:                    {},
+	EventTicketMoved:                      {},
+	EventTicketCommented:                  {},
+	EventTicketLinked:                     {},
+	EventTicketUnlinked:                   {},
+	EventTicketClosed:                     {},
+	EventTicketClaimed:                    {},
+	EventTicketReleased:                   {},
+	EventTicketHeartbeat:                  {},
+	EventTicketLeaseExpired:               {},
+	EventTicketReviewRequested:            {},
+	EventTicketApproved:                   {},
+	EventTicketRejected:                   {},
+	EventTicketPolicyUpdated:              {},
+	EventTicketTemplateApplied:            {},
+	EventOwnerAttentionRaised:             {},
+	EventOwnerAttentionCleared:            {},
+	EventProjectPolicyUpdated:             {},
+	EventConfigChanged:                    {},
+	EventAgentCreated:                     {},
+	EventAgentUpdated:                     {},
+	EventAgentEnabled:                     {},
+	EventAgentDisabled:                    {},
+	EventRunCreated:                       {},
+	EventRunDispatched:                    {},
+	EventRunStarted:                       {},
+	EventRunAttached:                      {},
+	EventRunCheckpointed:                  {},
+	EventRunEvidenceAdded:                 {},
+	EventRunHandoffRequested:              {},
+	EventRunCompleted:                     {},
+	EventRunFailed:                        {},
+	EventRunAborted:                       {},
+	EventRunCleanedUp:                     {},
+	EventWorktreeCreated:                  {},
+	EventWorktreePruned:                   {},
+	EventWorktreeRepaired:                 {},
+	EventGateOpened:                       {},
+	EventGateApproved:                     {},
+	EventGateRejected:                     {},
+	EventGateWaived:                       {},
+	EventChangeLinked:                     {},
+	EventChangeCreated:                    {},
+	EventChangeSynced:                     {},
+	EventChangeUpdated:                    {},
+	EventChangeReviewRequested:            {},
+	EventChangeMerged:                     {},
+	EventChangeUnlinked:                   {},
+	EventChangeSuperseded:                 {},
+	EventChangeExternalDrifted:            {},
+	EventCheckRecorded:                    {},
+	EventCheckUpdated:                     {},
+	EventCheckSynced:                      {},
+	EventPermissionProfileCreated:         {},
+	EventPermissionProfileUpdated:         {},
+	EventPermissionProfileBound:           {},
+	EventPermissionProfileUnbound:         {},
+	EventPermissionProfileOverrideApplied: {},
+	EventImportPreviewed:                  {},
+	EventImportValidated:                  {},
+	EventImportStarted:                    {},
+	EventImportApplied:                    {},
+	EventImportFailed:                     {},
+	EventImportCanceled:                   {},
+	EventExportCreated:                    {},
+	EventExportVerified:                   {},
+	EventArchivePlanned:                   {},
+	EventArchiveApplied:                   {},
+	EventArchiveRestored:                  {},
+	EventCompactCompleted:                 {},
 }
 
 func (t EventType) IsValid() bool {

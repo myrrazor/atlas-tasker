@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -76,5 +77,63 @@ func TestBulkCommandsSupportDryRunViewTargetsAndBatchMetadata(t *testing.T) {
 	}
 	if payload.Events[len(payload.Events)-1].Metadata.BatchID == "" {
 		t.Fatalf("expected bulk history event to carry batch id: %#v", payload.Events[len(payload.Events)-1])
+	}
+}
+
+func TestBulkViewTargetsMatchSavedViewRunExactly(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("config", "set", "actor.default", "human:owner")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "One", "--type", "task", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Two", "--type", "task", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Three", "--type", "task", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("ticket", "move", "APP-3", "ready", "--actor", "human:owner")
+	must("views", "save", "ready-search", "--kind", "search", "--query", "status=ready")
+
+	runOut := must("views", "run", "ready-search", "--json")
+	var runResult struct {
+		FormatVersion string `json:"format_version"`
+		Tickets       []struct {
+			ID string `json:"id"`
+		} `json:"tickets"`
+	}
+	if err := json.Unmarshal([]byte(runOut), &runResult); err != nil {
+		t.Fatalf("parse views run json: %v\nraw=%s", err, runOut)
+	}
+	if runResult.FormatVersion != jsonFormatVersion {
+		t.Fatalf("unexpected format version: %s", runResult.FormatVersion)
+	}
+	viewTicketIDs := make([]string, 0, len(runResult.Tickets))
+	for _, ticket := range runResult.Tickets {
+		viewTicketIDs = append(viewTicketIDs, ticket.ID)
+	}
+
+	dryRun := must("bulk", "claim", "--view", "ready-search", "--dry-run", "--json")
+	var preview struct {
+		FormatVersion string `json:"format_version"`
+		Preview       struct {
+			TicketIDs []string `json:"ticket_ids"`
+		} `json:"preview"`
+	}
+	if err := json.Unmarshal([]byte(dryRun), &preview); err != nil {
+		t.Fatalf("parse bulk dry-run json: %v\nraw=%s", err, dryRun)
+	}
+	if preview.FormatVersion != jsonFormatVersion {
+		t.Fatalf("unexpected format version: %s", preview.FormatVersion)
+	}
+	if !reflect.DeepEqual(preview.Preview.TicketIDs, viewTicketIDs) {
+		t.Fatalf("expected bulk view expansion to match views run exactly, got bulk=%v view=%v", preview.Preview.TicketIDs, viewTicketIDs)
 	}
 }
