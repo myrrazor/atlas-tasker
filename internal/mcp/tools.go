@@ -20,11 +20,11 @@ func ToolSpecs() []ToolSpec {
 		readTool("atlas.queue", "Read the actor queue.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor filter.")})), "QueryService.Queue", queueTool),
 		readTool("atlas.next", "Read the next recommended ticket for an actor.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor filter.")})), "QueryService.Next", nextTool),
 		readTool("atlas.search", "Search tickets with Atlas query syntax.", readProfiles, objectSchema([]string{"query"}, mergeProps(commonReadProps(), map[string]any{"query": stringProp("Atlas ticket search query.")})), "QueryService.Search", searchTool),
-		readTool("atlas.board", "Read the board grouped by status.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"project": stringProp("Optional project key."), "assignee": stringProp("Optional assignee actor."), "type": stringProp("Optional ticket type.")})), "QueryService.Board", boardTool),
+		readTool("atlas.board", "Read the board grouped by status.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_status", "Optional per-status cursors keyed by Atlas status."), map[string]any{"project": stringProp("Optional project key."), "assignee": stringProp("Optional assignee actor."), "type": stringProp("Optional ticket type.")})), "QueryService.Board", boardTool),
 		readTool("atlas.ticket.view", "Read one ticket detail view.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID.")}), "QueryService.TicketDetail", ticketViewTool),
 		readTool("atlas.ticket.history", "Read ticket event history.", readProfiles, objectSchema([]string{"ticket_id"}, mergeProps(commonReadProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "QueryService.History", ticketHistoryTool),
 		readTool("atlas.ticket.inspect", "Inspect a ticket, policy, links, and git context.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID."), "actor": stringProp("Optional actor for policy context.")}), "QueryService.InspectTicket", ticketInspectTool),
-		readTool("atlas.dashboard", "Read the delivery dashboard summary.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"collaborator": stringProp("Optional collaborator filter.")})), "QueryService.Dashboard", dashboardTool),
+		readTool("atlas.dashboard", "Read the delivery dashboard summary.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_section", "Optional per-dashboard-section cursors keyed by section name."), map[string]any{"collaborator": stringProp("Optional collaborator filter.")})), "QueryService.Dashboard", dashboardTool),
 		readTool("atlas.timeline", "Read a ticket timeline.", readProfiles, objectSchema([]string{"ticket_id"}, mergeProps(commonReadProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "collaborator": stringProp("Optional collaborator filter.")})), "QueryService.Timeline", timelineTool),
 		readTool("atlas.run.view", "Read one run detail view.", readProfiles, objectSchema([]string{"run_id"}, map[string]any{"run_id": stringProp("Run ID.")}), "QueryService.RunDetail", runViewTool),
 		readTool("atlas.evidence.list", "List evidence for a run.", readProfiles, objectSchema([]string{"run_id"}, mergeProps(commonReadProps(), map[string]any{"run_id": stringProp("Run ID.")})), "QueryService.EvidenceList", evidenceListTool),
@@ -58,7 +58,7 @@ func ToolSpecs() []ToolSpec {
 		writeTool("atlas.run.checkpoint", ClassWorkflow, workflowProfiles, false, "Add a checkpoint evidence item to a run.", objectSchema([]string{"run_id", "title", "body", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"run_id": stringProp("Run ID."), "title": stringProp("Checkpoint title."), "body": stringProp("Checkpoint body.")})), "ActionService.CheckpointRun", "run_id", runCheckpointTool),
 		writeTool("atlas.evidence.add", ClassWorkflow, workflowProfiles, false, "Add evidence metadata to a run.", objectSchema([]string{"run_id", "type", "title", "body", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"run_id": stringProp("Run ID."), "type": stringProp("Evidence type."), "title": stringProp("Evidence title."), "body": stringProp("Evidence body."), "artifact_source": stringProp("Optional artifact path or source."), "supersedes_evidence_id": stringProp("Optional evidence ID this supersedes.")})), "ActionService.AddEvidence", "run_id", evidenceAddTool),
 		writeTool("atlas.handoff.create", ClassWorkflow, workflowProfiles, false, "Create a handoff packet for a run.", objectSchema([]string{"run_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"run_id": stringProp("Run ID."), "open_questions": stringArrayProp("Open questions."), "risks": stringArrayProp("Risks."), "next_actor": stringProp("Optional next actor."), "next_gate": stringProp("Optional next gate kind."), "next_status": stringProp("Optional next ticket status.")})), "ActionService.CreateHandoff", "run_id", handoffCreateTool),
-		writeTool("atlas.import.preview", ClassWorkflow, workflowProfiles, false, "Create an import preview job for a local source.", objectSchema([]string{"source_path", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"source_path": stringProp("Import source path.")})), "ActionService.PreviewImport", "source_path", importPreviewTool),
+		importPreviewSpec(workflowProfiles),
 		writeTool("atlas.dispatch.run", ClassDelivery, deliveryProfiles, false, "Dispatch a ticket to an eligible agent when normal Atlas policy allows it.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "agent_id": stringProp("Optional agent ID. If absent Atlas auto-routes only when exactly one agent is eligible.")})), "ActionService.DispatchRun/AutoDispatchRun", "ticket_id", dispatchRunTool),
 		writeTool("atlas.change.create", ClassDelivery, deliveryProfiles, false, "Create or refresh the change tied to a run.", objectSchema([]string{"run_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"run_id": stringProp("Run ID.")})), "ActionService.CreateChange", "run_id", changeCreateTool),
 		writeTool("atlas.change.sync", ClassDelivery, deliveryProfiles, false, "Sync provider-backed change status into Atlas.", objectSchema([]string{"change_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"change_id": stringProp("Change ID.")})), "ActionService.SyncChange", "change_id", changeSyncTool),
@@ -94,6 +94,12 @@ func readTool(name string, description string, profiles []ToolProfile, schema ma
 
 func writeTool(name string, class ToolClass, profiles []ToolProfile, destructive bool, description string, schema map[string]any, underlying string, targetArg string, handler ToolHandler) ToolSpec {
 	return ToolSpec{Name: name, Title: name, Description: description, Class: class, Profiles: profiles, RequiresActor: true, RequiresReason: true, ApprovalMechanism: ApprovalNone, Destructive: destructive, ProviderSideEffect: class == ClassDelivery, TargetArg: targetArg, Underlying: underlying, InputSchema: schema, Handler: handler}
+}
+
+func importPreviewSpec(profiles []ToolProfile) ToolSpec {
+	spec := writeTool("atlas.import.preview", ClassWorkflow, profiles, false, "Create an import preview job for a local source.", objectSchema([]string{"source_path", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"source_path": stringProp("Import source path.")})), "ActionService.PreviewImport", "source_path", importPreviewTool)
+	spec.ProviderSideEffect = true
+	return spec
 }
 
 func highImpactTool(name string, profiles []ToolProfile, description string, schema map[string]any, underlying string, targetArg string, handler ToolHandler) ToolSpec {
@@ -285,7 +291,7 @@ func syncPullPlanTool(tc ToolContext, args map[string]any) (any, error) {
 func bundleImportPlanTool(tc ToolContext, args map[string]any) (any, error) {
 	detail, err := tc.Server.Workspace.Queries.BundleDetail(tc.Context, stringArg(args, "bundle_ref"))
 	if err != nil {
-		return map[string]any{"bundle_ref": stringArg(args, "bundle_ref"), "execution_tool": "atlas.bundle.import", "requires_operation_approval": true, "detail_error": err.Error()}, nil
+		return nil, err
 	}
 	return map[string]any{"bundle": detail, "execution_tool": "atlas.bundle.import", "requires_operation_approval": true}, nil
 }
@@ -460,22 +466,26 @@ func stringSliceArg(args map[string]any, key string) []string {
 
 func paginateBoard(view service.BoardViewModel, args map[string]any, maxItems int) map[string]any {
 	total := 0
+	cursors := stringMapArg(args, "cursor_by_status")
+	pagesByStatus := map[string]map[string]any{}
 	nextByStatus := map[string]string{}
 	for status, tickets := range view.Board.Columns {
-		page := paginateSlice(tickets, args, maxItems, maxItems)
+		page := paginateSliceWithCursor(tickets, cursors[string(status)], args, maxItems, maxItems)
 		view.Board.Columns[status] = page.Items.([]contracts.TicketSnapshot)
 		total += page.Total
+		pagesByStatus[string(status)] = map[string]any{"total": page.Total, "next_cursor": page.NextCursor}
 		if page.NextCursor != "" {
 			nextByStatus[string(status)] = page.NextCursor
 		}
 	}
-	return map[string]any{"board": view, "total": total, "next_cursor_by_status": nextByStatus}
+	return map[string]any{"board": view, "total": total, "next_cursor_by_status": nextByStatus, "pages_by_status": pagesByStatus}
 }
 
 func paginateDashboard(view service.DashboardSummaryView, args map[string]any, maxItems int) map[string]any {
+	cursors := stringMapArg(args, "cursor_by_section")
 	pages := map[string]map[string]any{}
 	pageStrings := func(name string, items []string) []string {
-		page := paginateSlice(items, args, maxItems, maxItems)
+		page := paginateSliceWithCursor(items, cursors[name], args, maxItems, maxItems)
 		pages[name] = map[string]any{"total": page.Total, "next_cursor": page.NextCursor}
 		return page.Items.([]string)
 	}
@@ -485,19 +495,19 @@ func paginateDashboard(view service.DashboardSummaryView, args map[string]any, m
 	view.FailedSyncJobs = pageStrings("failed_sync_jobs", view.FailedSyncJobs)
 	view.ProviderMappingWarnings = pageStrings("provider_mapping_warnings", view.ProviderMappingWarnings)
 
-	workload := paginateSlice(view.CollaboratorWorkload, args, maxItems, maxItems)
+	workload := paginateSliceWithCursor(view.CollaboratorWorkload, cursors["collaborator_workload"], args, maxItems, maxItems)
 	view.CollaboratorWorkload = workload.Items.([]service.CollaboratorWorkloadView)
 	pages["collaborator_workload"] = map[string]any{"total": workload.Total, "next_cursor": workload.NextCursor}
 
-	mentions := paginateSlice(view.MentionQueue, args, maxItems, maxItems)
+	mentions := paginateSliceWithCursor(view.MentionQueue, cursors["mention_queue"], args, maxItems, maxItems)
 	view.MentionQueue = mentions.Items.([]service.MentionQueueEntry)
 	pages["mention_queue"] = map[string]any{"total": mentions.Total, "next_cursor": mentions.NextCursor}
 
-	conflicts := paginateSlice(view.ConflictQueue, args, maxItems, maxItems)
+	conflicts := paginateSliceWithCursor(view.ConflictQueue, cursors["conflict_queue"], args, maxItems, maxItems)
 	view.ConflictQueue = conflicts.Items.([]service.ConflictQueueEntry)
 	pages["conflict_queue"] = map[string]any{"total": conflicts.Total, "next_cursor": conflicts.NextCursor}
 
-	remotes := paginateSlice(view.RemoteHealth, args, maxItems, maxItems)
+	remotes := paginateSliceWithCursor(view.RemoteHealth, cursors["remote_health"], args, maxItems, maxItems)
 	view.RemoteHealth = remotes.Items.([]service.RemoteHealthView)
 	pages["remote_health"] = map[string]any{"total": remotes.Total, "next_cursor": remotes.NextCursor}
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -36,6 +37,9 @@ func TestInventoryProfilesGateHighImpactTools(t *testing.T) {
 	danger := Inventory(Options{Profile: ProfileAdmin, AllowHighImpactTools: true}.Normalized())
 	if !toolEnabled(danger, "atlas.change.merge") {
 		t.Fatalf("admin profile with danger flag should expose high-impact writes")
+	}
+	if !toolProviderSideEffect(danger, "atlas.import.preview") {
+		t.Fatalf("import preview writes an import job and must be marked as a live side effect")
 	}
 }
 
@@ -171,6 +175,47 @@ func TestHighImpactDeniedAuditDoesNotLeakApprovalToken(t *testing.T) {
 	}
 }
 
+func TestHighImpactHandlerFailureAfterApprovalWritesSecurityAudit(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 6, 12, 0, 0, 0, time.UTC)
+	workspace, err := OpenWorkspace(root, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("open workspace: %v", err)
+	}
+	defer workspace.Close()
+	server := NewServer(workspace, Options{Profile: ProfileAdmin, AllowHighImpactTools: true, Now: func() time.Time { return now }}.Normalized())
+	approval, err := server.Approvals.Create(context.Background(), "atlas.change.merge", "CHG-1", "human:owner", 10*time.Minute, "approve merge")
+	if err != nil {
+		t.Fatalf("create approval: %v", err)
+	}
+
+	_, err = server.CallTool(context.Background(), "atlas.change.merge", map[string]any{
+		"change_id":             "CHG-1",
+		"actor":                 "human:owner",
+		"reason":                "merge approved change",
+		"operation_approval_id": approval.ID,
+		"confirm_text":          "execute atlas.change.merge CHG-1",
+	})
+	if err == nil {
+		t.Fatalf("expected missing change to fail after approval consumption")
+	}
+	raw, readErr := os.ReadFile(filepath.Join(root, ".tracker", "runtime", "mcp", "security-audit.jsonl"))
+	if readErr != nil {
+		t.Fatalf("expected audit log: %v", readErr)
+	}
+	got := string(raw)
+	if !strings.Contains(got, `"reason_code":"execution_failed"`) || !strings.Contains(got, approval.ID) {
+		t.Fatalf("expected failed execution audit with approval id:\n%s", got)
+	}
+	used, err := server.Approvals.load(approval.ID)
+	if err != nil {
+		t.Fatalf("reload approval: %v", err)
+	}
+	if used.UsedAt.IsZero() {
+		t.Fatalf("approval should stay consumed after handler failure")
+	}
+}
+
 func TestWorkflowWritesRequireActorAndReason(t *testing.T) {
 	root := t.TempDir()
 	queries := service.NewQueryService(root, nil, nil, nil, nil, func() time.Time { return time.Now().UTC() })
@@ -267,6 +312,66 @@ func TestResultLimitsAndPagination(t *testing.T) {
 	if len(text) > 240 {
 		t.Fatalf("expected text fallback to honor max token estimate, got length %d", len(text))
 	}
+	unicodeText := textFallback("atlas.test", map[string]any{"big": strings.Repeat("界", 300)}, false, 50)
+	if !utf8.ValidString(unicodeText) {
+		t.Fatalf("text fallback split a UTF-8 rune: %q", unicodeText)
+	}
+	truncatedPayload, _, err := applyResultLimits("atlas.test", time.Now(), map[string]any{"big": strings.Repeat("x", 200)}, Options{MaxResultBytes: 80}.Normalized())
+	if err != nil {
+		t.Fatalf("apply nested limits: %v", err)
+	}
+	if !resultPayloadTruncated(truncatedPayload) {
+		t.Fatalf("expected nested payload truncation to be detected: %#v", truncatedPayload)
+	}
+	truncatedText := textFallback("atlas.test", truncatedPayload, resultPayloadTruncated(truncatedPayload), 50)
+	if !strings.Contains(truncatedText, "truncated result") {
+		t.Fatalf("expected truncated fallback prefix, got %q", truncatedText)
+	}
+}
+
+func TestGroupedPaginationUsesIndependentCursors(t *testing.T) {
+	ticket := func(id string) contracts.TicketSnapshot {
+		return contracts.TicketSnapshot{ID: id, Project: "APP", Title: id, Type: contracts.TicketTypeTask, Status: contracts.StatusReady, Priority: contracts.PriorityMedium}
+	}
+	board := service.BoardViewModel{Board: contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady:   {ticket("APP-1"), ticket("APP-2"), ticket("APP-3")},
+		contracts.StatusBlocked: {ticket("APP-4")},
+	}}}
+	page := paginateBoard(board, map[string]any{"limit": 1, "cursor_by_status": map[string]any{"ready": "1"}}, 10)
+	pagedBoard := page["board"].(service.BoardViewModel).Board
+	if got := pagedBoard.Columns[contracts.StatusReady][0].ID; got != "APP-2" {
+		t.Fatalf("expected ready cursor to advance ready column, got %s", got)
+	}
+	if got := pagedBoard.Columns[contracts.StatusBlocked][0].ID; got != "APP-4" {
+		t.Fatalf("ready cursor should not empty blocked column, got %s", got)
+	}
+
+	dashboard := service.DashboardSummaryView{
+		StaleWorktrees:          []string{"w1", "w2", "w3"},
+		ProviderMappingWarnings: []string{"warn"},
+	}
+	dashboardPage := paginateDashboard(dashboard, map[string]any{"limit": 1, "cursor_by_section": map[string]any{"stale_worktrees": "1"}}, 10)
+	pagedDashboard := dashboardPage["dashboard"].(service.DashboardSummaryView)
+	if got := pagedDashboard.StaleWorktrees[0]; got != "w2" {
+		t.Fatalf("expected stale worktree cursor to advance that section, got %s", got)
+	}
+	if got := pagedDashboard.ProviderMappingWarnings[0]; got != "warn" {
+		t.Fatalf("section cursor should not empty provider warnings, got %s", got)
+	}
+}
+
+func TestBundleImportPlanPropagatesDetailErrors(t *testing.T) {
+	root := t.TempDir()
+	queries := service.NewQueryService(root, nil, nil, nil, nil, func() time.Time { return time.Now().UTC() })
+	server := &Server{
+		Workspace: &Workspace{Root: root, Queries: queries},
+		Options:   Options{Profile: ProfileRead}.Normalized(),
+		Approvals: NewApprovalStore(root, nil),
+	}
+	_, err := server.CallTool(context.Background(), "atlas.bundle.import_plan", map[string]any{"bundle_ref": "missing-bundle"})
+	if err == nil {
+		t.Fatalf("expected bundle detail failure to propagate as a tool error")
+	}
 }
 
 func TestMCPOutputRedactsObviousSecretFields(t *testing.T) {
@@ -344,6 +449,15 @@ func toolEnabled(items []ToolInfo, name string) bool {
 	for _, item := range items {
 		if item.Name == name {
 			return item.Enabled
+		}
+	}
+	return false
+}
+
+func toolProviderSideEffect(items []ToolInfo, name string) bool {
+	for _, item := range items {
+		if item.Name == name {
+			return item.ProviderSideEffect
 		}
 	}
 	return false

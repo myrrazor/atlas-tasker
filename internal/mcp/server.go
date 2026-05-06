@@ -62,7 +62,7 @@ func (s *Server) SDKServer() *mcpsdk.Server {
 				result.SetError(err)
 				return result, nil
 			}
-			_, truncated := payload["truncated"].(bool)
+			truncated := resultPayloadTruncated(payload)
 			return &mcpsdk.CallToolResult{
 				Content:           []mcpsdk.Content{&mcpsdk.TextContent{Text: textFallback(spec.Name, payload, truncated, s.Options.MaxTextTokensEstimate)}},
 				StructuredContent: payload,
@@ -147,6 +147,9 @@ func (s *Server) CallTool(ctx context.Context, name string, args map[string]any)
 		Target:  target,
 	}, args)
 	if err != nil {
+		if spec.HighImpact && approval.ID != "" {
+			s.auditExecutionFailed(spec, args, approval, err)
+		}
 		return nil, err
 	}
 	if spec.HighImpact {
@@ -214,6 +217,22 @@ func (s *Server) auditExecuted(spec ToolSpec, args map[string]any, approval Oper
 		Message:            "approved high-impact MCP operation executed",
 		Profile:            s.Options.Profile,
 		ApprovalID:         approval.ID,
+		HighImpact:         spec.HighImpact,
+		ProviderSideEffect: spec.ProviderSideEffect,
+	})
+}
+
+func (s *Server) auditExecutionFailed(spec ToolSpec, args map[string]any, approval OperationApproval, err error) {
+	_ = AppendSecurityAudit(s.Workspace.Root, SecurityAuditRecord{
+		Timestamp:          s.Options.Now(),
+		Actor:              approval.Actor,
+		Tool:               spec.Name,
+		Target:             specTarget(spec, args),
+		ReasonCode:         "execution_failed",
+		Message:            err.Error(),
+		Profile:            s.Options.Profile,
+		ApprovalID:         approval.ID,
+		ApprovalIDProvided: true,
 		HighImpact:         spec.HighImpact,
 		ProviderSideEffect: spec.ProviderSideEffect,
 	})

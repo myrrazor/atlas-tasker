@@ -63,6 +63,20 @@ Paged payloads include:
 }
 ```
 
+Grouped reads use independent cursors so short sections do not disappear when a longer section advances:
+
+```json
+{
+  "limit": 10,
+  "cursor_by_status": {
+    "ready": "10",
+    "blocked": "20"
+  }
+}
+```
+
+Dashboard pagination uses the same shape with `cursor_by_section`.
+
 Every mutation requires:
 
 ```json

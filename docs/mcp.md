@@ -76,7 +76,7 @@ tracker mcp serve \
   --max-text-tokens-estimate 4000
 ```
 
-Paged tools accept `limit` and `cursor`. Large results return a truncated summary with a hint to narrow the request.
+Paged list tools accept `limit` and `cursor`. Grouped tools keep independent cursors: `atlas.board` accepts `cursor_by_status`, and `atlas.dashboard` accepts `cursor_by_section`. Large results return a truncated summary with a hint to narrow the request.
 
 ## More
 

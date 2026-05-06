@@ -18,11 +18,15 @@ type pageResult struct {
 }
 
 func paginateSlice(items any, args map[string]any, defaultLimit int, maxItems int) pageResult {
+	return paginateSliceWithCursor(items, stringArg(args, "cursor"), args, defaultLimit, maxItems)
+}
+
+func paginateSliceWithCursor(items any, cursor string, args map[string]any, defaultLimit int, maxItems int) pageResult {
 	total := sliceLen(items)
 	if total == 0 {
 		return pageResult{Items: items, Total: 0}
 	}
-	offset := intArg(args, "cursor", 0)
+	offset := parseCursor(cursor)
 	limit := intArg(args, "limit", defaultLimit)
 	if limit <= 0 {
 		limit = defaultLimit
@@ -46,6 +50,13 @@ func paginateSlice(items any, args map[string]any, defaultLimit int, maxItems in
 		next = strconv.Itoa(end)
 	}
 	return pageResult{Items: sliced, Total: total, NextCursor: next, Truncated: next != ""}
+}
+
+func parseCursor(cursor string) int {
+	if parsed, err := strconv.Atoi(strings.TrimSpace(cursor)); err == nil {
+		return parsed
+	}
+	return 0
 }
 
 func applyResultLimits(kind string, generatedAt time.Time, payload any, opts Options) (map[string]any, bool, error) {
@@ -108,13 +119,39 @@ func textFallback(kind string, payload any, truncated bool, maxTokensEstimate in
 	if maxChars < 200 {
 		maxChars = 200
 	}
-	if len(text) > maxChars {
-		text = text[:maxChars] + "..."
+	if len([]rune(text)) > maxChars {
+		text = truncateRunes(text, maxChars)
 	}
 	if truncated {
 		return fmt.Sprintf("%s returned a truncated result: %s", kind, text)
 	}
 	return fmt.Sprintf("%s returned: %s", kind, text)
+}
+
+func truncateRunes(text string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return text
+	}
+	count := 0
+	for idx := range text {
+		if count == maxRunes {
+			return text[:idx] + "..."
+		}
+		count++
+	}
+	return text
+}
+
+func resultPayloadTruncated(payload map[string]any) bool {
+	if truncated, ok := payload["truncated"].(bool); ok {
+		return truncated
+	}
+	inner, ok := payload["payload"].(map[string]any)
+	if !ok {
+		return false
+	}
+	truncated, _ := inner["truncated"].(bool)
+	return truncated
 }
 
 func sliceLen(items any) int {
@@ -178,4 +215,27 @@ func intArg(args map[string]any, key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func stringMapArg(args map[string]any, key string) map[string]string {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return map[string]string{}
+	}
+	switch value := raw.(type) {
+	case map[string]string:
+		return value
+	case map[string]any:
+		items := map[string]string{}
+		for itemKey, item := range value {
+			text, ok := item.(string)
+			if !ok {
+				continue
+			}
+			items[strings.TrimSpace(itemKey)] = strings.TrimSpace(text)
+		}
+		return items
+	default:
+		return map[string]string{}
+	}
 }

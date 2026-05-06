@@ -32,10 +32,21 @@ func intProp(description string, minimum int) map[string]any {
 	return map[string]any{"type": "integer", "minimum": minimum, "description": description}
 }
 
+func objectProp(description string, additional map[string]any) map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": additional, "description": description}
+}
+
 func commonReadProps() map[string]any {
 	return map[string]any{
 		"cursor": stringProp("Opaque pagination cursor from a prior Atlas MCP response."),
 		"limit":  intProp("Maximum items to return for this call.", 1),
+	}
+}
+
+func groupedReadProps(cursorKey string, cursorDescription string) map[string]any {
+	return map[string]any{
+		cursorKey: objectProp(cursorDescription, stringProp("Opaque cursor for this group.")),
+		"limit":   intProp("Maximum items to return per group for this call.", 1),
 	}
 }
 
@@ -111,6 +122,22 @@ func validateArgType(key string, raw any, kind string) error {
 			}
 		default:
 			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s must be an array", key))
+		}
+	case "object":
+		switch value := raw.(type) {
+		case map[string]string:
+			return nil
+		case map[string]any:
+			for itemKey, item := range value {
+				if strings.TrimSpace(itemKey) == "" {
+					return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s keys must be non-empty strings", key))
+				}
+				if _, ok := item.(string); !ok {
+					return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s values must be strings", key))
+				}
+			}
+		default:
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s must be an object", key))
 		}
 	}
 	return nil
