@@ -1,0 +1,848 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	_ "modernc.org/sqlite"
+)
+
+const ticketSelectColumns = `
+	id, project, title, type, status, priority, parent, labels_json, assignee, reviewer,
+	blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
+	summary, description, acceptance_json, notes, policy_json, review_state,
+	lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
+	template, skill_hint, blueprint, progress_json
+`
+
+// Store is a SQLite-backed projection and query engine.
+type Store struct {
+	Path         string
+	DB           *sql.DB
+	TicketSource contracts.TicketStore
+	EventSource  contracts.EventLog
+}
+
+var _ contracts.ProjectionStore = (*Store)(nil)
+
+func Open(path string, ticketSource contracts.TicketStore, eventSource contracts.EventLog) (*Store, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("create sqlite dir: %w", err)
+	}
+	db, err := openDB(path)
+	if err != nil {
+		return nil, err
+	}
+	store := &Store{Path: path, DB: db, TicketSource: ticketSource, EventSource: eventSource}
+	if err := store.migrate(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+func openDB(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("set journal mode: %w", err)
+	}
+	if _, err := db.Exec(`PRAGMA synchronous=NORMAL;`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("set sync mode: %w", err)
+	}
+	return db, nil
+}
+
+func (s *Store) Close() error {
+	if s.DB == nil {
+		return nil
+	}
+	return s.DB.Close()
+}
+
+func (s *Store) migrate() error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS tickets (
+			id TEXT PRIMARY KEY,
+			project TEXT NOT NULL,
+			title TEXT NOT NULL,
+			type TEXT NOT NULL,
+			status TEXT NOT NULL,
+			priority TEXT NOT NULL,
+			parent TEXT,
+			labels_json TEXT NOT NULL,
+			assignee TEXT,
+			reviewer TEXT,
+			blocked_by_json TEXT NOT NULL,
+			blocks_json TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			schema_version INTEGER NOT NULL,
+			archived INTEGER NOT NULL DEFAULT 0,
+			summary TEXT,
+			description TEXT,
+			acceptance_json TEXT NOT NULL,
+			notes TEXT,
+			policy_json TEXT NOT NULL DEFAULT '{}',
+			review_state TEXT NOT NULL DEFAULT 'none',
+			lease_actor TEXT,
+			lease_kind TEXT,
+			lease_acquired_at TEXT,
+			lease_expires_at TEXT,
+			lease_heartbeat_at TEXT,
+			template TEXT,
+			skill_hint TEXT,
+			blueprint TEXT,
+			progress_json TEXT NOT NULL DEFAULT '{}'
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_tickets_project_status ON tickets(project, status);`,
+		`CREATE INDEX IF NOT EXISTS idx_tickets_project_updated ON tickets(project, updated_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_tickets_assignee ON tickets(assignee);`,
+		`CREATE INDEX IF NOT EXISTS idx_tickets_review_state ON tickets(review_state);`,
+		`CREATE INDEX IF NOT EXISTS idx_tickets_lease_expires ON tickets(lease_expires_at);`,
+		`CREATE TABLE IF NOT EXISTS events (
+			project TEXT NOT NULL,
+			event_id INTEGER NOT NULL,
+			ticket_id TEXT,
+			ts TEXT NOT NULL,
+			actor TEXT NOT NULL,
+			reason TEXT,
+			type TEXT NOT NULL,
+			payload_json TEXT,
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			schema_version INTEGER NOT NULL,
+			PRIMARY KEY (project, event_id)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_events_ticket ON events(ticket_id);`,
+	}
+	for _, stmt := range statements {
+		if _, err := s.DB.Exec(stmt); err != nil {
+			return fmt.Errorf("sqlite migrate failed: %w", err)
+		}
+	}
+
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{name: "policy_json", definition: `TEXT NOT NULL DEFAULT '{}'`},
+		{name: "review_state", definition: `TEXT NOT NULL DEFAULT 'none'`},
+		{name: "lease_actor", definition: `TEXT`},
+		{name: "lease_kind", definition: `TEXT`},
+		{name: "lease_acquired_at", definition: `TEXT`},
+		{name: "lease_expires_at", definition: `TEXT`},
+		{name: "lease_heartbeat_at", definition: `TEXT`},
+		{name: "template", definition: `TEXT`},
+		{name: "skill_hint", definition: `TEXT`},
+		{name: "blueprint", definition: `TEXT`},
+		{name: "progress_json", definition: `TEXT NOT NULL DEFAULT '{}'`},
+	}
+	for _, column := range columns {
+		if err := s.ensureTicketColumn(column.name, column.definition); err != nil {
+			return err
+		}
+	}
+	if err := s.ensureEventColumn("metadata_json", `TEXT NOT NULL DEFAULT '{}'`); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) ensureTicketColumn(name string, definition string) error {
+	rows, err := s.DB.Query(`PRAGMA table_info(tickets)`)
+	if err != nil {
+		return fmt.Errorf("inspect tickets schema: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			cid        int
+			columnName string
+			typ        string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err := rows.Scan(&cid, &columnName, &typ, &notNull, &defaultVal, &pk); err != nil {
+			return fmt.Errorf("scan table info: %w", err)
+		}
+		if columnName == name {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate table info: %w", err)
+	}
+	if _, err := s.DB.Exec(`ALTER TABLE tickets ADD COLUMN ` + name + ` ` + definition); err != nil {
+		return fmt.Errorf("add tickets.%s: %w", name, err)
+	}
+	return nil
+}
+
+func (s *Store) ensureEventColumn(name string, definition string) error {
+	rows, err := s.DB.Query(`PRAGMA table_info(events)`)
+	if err != nil {
+		return fmt.Errorf("inspect events schema: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			cid        int
+			columnName string
+			typ        string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err := rows.Scan(&cid, &columnName, &typ, &notNull, &defaultVal, &pk); err != nil {
+			return fmt.Errorf("scan events table info: %w", err)
+		}
+		if columnName == name {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate events table info: %w", err)
+	}
+	if _, err := s.DB.Exec(`ALTER TABLE events ADD COLUMN ` + name + ` ` + definition); err != nil {
+		return fmt.Errorf("add events.%s: %w", name, err)
+	}
+	return nil
+}
+
+func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
+	if err := event.Validate(); err != nil {
+		return err
+	}
+	if err := s.insertEventOnly(ctx, event); err != nil {
+		return err
+	}
+	for _, ticket := range extractTicketSnapshots(event.Payload) {
+		if err := s.upsertTicket(ctx, ticket); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) Rebuild(ctx context.Context, project string) error {
+	if project == "" && s.Path != "" {
+		return s.rebuildBySwap(ctx)
+	}
+	return s.rebuildInPlace(ctx, project)
+}
+
+func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
+	if s.TicketSource == nil || s.EventSource == nil {
+		return fmt.Errorf("rebuild requires ticket and event sources")
+	}
+	if project == "" {
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM tickets`); err != nil {
+			return fmt.Errorf("clear tickets: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM events`); err != nil {
+			return fmt.Errorf("clear events: %w", err)
+		}
+	} else {
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM tickets WHERE project = ?`, project); err != nil {
+			return fmt.Errorf("clear project tickets: %w", err)
+		}
+		if _, err := s.DB.ExecContext(ctx, `DELETE FROM events WHERE project = ?`, project); err != nil {
+			return fmt.Errorf("clear project events: %w", err)
+		}
+	}
+
+	events, err := s.EventSource.StreamEvents(ctx, project, 0)
+	if err != nil {
+		return fmt.Errorf("load events from source: %w", err)
+	}
+	for _, event := range events {
+		if err := s.insertEventOnly(ctx, event); err != nil {
+			return err
+		}
+		for _, ticket := range extractTicketSnapshots(event.Payload) {
+			if err := s.upsertTicket(ctx, ticket); err != nil {
+				return err
+			}
+		}
+	}
+
+	tickets, err := s.TicketSource.ListTickets(ctx, contracts.TicketListOptions{Project: project, IncludeArchived: true})
+	if err != nil {
+		return fmt.Errorf("load tickets from source: %w", err)
+	}
+	for _, ticket := range tickets {
+		if err := s.insertTicketIfMissing(ctx, ticket); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *Store) rebuildBySwap(ctx context.Context) error {
+	if s.TicketSource == nil || s.EventSource == nil {
+		return fmt.Errorf("rebuild requires ticket and event sources")
+	}
+	tempPath := s.Path + ".rebuild"
+	for _, candidate := range []string{tempPath, tempPath + "-wal", tempPath + "-shm"} {
+		_ = os.Remove(candidate)
+	}
+	tempStore, err := Open(tempPath, s.TicketSource, s.EventSource)
+	if err != nil {
+		return err
+	}
+	if err := tempStore.rebuildInPlace(ctx, ""); err != nil {
+		_ = tempStore.Close()
+		return err
+	}
+	if err := tempStore.Close(); err != nil {
+		return fmt.Errorf("close rebuilt temp projection: %w", err)
+	}
+	if err := s.Close(); err != nil {
+		return fmt.Errorf("close existing projection: %w", err)
+	}
+	for _, candidate := range []string{s.Path, s.Path + "-wal", s.Path + "-shm"} {
+		_ = os.Remove(candidate)
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		src := tempPath + suffix
+		if _, err := os.Stat(src); err == nil {
+			if err := os.Rename(src, s.Path+suffix); err != nil {
+				return fmt.Errorf("swap projection file %s: %w", filepath.Base(src), err)
+			}
+		}
+	}
+	db, err := openDB(s.Path)
+	if err != nil {
+		return err
+	}
+	s.DB = db
+	return s.migrate()
+}
+
+func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions) (contracts.BoardView, error) {
+	query := `SELECT ` + ticketSelectColumns + ` FROM tickets WHERE archived = 0`
+	args := make([]any, 0)
+	if opts.Project != "" {
+		query += ` AND project = ?`
+		args = append(args, opts.Project)
+	}
+	if opts.Assignee != "" {
+		query += ` AND assignee = ?`
+		args = append(args, string(opts.Assignee))
+	}
+	if opts.Type != "" {
+		query += ` AND type = ?`
+		args = append(args, string(opts.Type))
+	}
+	query += ` ORDER BY updated_at ASC, id ASC`
+
+	rows, err := s.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return contracts.BoardView{}, fmt.Errorf("query board: %w", err)
+	}
+	defer rows.Close()
+
+	columns := map[contracts.Status][]contracts.TicketSnapshot{}
+	for rows.Next() {
+		ticket, err := scanTicket(rows)
+		if err != nil {
+			return contracts.BoardView{}, err
+		}
+		boardTicket := ticket
+		boardTicket.Status = contracts.BoardStatus(ticket)
+		columns[boardTicket.Status] = append(columns[boardTicket.Status], boardTicket)
+	}
+	if err := rows.Err(); err != nil {
+		return contracts.BoardView{}, err
+	}
+	return contracts.BoardView{Columns: columns}, nil
+}
+
+func (s *Store) QueryTicket(ctx context.Context, ticketID string) (contracts.TicketSnapshot, error) {
+	row := s.DB.QueryRowContext(ctx, `SELECT `+ticketSelectColumns+` FROM tickets WHERE id = ?`, ticketID)
+	ticket, err := scanTicket(row)
+	if err != nil {
+		return contracts.TicketSnapshot{}, fmt.Errorf("query ticket %s: %w", ticketID, err)
+	}
+	return ticket, nil
+}
+
+func (s *Store) QuerySearch(ctx context.Context, query contracts.SearchQuery) ([]contracts.TicketSnapshot, error) {
+	base := `SELECT ` + ticketSelectColumns + ` FROM tickets WHERE 1=1`
+	args := make([]any, 0)
+	for _, term := range query.Terms {
+		switch term.Kind {
+		case contracts.SearchTermStatus:
+			base += ` AND status = ?`
+			args = append(args, term.Value)
+		case contracts.SearchTermType:
+			base += ` AND type = ?`
+			args = append(args, term.Value)
+		case contracts.SearchTermProject:
+			base += ` AND project = ?`
+			args = append(args, term.Value)
+		case contracts.SearchTermAssignee:
+			base += ` AND assignee = ?`
+			args = append(args, term.Value)
+		case contracts.SearchTermLabel:
+			base += ` AND labels_json LIKE ?`
+			args = append(args, "%\""+term.Value+"\"%")
+		case contracts.SearchTermTextLike:
+			base += ` AND LOWER(COALESCE(title,'') || ' ' || COALESCE(summary,'') || ' ' || COALESCE(description,'') || ' ' || COALESCE(notes,'')) LIKE ?`
+			args = append(args, "%"+strings.ToLower(term.Value)+"%")
+		default:
+			return nil, fmt.Errorf("unsupported search term kind: %s", term.Kind)
+		}
+	}
+	base += ` ORDER BY updated_at DESC, id ASC`
+
+	rows, err := s.DB.QueryContext(ctx, base, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query search: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]contracts.TicketSnapshot, 0)
+	for rows.Next() {
+		ticket, err := scanTicket(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, ticket)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.Event, error) {
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT event_id, ts, actor, reason, type, project, ticket_id, payload_json, metadata_json, schema_version
+		FROM events
+		WHERE ticket_id = ?
+		ORDER BY event_id ASC
+	`, ticketID)
+	if err != nil {
+		return nil, fmt.Errorf("query history: %w", err)
+	}
+	defer rows.Close()
+
+	events := make([]contracts.Event, 0)
+	for rows.Next() {
+		var (
+			event        contracts.Event
+			ts           string
+			actor        string
+			eventType    string
+			payloadJSON  sql.NullString
+			metadataJSON sql.NullString
+		)
+		if err := rows.Scan(&event.EventID, &ts, &actor, &event.Reason, &eventType, &event.Project, &event.TicketID, &payloadJSON, &metadataJSON, &event.SchemaVersion); err != nil {
+			return nil, err
+		}
+		parsedTS, err := time.Parse(time.RFC3339Nano, ts)
+		if err != nil {
+			return nil, fmt.Errorf("parse event timestamp: %w", err)
+		}
+		event.Timestamp = parsedTS
+		event.Actor = contracts.Actor(actor)
+		event.Type = contracts.EventType(eventType)
+		if payloadJSON.Valid && payloadJSON.String != "" {
+			var payload any
+			if err := json.Unmarshal([]byte(payloadJSON.String), &payload); err != nil {
+				return nil, fmt.Errorf("decode event payload: %w", err)
+			}
+			event.Payload = payload
+		}
+		if metadataJSON.Valid && metadataJSON.String != "" {
+			if err := json.Unmarshal([]byte(metadataJSON.String), &event.Metadata); err != nil {
+				return nil, fmt.Errorf("decode event metadata: %w", err)
+			}
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapshot) error {
+	ticket = contracts.NormalizeTicketSnapshot(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, err := marshalTicketJSON(ticket)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx, `
+		INSERT INTO tickets (
+			id, project, title, type, status, priority, parent, labels_json, assignee, reviewer,
+			blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
+			summary, description, acceptance_json, notes, policy_json, review_state,
+			lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
+			template, skill_hint, blueprint, progress_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			title=excluded.title,
+			type=excluded.type,
+			status=excluded.status,
+			priority=excluded.priority,
+			parent=excluded.parent,
+			labels_json=excluded.labels_json,
+			assignee=excluded.assignee,
+			reviewer=excluded.reviewer,
+			blocked_by_json=excluded.blocked_by_json,
+			blocks_json=excluded.blocks_json,
+			updated_at=excluded.updated_at,
+			schema_version=excluded.schema_version,
+			archived=excluded.archived,
+			summary=excluded.summary,
+			description=excluded.description,
+			acceptance_json=excluded.acceptance_json,
+			notes=excluded.notes,
+			policy_json=excluded.policy_json,
+			review_state=excluded.review_state,
+			lease_actor=excluded.lease_actor,
+			lease_kind=excluded.lease_kind,
+			lease_acquired_at=excluded.lease_acquired_at,
+			lease_expires_at=excluded.lease_expires_at,
+			lease_heartbeat_at=excluded.lease_heartbeat_at,
+			template=excluded.template,
+			skill_hint=excluded.skill_hint,
+			blueprint=excluded.blueprint,
+			progress_json=excluded.progress_json
+	`,
+		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
+		labelsJSON, nullable(string(ticket.Assignee)), nullable(string(ticket.Reviewer)), blockedByJSON, blocksJSON,
+		ticket.CreatedAt.UTC().Format(time.RFC3339Nano), ticket.UpdatedAt.UTC().Format(time.RFC3339Nano), ticket.SchemaVersion, boolToInt(ticket.Archived),
+		nullable(ticket.Summary), nullable(ticket.Description), acceptanceJSON, nullable(ticket.Notes), policyJSON, string(ticket.ReviewState),
+		nullable(string(ticket.Lease.Actor)), nullable(string(ticket.Lease.Kind)), nullableTime(ticket.Lease.AcquiredAt), nullableTime(ticket.Lease.ExpiresAt), nullableTime(ticket.Lease.LastHeartbeatAt),
+		nullable(ticket.Template), nullable(ticket.SkillHint), nullable(ticket.Blueprint), progressJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert ticket %s: %w", ticket.ID, err)
+	}
+	return nil
+}
+
+func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.TicketSnapshot) error {
+	ticket = contracts.NormalizeTicketSnapshot(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, err := marshalTicketJSON(ticket)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx, `
+		INSERT INTO tickets (
+			id, project, title, type, status, priority, parent, labels_json, assignee, reviewer,
+			blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
+			summary, description, acceptance_json, notes, policy_json, review_state,
+			lease_actor, lease_kind, lease_acquired_at, lease_expires_at, lease_heartbeat_at,
+			template, skill_hint, blueprint, progress_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO NOTHING
+	`,
+		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
+		labelsJSON, nullable(string(ticket.Assignee)), nullable(string(ticket.Reviewer)), blockedByJSON, blocksJSON,
+		ticket.CreatedAt.UTC().Format(time.RFC3339Nano), ticket.UpdatedAt.UTC().Format(time.RFC3339Nano), ticket.SchemaVersion, boolToInt(ticket.Archived),
+		nullable(ticket.Summary), nullable(ticket.Description), acceptanceJSON, nullable(ticket.Notes), policyJSON, string(ticket.ReviewState),
+		nullable(string(ticket.Lease.Actor)), nullable(string(ticket.Lease.Kind)), nullableTime(ticket.Lease.AcquiredAt), nullableTime(ticket.Lease.ExpiresAt), nullableTime(ticket.Lease.LastHeartbeatAt),
+		nullable(ticket.Template), nullable(ticket.SkillHint), nullable(ticket.Blueprint), progressJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("insert missing ticket %s: %w", ticket.ID, err)
+	}
+	return nil
+}
+
+func (s *Store) insertEventOnly(ctx context.Context, event contracts.Event) error {
+	payloadJSON := ""
+	if event.Payload != nil {
+		raw, err := json.Marshal(event.Payload)
+		if err != nil {
+			return fmt.Errorf("marshal event payload: %w", err)
+		}
+		payloadJSON = string(raw)
+	}
+	metadataJSON := "{}"
+	if raw, err := json.Marshal(event.Metadata); err == nil {
+		metadataJSON = string(raw)
+	} else {
+		return fmt.Errorf("marshal event metadata: %w", err)
+	}
+	_, err := s.DB.ExecContext(ctx, `
+		INSERT INTO events (project, event_id, ticket_id, ts, actor, reason, type, payload_json, metadata_json, schema_version)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(project, event_id) DO NOTHING
+	`, event.Project, event.EventID, event.TicketID, event.Timestamp.UTC().Format(time.RFC3339Nano), string(event.Actor), event.Reason, string(event.Type), payloadJSON, metadataJSON, event.SchemaVersion)
+	if err != nil {
+		return fmt.Errorf("insert event: %w", err)
+	}
+	return nil
+}
+
+type ticketScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
+	var (
+		ticket           contracts.TicketSnapshot
+		typeValue        string
+		statusValue      string
+		priorityValue    string
+		createdAt        string
+		updatedAt        string
+		archived         int
+		labelsJSON       string
+		blockedByJSON    string
+		blocksJSON       string
+		acceptanceJSON   string
+		policyJSON       string
+		progressJSON     string
+		parent           sql.NullString
+		assignee         sql.NullString
+		reviewer         sql.NullString
+		summary          sql.NullString
+		description      sql.NullString
+		notes            sql.NullString
+		reviewState      sql.NullString
+		leaseActor       sql.NullString
+		leaseKind        sql.NullString
+		leaseAcquiredAt  sql.NullString
+		leaseExpiresAt   sql.NullString
+		leaseHeartbeatAt sql.NullString
+		template         sql.NullString
+		skillHint        sql.NullString
+		blueprint        sql.NullString
+	)
+	if err := scanner.Scan(
+		&ticket.ID,
+		&ticket.Project,
+		&ticket.Title,
+		&typeValue,
+		&statusValue,
+		&priorityValue,
+		&parent,
+		&labelsJSON,
+		&assignee,
+		&reviewer,
+		&blockedByJSON,
+		&blocksJSON,
+		&createdAt,
+		&updatedAt,
+		&ticket.SchemaVersion,
+		&archived,
+		&summary,
+		&description,
+		&acceptanceJSON,
+		&notes,
+		&policyJSON,
+		&reviewState,
+		&leaseActor,
+		&leaseKind,
+		&leaseAcquiredAt,
+		&leaseExpiresAt,
+		&leaseHeartbeatAt,
+		&template,
+		&skillHint,
+		&blueprint,
+		&progressJSON,
+	); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	parsedCreatedAt, err := time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	parsedUpdatedAt, err := time.Parse(time.RFC3339Nano, updatedAt)
+	if err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if err := json.Unmarshal([]byte(labelsJSON), &ticket.Labels); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if err := json.Unmarshal([]byte(blockedByJSON), &ticket.BlockedBy); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if err := json.Unmarshal([]byte(blocksJSON), &ticket.Blocks); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if err := json.Unmarshal([]byte(acceptanceJSON), &ticket.AcceptanceCriteria); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if strings.TrimSpace(policyJSON) == "" {
+		policyJSON = `{}`
+	}
+	if err := json.Unmarshal([]byte(policyJSON), &ticket.Policy); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	if strings.TrimSpace(progressJSON) == "" {
+		progressJSON = `{}`
+	}
+	if err := json.Unmarshal([]byte(progressJSON), &ticket.Progress); err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	ticket.Type = contracts.TicketType(typeValue)
+	ticket.Status = contracts.Status(statusValue)
+	ticket.Priority = contracts.Priority(priorityValue)
+	ticket.CreatedAt = parsedCreatedAt
+	ticket.UpdatedAt = parsedUpdatedAt
+	ticket.Archived = archived == 1
+	if parent.Valid {
+		ticket.Parent = parent.String
+	}
+	if assignee.Valid {
+		ticket.Assignee = contracts.Actor(assignee.String)
+	}
+	if reviewer.Valid {
+		ticket.Reviewer = contracts.Actor(reviewer.String)
+	}
+	if summary.Valid {
+		ticket.Summary = summary.String
+	}
+	if description.Valid {
+		ticket.Description = description.String
+	}
+	if notes.Valid {
+		ticket.Notes = notes.String
+	}
+	if reviewState.Valid {
+		ticket.ReviewState = contracts.ReviewState(reviewState.String)
+	}
+	if leaseActor.Valid {
+		ticket.Lease.Actor = contracts.Actor(leaseActor.String)
+	}
+	if leaseKind.Valid {
+		ticket.Lease.Kind = contracts.LeaseKind(leaseKind.String)
+	}
+	if leaseAcquiredAt.Valid {
+		ticket.Lease.AcquiredAt, err = time.Parse(time.RFC3339Nano, leaseAcquiredAt.String)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+	}
+	if leaseExpiresAt.Valid {
+		ticket.Lease.ExpiresAt, err = time.Parse(time.RFC3339Nano, leaseExpiresAt.String)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+	}
+	if leaseHeartbeatAt.Valid {
+		ticket.Lease.LastHeartbeatAt, err = time.Parse(time.RFC3339Nano, leaseHeartbeatAt.String)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+	}
+	if template.Valid {
+		ticket.Template = template.String
+	}
+	if skillHint.Valid {
+		ticket.SkillHint = skillHint.String
+	}
+	if blueprint.Valid {
+		ticket.Blueprint = blueprint.String
+	}
+	return contracts.NormalizeTicketSnapshot(ticket), nil
+}
+
+func marshalTicketJSON(ticket contracts.TicketSnapshot) (labelsJSON string, blockedByJSON string, blocksJSON string, acceptanceJSON string, policyJSON string, progressJSON string, err error) {
+	labelsRaw, err := json.Marshal(ticket.Labels)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal labels: %w", err)
+	}
+	blockedByRaw, err := json.Marshal(ticket.BlockedBy)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal blocked_by: %w", err)
+	}
+	blocksRaw, err := json.Marshal(ticket.Blocks)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal blocks: %w", err)
+	}
+	acceptanceRaw, err := json.Marshal(ticket.AcceptanceCriteria)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal acceptance criteria: %w", err)
+	}
+	policyRaw, err := json.Marshal(ticket.Policy)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal policy: %w", err)
+	}
+	progressRaw, err := json.Marshal(ticket.Progress)
+	if err != nil {
+		return "", "", "", "", "", "", fmt.Errorf("marshal progress: %w", err)
+	}
+	return string(labelsRaw), string(blockedByRaw), string(blocksRaw), string(acceptanceRaw), string(policyRaw), string(progressRaw), nil
+}
+
+func extractTicketSnapshots(payload any) []contracts.TicketSnapshot {
+	if payload == nil {
+		return nil
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+
+	result := make([]contracts.TicketSnapshot, 0, 2)
+	seen := map[string]struct{}{}
+	appendTicket := func(ticket contracts.TicketSnapshot) {
+		ticket = contracts.NormalizeTicketSnapshot(ticket)
+		if ticket.ValidateForCreate() != nil {
+			return
+		}
+		if _, ok := seen[ticket.ID]; ok {
+			return
+		}
+		seen[ticket.ID] = struct{}{}
+		result = append(result, ticket)
+	}
+
+	var wrapped struct {
+		Ticket      contracts.TicketSnapshot `json:"ticket"`
+		OtherTicket contracts.TicketSnapshot `json:"other_ticket"`
+	}
+	if err := json.Unmarshal(raw, &wrapped); err == nil {
+		appendTicket(wrapped.Ticket)
+		appendTicket(wrapped.OtherTicket)
+	}
+
+	var ticket contracts.TicketSnapshot
+	if err := json.Unmarshal(raw, &ticket); err == nil {
+		appendTicket(ticket)
+	}
+
+	return result
+}
+
+func nullable(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
+}
+
+func nullableTime(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}

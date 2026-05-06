@@ -40,7 +40,7 @@ This document defines PR-sized tracks for parallel execution with minimal file o
 ## PR-004 SQLite projection + reindex + queries
 
 - **Scope:** sqlite schema, projector, reindex, board/list/search/history query layer.
-- **Decision refs:** DEC-005, DEC-006, DEC-008
+- **Decision refs:** DEC-005, DEC-006, DEC-008, DEC-026
 - **Subagent owner:** index/query
 - **Depends on:** PR-003
 - **File overlap constraints:** avoid CLI command surface expansion except `reindex` plumbing.
@@ -72,7 +72,7 @@ This document defines PR-sized tracks for parallel execution with minimal file o
 ## PR-008 renderers and terminal presentation
 
 - **Scope:** pretty renderer, markdown mode, json mode, width handling, accessible output conventions.
-- **Decision refs:** DEC-009, DEC-010, DEC-011
+- **Decision refs:** DEC-009, DEC-010, DEC-011, DEC-026
 - **Subagent owner:** rendering/UX
 - **Depends on:** PR-005, PR-007
 - **File overlap constraints:** no mutation path behavior changes.
@@ -80,7 +80,7 @@ This document defines PR-sized tracks for parallel execution with minimal file o
 ## PR-009 end-to-end tests, fixtures, recovery, docs
 
 - **Scope:** full acceptance test flow, fixtures, doctor/recovery hardening, final docs alignment.
-- **Decision refs:** DEC-003, DEC-005, DEC-012
+- **Decision refs:** DEC-003, DEC-005, DEC-012, DEC-026
 - **Subagent owner:** QA/review
 - **Depends on:** PR-001..PR-008
 - **Required checks:**
