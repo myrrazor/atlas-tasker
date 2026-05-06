@@ -24,6 +24,20 @@ resolve_version() {
     | head -n1
 }
 
+checksum_file() {
+  path="$1"
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$path" | awk '{print $1}'
+    return
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+    return
+  fi
+  echo "missing required command: shasum or sha256sum" >&2
+  exit 1
+}
+
 detect_os() {
   case "$(uname -s)" in
     Darwin) printf 'darwin' ;;
@@ -42,6 +56,7 @@ detect_arch() {
 
 need_cmd curl
 need_cmd tar
+need_cmd awk
 need_cmd mktemp
 
 OS_NAME="$(detect_os)"
@@ -57,13 +72,41 @@ ARCHIVE="${BIN_NAME}_${VERSION_NO_V}_${OS_NAME}_${ARCH_NAME}.tar.gz"
 if [ -n "$RELEASE_BASE_URL" ]; then
   BASE_URL="${RELEASE_BASE_URL%/}"
   URL="${BASE_URL}/${ARCHIVE}"
+  CHECKSUMS_URL="${BASE_URL}/checksums.txt"
 else
   URL="https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}"
+  CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${TAG}/checksums.txt"
 fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
 curl -fsSL "$URL" -o "$TMP_DIR/$ARCHIVE"
+curl -fsSL "$CHECKSUMS_URL" -o "$TMP_DIR/checksums.txt"
+
+EXPECTED_SUM="$(awk -v file="$ARCHIVE" '
+  {
+    name = $2
+    sub(/^.*\//, "", name)
+    if (name == file) {
+      print $1
+      exit
+    }
+  }
+' "$TMP_DIR/checksums.txt")"
+
+if [ -z "$EXPECTED_SUM" ]; then
+  echo "checksum entry missing for ${ARCHIVE}" >&2
+  exit 1
+fi
+
+ACTUAL_SUM="$(checksum_file "$TMP_DIR/$ARCHIVE")"
+if [ "$EXPECTED_SUM" != "$ACTUAL_SUM" ]; then
+  echo "checksum mismatch for ${ARCHIVE}" >&2
+  echo "expected: $EXPECTED_SUM" >&2
+  echo "actual:   $ACTUAL_SUM" >&2
+  exit 1
+fi
+
 tar -xzf "$TMP_DIR/$ARCHIVE" -C "$TMP_DIR"
 install -d "$BIN_DIR"
 install "$TMP_DIR/$BIN_NAME" "$BIN_DIR/$BIN_NAME"

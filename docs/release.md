@@ -21,7 +21,7 @@ Each archive contains a single `tracker` binary.
 - release archives are built for macOS and Linux
 - `checksums.txt` is generated and published with the archives
 - GitHub artifact attestations are generated for the archives and checksum file
-- `scripts/install.sh` installs a published archive
+- `scripts/install.sh` verifies the release checksum before installing a published archive
 - `scripts/verify-release.sh` verifies checksums and, by default, artifact attestations
 - `scripts/release-rehearsal.sh` exercises the installed-binary single-workspace and multi-workspace smoke flows locally
 
@@ -51,6 +51,8 @@ Optional overrides:
 ```bash
 VERSION=v1.6.1 BIN_DIR="$HOME/.local/bin" curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
+
+The installer downloads `checksums.txt` from the same release and fails before extraction if the archive hash does not match. It does not verify GitHub artifact attestations; use `scripts/verify-release.sh` when you need the full manual release proof.
 
 ## Manual Install
 
@@ -93,7 +95,7 @@ Before cutting a real prerelease:
 
 1. build the current release candidate locally
 2. verify the local archive against a served `checksums.txt`
-3. install through `scripts/install.sh`
+3. install through `scripts/install.sh`, including its checksum check
 4. run the installed-binary smoke flow in a clean temp workspace
 
 Local rehearsal command:

@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +33,8 @@ type ApprovalStore struct {
 	Root string
 	Now  func() time.Time
 }
+
+var approvalRandom = rand.Read
 
 func NewApprovalStore(root string, now func() time.Time) ApprovalStore {
 	if now == nil {
@@ -66,8 +67,12 @@ func (s ApprovalStore) Create(ctx context.Context, operation string, target stri
 		return OperationApproval{}, apperr.New(apperr.CodeInvalidInput, "ttl must not exceed 24h")
 	}
 	now := s.Now().UTC()
+	approvalID, err := randomApprovalID()
+	if err != nil {
+		return OperationApproval{}, err
+	}
 	approval := OperationApproval{
-		ID:               "mcp_approval_" + randomApprovalID(),
+		ID:               "mcp_approval_" + approvalID,
 		Operation:        operation,
 		Target:           target,
 		Actor:            actor,
@@ -212,10 +217,12 @@ func (s ApprovalStore) withLock(ctx context.Context, purpose string, fn func() e
 	})
 }
 
-func randomApprovalID() string {
-	var raw [8]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return fmt.Sprintf("%d", time.Now().UnixNano())
+func randomApprovalID() (string, error) {
+	var raw [16]byte
+	if n, err := approvalRandom(raw[:]); err != nil {
+		return "", apperr.Wrap(apperr.CodeInternal, err, "generate operation approval id")
+	} else if n != len(raw) {
+		return "", apperr.New(apperr.CodeInternal, "generate operation approval id")
 	}
-	return hex.EncodeToString(raw[:])
+	return hex.EncodeToString(raw[:]), nil
 }

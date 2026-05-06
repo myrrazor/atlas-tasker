@@ -25,8 +25,10 @@ jobs:
             runner: macos-latest
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      # Pinned from actions/checkout v4.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      # Pinned from actions/setup-go v5.
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
       - name: Build archive
@@ -42,7 +44,8 @@ jobs:
           archive="tracker_${version}_${GOOS}_${GOARCH}.tar.gz"
           tar -czf "dist/${archive}" -C dist tracker
           shasum -a 256 "dist/${archive}" > "dist/${archive}.sha256"
-      - uses: actions/upload-artifact@v4
+      # Pinned from actions/upload-artifact v4.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*
@@ -55,8 +58,10 @@ jobs:
       attestations: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      # Pinned from actions/checkout v4.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      # Pinned from actions/download-artifact v4.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           path: dist
           merge-multiple: true
@@ -65,13 +70,15 @@ jobs:
           set -eu
           cat dist/*.sha256 > dist/checksums.txt
       - name: Attest release archives
-        uses: actions/attest-build-provenance@v2
+        # Pinned from actions/attest-build-provenance v2.
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45
         with:
           subject-path: |
             dist/*.tar.gz
             dist/checksums.txt
       - name: Publish release assets
-        uses: softprops/action-gh-release@v2
+        # Pinned from softprops/action-gh-release v2.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           prerelease: ${{ contains(github.ref_name, '-rc') }}
           files: |
