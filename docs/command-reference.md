@@ -252,14 +252,25 @@ Rules:
 
 - `tracker sign bundle <BUNDLE-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker sign sync-publication <BUNDLE-ID|PATH> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker sign approval <GATE-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker sign handoff <HANDOFF-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker sign evidence <EVIDENCE-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker sign audit <AUDIT-REPORT-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker sign audit-packet <PACKET-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker verify bundle <BUNDLE-ID|PATH>`
 - `tracker verify sync-publication <BUNDLE-ID|PATH>`
+- `tracker verify approval <GATE-ID>`
+- `tracker verify handoff <HANDOFF-ID>`
+- `tracker verify evidence <EVIDENCE-ID>`
+- `tracker verify audit <REPORT-ID|PATH>`
+- `tracker verify audit-packet <PACKET-ID|PATH>`
 
 Rules:
 
 - signing first verifies artifact integrity, then signs an artifact-bound canonical payload
 - signature envelopes are stored under `.tracker/security/signatures/`; export bundles also get an adjacent `<bundle>.signatures.json` sidecar so copied artifacts can verify by path
 - sync publications store signatures in the matching publication metadata; directory-level `publication.json` is only used when it names the requested archive
+- approval, handoff, and evidence signatures are stored as standalone signature envelopes and do not rewrite the source artifact
 - verification is pure by default and returns `missing_signature` for unsigned artifacts
 
 ## Classification And Redaction
@@ -285,6 +296,25 @@ Rules:
 - redacted exports enforce the same `export_create` governance policies as normal exports
 - export redaction only supports `omit`; stored `mask`, `hash`, or marker export rules fail closed
 - redacted artifact verification checks bundle integrity, confirms the preview binding, and fails if omitted preview paths are present
+
+## Audit Reports
+
+- `tracker audit report [--scope <SCOPE>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker audit list`
+- `tracker audit view <REPORT-ID>`
+- `tracker audit export <REPORT-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker audit verify <REPORT-ID|PATH>`
+- `tracker audit explain-policy <EVENT-UID>`
+
+Rules:
+
+- scopes are `workspace`, `project:<KEY>`, `ticket:<ID>`, `run:<ID>`, `change:<ID>`, `release:<ID>`, or `incident:<ID>`
+- report creation records `audit.report.created`; packet export records `audit.report.exported`
+- scoped packet exports are recorded in the scoped project event stream when Atlas can resolve one
+- report verification and packet verification are read-only and check the snapshot artifact, not current workspace meaning
+- packet verification recomputes `packet_hash` from the canonical report payload and reports `packet_hash_mismatch` on tampering
+- policy explanation requires `event_uid`; numeric `event_id` values are project-scoped and intentionally rejected
+- policy explanation loads the target event and current local policy context; historical reports bind the exact `policy_snapshot_hash`
 
 ## Governance
 

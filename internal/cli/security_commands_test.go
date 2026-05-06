@@ -310,6 +310,81 @@ func TestV17ClassifyAndRedactCLI(t *testing.T) {
 	}
 }
 
+func TestV17AuditCLIReportSignExportAndVerify(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Audited", "--type", "task", "--actor", "human:owner")
+	keyRaw := must("key", "generate", "--scope", "collaborator", "--owner-id", "owner", "--actor", "human:owner", "--reason", "audit signing key", "--json")
+	var key struct {
+		PublicKey struct {
+			PublicKeyID string `json:"public_key_id"`
+		} `json:"public_key"`
+	}
+	if err := json.Unmarshal([]byte(keyRaw), &key); err != nil {
+		t.Fatalf("parse key: %v\n%s", err, keyRaw)
+	}
+	must("trust", "bind-key", "owner", key.PublicKey.PublicKeyID, "--actor", "human:owner", "--reason", "trust audit signer")
+
+	reportRaw := must("audit", "report", "--scope", "ticket:APP-1", "--actor", "human:owner", "--reason", "release audit", "--json")
+	var report struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Report        struct {
+			AuditReportID string `json:"audit_report_id"`
+			ScopeKind     string `json:"scope_kind"`
+			ScopeID       string `json:"scope_id"`
+		} `json:"report"`
+	}
+	if err := json.Unmarshal([]byte(reportRaw), &report); err != nil {
+		t.Fatalf("parse audit report: %v\n%s", err, reportRaw)
+	}
+	if report.FormatVersion != jsonFormatVersion || report.Kind != "audit_report_detail" || report.Report.AuditReportID == "" || report.Report.ScopeKind != "ticket" || report.Report.ScopeID != "APP-1" {
+		t.Fatalf("unexpected audit report output: %#v", report)
+	}
+	must("sign", "audit", report.Report.AuditReportID, "--signing-key", key.PublicKey.PublicKeyID, "--actor", "human:owner", "--reason", "sign audit report")
+	reportVerify := must("audit", "verify", report.Report.AuditReportID, "--json")
+	if !strings.Contains(reportVerify, `"state": "trusted_valid"`) && !strings.Contains(reportVerify, `"state":"trusted_valid"`) {
+		t.Fatalf("signed audit report should verify trusted:\n%s", reportVerify)
+	}
+	if out, err := runCLI(t, "verify", "audit-packet", report.Report.AuditReportID, "--json"); err == nil || !strings.Contains(out+err.Error(), "expected audit packet") {
+		t.Fatalf("verify audit-packet should reject report ids, err=%v out=%s", err, out)
+	}
+
+	packetRaw := must("audit", "export", report.Report.AuditReportID, "--actor", "human:owner", "--reason", "export packet", "--json")
+	var packet struct {
+		Kind   string `json:"kind"`
+		Packet struct {
+			PacketID string `json:"packet_id"`
+		} `json:"packet"`
+	}
+	if err := json.Unmarshal([]byte(packetRaw), &packet); err != nil {
+		t.Fatalf("parse audit packet: %v\n%s", err, packetRaw)
+	}
+	if packet.Kind != "audit_report_export_result" || packet.Packet.PacketID == "" {
+		t.Fatalf("unexpected audit packet output: %#v", packet)
+	}
+	if out, err := runCLI(t, "verify", "audit", packet.Packet.PacketID, "--json"); err == nil || !strings.Contains(out+err.Error(), "expected audit report") {
+		t.Fatalf("verify audit should reject packet ids, err=%v out=%s", err, out)
+	}
+	must("sign", "audit-packet", packet.Packet.PacketID, "--signing-key", key.PublicKey.PublicKeyID, "--actor", "human:owner", "--reason", "sign audit packet")
+	packetVerify := must("verify", "audit-packet", packet.Packet.PacketID, "--json")
+	if !strings.Contains(packetVerify, `"integrity": true`) && !strings.Contains(packetVerify, `"integrity=true"`) && !strings.Contains(packetVerify, `"state": "trusted_valid"`) {
+		t.Fatalf("signed audit packet should verify:\n%s", packetVerify)
+	}
+	if !strings.Contains(packetVerify, `"kind": "audit_packet_verify_result"`) && !strings.Contains(packetVerify, `"kind":"audit_packet_verify_result"`) {
+		t.Fatalf("audit packet verify should use packet-specific kind:\n%s", packetVerify)
+	}
+}
+
 func TestV17FailClosedExecuteWritesOnlyErrorEnvelope(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

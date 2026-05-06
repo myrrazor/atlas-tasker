@@ -462,6 +462,8 @@ func collectExportFiles(root string) ([]string, error) {
 		filepath.ToSlash(filepath.Join(".tracker", "classification", "labels")),
 		filepath.ToSlash(filepath.Join(".tracker", "classification", "policies")),
 		filepath.ToSlash(filepath.Join(".tracker", "redaction", "rules")),
+		filepath.ToSlash(filepath.Join(".tracker", "audit", "reports")),
+		filepath.ToSlash(filepath.Join(".tracker", "audit", "packets")),
 	}
 	files := make([]string, 0)
 	seen := map[string]struct{}{}

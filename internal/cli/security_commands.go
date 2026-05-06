@@ -74,18 +74,18 @@ func newSignCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "sign", Short: "Sign Atlas artifacts"}
 	bundle := &cobra.Command{Use: "bundle <BUNDLE-ID>", Short: "Sign an export bundle", Args: cobra.ExactArgs(1), RunE: runSignBundle}
 	syncPublication := &cobra.Command{Use: "sync-publication <BUNDLE-ID|PATH>", Short: "Sign a sync publication", Args: cobra.ExactArgs(1), RunE: runSignSyncPublication}
-	for _, sub := range []*cobra.Command{bundle, syncPublication} {
+	approval := &cobra.Command{Use: "approval <GATE-ID>", Short: "Sign an approval artifact", Args: cobra.ExactArgs(1), RunE: runSignApproval}
+	handoff := &cobra.Command{Use: "handoff <HANDOFF-ID>", Short: "Sign a handoff artifact", Args: cobra.ExactArgs(1), RunE: runSignHandoff}
+	evidence := &cobra.Command{Use: "evidence <EVIDENCE-ID>", Short: "Sign an evidence packet", Args: cobra.ExactArgs(1), RunE: runSignEvidence}
+	audit := &cobra.Command{Use: "audit <AUDIT-REPORT-ID>", Short: "Sign an audit report", Args: cobra.ExactArgs(1), RunE: runSignAudit}
+	auditPacket := &cobra.Command{Use: "audit-packet <PACKET-ID>", Short: "Sign an audit packet", Args: cobra.ExactArgs(1), RunE: runSignAuditPacket}
+	for _, sub := range []*cobra.Command{bundle, syncPublication, approval, handoff, evidence, audit, auditPacket} {
 		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
 		addReadOutputFlags(sub, &outputFlags{})
 		sub.Flags().String("signing-key", "", "Signing key id")
 		cmd.AddCommand(sub)
 	}
 	for _, sub := range []*cobra.Command{
-		v17MutationCommand("approval <GATE-ID>", "Sign an approval artifact", "signature_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("handoff <HANDOFF-ID>", "Sign a handoff artifact", "signature_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("evidence <EVIDENCE-ID>", "Sign an evidence packet", "signature_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("audit <AUDIT-REPORT-ID>", "Sign an audit report", "signature_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("audit-packet <PACKET-ID>", "Sign an audit packet", "signature_detail", cobra.ExactArgs(1)),
 		v17MutationCommand("backup <BACKUP-ID>", "Sign a backup snapshot", "signature_detail", cobra.ExactArgs(1)),
 		v17MutationCommand("goal <MANIFEST-ID>", "Sign a goal manifest", "signature_detail", cobra.ExactArgs(1)),
 	} {
@@ -99,16 +99,16 @@ func newVerifyCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "verify", Short: "Verify signed Atlas artifacts without mutating by default"}
 	bundle := &cobra.Command{Use: "bundle <BUNDLE-ID|PATH>", Short: "Verify bundle integrity and signature state", Args: cobra.ExactArgs(1), RunE: runVerifyBundleSignature}
 	syncPublication := &cobra.Command{Use: "sync-publication <BUNDLE-ID|PATH>", Short: "Verify sync publication signature state", Args: cobra.ExactArgs(1), RunE: runVerifySyncPublicationSignature}
-	for _, sub := range []*cobra.Command{bundle, syncPublication} {
+	approval := &cobra.Command{Use: "approval <GATE-ID>", Short: "Verify approval signature state", Args: cobra.ExactArgs(1), RunE: runVerifyApprovalSignature}
+	handoff := &cobra.Command{Use: "handoff <HANDOFF-ID>", Short: "Verify handoff signature state", Args: cobra.ExactArgs(1), RunE: runVerifyHandoffSignature}
+	evidence := &cobra.Command{Use: "evidence <EVIDENCE-ID|PATH>", Short: "Verify evidence packet signature state", Args: cobra.ExactArgs(1), RunE: runVerifyEvidenceSignature}
+	audit := &cobra.Command{Use: "audit <REPORT-ID|PATH>", Short: "Verify audit report signature state", Args: cobra.ExactArgs(1), RunE: runVerifyAuditReportArtifact}
+	auditPacket := &cobra.Command{Use: "audit-packet <PACKET-ID|PATH>", Short: "Verify audit packet signature state", Args: cobra.ExactArgs(1), RunE: runVerifyAuditPacketArtifact}
+	for _, sub := range []*cobra.Command{bundle, syncPublication, approval, handoff, evidence, audit, auditPacket} {
 		addReadOutputFlags(sub, &outputFlags{})
 		cmd.AddCommand(sub)
 	}
 	cmd.AddCommand(
-		v17ReadCommand("approval <GATE-ID>", "Verify approval signature state", "signature_verify_result", cobra.ExactArgs(1)),
-		v17ReadCommand("handoff <HANDOFF-ID>", "Verify handoff signature state", "signature_verify_result", cobra.ExactArgs(1)),
-		v17ReadCommand("evidence <EVIDENCE-ID|PATH>", "Verify evidence packet signature state", "evidence_verify_result", cobra.ExactArgs(1)),
-		v17ReadCommand("audit <REPORT-ID|PATH>", "Verify audit report signature state", "audit_verify_result", cobra.ExactArgs(1)),
-		v17ReadCommand("audit-packet <PACKET-ID|PATH>", "Verify audit packet signature state", "audit_packet_verify_result", cobra.ExactArgs(1)),
 		v17ReadCommand("backup <BACKUP-ID|PATH>", "Verify backup signature state", "backup_verify_result", cobra.ExactArgs(1)),
 		v17ReadCommand("goal <MANIFEST-ID|PATH>", "Verify goal manifest signature state", "goal_manifest_verify_result", cobra.ExactArgs(1)),
 	)
@@ -211,15 +211,27 @@ func newRedactCommand() *cobra.Command {
 
 func newAuditCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "audit", Short: "Generate and verify v1.7 audit reports"}
-	report := v17MutationCommand("report", "Create an audit report snapshot", "audit_report_detail", cobra.NoArgs)
+	report := &cobra.Command{Use: "report", Short: "Create an audit report snapshot", Args: cobra.NoArgs, RunE: runAuditReport}
+	addMutationFlags(report, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(report, &outputFlags{})
 	report.Flags().String("scope", "", "Audit scope")
+	list := &cobra.Command{Use: "list", Short: "List audit reports", Args: cobra.NoArgs, RunE: runAuditList}
+	view := &cobra.Command{Use: "view <REPORT-ID>", Short: "Show one audit report", Args: cobra.ExactArgs(1), RunE: runAuditView}
+	export := &cobra.Command{Use: "export <REPORT-ID>", Short: "Export an audit packet", Args: cobra.ExactArgs(1), RunE: runAuditExport}
+	verify := &cobra.Command{Use: "verify <REPORT-ID|PATH>", Short: "Verify an audit report or packet", Args: cobra.ExactArgs(1), RunE: runVerifyAuditArtifact}
+	explainPolicy := &cobra.Command{Use: "explain-policy <EVENT-ID|ACTION-ID>", Short: "Explain policy decision provenance", Args: cobra.ExactArgs(1), RunE: runAuditExplainPolicy}
+	for _, sub := range []*cobra.Command{list, view, verify, explainPolicy} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	addMutationFlags(export, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(export, &outputFlags{})
 	cmd.AddCommand(
 		report,
-		v17ReadCommand("list", "List audit reports", "audit_report_list", cobra.NoArgs),
-		v17ReadCommand("view <REPORT-ID>", "Show one audit report", "audit_report_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("export <REPORT-ID>", "Export an audit packet", "audit_report_export_result", cobra.ExactArgs(1)),
-		v17ReadCommand("verify <REPORT-ID|PATH>", "Verify an audit report or packet", "audit_verify_result", cobra.ExactArgs(1)),
-		v17ReadCommand("explain-policy <EVENT-ID|ACTION-ID>", "Explain policy decision provenance", "governance_explanation", cobra.ExactArgs(1)),
+		list,
+		view,
+		export,
+		verify,
+		explainPolicy,
 	)
 	return cmd
 }
@@ -508,6 +520,227 @@ func runVerifySyncPublicationSignature(cmd *cobra.Command, args []string) error 
 	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
 }
 
+func runSignApproval(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	signingKey, _ := cmd.Flags().GetString("signing-key")
+	view, err := w.actions.SignApproval(cmd.Context(), args[0], strings.TrimSpace(signingKey), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureDetailMarkdown(view), signatureDetailPretty(view))
+}
+
+func runSignHandoff(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	signingKey, _ := cmd.Flags().GetString("signing-key")
+	view, err := w.actions.SignHandoff(cmd.Context(), args[0], strings.TrimSpace(signingKey), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureDetailMarkdown(view), signatureDetailPretty(view))
+}
+
+func runSignEvidence(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	signingKey, _ := cmd.Flags().GetString("signing-key")
+	view, err := w.actions.SignEvidencePacket(cmd.Context(), args[0], strings.TrimSpace(signingKey), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureDetailMarkdown(view), signatureDetailPretty(view))
+}
+
+func runSignAudit(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	signingKey, _ := cmd.Flags().GetString("signing-key")
+	view, err := w.actions.SignAuditReport(cmd.Context(), args[0], strings.TrimSpace(signingKey), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureDetailMarkdown(view), signatureDetailPretty(view))
+}
+
+func runSignAuditPacket(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	signingKey, _ := cmd.Flags().GetString("signing-key")
+	view, err := w.actions.SignAuditPacket(cmd.Context(), args[0], strings.TrimSpace(signingKey), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureDetailMarkdown(view), signatureDetailPretty(view))
+}
+
+func runVerifyApprovalSignature(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifyApprovalSignature(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
+}
+
+func runVerifyHandoffSignature(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifyHandoffSignature(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
+}
+
+func runVerifyEvidenceSignature(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifyEvidencePacketSignature(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
+}
+
+func runVerifyAuditArtifact(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifyAuditArtifact(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
+}
+
+func runVerifyAuditReportArtifact(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifyAuditReportArtifact(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
+}
+
+func runVerifyAuditPacketArtifact(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifyAuditPacketArtifact(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
+}
+
+func runAuditReport(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	scope, _ := cmd.Flags().GetString("scope")
+	view, err := w.actions.CreateAuditReport(cmd.Context(), scope, actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, auditReportMarkdown(view), auditReportPretty(view))
+}
+
+func runAuditList(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ListAuditReports(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, auditReportListMarkdown(view), auditReportListPretty(view))
+}
+
+func runAuditView(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.AuditReportDetail(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, auditReportMarkdown(view), auditReportPretty(view))
+}
+
+func runAuditExport(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	view, err := w.actions.ExportAuditPacket(cmd.Context(), args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, auditExportMarkdown(view), auditExportPretty(view))
+}
+
+func runAuditExplainPolicy(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ExplainAuditPolicy(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, auditPolicyMarkdown(view), auditPolicyPretty(view))
+}
+
 func runGovernancePackCreate(cmd *cobra.Command, args []string) error {
 	w, err := openWorkspace()
 	if err != nil {
@@ -773,9 +1006,84 @@ func signatureIntegrityStatus(integrity any) (bool, bool, []string, []string) {
 		return true, view.Verified, append([]string{}, view.Errors...), append([]string{}, view.Warnings...)
 	case service.SyncBundleVerifyView:
 		return true, view.Verified, append([]string{}, view.Errors...), append([]string{}, view.Warnings...)
+	case service.AuditIntegrityView:
+		return true, view.Verified, append([]string{}, view.Errors...), append([]string{}, view.Warnings...)
 	default:
 		return false, false, nil, nil
 	}
+}
+
+func auditReportPretty(view service.AuditReportDetailView) string {
+	return fmt.Sprintf("%s %s:%s events=%d-%d artifacts=%d findings=%d", view.Report.AuditReportID, view.Report.ScopeKind, view.Report.ScopeID, view.Report.EventRange.FromEventID, view.Report.EventRange.ToEventID, len(view.Report.IncludedArtifactHashes), len(view.Report.Findings))
+}
+
+func auditReportMarkdown(view service.AuditReportDetailView) string {
+	report := view.Report
+	lines := []string{
+		"# Audit Report",
+		"",
+		fmt.Sprintf("- Report: `%s`", report.AuditReportID),
+		fmt.Sprintf("- Scope: `%s` `%s`", report.ScopeKind, report.ScopeID),
+		fmt.Sprintf("- Events: `%d..%d`", report.EventRange.FromEventID, report.EventRange.ToEventID),
+		fmt.Sprintf("- Policy snapshot: `%s`", report.PolicySnapshotHash),
+		fmt.Sprintf("- Trust snapshot: `%s`", report.TrustSnapshotHash),
+		fmt.Sprintf("- Artifact hashes: `%d`", len(report.IncludedArtifactHashes)),
+	}
+	if len(report.Findings) > 0 {
+		lines = append(lines, "", "## Findings", "")
+		for _, finding := range report.Findings {
+			lines = append(lines, fmt.Sprintf("- `%s` %s: %s", finding.Severity, finding.Code, finding.Message))
+		}
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func auditReportListPretty(view service.AuditReportListView) string {
+	if len(view.Items) == 0 {
+		return "no audit reports"
+	}
+	lines := make([]string, 0, len(view.Items))
+	for _, report := range view.Items {
+		lines = append(lines, fmt.Sprintf("%s %s:%s", report.AuditReportID, report.ScopeKind, report.ScopeID))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func auditReportListMarkdown(view service.AuditReportListView) string {
+	if len(view.Items) == 0 {
+		return "# Audit Reports\n\nNo audit reports.\n"
+	}
+	lines := []string{"# Audit Reports", ""}
+	for _, report := range view.Items {
+		lines = append(lines, fmt.Sprintf("- `%s` `%s` `%s`", report.AuditReportID, report.ScopeKind, report.ScopeID))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func auditExportPretty(view service.AuditReportExportResultView) string {
+	return fmt.Sprintf("%s exported from %s", view.Packet.PacketID, view.Packet.Report.AuditReportID)
+}
+
+func auditExportMarkdown(view service.AuditReportExportResultView) string {
+	return fmt.Sprintf("# Audit Packet\n\n- Packet: `%s`\n- Report: `%s`\n- Packet hash: `%s`\n- Path: `%s`\n", view.Packet.PacketID, view.Packet.Report.AuditReportID, view.Packet.PacketHash, view.Path)
+}
+
+func auditPolicyPretty(view service.AuditPolicyExplanationView) string {
+	return fmt.Sprintf("%s %s", view.Target, strings.Join(view.ReasonCodes, ","))
+}
+
+func auditPolicyMarkdown(view service.AuditPolicyExplanationView) string {
+	lines := []string{"# Policy Provenance", "", fmt.Sprintf("- Target: `%s`", view.Target)}
+	if view.Event != nil {
+		lines = append(lines, fmt.Sprintf("- Event: `%d` `%s`", view.Event.EventID, view.Event.Type))
+	}
+	for _, reason := range view.ReasonCodes {
+		lines = append(lines, fmt.Sprintf("- Reason: `%s`", reason))
+	}
+	if strings.TrimSpace(view.SnapshotGuidance) != "" {
+		lines = append(lines, "", view.SnapshotGuidance)
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func governancePackCreateOptionsFromFlags(cmd *cobra.Command, name string) (service.GovernancePackCreateOptions, error) {
