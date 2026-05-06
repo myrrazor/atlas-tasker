@@ -807,7 +807,7 @@ func inspectSyncBundle(artifactPath string) (SyncPublication, error) {
 		return SyncPublication{}, apperr.New(apperr.CodeInvalidInput, "bundle ref is required")
 	}
 	manifestPath := strings.TrimSuffix(artifactPath, ".tar.gz") + ".manifest.json"
-	publicationPath := strings.TrimSuffix(artifactPath, ".tar.gz") + ".publication.json"
+	publicationPath := syncPublicationPathForArtifact(artifactPath)
 	publication, err := readSyncPublication(publicationPath)
 	if err == nil {
 		return publication, nil
@@ -836,6 +836,34 @@ func inspectSyncBundle(artifactPath string) (SyncPublication, error) {
 		ArchiveSHA256:  archiveSHA,
 		ManifestSHA256: hex.EncodeToString(manifestHash[:]),
 	}, nil
+}
+
+func syncPublicationPathForArtifact(artifactPath string) string {
+	defaultPath := strings.TrimSuffix(artifactPath, ".tar.gz") + ".publication.json"
+	if _, err := os.Stat(defaultPath); err == nil {
+		return defaultPath
+	}
+	remotePath := filepath.Join(filepath.Dir(artifactPath), "publication.json")
+	if publication, err := readSyncPublication(remotePath); err == nil && syncPublicationMatchesArtifact(publication, artifactPath) {
+		return remotePath
+	}
+	return defaultPath
+}
+
+func syncPublicationMatchesArtifact(publication SyncPublication, artifactPath string) bool {
+	artifactName := filepath.Base(artifactPath)
+	manifestName := filepath.Base(strings.TrimSuffix(artifactPath, ".tar.gz") + ".manifest.json")
+	checksumName := filepath.Base(strings.TrimSuffix(artifactPath, ".tar.gz") + ".sha256")
+	if filepath.Base(publication.ArtifactName) != artifactName {
+		return false
+	}
+	if strings.TrimSpace(publication.ManifestName) != "" && filepath.Base(publication.ManifestName) != manifestName {
+		return false
+	}
+	if strings.TrimSpace(publication.ChecksumName) != "" && filepath.Base(publication.ChecksumName) != checksumName {
+		return false
+	}
+	return true
 }
 
 func verifySyncBundle(artifactPath string) (SyncBundleVerifyView, error) {

@@ -234,6 +234,20 @@ Rules:
 - `key export-public` never exports private key bytes; private-key export is intentionally absent in v1.7
 - rotated and revoked keys cannot sign new artifacts, but old signatures still return deterministic verification states
 
+## Sign And Verify
+
+- `tracker sign bundle <BUNDLE-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker sign sync-publication <BUNDLE-ID|PATH> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker verify bundle <BUNDLE-ID|PATH>`
+- `tracker verify sync-publication <BUNDLE-ID|PATH>`
+
+Rules:
+
+- signing first verifies artifact integrity, then signs an artifact-bound canonical payload
+- signature envelopes are stored under `.tracker/security/signatures/`; export bundles also get an adjacent `<bundle>.signatures.json` sidecar so copied artifacts can verify by path
+- sync publications store signatures in the matching publication metadata; directory-level `publication.json` is only used when it names the requested archive
+- verification is pure by default and returns `missing_signature` for unsigned artifacts
+
 ## Inbox
 
 - `tracker inbox`

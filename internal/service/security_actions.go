@@ -475,7 +475,7 @@ func (s *ActionService) SignPayload(ctx context.Context, req SignatureRequest) (
 	}
 	sig := ed25519.Sign(privateKey, signingBytes)
 	envelope := contracts.SignatureEnvelope{
-		SignatureID:             "sig-" + artifactUID + "-" + fingerprintShort(hex.EncodeToString(hash[:])),
+		SignatureID:             "sig-" + artifactUID + "-" + fingerprintShort(hex.EncodeToString(hash[:])) + "-" + fingerprintShort(key.PublicKeyID),
 		ArtifactKind:            req.ArtifactKind,
 		ArtifactUID:             artifactUID,
 		CanonicalizationVersion: contracts.CanonicalizationAtlasV1,

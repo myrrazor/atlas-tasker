@@ -72,9 +72,15 @@ func newTrustCommand() *cobra.Command {
 
 func newSignCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "sign", Short: "Sign Atlas artifacts"}
+	bundle := &cobra.Command{Use: "bundle <BUNDLE-ID>", Short: "Sign an export bundle", Args: cobra.ExactArgs(1), RunE: runSignBundle}
+	syncPublication := &cobra.Command{Use: "sync-publication <BUNDLE-ID|PATH>", Short: "Sign a sync publication", Args: cobra.ExactArgs(1), RunE: runSignSyncPublication}
+	for _, sub := range []*cobra.Command{bundle, syncPublication} {
+		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
+		addReadOutputFlags(sub, &outputFlags{})
+		sub.Flags().String("signing-key", "", "Signing key id")
+		cmd.AddCommand(sub)
+	}
 	for _, sub := range []*cobra.Command{
-		v17MutationCommand("bundle <BUNDLE-ID>", "Sign an export or sync bundle", "signature_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("sync-publication <PUBLICATION-ID>", "Sign a sync publication", "signature_detail", cobra.ExactArgs(1)),
 		v17MutationCommand("approval <GATE-ID>", "Sign an approval artifact", "signature_detail", cobra.ExactArgs(1)),
 		v17MutationCommand("handoff <HANDOFF-ID>", "Sign a handoff artifact", "signature_detail", cobra.ExactArgs(1)),
 		v17MutationCommand("evidence <EVIDENCE-ID>", "Sign an evidence packet", "signature_detail", cobra.ExactArgs(1)),
@@ -91,9 +97,13 @@ func newSignCommand() *cobra.Command {
 
 func newVerifyCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "verify", Short: "Verify signed Atlas artifacts without mutating by default"}
+	bundle := &cobra.Command{Use: "bundle <BUNDLE-ID|PATH>", Short: "Verify bundle integrity and signature state", Args: cobra.ExactArgs(1), RunE: runVerifyBundleSignature}
+	syncPublication := &cobra.Command{Use: "sync-publication <BUNDLE-ID|PATH>", Short: "Verify sync publication signature state", Args: cobra.ExactArgs(1), RunE: runVerifySyncPublicationSignature}
+	for _, sub := range []*cobra.Command{bundle, syncPublication} {
+		addReadOutputFlags(sub, &outputFlags{})
+		cmd.AddCommand(sub)
+	}
 	cmd.AddCommand(
-		v17ReadCommand("bundle <PATH>", "Verify bundle integrity and signature state", "signature_verify_result", cobra.ExactArgs(1)),
-		v17ReadCommand("sync-publication <PATH>", "Verify sync publication signature state", "signature_verify_result", cobra.ExactArgs(1)),
 		v17ReadCommand("approval <GATE-ID>", "Verify approval signature state", "signature_verify_result", cobra.ExactArgs(1)),
 		v17ReadCommand("handoff <HANDOFF-ID>", "Verify handoff signature state", "signature_verify_result", cobra.ExactArgs(1)),
 		v17ReadCommand("evidence <EVIDENCE-ID|PATH>", "Verify evidence packet signature state", "evidence_verify_result", cobra.ExactArgs(1)),
@@ -397,10 +407,118 @@ func runTrustExplain(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, view, pretty, pretty)
 }
 
+func runSignBundle(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	signingKey, _ := cmd.Flags().GetString("signing-key")
+	view, err := w.actions.SignExportBundle(cmd.Context(), args[0], strings.TrimSpace(signingKey), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureDetailMarkdown(view), signatureDetailPretty(view))
+}
+
+func runSignSyncPublication(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	signingKey, _ := cmd.Flags().GetString("signing-key")
+	view, err := w.actions.SignSyncPublication(cmd.Context(), args[0], strings.TrimSpace(signingKey), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureDetailMarkdown(view), signatureDetailPretty(view))
+}
+
+func runVerifyBundleSignature(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifyExportBundleSignature(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
+}
+
+func runVerifySyncPublicationSignature(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifySyncPublicationSignature(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
+}
+
 func mutationActorReason(cmd *cobra.Command) (contracts.Actor, string) {
 	actor, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	return contracts.Actor(strings.TrimSpace(actor)), strings.TrimSpace(reason)
+}
+
+func signatureDetailPretty(view service.SignatureDetailView) string {
+	return fmt.Sprintf("%s signed %s %s with %s", view.Signature.SignatureID, view.ArtifactKind, view.ArtifactUID, view.Signature.PublicKeyID)
+}
+
+func signatureDetailMarkdown(view service.SignatureDetailView) string {
+	return fmt.Sprintf("# Signature\n\n- Signature: `%s`\n- Artifact: `%s` `%s`\n- Key: `%s`\n", view.Signature.SignatureID, view.ArtifactKind, view.ArtifactUID, view.Signature.PublicKeyID)
+}
+
+func signatureVerifyPretty(view service.ArtifactSignatureVerifyView) string {
+	pretty := fmt.Sprintf("%s %s", view.Kind, view.Signature.State)
+	if present, verified, errors, warnings := signatureIntegrityStatus(view.Integrity); present {
+		pretty += fmt.Sprintf(" integrity=%t", verified)
+		if len(errors) > 0 {
+			pretty += " errors=" + strings.Join(errors, ",")
+		}
+		if len(warnings) > 0 {
+			pretty += " warnings=" + strings.Join(warnings, ",")
+		}
+	}
+	return pretty
+}
+
+func signatureVerifyMarkdown(view service.ArtifactSignatureVerifyView) string {
+	lines := []string{
+		"# Signature Verification",
+		"",
+		fmt.Sprintf("- State: `%s`", view.Signature.State),
+		fmt.Sprintf("- Artifact: `%s` `%s`", view.Signature.ArtifactKind, view.Signature.ArtifactUID),
+	}
+	if present, verified, errors, warnings := signatureIntegrityStatus(view.Integrity); present {
+		lines = append(lines, fmt.Sprintf("- Integrity verified: `%t`", verified))
+		for _, item := range errors {
+			lines = append(lines, fmt.Sprintf("- Integrity error: `%s`", item))
+		}
+		for _, item := range warnings {
+			lines = append(lines, fmt.Sprintf("- Integrity warning: `%s`", item))
+		}
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func signatureIntegrityStatus(integrity any) (bool, bool, []string, []string) {
+	switch view := integrity.(type) {
+	case service.ExportVerifyView:
+		return true, view.Verified, append([]string{}, view.Errors...), append([]string{}, view.Warnings...)
+	case service.SyncBundleVerifyView:
+		return true, view.Verified, append([]string{}, view.Errors...), append([]string{}, view.Warnings...)
+	default:
+		return false, false, nil, nil
+	}
 }
 
 func keyListPretty(view service.KeyListView) string {

@@ -227,6 +227,10 @@ func SignaturesDir(root string) string {
 	return filepath.Join(SecurityDir(root), "signatures")
 }
 
+func SignatureFile(root string, signatureID string) string {
+	return filepath.Join(SignaturesDir(root), signatureID+".json")
+}
+
 func GovernancePoliciesDir(root string) string {
 	return filepath.Join(TrackerDir(root), "governance", "policies")
 }

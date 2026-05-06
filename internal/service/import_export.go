@@ -340,17 +340,56 @@ func (s *ActionService) resolveExportBundle(ctx context.Context, bundleRef strin
 	if ref == "" {
 		return contracts.ExportBundle{}, apperr.New(apperr.CodeInvalidInput, "bundle reference is required")
 	}
-	if strings.HasSuffix(ref, ".tar.gz") || strings.HasSuffix(ref, ".tgz") {
-		base := filepath.Base(bundleSidecarBase(ref))
-		return contracts.ExportBundle{
-			BundleID:     base,
+	if exportBundleRefIsPath(ref) {
+		sidecarBase := bundleSidecarBase(ref)
+		base := filepath.Base(sidecarBase)
+		manifestPath := sidecarBase + ".manifest.json"
+		checksumPath := sidecarBase + ".sha256"
+		bundleID := base
+		scope := ""
+		if manifest, err := loadBundleManifest(manifestPath); err == nil {
+			if strings.TrimSpace(manifest.BundleID) != "" {
+				bundleID = manifest.BundleID
+			}
+			scope = manifest.Scope
+		}
+		if stored, err := s.ExportBundles.LoadExportBundle(ctx, base); err == nil {
+			stored.ArtifactPath = ref
+			stored.ManifestPath = manifestPath
+			stored.ChecksumPath = checksumPath
+			if signatures, err := readExportSignatureSidecar(ref, stored.BundleID); err != nil {
+				return contracts.ExportBundle{}, err
+			} else {
+				stored.SignatureEnvelopes = mergeSignatureEnvelopes(stored.SignatureEnvelopes, signatures)
+			}
+			return stored, nil
+		}
+		bundle := contracts.ExportBundle{
+			BundleID:     bundleID,
+			Format:       exportBundleFormatV1,
+			Scope:        scope,
 			ArtifactPath: ref,
-			ManifestPath: bundleSidecarBase(ref) + ".manifest.json",
-			ChecksumPath: bundleSidecarBase(ref) + ".sha256",
+			ManifestPath: manifestPath,
+			ChecksumPath: checksumPath,
 			Status:       contracts.ExportBundleCreated,
-		}, nil
+		}
+		if signatures, err := readExportSignatureSidecar(ref, bundle.BundleID); err != nil {
+			return contracts.ExportBundle{}, err
+		} else {
+			bundle.SignatureEnvelopes = signatures
+		}
+		return bundle, nil
 	}
-	return s.ExportBundles.LoadExportBundle(ctx, ref)
+	bundle, err := s.ExportBundles.LoadExportBundle(ctx, ref)
+	if err != nil {
+		return contracts.ExportBundle{}, err
+	}
+	if signatures, err := readExportSignatureSidecar(bundle.ArtifactPath, bundle.BundleID); err != nil {
+		return contracts.ExportBundle{}, err
+	} else {
+		bundle.SignatureEnvelopes = mergeSignatureEnvelopes(bundle.SignatureEnvelopes, signatures)
+	}
+	return bundle, nil
 }
 
 func collectExportFiles(root string) ([]string, error) {
@@ -372,6 +411,9 @@ func collectExportFiles(root string) ([]string, error) {
 		filepath.ToSlash(filepath.Join(".tracker", "permission-profiles")),
 		filepath.ToSlash(filepath.Join(".tracker", "imports")),
 		filepath.ToSlash(filepath.Join(".tracker", "retention")),
+		filepath.ToSlash(filepath.Join(".tracker", "security", "keys", "public")),
+		filepath.ToSlash(filepath.Join(".tracker", "security", "revocations")),
+		filepath.ToSlash(filepath.Join(".tracker", "security", "signatures")),
 	}
 	files := make([]string, 0)
 	seen := map[string]struct{}{}

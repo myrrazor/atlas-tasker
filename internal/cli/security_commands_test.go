@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
@@ -127,6 +129,30 @@ func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
 	err = cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "frozen for v1.7 follow-up implementation") {
 		t.Fatalf("expected non-zero implementation-pending error, got %v", err)
+	}
+}
+
+func TestSignatureVerifyOutputIncludesIntegrityFailures(t *testing.T) {
+	view := service.ArtifactSignatureVerifyView{
+		Kind: "signature_verify_result",
+		Integrity: service.ExportVerifyView{
+			Verified: false,
+			Errors:   []string{"archive_checksum_mismatch"},
+		},
+		Signature: contracts.SignatureVerificationResult{
+			State:        contracts.VerificationTrustedValid,
+			ArtifactKind: contracts.ArtifactKindBundle,
+			ArtifactUID:  "bundle_1",
+		},
+	}
+
+	pretty := signatureVerifyPretty(view)
+	if !strings.Contains(pretty, "trusted_valid") || !strings.Contains(pretty, "integrity=false") || !strings.Contains(pretty, "archive_checksum_mismatch") {
+		t.Fatalf("pretty verify output should expose integrity failure, got %q", pretty)
+	}
+	md := signatureVerifyMarkdown(view)
+	if !strings.Contains(md, "Integrity verified: `false`") || !strings.Contains(md, "Integrity error: `archive_checksum_mismatch`") {
+		t.Fatalf("markdown verify output should expose integrity failure:\n%s", md)
 	}
 }
 
