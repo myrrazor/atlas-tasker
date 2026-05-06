@@ -18,11 +18,12 @@ type QueryService struct {
 	Tickets    contracts.TicketStore
 	Events     contracts.EventLog
 	Projection contracts.ProjectionStore
+	Views      ViewStore
 	Clock      func() time.Time
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
-	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Clock: clock}
+	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
 }
 
 func (s *QueryService) now() time.Time {
@@ -42,6 +43,115 @@ func (s *QueryService) Board(ctx context.Context, opts contracts.BoardQueryOptio
 
 func (s *QueryService) Search(ctx context.Context, query contracts.SearchQuery) ([]contracts.TicketSnapshot, error) {
 	return s.Projection.QuerySearch(ctx, query)
+}
+
+func (s *QueryService) ListSavedViews() ([]contracts.SavedView, error) {
+	return s.Views.ListViews()
+}
+
+func (s *QueryService) NotificationLog(limit int) ([]NotificationDelivery, error) {
+	cfg, err := config.Load(s.Root)
+	if err != nil {
+		return nil, err
+	}
+	records, err := ReadNotificationLog(s.Root, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return tailNotificationRecords(records, limit), nil
+}
+
+func (s *QueryService) DeadLetters(limit int) ([]NotificationDelivery, error) {
+	cfg, err := config.Load(s.Root)
+	if err != nil {
+		return nil, err
+	}
+	records, err := ReadDeadLetters(s.Root, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return tailNotificationRecords(records, limit), nil
+}
+
+func tailNotificationRecords(records []NotificationDelivery, limit int) []NotificationDelivery {
+	if limit <= 0 || len(records) <= limit {
+		return records
+	}
+	return append([]NotificationDelivery{}, records[len(records)-limit:]...)
+}
+
+func (s *QueryService) AutomationRules() ([]contracts.AutomationRule, error) {
+	return (AutomationEngine{Store: AutomationStore{Root: s.Root}}).ListRules()
+}
+
+func (s *QueryService) ExplainAutomationRules(ctx context.Context, ticketID string) ([]AutomationResult, error) {
+	if strings.TrimSpace(ticketID) == "" {
+		return []AutomationResult{}, nil
+	}
+	rules, err := s.AutomationRules()
+	if err != nil {
+		return nil, err
+	}
+	if len(rules) == 0 {
+		return []AutomationResult{}, nil
+	}
+	detail, err := s.TicketDetail(ctx, ticketID)
+	if err != nil {
+		return nil, err
+	}
+	eventType := contracts.EventTicketUpdated
+	actor := contracts.Actor("human:owner")
+	if len(detail.History) > 0 {
+		last := detail.History[len(detail.History)-1]
+		eventType = last.Type
+		actor = last.Actor
+	}
+	event := contracts.Event{
+		EventID:       1,
+		Timestamp:     s.now(),
+		Actor:         actor,
+		Type:          eventType,
+		Project:       detail.Ticket.Project,
+		TicketID:      detail.Ticket.ID,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	engine := AutomationEngine{Store: AutomationStore{Root: s.Root}}
+	results := make([]AutomationResult, 0, len(rules))
+	for _, rule := range rules {
+		result, err := engine.Explain(ctx, s, rule, event, ticketID)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, result)
+	}
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Matched != results[j].Matched {
+			return results[i].Matched
+		}
+		return results[i].Rule.Name < results[j].Rule.Name
+	})
+	return results, nil
+}
+
+func (s *QueryService) SavedView(name string) (contracts.SavedView, error) {
+	return s.Views.LoadView(name)
+}
+
+func (s *QueryService) ListSubscriptions(actor contracts.Actor) ([]contracts.Subscription, error) {
+	subscriptions, err := SubscriptionStore{Root: s.Root}.ListSubscriptions()
+	if err != nil {
+		return nil, err
+	}
+	if actor == "" {
+		return subscriptions, nil
+	}
+	filtered := make([]contracts.Subscription, 0, len(subscriptions))
+	for _, subscription := range subscriptions {
+		if subscription.Actor == actor {
+			filtered = append(filtered, subscription)
+		}
+	}
+	return filtered, nil
 }
 
 func (s *QueryService) History(ctx context.Context, ticketID string) (HistoryView, error) {
@@ -79,7 +189,49 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
-	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, EffectivePolicy: policy}, nil
+	ticket, err = s.withProgress(ctx, ticket)
+	if err != nil {
+		return TicketDetailView{}, err
+	}
+	gitView, err := SCMService{Root: s.Root}.ContextForTicket(ctx, ticket)
+	if err != nil {
+		return TicketDetailView{}, err
+	}
+	return TicketDetailView{Ticket: ticket, Comments: comments, History: history.Events, EffectivePolicy: policy, Git: gitView}, nil
+}
+
+func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor contracts.Actor) (InspectView, error) {
+	detail, err := s.TicketDetail(ctx, ticketID)
+	if err != nil {
+		return InspectView{}, err
+	}
+	view := InspectView{
+		Ticket:          detail.Ticket,
+		BoardStatus:     contracts.BoardStatus(detail.Ticket),
+		LeaseActive:     detail.Ticket.Lease.Active(s.now()),
+		EffectivePolicy: detail.EffectivePolicy,
+		History:         detail.History,
+		Git:             detail.Git,
+	}
+	if actor == "" {
+		return view, nil
+	}
+	queue, err := s.Queue(ctx, actor)
+	if err != nil {
+		return InspectView{}, err
+	}
+	for category, entries := range queue.Categories {
+		for _, entry := range entries {
+			if entry.Ticket.ID == ticketID {
+				view.QueueCategories = append(view.QueueCategories, category)
+				break
+			}
+		}
+	}
+	sort.Slice(view.QueueCategories, func(i, j int) bool {
+		return view.QueueCategories[i] < view.QueueCategories[j]
+	})
+	return view, nil
 }
 
 func (s *QueryService) EffectivePolicy(ctx context.Context, ticket contracts.TicketSnapshot) (EffectivePolicyView, error) {
@@ -99,6 +251,10 @@ func (s *QueryService) Queue(ctx context.Context, actor contracts.Actor) (QueueV
 		return QueueView{}, err
 	}
 	now := s.now()
+	repo, err := SCMService{Root: s.Root}.RepoStatus(ctx)
+	if err != nil {
+		return QueueView{}, err
+	}
 	view := QueueView{Actor: actor, GeneratedAt: now, Categories: map[QueueCategory][]QueueEntry{}}
 	for _, ticket := range tickets {
 		policy, err := s.EffectivePolicy(ctx, ticket)
@@ -108,27 +264,46 @@ func (s *QueryService) Queue(ctx context.Context, actor contracts.Actor) (QueueV
 		if len(policy.AllowedWorkers) > 0 && !actorInList(actor, policy.AllowedWorkers) {
 			view.Categories[QueuePolicyViolations] = append(view.Categories[QueuePolicyViolations], QueueEntry{Ticket: ticket, Reason: "actor not allowed by effective policy"})
 		}
+		entryHint := queueGitHint(repo, ticket, SCMService{Root: s.Root}.SuggestedBranch(ticket))
 		switch {
 		case ticket.Lease.Actor != "" && !ticket.Lease.ExpiresAt.IsZero() && !ticket.Lease.Active(now):
-			view.Categories[QueueStaleClaims] = append(view.Categories[QueueStaleClaims], QueueEntry{Ticket: ticket, Reason: "lease expired"})
+			view.Categories[QueueStaleClaims] = append(view.Categories[QueueStaleClaims], QueueEntry{Ticket: ticket, Reason: "lease expired", GitHint: entryHint})
 		case ticket.Lease.Active(now) && ticket.Lease.Actor == actor:
-			view.Categories[QueueClaimedByMe] = append(view.Categories[QueueClaimedByMe], QueueEntry{Ticket: ticket, Reason: "active lease owned by actor"})
+			view.Categories[QueueClaimedByMe] = append(view.Categories[QueueClaimedByMe], QueueEntry{Ticket: ticket, Reason: "active lease owned by actor", GitHint: entryHint})
 		case ticket.Status == contracts.StatusReady && (ticket.Assignee == "" || ticket.Assignee == actor):
-			view.Categories[QueueReadyForMe] = append(view.Categories[QueueReadyForMe], QueueEntry{Ticket: ticket, Reason: "ready and assignable"})
+			view.Categories[QueueReadyForMe] = append(view.Categories[QueueReadyForMe], QueueEntry{Ticket: ticket, Reason: "ready and assignable", GitHint: entryHint})
 		case contracts.BoardStatus(ticket) == contracts.StatusBlocked && (ticket.Assignee == "" || ticket.Assignee == actor):
-			view.Categories[QueueBlockedForMe] = append(view.Categories[QueueBlockedForMe], QueueEntry{Ticket: ticket, Reason: "ticket is blocked"})
+			view.Categories[QueueBlockedForMe] = append(view.Categories[QueueBlockedForMe], QueueEntry{Ticket: ticket, Reason: "ticket is blocked", GitHint: entryHint})
 		}
 		if ticket.Status == contracts.StatusInReview && (ticket.Reviewer == actor || actor == contracts.Actor("human:owner")) {
-			view.Categories[QueueNeedsReview] = append(view.Categories[QueueNeedsReview], QueueEntry{Ticket: ticket, Reason: "waiting for review"})
+			view.Categories[QueueNeedsReview] = append(view.Categories[QueueNeedsReview], QueueEntry{Ticket: ticket, Reason: "waiting for review", GitHint: entryHint})
 		}
 		if policy.CompletionMode == contracts.CompletionModeDualGate && ticket.ReviewState == contracts.ReviewStateApproved {
-			view.Categories[QueueAwaitingOwner] = append(view.Categories[QueueAwaitingOwner], QueueEntry{Ticket: ticket, Reason: "approved and waiting for owner completion"})
+			view.Categories[QueueAwaitingOwner] = append(view.Categories[QueueAwaitingOwner], QueueEntry{Ticket: ticket, Reason: "approved and waiting for owner completion", GitHint: entryHint})
 		}
 	}
 	for category := range view.Categories {
 		sortQueueEntries(view.Categories[category])
 	}
 	return view, nil
+}
+
+func queueGitHint(repo GitRepoView, ticket contracts.TicketSnapshot, suggested string) string {
+	if !repo.Present {
+		return ""
+	}
+	branch := strings.ToLower(strings.TrimSpace(repo.Branch))
+	id := strings.ToLower(ticket.ID)
+	switch {
+	case branch != "" && strings.Contains(branch, id) && repo.Dirty:
+		return "current branch matches ticket; repo has uncommitted changes"
+	case branch != "" && strings.Contains(branch, id):
+		return "current branch matches ticket"
+	case repo.Dirty:
+		return fmt.Sprintf("suggested branch %s; repo has uncommitted changes", suggested)
+	default:
+		return fmt.Sprintf("suggested branch %s", suggested)
+	}
 }
 
 func (s *QueryService) Who(ctx context.Context) ([]contracts.TicketSnapshot, error) {
@@ -185,6 +360,98 @@ func (s *QueryService) ResolveActor(ctx context.Context, explicit contracts.Acto
 	return "", fmt.Errorf("actor is required: pass --actor, set TRACKER_ACTOR, or configure actor.default")
 }
 
+func (s *QueryService) Next(ctx context.Context, actor contracts.Actor) (NextView, error) {
+	resolved, err := s.ResolveActor(ctx, actor)
+	if err != nil {
+		return NextView{}, err
+	}
+	queue, err := s.Queue(ctx, resolved)
+	if err != nil {
+		return NextView{}, err
+	}
+	order := []QueueCategory{
+		QueueReadyForMe,
+		QueueClaimedByMe,
+		QueueNeedsReview,
+		QueueAwaitingOwner,
+		QueueBlockedForMe,
+		QueueStaleClaims,
+		QueuePolicyViolations,
+	}
+	view := NextView{Actor: resolved}
+	for _, category := range order {
+		for _, entry := range queue.Categories[category] {
+			view.Entries = append(view.Entries, NextEntry{Category: category, Entry: entry})
+		}
+	}
+	return view, nil
+}
+
+func (s *QueryService) RunSavedView(ctx context.Context, name string, actorOverride contracts.Actor) (SavedViewResult, error) {
+	view, err := s.SavedView(name)
+	if err != nil {
+		return SavedViewResult{}, err
+	}
+	result := SavedViewResult{View: view}
+	switch view.Kind {
+	case contracts.SavedViewKindBoard:
+		board, err := s.Board(ctx, contracts.BoardQueryOptions{
+			Project:  strings.TrimSpace(view.Project),
+			Assignee: view.Assignee,
+			Type:     view.Type,
+		})
+		if err != nil {
+			return SavedViewResult{}, err
+		}
+		filtered := board.Board
+		if len(view.Board.Columns) > 0 {
+			filtered = filterBoardColumns(board.Board, view.Board.Columns)
+		}
+		result.Board = &BoardViewModel{Board: filtered}
+	case contracts.SavedViewKindSearch:
+		query, err := contracts.ParseSearchQuery(strings.TrimSpace(view.Query))
+		if err != nil {
+			return SavedViewResult{}, err
+		}
+		tickets, err := s.Search(ctx, query)
+		if err != nil {
+			return SavedViewResult{}, err
+		}
+		result.Tickets = tickets
+	case contracts.SavedViewKindQueue:
+		actor, err := s.resolveSavedViewActor(ctx, view, actorOverride)
+		if err != nil {
+			return SavedViewResult{}, err
+		}
+		queue, err := s.Queue(ctx, actor)
+		if err != nil {
+			return SavedViewResult{}, err
+		}
+		if len(view.Queue.Categories) > 0 {
+			queue.Categories = filterQueueView(queue.Categories, view.Queue.Categories)
+		}
+		result.Actor = actor
+		result.Queue = &queue
+	case contracts.SavedViewKindNext:
+		actor, err := s.resolveSavedViewActor(ctx, view, actorOverride)
+		if err != nil {
+			return SavedViewResult{}, err
+		}
+		next, err := s.Next(ctx, actor)
+		if err != nil {
+			return SavedViewResult{}, err
+		}
+		if len(view.Queue.Categories) > 0 {
+			next.Entries = filterNextEntries(next.Entries, view.Queue.Categories)
+		}
+		result.Actor = actor
+		result.Next = &next
+	default:
+		return SavedViewResult{}, fmt.Errorf("unsupported saved view kind: %s", view.Kind)
+	}
+	return result, nil
+}
+
 func applyPolicy(view *EffectivePolicyView, policy contracts.TicketPolicy) {
 	if policy.CompletionMode != "" {
 		view.CompletionMode = policy.CompletionMode
@@ -224,4 +491,87 @@ func sortQueueEntries(entries []QueueEntry) {
 		}
 		return entries[i].Ticket.ID < entries[j].Ticket.ID
 	})
+}
+
+func filterBoardColumns(board contracts.BoardView, columns []contracts.Status) contracts.BoardView {
+	filtered := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{}}
+	for _, column := range columns {
+		filtered.Columns[column] = append([]contracts.TicketSnapshot{}, board.Columns[column]...)
+	}
+	return filtered
+}
+
+func filterQueueView(categories map[QueueCategory][]QueueEntry, wanted []string) map[QueueCategory][]QueueEntry {
+	filtered := map[QueueCategory][]QueueEntry{}
+	for _, raw := range wanted {
+		category := QueueCategory(strings.TrimSpace(raw))
+		if category == "" {
+			continue
+		}
+		filtered[category] = append([]QueueEntry{}, categories[category]...)
+	}
+	return filtered
+}
+
+func filterNextEntries(entries []NextEntry, wanted []string) []NextEntry {
+	allowed := make(map[QueueCategory]struct{}, len(wanted))
+	for _, raw := range wanted {
+		category := QueueCategory(strings.TrimSpace(raw))
+		if category == "" {
+			continue
+		}
+		allowed[category] = struct{}{}
+	}
+	if len(allowed) == 0 {
+		return entries
+	}
+	filtered := make([]NextEntry, 0, len(entries))
+	for _, entry := range entries {
+		if _, ok := allowed[entry.Category]; ok {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
+}
+
+func (s *QueryService) resolveSavedViewActor(ctx context.Context, view contracts.SavedView, actorOverride contracts.Actor) (contracts.Actor, error) {
+	if actorOverride != "" {
+		return s.ResolveActor(ctx, actorOverride)
+	}
+	if view.Actor != "" {
+		return s.ResolveActor(ctx, view.Actor)
+	}
+	return s.ResolveActor(ctx, "")
+}
+
+func (s *QueryService) withProgress(ctx context.Context, ticket contracts.TicketSnapshot) (contracts.TicketSnapshot, error) {
+	children, err := s.Tickets.ListTickets(ctx, contracts.TicketListOptions{Project: ticket.Project, IncludeArchived: false})
+	if err != nil {
+		return contracts.TicketSnapshot{}, err
+	}
+	total := 0
+	done := 0
+	blocked := 0
+	for _, child := range children {
+		if child.Parent != ticket.ID {
+			continue
+		}
+		total++
+		if contracts.IsTerminalStatus(child.Status) {
+			done++
+		}
+		if contracts.BoardStatus(child) == contracts.StatusBlocked {
+			blocked++
+		}
+	}
+	if total == 0 {
+		return ticket, nil
+	}
+	ticket.Progress = contracts.ProgressSummary{
+		TotalChildren:   total,
+		DoneChildren:    done,
+		BlockedChildren: blocked,
+		Percent:         (done * 100) / total,
+	}
+	return ticket, nil
 }

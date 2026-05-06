@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/domain"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
@@ -48,7 +50,7 @@ func TestActionServiceClaimHeartbeatReleaseSweep(t *testing.T) {
 	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
 		t.Fatalf("create ticket: %v", err)
 	}
-	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock })
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
 	createdEvent := contracts.Event{EventID: 1, Timestamp: now, Actor: contracts.Actor("human:owner"), Type: contracts.EventTicketCreated, Project: "APP", TicketID: ticket.ID, Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion}
 	if err := actions.AppendAndProject(ctx, createdEvent); err != nil {
 		t.Fatalf("append create event: %v", err)
@@ -128,7 +130,7 @@ func TestActionServiceReviewAndPolicyFlow(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 
-	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock })
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
 	updatedProject, err := actions.SetProjectPolicy(ctx, "APP", contracts.ProjectDefaults{
 		CompletionMode:   contracts.CompletionModeDualGate,
 		LeaseTTLMinutes:  45,
@@ -227,5 +229,257 @@ func TestActionServiceReviewAndPolicyFlow(t *testing.T) {
 	}
 	if completed.Status != contracts.StatusDone {
 		t.Fatalf("unexpected completed ticket: %#v", completed)
+	}
+}
+
+func TestActionServiceCreateEditCommentAndLinks(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 23, 9, 0, 0, 0, time.UTC)
+	clock := now
+
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return clock }}
+	eventsLog := &eventstore.Log{RootDir: root}
+	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventsLog)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer projection.Close()
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
+
+	created, err := actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project:       "APP",
+		Title:         "First pass",
+		Summary:       "First pass",
+		Description:   "ship the core path",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusBacklog,
+		Priority:      contracts.PriorityMedium,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}, contracts.Actor("human:owner"), "seed from test")
+	if err != nil {
+		t.Fatalf("create tracked ticket: %v", err)
+	}
+	if created.ID != "APP-1" {
+		t.Fatalf("expected APP-1, got %s", created.ID)
+	}
+
+	clock = clock.Add(time.Minute)
+	assigned, err := actions.AssignTicket(ctx, created.ID, contracts.Actor("agent:builder-1"), contracts.Actor("human:owner"), "pick owner")
+	if err != nil {
+		t.Fatalf("assign ticket: %v", err)
+	}
+	if assigned.Assignee != contracts.Actor("agent:builder-1") {
+		t.Fatalf("unexpected assignee: %#v", assigned)
+	}
+
+	clock = clock.Add(time.Minute)
+	assigned.Description = "ship the full write path"
+	if _, err := actions.SaveTrackedTicket(ctx, assigned, contracts.Actor("human:owner"), "edit from service"); err != nil {
+		t.Fatalf("save tracked ticket: %v", err)
+	}
+
+	clock = clock.Add(time.Minute)
+	if err := actions.CommentTicket(ctx, created.ID, "looks good", contracts.Actor("human:owner"), "feedback"); err != nil {
+		t.Fatalf("comment ticket: %v", err)
+	}
+
+	clock = clock.Add(time.Minute)
+	blocker, err := actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project:       "APP",
+		Title:         "Blocker",
+		Summary:       "Blocker",
+		Type:          contracts.TicketTypeBug,
+		Status:        contracts.StatusReady,
+		Priority:      contracts.PriorityHigh,
+		CreatedAt:     clock,
+		UpdatedAt:     clock,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}, contracts.Actor("human:owner"), "seed blocker")
+	if err != nil {
+		t.Fatalf("create blocker: %v", err)
+	}
+
+	clock = clock.Add(time.Minute)
+	if _, err := actions.LinkTickets(ctx, created.ID, blocker.ID, domain.LinkBlockedBy, contracts.Actor("human:owner"), "link blocker"); err != nil {
+		t.Fatalf("link tickets: %v", err)
+	}
+	detail, err := projection.QueryTicket(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("query linked ticket: %v", err)
+	}
+	if len(detail.BlockedBy) != 1 || detail.BlockedBy[0] != blocker.ID {
+		t.Fatalf("expected blocked_by link, got %#v", detail.BlockedBy)
+	}
+
+	clock = clock.Add(time.Minute)
+	if _, err := actions.UnlinkTickets(ctx, created.ID, blocker.ID, contracts.Actor("human:owner"), "clear blocker"); err != nil {
+		t.Fatalf("unlink tickets: %v", err)
+	}
+	detail, err = projection.QueryTicket(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("query unlinked ticket: %v", err)
+	}
+	if len(detail.BlockedBy) != 0 {
+		t.Fatalf("expected link to be removed, got %#v", detail.BlockedBy)
+	}
+}
+
+func TestActionServiceSerializesConcurrentClaims(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 23, 8, 0, 0, 0, time.UTC)
+	clock := now
+
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return clock }}
+	eventsLog := &eventstore.Log{RootDir: root}
+	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventsLog)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer projection.Close()
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket := contracts.TicketSnapshot{ID: "APP-1", Project: "APP", Title: "Race me", Type: contracts.TicketTypeTask, Status: contracts.StatusReady, Priority: contracts.PriorityHigh, CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}
+	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
+	if err := actions.AppendAndProject(ctx, contracts.Event{EventID: 1, Timestamp: now, Actor: contracts.Actor("human:owner"), Type: contracts.EventTicketCreated, Project: "APP", TicketID: ticket.ID, Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("append create event: %v", err)
+	}
+
+	errs := make(chan error, 2)
+	for _, actor := range []contracts.Actor{"agent:builder-1", "agent:builder-2"} {
+		go func(actor contracts.Actor) {
+			_, err := actions.ClaimTicket(ctx, ticket.ID, actor, "race claim")
+			errs <- err
+		}(actor)
+	}
+
+	var okCount int
+	var conflictCount int
+	for range 2 {
+		err := <-errs
+		switch {
+		case err == nil:
+			okCount++
+		case strings.Contains(err.Error(), "already claimed"):
+			conflictCount++
+		default:
+			t.Fatalf("unexpected concurrent claim error: %v", err)
+		}
+	}
+	if okCount != 1 || conflictCount != 1 {
+		t.Fatalf("expected one success and one conflict, got ok=%d conflict=%d", okCount, conflictCount)
+	}
+}
+
+func TestActionServiceMutateAndDeleteTrackedTicket(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 23, 9, 0, 0, 0, time.UTC)
+	clock := now
+
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return clock }}
+	eventsLog := &eventstore.Log{RootDir: root}
+	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventsLog)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer projection.Close()
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
+	created, err := actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project:       "APP",
+		Title:         "Edit me",
+		Summary:       "Edit me",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusReady,
+		Priority:      contracts.PriorityMedium,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}, contracts.Actor("human:owner"), "seed ticket")
+	if err != nil {
+		t.Fatalf("create tracked ticket: %v", err)
+	}
+
+	clock = clock.Add(2 * time.Minute)
+	updated, err := actions.MutateTrackedTicket(ctx, created.ID, contracts.Actor("human:owner"), "rename ticket", "edit ticket", func(ticket *contracts.TicketSnapshot) error {
+		ticket.Title = "Edited title"
+		ticket.Summary = "Edited title"
+		ticket.Labels = []string{"ops"}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("mutate tracked ticket: %v", err)
+	}
+	if updated.Title != "Edited title" || len(updated.Labels) != 1 || updated.Labels[0] != "ops" {
+		t.Fatalf("unexpected updated ticket: %#v", updated)
+	}
+
+	clock = clock.Add(2 * time.Minute)
+	deleted, err := actions.DeleteTrackedTicket(ctx, created.ID, contracts.Actor("human:owner"), "no longer needed")
+	if err != nil {
+		t.Fatalf("delete tracked ticket: %v", err)
+	}
+	if !deleted.Archived || deleted.Status != contracts.StatusCanceled {
+		t.Fatalf("unexpected deleted ticket state: %#v", deleted)
+	}
+	if !strings.Contains(deleted.Notes, "Archived by human:owner") {
+		t.Fatalf("expected archive audit line in notes, got %q", deleted.Notes)
+	}
+
+	history, err := projection.QueryHistory(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("query history: %v", err)
+	}
+	if got := history[len(history)-1].Type; got != contracts.EventTicketClosed {
+		t.Fatalf("expected final close event, got %s", got)
+	}
+}
+
+func TestNewEventRequiresWriteLock(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 3, 24, 14, 0, 0, 0, time.UTC)
+	eventsLog := &eventstore.Log{RootDir: root}
+	actions := NewActionService(root, nil, nil, eventsLog, nil, func() time.Time { return now }, FileLockManager{Root: root}, nil, nil)
+
+	if _, err := actions.newEvent(context.Background(), "APP", now, contracts.Actor("human:owner"), "seed", contracts.EventTicketCreated, "APP-1", map[string]any{"ok": true}); err == nil {
+		t.Fatal("expected unlocked event allocation to fail")
+	}
+
+	if err := WithWriteLock(context.Background(), actions.LockManager, "new event test", func(ctx context.Context) error {
+		event, err := actions.newEvent(ctx, "APP", now, contracts.Actor("human:owner"), "seed", contracts.EventTicketCreated, "APP-1", map[string]any{"ok": true})
+		if err != nil {
+			return err
+		}
+		if event.EventID != 1 {
+			t.Fatalf("expected first event id under lock, got %#v", event)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("allocate event with lock: %v", err)
 	}
 }

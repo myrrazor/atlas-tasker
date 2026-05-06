@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +36,7 @@ func newShellCommand() *cobra.Command {
 				if len(args) == 0 {
 					continue
 				}
-				if err := executeArgs(args); err != nil {
+				if err := executeArgsWithSurface(args, contracts.EventSurfaceShell); err != nil {
 					fmt.Fprintf(os.Stderr, "%v\n", err)
 				}
 			}
