@@ -99,6 +99,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newSearchCommand())
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newShellCommand())
+	root.AddCommand(newMCPCommand())
 	root.AddCommand(newTUICommand())
 
 	return root

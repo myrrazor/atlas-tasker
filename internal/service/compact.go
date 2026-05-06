@@ -21,6 +21,14 @@ type CompactResult struct {
 	GeneratedAt  time.Time `json:"generated_at"`
 }
 
+func (s *QueryService) CompactPlan(ctx context.Context) (CompactResult, error) {
+	removed, bytesFreed, skipped, err := compactablePaths(ctx, s.Root)
+	if err != nil {
+		return CompactResult{}, err
+	}
+	return CompactResult{RemovedPaths: removed, SkippedPaths: skipped, BytesFreed: bytesFreed, GeneratedAt: s.now()}, nil
+}
+
 func (s *ActionService) CompactWorkspace(ctx context.Context, confirmed bool, actor contracts.Actor, reason string) (CompactResult, error) {
 	return withWriteLock(ctx, s.LockManager, "compact workspace", func(ctx context.Context) (CompactResult, error) {
 		if !actor.IsValid() {

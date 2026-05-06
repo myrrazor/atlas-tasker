@@ -19,6 +19,7 @@ const (
 	EventSurfaceRepair     EventSurface = "repair"
 	EventSurfaceGit        EventSurface = "git"
 	EventSurfaceGH         EventSurface = "gh"
+	EventSurfaceMCP        EventSurface = "mcp"
 )
 
 var validEventSurfaces = map[EventSurface]struct{}{
@@ -29,6 +30,7 @@ var validEventSurfaces = map[EventSurface]struct{}{
 	EventSurfaceRepair:     {},
 	EventSurfaceGit:        {},
 	EventSurfaceGH:         {},
+	EventSurfaceMCP:        {},
 }
 
 func (s EventSurface) IsValid() bool {
