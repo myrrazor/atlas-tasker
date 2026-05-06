@@ -1113,7 +1113,7 @@ func publishGitRemoteBundle(root string, remote contracts.SyncRemote, publicatio
 	if _, err := gitSyncOutput(stagingDir, nil, "commit", "-m", "atlas sync publication "+publication.BundleID); err != nil {
 		return err
 	}
-	if _, err := gitSyncOutput(stagingDir, nil, "push", "--force", remote.Location, "HEAD:"+syncRefPrefix+publication.WorkspaceID); err != nil {
+	if _, err := gitSyncOutput(stagingDir, nil, "push", "--force", "--", remote.Location, "HEAD:"+syncRefPrefix+publication.WorkspaceID); err != nil {
 		return err
 	}
 	mirrorDir := filepath.Join(storage.SyncMirrorRemoteDir(root, remote.RemoteID), publication.WorkspaceID)
@@ -1238,7 +1238,19 @@ func normalizeSyncRemoteLocation(root string, kind contracts.SyncRemoteKind, loc
 		if remoteLocationHasEmbeddedCredentials(location) {
 			return "", apperr.New(apperr.CodeInvalidInput, "git remote URL cannot embed credentials")
 		}
+		if isOptionShapedGitRemote(location) {
+			return "", apperr.New(apperr.CodeInvalidInput, "git remote URL cannot start with an option")
+		}
 		if parsed, err := url.Parse(location); err == nil && parsed.Scheme != "" {
+			if !isAllowedGitRemoteScheme(parsed.Scheme) {
+				return "", apperr.New(apperr.CodeInvalidInput, "git remote URL scheme is not allowed")
+			}
+			if parsed.Host == "" {
+				return "", apperr.New(apperr.CodeInvalidInput, "git remote URL host is required")
+			}
+			if gitRemoteURLHasOptionShapedParts(parsed) {
+				return "", apperr.New(apperr.CodeInvalidInput, "git remote URL cannot contain option-shaped host data")
+			}
 			return location, nil
 		}
 	}
@@ -1304,7 +1316,7 @@ func ensureSyncGitCache(root string, remote contracts.SyncRemote) (string, error
 	if err := os.MkdirAll(filepath.Dir(cacheDir), 0o755); err != nil {
 		return "", fmt.Errorf("create git sync cache parent: %w", err)
 	}
-	if _, err := gitSyncOutput("", nil, "clone", "--no-checkout", remote.Location, cacheDir); err != nil {
+	if _, err := gitSyncOutput("", nil, "clone", "--no-checkout", "--", remote.Location, cacheDir); err != nil {
 		return "", err
 	}
 	return cacheDir, nil
@@ -1499,6 +1511,32 @@ func remoteLocationHasEmbeddedCredentials(location string) bool {
 			}
 		}
 		return false
+	}
+	return false
+}
+
+func isOptionShapedGitRemote(location string) bool {
+	location = strings.TrimLeft(location, " \t\r\n")
+	return strings.HasPrefix(location, "-")
+}
+
+func isAllowedGitRemoteScheme(scheme string) bool {
+	switch strings.ToLower(strings.TrimSpace(scheme)) {
+	case "https", "http", "ssh", "git":
+		return true
+	default:
+		return false
+	}
+}
+
+func gitRemoteURLHasOptionShapedParts(parsed *url.URL) bool {
+	if parsed == nil {
+		return false
+	}
+	for _, value := range []string{parsed.Host, parsed.Opaque} {
+		if strings.HasPrefix(strings.TrimLeft(value, " \t\r\n"), "-") {
+			return true
+		}
 	}
 	return false
 }

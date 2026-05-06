@@ -2,7 +2,9 @@ package mcp
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +64,44 @@ func TestOperationApprovalIsBoundExpiringAndSingleUse(t *testing.T) {
 	}
 	if _, err := store.Consume(context.Background(), approval.ID, "atlas.change.merge", "CHG-1", "human:owner", "atlas.change.merge"); err == nil {
 		t.Fatalf("expected reused approval to be rejected")
+	}
+}
+
+func TestOperationApprovalIDUses128BitRandomHex(t *testing.T) {
+	store := NewApprovalStore(t.TempDir(), nil)
+	approval, err := store.Create(context.Background(), "change.merge", "CHG-1", "human:owner", time.Minute, "approve merge")
+	if err != nil {
+		t.Fatalf("create approval: %v", err)
+	}
+	suffix := strings.TrimPrefix(approval.ID, "mcp_approval_")
+	if suffix == approval.ID {
+		t.Fatalf("approval id missing prefix: %s", approval.ID)
+	}
+	if len(suffix) != 32 {
+		t.Fatalf("expected 128-bit approval id hex, got %q", suffix)
+	}
+	if _, err := hex.DecodeString(suffix); err != nil {
+		t.Fatalf("approval id should be hex: %v", err)
+	}
+}
+
+func TestOperationApprovalIDFailsClosedWhenRandomFails(t *testing.T) {
+	original := approvalRandom
+	approvalRandom = func([]byte) (int, error) {
+		return 0, errors.New("entropy unavailable")
+	}
+	defer func() { approvalRandom = original }()
+
+	store := NewApprovalStore(t.TempDir(), nil)
+	if approval, err := store.Create(context.Background(), "change.merge", "CHG-1", "human:owner", time.Minute, "approve merge"); err == nil {
+		t.Fatalf("expected entropy failure, got approval %#v", approval)
+	}
+	approvals, err := store.List()
+	if err != nil {
+		t.Fatalf("list approvals: %v", err)
+	}
+	if len(approvals) != 0 {
+		t.Fatalf("entropy failure should not persist approvals, got %#v", approvals)
 	}
 }
 

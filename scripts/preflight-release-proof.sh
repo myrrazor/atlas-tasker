@@ -56,7 +56,7 @@ if [ "$VISIBILITY" != "PUBLIC" ]; then
   fail "repo_visibility_unsupported" "hosted attestation proof requires a public repo here; got visibility=$VISIBILITY"
 fi
 
-for snippet in "contents: write" "attestations: write" "id-token: write" "softprops/action-gh-release@v2" "actions/attest-build-provenance@v2"; do
+for snippet in "contents: write" "attestations: write" "id-token: write" "softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65" "actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45"; do
   if ! grep -q "$snippet" "$WORKFLOW_FILE"; then
     fail "release_workflow_incomplete" "release workflow is missing required stanza: $snippet"
   fi

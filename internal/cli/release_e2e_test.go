@@ -315,6 +315,20 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 		t.Fatalf("install packaged tracker: %v\n%s", err, output)
 	}
 
+	if err := os.WriteFile(filepath.Join(distDir, "checksums.txt"), []byte(strings.Repeat("0", 64)+"  "+filepath.Base(archive)+"\n"), 0o644); err != nil {
+		t.Fatalf("write bad checksums.txt: %v", err)
+	}
+	badInstall := exec.Command("sh", filepath.Join(repoRoot, "scripts", "install.sh"))
+	badInstall.Dir = repoRoot
+	badInstall.Env = append(os.Environ(),
+		"VERSION="+version,
+		"BIN_DIR="+t.TempDir(),
+		"RELEASE_BASE_URL="+server.URL,
+	)
+	if output, err := badInstall.CombinedOutput(); err == nil || !strings.Contains(string(output), "checksum mismatch") {
+		t.Fatalf("expected install checksum mismatch, err=%v output=%s", err, output)
+	}
+
 	trackerBin := filepath.Join(binDir, "tracker")
 	runInstalled := func(args ...string) string {
 		t.Helper()

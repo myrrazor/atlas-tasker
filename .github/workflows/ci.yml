@@ -13,12 +13,14 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      # Pinned from actions/checkout v4.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Print base markers
         run: |
           test -f docs/v1.5-base-marker.txt && cat docs/v1.5-base-marker.txt || true
           test -f docs/v1.6-base-marker.txt && cat docs/v1.6-base-marker.txt || true
-      - uses: actions/setup-go@v5
+      # Pinned from actions/setup-go v5.
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
       - name: Run vet
@@ -33,12 +35,14 @@ jobs:
   stability:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Pinned from actions/checkout v4.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Print base markers
         run: |
           test -f docs/v1.5-base-marker.txt && cat docs/v1.5-base-marker.txt || true
           test -f docs/v1.6-base-marker.txt && cat docs/v1.6-base-marker.txt || true
-      - uses: actions/setup-go@v5
+      # Pinned from actions/setup-go v5.
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version-file: go.mod
       - name: Run stabilization smoke lane
