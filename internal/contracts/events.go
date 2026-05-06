@@ -132,6 +132,28 @@ const (
 	EventProviderMappingUpdated           EventType = "provider_mapping.updated"
 	EventCodeownersRendered               EventType = "codeowners.rendered"
 	EventCodeownersWritten                EventType = "codeowners.written"
+	EventKeyGenerated                     EventType = "key.generated"
+	EventKeyImported                      EventType = "key.imported"
+	EventKeyRotated                       EventType = "key.rotated"
+	EventKeyRevoked                       EventType = "key.revoked"
+	EventTrustBound                       EventType = "trust.bound"
+	EventTrustRevoked                     EventType = "trust.revoked"
+	EventSignatureCreated                 EventType = "signature.created"
+	EventSignatureVerified                EventType = "signature.verified"
+	EventGovernancePackCreated            EventType = "governance.pack.created"
+	EventGovernancePackApplied            EventType = "governance.pack.applied"
+	EventGovernancePolicyUpdated          EventType = "governance.policy.updated"
+	EventGovernanceOverrideRecorded       EventType = "governance.override.recorded"
+	EventClassificationSet                EventType = "classification.set"
+	EventRedactionPreviewed               EventType = "redaction.previewed"
+	EventRedactionExported                EventType = "redaction.exported"
+	EventAuditReportCreated               EventType = "audit.report.created"
+	EventAuditReportExported              EventType = "audit.report.exported"
+	EventBackupCreated                    EventType = "backup.created"
+	EventBackupVerified                   EventType = "backup.verified"
+	EventBackupRestorePlanned             EventType = "backup.restore_planned"
+	EventBackupRestored                   EventType = "backup.restored"
+	EventGoalManifestGenerated            EventType = "goal.manifest.generated"
 )
 
 var validEventTypes = map[EventType]struct{}{
@@ -228,6 +250,28 @@ var validEventTypes = map[EventType]struct{}{
 	EventProviderMappingUpdated:           {},
 	EventCodeownersRendered:               {},
 	EventCodeownersWritten:                {},
+	EventKeyGenerated:                     {},
+	EventKeyImported:                      {},
+	EventKeyRotated:                       {},
+	EventKeyRevoked:                       {},
+	EventTrustBound:                       {},
+	EventTrustRevoked:                     {},
+	EventSignatureCreated:                 {},
+	EventSignatureVerified:                {},
+	EventGovernancePackCreated:            {},
+	EventGovernancePackApplied:            {},
+	EventGovernancePolicyUpdated:          {},
+	EventGovernanceOverrideRecorded:       {},
+	EventClassificationSet:                {},
+	EventRedactionPreviewed:               {},
+	EventRedactionExported:                {},
+	EventAuditReportCreated:               {},
+	EventAuditReportExported:              {},
+	EventBackupCreated:                    {},
+	EventBackupVerified:                   {},
+	EventBackupRestorePlanned:             {},
+	EventBackupRestored:                   {},
+	EventGoalManifestGenerated:            {},
 }
 
 func (t EventType) IsValid() bool {

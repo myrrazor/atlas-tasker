@@ -470,16 +470,17 @@ func (s ExportBundleStatus) IsValid() bool {
 }
 
 type ExportBundle struct {
-	BundleID        string             `json:"bundle_id" yaml:"bundle_id"`
-	ExportBundleUID string             `json:"export_bundle_uid,omitempty" yaml:"export_bundle_uid,omitempty"`
-	Scope           string             `json:"scope,omitempty" yaml:"scope,omitempty"`
-	Format          string             `json:"format,omitempty" yaml:"format,omitempty"`
-	ArtifactPath    string             `json:"artifact_path,omitempty" yaml:"artifact_path,omitempty"`
-	ManifestPath    string             `json:"manifest_path,omitempty" yaml:"manifest_path,omitempty"`
-	ChecksumPath    string             `json:"checksum_path,omitempty" yaml:"checksum_path,omitempty"`
-	Status          ExportBundleStatus `json:"status" yaml:"status"`
-	CreatedAt       time.Time          `json:"created_at" yaml:"created_at"`
-	SchemaVersion   int                `json:"schema_version" yaml:"schema_version"`
+	BundleID           string             `json:"bundle_id" yaml:"bundle_id"`
+	ExportBundleUID    string             `json:"export_bundle_uid,omitempty" yaml:"export_bundle_uid,omitempty"`
+	Scope              string             `json:"scope,omitempty" yaml:"scope,omitempty"`
+	Format             string             `json:"format,omitempty" yaml:"format,omitempty"`
+	ArtifactPath       string             `json:"artifact_path,omitempty" yaml:"artifact_path,omitempty"`
+	ManifestPath       string             `json:"manifest_path,omitempty" yaml:"manifest_path,omitempty"`
+	ChecksumPath       string             `json:"checksum_path,omitempty" yaml:"checksum_path,omitempty"`
+	RedactionPreviewID string             `json:"redaction_preview_id,omitempty" yaml:"redaction_preview_id,omitempty"`
+	Status             ExportBundleStatus `json:"status" yaml:"status"`
+	CreatedAt          time.Time          `json:"created_at" yaml:"created_at"`
+	SchemaVersion      int                `json:"schema_version" yaml:"schema_version"`
 }
 
 func (b ExportBundle) Validate() error {

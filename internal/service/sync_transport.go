@@ -1362,6 +1362,14 @@ func collectSyncableFiles(root string) ([]string, error) {
 		storage.ExportsDir(root),
 		storage.RetentionPoliciesDir(root),
 		storage.ArchivesDir(root),
+		storage.PublicKeysDir(root),
+		storage.RevocationsDir(root),
+		storage.SignaturesDir(root),
+		storage.GovernancePoliciesDir(root),
+		storage.GovernancePacksDir(root),
+		storage.ClassificationLabelsDir(root),
+		storage.ClassificationPoliciesDir(root),
+		storage.RedactionRulesDir(root),
 		storage.EventsDir(root),
 	}
 	for _, base := range walks {
@@ -1382,6 +1390,9 @@ func collectSyncableFiles(root string) ([]string, error) {
 				if strings.HasPrefix(canonicalPath(path), canonicalPath(storage.ArchivesDir(root))+string(filepath.Separator)) && path != storage.ArchivesDir(root) && !strings.HasSuffix(path, ".md") {
 					// archive payload dirs are local-only
 				}
+				return nil
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
 				return nil
 			}
 			rel, err := filepath.Rel(root, path)
@@ -1434,6 +1445,22 @@ func isSyncableRelativePath(rel string) bool {
 	case strings.HasPrefix(rel, ".tracker/retention/") && strings.HasSuffix(rel, ".toml"):
 		return true
 	case strings.HasPrefix(rel, ".tracker/archives/") && strings.HasSuffix(rel, ".md"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/security/keys/public/") && strings.HasSuffix(rel, ".md"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/security/revocations/") && strings.HasSuffix(rel, ".md"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/security/signatures/") && strings.HasSuffix(rel, ".json"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/governance/policies/") && strings.HasSuffix(rel, ".toml"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/governance/packs/") && strings.HasSuffix(rel, ".toml"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/classification/labels/") && strings.HasSuffix(rel, ".md"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/classification/policies/") && strings.HasSuffix(rel, ".toml"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/redaction/rules/") && strings.HasSuffix(rel, ".toml"):
 		return true
 	case strings.HasPrefix(rel, ".tracker/events/") && strings.HasSuffix(rel, ".jsonl"):
 		return true

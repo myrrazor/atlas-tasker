@@ -45,19 +45,20 @@ type MigrationStatusView struct {
 }
 
 type SyncPublication struct {
-	WorkspaceID    string    `json:"workspace_id"`
-	BundleID       string    `json:"bundle_id"`
-	Format         string    `json:"format"`
-	CreatedAt      time.Time `json:"created_at"`
-	ArtifactName   string    `json:"artifact_name"`
-	ManifestName   string    `json:"manifest_name"`
-	ChecksumName   string    `json:"checksum_name"`
-	FileCount      int       `json:"file_count"`
-	ArchiveSHA256  string    `json:"archive_sha256,omitempty"`
-	ManifestSHA256 string    `json:"manifest_sha256,omitempty"`
-	SourceRemoteID string    `json:"source_remote_id,omitempty"`
-	SourceRef      string    `json:"source_ref,omitempty"`
-	FetchedAt      time.Time `json:"fetched_at,omitempty"`
+	WorkspaceID        string    `json:"workspace_id"`
+	BundleID           string    `json:"bundle_id"`
+	Format             string    `json:"format"`
+	CreatedAt          time.Time `json:"created_at"`
+	ArtifactName       string    `json:"artifact_name"`
+	ManifestName       string    `json:"manifest_name"`
+	ChecksumName       string    `json:"checksum_name"`
+	FileCount          int       `json:"file_count"`
+	ArchiveSHA256      string    `json:"archive_sha256,omitempty"`
+	ManifestSHA256     string    `json:"manifest_sha256,omitempty"`
+	RedactionPreviewID string    `json:"redaction_preview_id,omitempty"`
+	SourceRemoteID     string    `json:"source_remote_id,omitempty"`
+	SourceRef          string    `json:"source_ref,omitempty"`
+	FetchedAt          time.Time `json:"fetched_at,omitempty"`
 }
 
 type SyncRemoteDetailView struct {

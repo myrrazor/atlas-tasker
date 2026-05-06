@@ -187,6 +187,74 @@ func ArchivePayloadDir(root string, archiveID string) string {
 	return filepath.Join(ArchivesDir(root), archiveID)
 }
 
+func SecurityDir(root string) string {
+	return filepath.Join(TrackerDir(root), "security")
+}
+
+func PublicKeysDir(root string) string {
+	return filepath.Join(SecurityDir(root), "keys", "public")
+}
+
+func PrivateKeysDir(root string) string {
+	return filepath.Join(SecurityDir(root), "keys", "private")
+}
+
+func TrustBindingsDir(root string) string {
+	return filepath.Join(SecurityDir(root), "trust")
+}
+
+func RevocationsDir(root string) string {
+	return filepath.Join(SecurityDir(root), "revocations")
+}
+
+func SignaturesDir(root string) string {
+	return filepath.Join(SecurityDir(root), "signatures")
+}
+
+func GovernancePoliciesDir(root string) string {
+	return filepath.Join(TrackerDir(root), "governance", "policies")
+}
+
+func GovernancePacksDir(root string) string {
+	return filepath.Join(TrackerDir(root), "governance", "packs")
+}
+
+func ClassificationLabelsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "classification", "labels")
+}
+
+func ClassificationPoliciesDir(root string) string {
+	return filepath.Join(TrackerDir(root), "classification", "policies")
+}
+
+func RedactionRulesDir(root string) string {
+	return filepath.Join(TrackerDir(root), "redaction", "rules")
+}
+
+func RedactionPreviewsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "redaction", "previews")
+}
+
+func AuditReportsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "audit", "reports")
+}
+
+func AuditPacketsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "audit", "packets")
+}
+
+func BackupManifestsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "backups", "manifests")
+}
+
+func BackupSnapshotsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "backups", "snapshots")
+}
+
+func GoalManifestsDir(root string) string {
+	return filepath.Join(TrackerDir(root), "goal", "manifests")
+}
+
 func SyncDir(root string) string {
 	return filepath.Join(TrackerDir(root), "sync")
 }

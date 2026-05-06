@@ -100,6 +100,17 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newShellCommand())
 	root.AddCommand(newMCPCommand())
+	root.AddCommand(newKeyCommand())
+	root.AddCommand(newTrustCommand())
+	root.AddCommand(newSignCommand())
+	root.AddCommand(newVerifyCommand())
+	root.AddCommand(newGovernanceCommand())
+	root.AddCommand(newClassifyCommand())
+	root.AddCommand(newRedactCommand())
+	root.AddCommand(newAuditCommand())
+	root.AddCommand(newBackupCommand())
+	root.AddCommand(newAdminCommand())
+	root.AddCommand(newGoalCommand())
 	root.AddCommand(newTUICommand())
 
 	return root
