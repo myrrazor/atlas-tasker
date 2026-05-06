@@ -127,6 +127,13 @@
 - `tracker governance validate`
 - `tracker governance explain <TARGET> [--action <ACTION>] [--actor <ACTOR>] [--reason <TEXT>] [--approval-actor <ACTOR>]... [--trusted-signatures <N>]`
 - `tracker governance simulate <ACTION> [--ticket <ID>] [--run <ID>] [--change <ID>] [--gate <ID>] [--actor <ACTOR>] [--reason <TEXT>] [--approval-actor <ACTOR>]... [--trusted-signatures <N>]`
+- `tracker classify list [--project <KEY>]`
+- `tracker classify get <ENTITY>`
+- `tracker classify set <ENTITY> <public|internal|confidential|restricted> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker classify explain <ENTITY>`
+- `tracker redact preview [--scope <SCOPE>] [--target <export|sync|audit|backup|goal>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker redact export [--scope <SCOPE>] --preview-id <PREVIEW-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker redact verify <BUNDLE-ID|PATH>`
 
 ## Agents
 
@@ -255,6 +262,30 @@ Rules:
 - sync publications store signatures in the matching publication metadata; directory-level `publication.json` is only used when it names the requested archive
 - verification is pure by default and returns `missing_signature` for unsigned artifacts
 
+## Classification And Redaction
+
+- `tracker classify list [--project <KEY>]`
+- `tracker classify get <ENTITY>`
+- `tracker classify set <ENTITY> <public|internal|confidential|restricted> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker classify explain <ENTITY>`
+- `tracker redact preview [--scope <SCOPE>] [--target <export|sync|audit|backup|goal>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker redact export [--scope <SCOPE>] --preview-id <PREVIEW-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker redact verify <BUNDLE-ID|PATH>`
+
+Rules:
+
+- classification entities are `workspace` or `kind:id`, for example `project:APP`, `ticket:APP-1`, `run:run_1`, `evidence:evidence_1`, or `handoff:handoff_1`
+- explicit labels are stored under `.tracker/classification/labels/` using collision-resistant `class-<slug>-<hash>.md` filenames; workspace default is `internal`
+- project and ticket labels inherit downward, and higher sensitivity wins over lower child labels
+- legacy `protected` or `sensitive` ticket flags still contribute `restricted`
+- redaction previews are local actor-bound records under `.tracker/redaction/previews/` with Unix mode `0600`
+- previews are single-use and bound to target, actor, source hash, policy hash, classification hash, command target, recomputed items, and a 10-minute TTL
+- PR-705 implements redacted workspace exports; default export redaction omits restricted files, restricted ticket- or run-owned gate/change/check/classification metadata, and extra files under restricted project directories, always omits `.tracker/events/` history, and writes `redaction_preview_id` into both the bundle record and artifact manifest
+- built-in defaults stay active per redaction target unless a custom stored rule exists for that same target
+- redacted exports enforce the same `export_create` governance policies as normal exports
+- export redaction only supports `omit`; stored `mask`, `hash`, or marker export rules fail closed
+- redacted artifact verification checks bundle integrity, confirms the preview binding, and fails if omitted preview paths are present
+
 ## Governance
 
 - `tracker governance pack list`
@@ -278,7 +309,7 @@ Rules:
 - PR-704 only accepts trusted-signature requirements for artifact import actions with real signature evidence: `bundle_import_apply` and `sync_import_apply`
 - duplicate envelopes from the same trusted signer count once toward trusted-signature requirements
 - quorum rules with `require_trusted_signatures` count distinct trusted signer identities instead of gate approval actors
-- before PR-705 lands inherited labels, classification-scoped governance only treats legacy `protected`/`sensitive` tickets as `classification:restricted`
+- classification-scoped governance uses the exact effective inherited classification level; redaction rules use the ordered hierarchy
 - remote sync pulls enforce `sync_import_apply` once and do not also require manual `bundle_import_apply` policy
 - denied remote sync pulls do not promote fetched publications or Git fetch caches into the durable sync mirror
 - project-filtered archive apply/restore evaluates project-scoped governance policies

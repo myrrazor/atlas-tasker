@@ -51,6 +51,6 @@ Quorum and separation failures can be owner-overridden only when every failed ma
 
 `governance validate` is the recovery command for hand-edited policy files. It returns a structured validation report even when a policy or pack cannot be decoded into a valid contract.
 
-Before PR-705 lands inherited classification labels, classification-scoped governance is intentionally narrow: legacy `protected` or `sensitive` tickets only match `classification:restricted`. Other classification scope ids do not match those legacy flags.
+PR-705 replaces the temporary legacy-only classification fallback with inherited classification labels. Classification-scoped governance matches the exact effective classification level; legacy `protected` or `sensitive` tickets still contribute `restricted` to that effective level.
 
 Applying a reusable pack to multiple scopes writes scope-bound policy ids, so `project:APP` and `project:WEB` applications of the same pack can remain active at the same time.

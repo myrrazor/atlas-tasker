@@ -270,7 +270,7 @@ func TestRootCommandIncludesRequiredV17ContractCommandsAndFlags(t *testing.T) {
 		{path: []string{"classify", "list"}, hasOutputMode: true, extraFlags: []string{"project"}},
 		{path: []string{"classify", "explain"}, hasOutputMode: true},
 		{path: []string{"redact", "preview"}, mutating: true, hasOutputMode: true, extraFlags: []string{"scope", "target"}},
-		{path: []string{"redact", "export"}, mutating: true, hasOutputMode: true, extraFlags: []string{"scope"}},
+		{path: []string{"redact", "export"}, mutating: true, hasOutputMode: true, extraFlags: []string{"scope", "preview-id"}},
 		{path: []string{"redact", "verify"}, hasOutputMode: true},
 		{path: []string{"audit", "report"}, mutating: true, hasOutputMode: true, extraFlags: []string{"scope"}},
 		{path: []string{"audit", "list"}, hasOutputMode: true},

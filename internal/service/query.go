@@ -37,6 +37,9 @@ type QueryService struct {
 	Archives           contracts.ArchiveRecordStore
 	GovernancePolicies GovernancePolicyStore
 	GovernancePacks    GovernancePackStore
+	Classifications    ClassificationLabelStore
+	RedactionRules     RedactionRuleStore
+	RedactionPreviews  RedactionPreviewStore
 	Events             contracts.EventLog
 	Projection         contracts.ProjectionStore
 	Views              ViewStore
@@ -44,7 +47,7 @@ type QueryService struct {
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
-	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Collaborators: CollaboratorStore{Root: root}, Memberships: MembershipStore{Root: root}, Mentions: MentionStore{Root: root}, SyncRemotes: SyncRemoteStore{Root: root}, SyncJobs: SyncJobStore{Root: root}, Conflicts: ConflictStore{Root: root}, Agents: AgentStore{Root: root}, PermissionProfiles: PermissionProfileStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Gates: GateStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Changes: ChangeStore{Root: root}, Checks: CheckStore{Root: root}, ImportJobs: ImportJobStore{Root: root}, ExportBundles: ExportBundleStore{Root: root}, RetentionPolicies: RetentionPolicyStore{Root: root}, Archives: ArchiveRecordStore{Root: root}, GovernancePolicies: GovernancePolicyStore{Root: root}, GovernancePacks: GovernancePackStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
+	return &QueryService{Root: root, Projects: projects, Tickets: tickets, Collaborators: CollaboratorStore{Root: root}, Memberships: MembershipStore{Root: root}, Mentions: MentionStore{Root: root}, SyncRemotes: SyncRemoteStore{Root: root}, SyncJobs: SyncJobStore{Root: root}, Conflicts: ConflictStore{Root: root}, Agents: AgentStore{Root: root}, PermissionProfiles: PermissionProfileStore{Root: root}, Runs: RunStore{Root: root}, Runbooks: RunbookStore{Root: root}, Gates: GateStore{Root: root}, Evidence: EvidenceStore{Root: root}, Handoffs: HandoffStore{Root: root}, Changes: ChangeStore{Root: root}, Checks: CheckStore{Root: root}, ImportJobs: ImportJobStore{Root: root}, ExportBundles: ExportBundleStore{Root: root}, RetentionPolicies: RetentionPolicyStore{Root: root}, Archives: ArchiveRecordStore{Root: root}, GovernancePolicies: GovernancePolicyStore{Root: root}, GovernancePacks: GovernancePackStore{Root: root}, Classifications: ClassificationLabelStore{Root: root}, RedactionRules: RedactionRuleStore{Root: root}, RedactionPreviews: RedactionPreviewStore{Root: root}, Events: events, Projection: projection, Views: ViewStore{Root: root}, Clock: clock}
 }
 
 func (s *QueryService) now() time.Time {

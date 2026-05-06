@@ -234,6 +234,82 @@ schema_version = 1
 	}
 }
 
+func TestV17ClassifyAndRedactCLI(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Public", "--type", "task", "--description", "PUBLIC-CLI-CONTENT", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Restricted", "--type", "task", "--description", "SECRET-CLI-REDACT", "--actor", "human:owner")
+
+	classifiedRaw := must("classify", "set", "ticket:APP-2", "restricted", "--actor", "human:owner", "--reason", "cli restricted label", "--json")
+	var classified struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Level         string `json:"level"`
+		EntityKind    string `json:"entity_kind"`
+		EntityID      string `json:"entity_id"`
+	}
+	if err := json.Unmarshal([]byte(classifiedRaw), &classified); err != nil {
+		t.Fatalf("parse classify set: %v\n%s", err, classifiedRaw)
+	}
+	if classified.FormatVersion != jsonFormatVersion || classified.Kind != "classification_detail" || classified.Level != "restricted" || classified.EntityID != "APP-2" {
+		t.Fatalf("unexpected classification detail: %#v", classified)
+	}
+	listRaw := must("classify", "list", "--project", "APP", "--json")
+	if !strings.Contains(listRaw, `"entity_id": "APP-2"`) && !strings.Contains(listRaw, `"entity_id":"APP-2"`) {
+		t.Fatalf("classification list should include APP-2 label:\n%s", listRaw)
+	}
+
+	previewRaw := must("redact", "preview", "--scope", "workspace", "--target", "export", "--actor", "human:owner", "--reason", "preview cli redaction", "--json")
+	var preview struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Preview       struct {
+			PreviewID string `json:"preview_id"`
+			Items     []struct {
+				EntityID  string `json:"entity_id"`
+				FieldPath string `json:"field_path"`
+				Action    string `json:"action"`
+			} `json:"items"`
+		} `json:"preview"`
+	}
+	if err := json.Unmarshal([]byte(previewRaw), &preview); err != nil {
+		t.Fatalf("parse redaction preview: %v\n%s", err, previewRaw)
+	}
+	if preview.FormatVersion != jsonFormatVersion || preview.Kind != "redaction_preview" || preview.Preview.PreviewID == "" || len(preview.Preview.Items) == 0 {
+		t.Fatalf("unexpected redaction preview: %#v", preview)
+	}
+
+	exportRaw := must("redact", "export", "--scope", "workspace", "--preview-id", preview.Preview.PreviewID, "--actor", "human:owner", "--reason", "create cli redacted export", "--json")
+	var redacted struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Bundle        struct {
+			BundleID           string `json:"bundle_id"`
+			RedactionPreviewID string `json:"redaction_preview_id"`
+		} `json:"bundle"`
+		Omitted int `json:"omitted"`
+	}
+	if err := json.Unmarshal([]byte(exportRaw), &redacted); err != nil {
+		t.Fatalf("parse redacted export: %v\n%s", err, exportRaw)
+	}
+	if redacted.FormatVersion != jsonFormatVersion || redacted.Kind != "redaction_export_result" || redacted.Bundle.BundleID == "" || redacted.Bundle.RedactionPreviewID != preview.Preview.PreviewID || redacted.Omitted == 0 {
+		t.Fatalf("unexpected redacted export: %#v", redacted)
+	}
+	verifyRaw := must("redact", "verify", redacted.Bundle.BundleID, "--json")
+	if !strings.Contains(verifyRaw, `"verified": true`) && !strings.Contains(verifyRaw, `"verified":true`) {
+		t.Fatalf("redacted export should verify:\n%s", verifyRaw)
+	}
+}
+
 func TestV17FailClosedExecuteWritesOnlyErrorEnvelope(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -265,7 +341,7 @@ func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"classify", "set", "ticket:APP-1", "internal", "--actor", "human:owner"})
+	cmd.SetArgs([]string{"backup", "create", "--actor", "human:owner"})
 	err := cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "non-empty --reason") {
 		t.Fatalf("expected missing reason error, got %v", err)
@@ -275,7 +351,7 @@ func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
 	out.Reset()
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"classify", "set", "ticket:APP-1", "internal", "--actor", "human:owner", "--reason", "   "})
+	cmd.SetArgs([]string{"backup", "create", "--actor", "human:owner", "--reason", "   "})
 	err = cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "non-empty --reason") {
 		t.Fatalf("expected blank reason error, got %v", err)
@@ -285,7 +361,7 @@ func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
 	out.Reset()
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"classify", "set", "ticket:APP-1", "internal", "--actor", "robot:mallory", "--reason", "contract smoke"})
+	cmd.SetArgs([]string{"backup", "create", "--actor", "robot:mallory", "--reason", "contract smoke"})
 	err = cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "valid --actor") {
 		t.Fatalf("expected invalid actor error, got %v", err)
@@ -295,7 +371,7 @@ func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
 	out.Reset()
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"classify", "set", "ticket:APP-1", "internal", "--actor", "human:owner", "--reason", "contract smoke"})
+	cmd.SetArgs([]string{"backup", "create", "--actor", "human:owner", "--reason", "contract smoke"})
 	err = cmd.Execute()
 	if err == nil || !strings.Contains(err.Error(), "frozen for v1.7 follow-up implementation") {
 		t.Fatalf("expected non-zero implementation-pending error, got %v", err)

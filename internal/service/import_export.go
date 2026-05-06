@@ -79,11 +79,12 @@ type ImportJobDetailView struct {
 }
 
 type bundleManifest struct {
-	FormatVersion string             `json:"format_version"`
-	BundleID      string             `json:"bundle_id"`
-	Scope         string             `json:"scope"`
-	CreatedAt     time.Time          `json:"created_at"`
-	Files         []bundleFileRecord `json:"files"`
+	FormatVersion      string             `json:"format_version"`
+	BundleID           string             `json:"bundle_id"`
+	Scope              string             `json:"scope"`
+	RedactionPreviewID string             `json:"redaction_preview_id,omitempty"`
+	CreatedAt          time.Time          `json:"created_at"`
+	Files              []bundleFileRecord `json:"files"`
 }
 
 type bundleFileRecord struct {
@@ -383,16 +384,21 @@ func (s *ActionService) resolveExportBundle(ctx context.Context, bundleRef strin
 		checksumPath := sidecarBase + ".sha256"
 		bundleID := base
 		scope := ""
+		redactionPreviewID := ""
 		if manifest, err := loadBundleManifest(manifestPath); err == nil {
 			if strings.TrimSpace(manifest.BundleID) != "" {
 				bundleID = manifest.BundleID
 			}
 			scope = manifest.Scope
+			redactionPreviewID = manifest.RedactionPreviewID
 		}
 		if stored, err := s.ExportBundles.LoadExportBundle(ctx, base); err == nil {
 			stored.ArtifactPath = ref
 			stored.ManifestPath = manifestPath
 			stored.ChecksumPath = checksumPath
+			if stored.RedactionPreviewID == "" {
+				stored.RedactionPreviewID = redactionPreviewID
+			}
 			if signatures, err := readExportSignatureSidecar(ref, stored.BundleID); err != nil {
 				return contracts.ExportBundle{}, err
 			} else {
@@ -401,13 +407,14 @@ func (s *ActionService) resolveExportBundle(ctx context.Context, bundleRef strin
 			return stored, nil
 		}
 		bundle := contracts.ExportBundle{
-			BundleID:     bundleID,
-			Format:       exportBundleFormatV1,
-			Scope:        scope,
-			ArtifactPath: ref,
-			ManifestPath: manifestPath,
-			ChecksumPath: checksumPath,
-			Status:       contracts.ExportBundleCreated,
+			BundleID:           bundleID,
+			Format:             exportBundleFormatV1,
+			Scope:              scope,
+			ArtifactPath:       ref,
+			ManifestPath:       manifestPath,
+			ChecksumPath:       checksumPath,
+			RedactionPreviewID: redactionPreviewID,
+			Status:             contracts.ExportBundleCreated,
 		}
 		if signatures, err := readExportSignatureSidecar(ref, bundle.BundleID); err != nil {
 			return contracts.ExportBundle{}, err
@@ -452,6 +459,9 @@ func collectExportFiles(root string) ([]string, error) {
 		filepath.ToSlash(filepath.Join(".tracker", "security", "signatures")),
 		filepath.ToSlash(filepath.Join(".tracker", "governance", "policies")),
 		filepath.ToSlash(filepath.Join(".tracker", "governance", "packs")),
+		filepath.ToSlash(filepath.Join(".tracker", "classification", "labels")),
+		filepath.ToSlash(filepath.Join(".tracker", "classification", "policies")),
+		filepath.ToSlash(filepath.Join(".tracker", "redaction", "rules")),
 	}
 	files := make([]string, 0)
 	seen := map[string]struct{}{}

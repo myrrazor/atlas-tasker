@@ -172,25 +172,40 @@ func newGovernanceCommand() *cobra.Command {
 
 func newClassifyCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "classify", Short: "Manage classification labels"}
-	list := v17ReadCommand("list", "List classification labels", "classification_list", cobra.NoArgs)
+	list := &cobra.Command{Use: "list", Short: "List classification labels", Args: cobra.NoArgs, RunE: runClassifyList}
 	list.Flags().String("project", "", "Filter by project")
+	get := &cobra.Command{Use: "get <ENTITY>", Short: "Show classification for an entity", Args: cobra.ExactArgs(1), RunE: runClassifyGet}
+	set := &cobra.Command{Use: "set <ENTITY> <LEVEL>", Short: "Set classification for an entity", Args: cobra.ExactArgs(2), RunE: runClassifySet}
+	explain := &cobra.Command{Use: "explain <ENTITY>", Short: "Explain inherited classification", Args: cobra.ExactArgs(1), RunE: runClassifyGet}
+	for _, sub := range []*cobra.Command{list, get, explain} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	addMutationFlags(set, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(set, &outputFlags{})
 	cmd.AddCommand(
-		v17ReadCommand("get <ENTITY>", "Show classification for an entity", "classification_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("set <ENTITY> <LEVEL>", "Set classification for an entity", "classification_detail", cobra.ExactArgs(2)),
+		get,
+		set,
 		list,
-		v17ReadCommand("explain <ENTITY>", "Explain inherited classification", "classification_detail", cobra.ExactArgs(1)),
+		explain,
 	)
 	return cmd
 }
 
 func newRedactCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "redact", Short: "Preview and create redacted artifacts"}
-	preview := v17MutationCommand("preview", "Create an actor-bound redaction preview", "redaction_preview", cobra.NoArgs)
+	preview := &cobra.Command{Use: "preview", Short: "Create an actor-bound redaction preview", Args: cobra.NoArgs, RunE: runRedactPreview}
 	preview.Flags().String("scope", "", "Scope to preview")
 	preview.Flags().String("target", "", "Target: export|sync|audit|backup|goal")
-	export := v17MutationCommand("export", "Create a redacted export artifact", "redaction_export_result", cobra.NoArgs)
+	export := &cobra.Command{Use: "export", Short: "Create a redacted export artifact", Args: cobra.NoArgs, RunE: runRedactExport}
 	export.Flags().String("scope", "", "Scope to export")
-	cmd.AddCommand(preview, export, v17ReadCommand("verify <ARTIFACT>", "Verify a redacted artifact", "redaction_verify_result", cobra.ExactArgs(1)))
+	export.Flags().String("preview-id", "", "Redaction preview id")
+	verify := &cobra.Command{Use: "verify <ARTIFACT>", Short: "Verify a redacted artifact", Args: cobra.ExactArgs(1), RunE: runRedactVerify}
+	for _, sub := range []*cobra.Command{preview, export} {
+		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	addReadOutputFlags(verify, &outputFlags{})
+	cmd.AddCommand(preview, export, verify)
 	return cmd
 }
 
@@ -616,6 +631,95 @@ func runGovernanceSimulate(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, view, governanceExplanationMarkdown(view.Explanation), governanceExplanationPretty(view.Explanation))
 }
 
+func runClassifyList(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	project, _ := cmd.Flags().GetString("project")
+	view, err := w.actions.ListClassifications(cmd.Context(), strings.TrimSpace(project))
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, classificationListMarkdown(view), classificationListPretty(view))
+}
+
+func runClassifyGet(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ClassificationDetail(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, classificationDetailMarkdown(view), classificationDetailPretty(view))
+}
+
+func runClassifySet(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	view, err := w.actions.SetClassification(cmd.Context(), args[0], contracts.ClassificationLevel(strings.TrimSpace(args[1])), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, classificationDetailMarkdown(view), classificationDetailPretty(view))
+}
+
+func runRedactPreview(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	scope, _ := cmd.Flags().GetString("scope")
+	targetRaw, _ := cmd.Flags().GetString("target")
+	if strings.TrimSpace(targetRaw) == "" {
+		targetRaw = string(contracts.RedactionTargetExport)
+	}
+	view, err := w.actions.CreateRedactionPreview(cmd.Context(), scope, contracts.RedactionTarget(strings.TrimSpace(targetRaw)), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, redactionPreviewMarkdown(view), redactionPreviewPretty(view))
+}
+
+func runRedactExport(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	scope, _ := cmd.Flags().GetString("scope")
+	previewID, _ := cmd.Flags().GetString("preview-id")
+	view, err := w.actions.CreateRedactedExport(cmd.Context(), scope, previewID, actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, redactionExportMarkdown(view), redactionExportPretty(view))
+}
+
+func runRedactVerify(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifyRedactedArtifact(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, redactionVerifyMarkdown(view), redactionVerifyPretty(view))
+}
+
 func mutationActorReason(cmd *cobra.Command) (contracts.Actor, string) {
 	actor, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
@@ -737,6 +841,95 @@ func governancePackCreateOptionsFromFlags(cmd *cobra.Command, name string) (serv
 		RequireOverrideReason:   requireOverrideReason,
 		RequireTrustedSignature: requireTrustedSignature,
 	}, nil
+}
+
+func classificationDetailPretty(view service.ClassificationDetailView) string {
+	return fmt.Sprintf("%s:%s %s", view.EntityKind, view.EntityID, view.Level)
+}
+
+func classificationDetailMarkdown(view service.ClassificationDetailView) string {
+	lines := []string{
+		"# Classification",
+		"",
+		fmt.Sprintf("- Entity: `%s:%s`", view.EntityKind, view.EntityID),
+		fmt.Sprintf("- Effective level: `%s`", view.Level),
+	}
+	for _, step := range view.Inheritance {
+		source := "inherited"
+		if step.Explicit {
+			source = "explicit"
+		}
+		lines = append(lines, fmt.Sprintf("- %s `%s:%s` -> `%s`", source, step.EntityKind, step.EntityID, step.Level))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func classificationListPretty(view service.ClassificationListView) string {
+	if len(view.Items) == 0 {
+		return "no classification labels"
+	}
+	lines := make([]string, 0, len(view.Items))
+	for _, item := range view.Items {
+		lines = append(lines, fmt.Sprintf("%s:%s %s", item.EntityKind, item.EntityID, item.Level))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func classificationListMarkdown(view service.ClassificationListView) string {
+	if len(view.Items) == 0 {
+		return "# Classification Labels\n\nNo classification labels.\n"
+	}
+	lines := []string{"# Classification Labels", ""}
+	for _, item := range view.Items {
+		lines = append(lines, fmt.Sprintf("- `%s:%s` -> `%s`", item.EntityKind, item.EntityID, item.Level))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func redactionPreviewPretty(view service.RedactionPreviewDetailView) string {
+	return fmt.Sprintf("%s %s items=%d expires=%s", view.Preview.PreviewID, view.Preview.Target, len(view.Preview.Items), view.Preview.ExpiresAt.Format(time.RFC3339))
+}
+
+func redactionPreviewMarkdown(view service.RedactionPreviewDetailView) string {
+	lines := []string{
+		"# Redaction Preview",
+		"",
+		fmt.Sprintf("- Preview: `%s`", view.Preview.PreviewID),
+		fmt.Sprintf("- Target: `%s`", view.Preview.Target),
+		fmt.Sprintf("- Scope: `%s`", view.Preview.Scope),
+		fmt.Sprintf("- Expires: `%s`", view.Preview.ExpiresAt.Format(time.RFC3339)),
+		fmt.Sprintf("- Items: `%d`", len(view.Preview.Items)),
+	}
+	for _, item := range view.Preview.Items {
+		lines = append(lines, fmt.Sprintf("- `%s` `%s:%s` `%s`", item.Action, item.EntityKind, item.EntityID, item.FieldPath))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func redactionExportPretty(view service.RedactionExportResultView) string {
+	return fmt.Sprintf("redacted export %s preview=%s included=%d omitted=%d", view.Bundle.BundleID, view.Preview.PreviewID, view.Included, view.Omitted)
+}
+
+func redactionExportMarkdown(view service.RedactionExportResultView) string {
+	return fmt.Sprintf("# Redacted Export\n\n- Bundle: `%s`\n- Preview: `%s`\n- Included: `%d`\n- Omitted: `%d`\n", view.Bundle.BundleID, view.Preview.PreviewID, view.Included, view.Omitted)
+}
+
+func redactionVerifyPretty(view service.RedactionVerifyView) string {
+	if view.Verified {
+		return fmt.Sprintf("%s verified preview=%s", view.Artifact, view.RedactionPreviewID)
+	}
+	return fmt.Sprintf("%s redaction verification failed: %s", view.Artifact, strings.Join(view.Errors, ","))
+}
+
+func redactionVerifyMarkdown(view service.RedactionVerifyView) string {
+	lines := []string{"# Redaction Verification", "", fmt.Sprintf("- Verified: `%t`", view.Verified)}
+	if view.RedactionPreviewID != "" {
+		lines = append(lines, fmt.Sprintf("- Preview: `%s`", view.RedactionPreviewID))
+	}
+	for _, item := range view.Errors {
+		lines = append(lines, fmt.Sprintf("- Error: `%s`", item))
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func governanceEvaluationInputFromFlags(cmd *cobra.Command, action contracts.ProtectedAction, actor contracts.Actor) (service.GovernanceEvaluationInput, error) {
