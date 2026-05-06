@@ -62,6 +62,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newAutomationCommand())
 	root.AddCommand(newNotifyCommand())
 	root.AddCommand(newGitCommand())
+	root.AddCommand(newGitHubCommand())
 	root.AddCommand(newViewsCommand())
 	root.AddCommand(newWatchCommand())
 	root.AddCommand(newUnwatchCommand())
@@ -279,6 +280,27 @@ func newGitCommand() *cobra.Command {
 		addReadOutputFlags(sub, &outputFlags{})
 	}
 	cmd.AddCommand(status, branchName, refs, commit)
+	return cmd
+}
+
+func newGitHubCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "gh", Short: "Optional GitHub CLI adapter for Atlas tickets"}
+	status := &cobra.Command{Use: "status", Short: "Show gh CLI availability and auth state", RunE: runGHStatus}
+	prs := &cobra.Command{Use: "prs <ID>", Args: cobra.ExactArgs(1), Short: "List GitHub pull requests related to a ticket", RunE: runGHPulls}
+	createPR := &cobra.Command{Use: "create-pr <ID>", Args: cobra.ExactArgs(1), Short: "Create a GitHub pull request from the current branch", RunE: runGHCreatePR}
+	createPR.Flags().String("title", "", "Pull request title override")
+	createPR.Flags().String("body", "", "Pull request body override")
+	createPR.Flags().String("base", "", "Base branch override")
+	createPR.Flags().Bool("draft", false, "Create the pull request as a draft")
+	addMutationFlags(createPR, &mutationFlags{Actor: "human:owner"})
+	importURL := &cobra.Command{Use: "import-url <ID>", Args: cobra.ExactArgs(1), Short: "Attach a GitHub issue or PR URL to ticket history as a comment", RunE: runGHImportURL}
+	importURL.Flags().String("url", "", "GitHub issue or pull request URL")
+	_ = importURL.MarkFlagRequired("url")
+	addMutationFlags(importURL, &mutationFlags{Actor: "human:owner"})
+	for _, sub := range []*cobra.Command{status, prs, createPR, importURL} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	cmd.AddCommand(status, prs, createPR, importURL)
 	return cmd
 }
 
@@ -2304,6 +2326,107 @@ func runGitCommit(cmd *cobra.Command, args []string) error {
 	}
 	payload := map[string]any{"ticket_id": args[0], "commit": hash}
 	return writeCommandOutput(cmd, payload, fmt.Sprintf("## Git Commit\n\n- Ticket: %s\n- Commit: %s\n", args[0], hash), fmt.Sprintf("committed %s", hash))
+}
+
+func runGHStatus(cmd *cobra.Command, _ []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	status, err := service.GHService{Root: workspace.root}.Capability(commandContext(cmd))
+	if err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("gh installed=%t authenticated=%t repo=%s", status.Installed, status.Authenticated, optionalString(status.Repo, "-"))
+	md := fmt.Sprintf("## GitHub CLI\n\n- Installed: %t\n- Authenticated: %t\n- Repo: %s\n", status.Installed, status.Authenticated, optionalString(status.Repo, "-"))
+	return writeCommandOutput(cmd, status, md, pretty)
+}
+
+func runGHPulls(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	ticket, err := workspace.queries.TicketDetail(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	pulls, err := service.GHService{Root: workspace.root}.PullRequests(ctx, ticket.Ticket.ID, ticket.Git.SuggestedBranch)
+	if err != nil {
+		return err
+	}
+	pretty := "github prs:\n"
+	md := "## GitHub Pull Requests\n\n"
+	if len(pulls) == 0 {
+		pretty += "- none\n"
+		md += "- none\n"
+	} else {
+		for _, pr := range pulls {
+			pretty += fmt.Sprintf("- #%d [%s] %s\n", pr.Number, pr.State, pr.Title)
+			md += fmt.Sprintf("- #%d [%s] [%s](%s)\n", pr.Number, pr.State, pr.Title, pr.URL)
+		}
+	}
+	return writeCommandOutput(cmd, pulls, md, pretty)
+}
+
+func runGHCreatePR(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	ticket, err := workspace.queries.TicketDetail(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	if !ticket.Git.Repo.Present {
+		return fmt.Errorf("git repository not detected")
+	}
+	title, _ := cmd.Flags().GetString("title")
+	body, _ := cmd.Flags().GetString("body")
+	base, _ := cmd.Flags().GetString("base")
+	draft, _ := cmd.Flags().GetBool("draft")
+	pr, err := service.GHService{Root: workspace.root}.CreatePullRequest(ctx, ticket.Ticket, title, body, base, draft)
+	if err != nil {
+		return err
+	}
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	actor := normalizeActor(actorRaw)
+	reason, _ := cmd.Flags().GetString("reason")
+	comment := fmt.Sprintf("GitHub PR #%d: %s", pr.Number, pr.URL)
+	if err := workspace.actions.CommentTicket(ctx, ticket.Ticket.ID, comment, actor, optionalString(reason, "github pr created")); err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("created github pr #%d %s", pr.Number, pr.URL)
+	md := fmt.Sprintf("## GitHub Pull Request\n\n- Number: %d\n- Title: %s\n- URL: %s\n- State: %s\n", pr.Number, pr.Title, pr.URL, pr.State)
+	return writeCommandOutput(cmd, pr, md, pretty)
+}
+
+func runGHImportURL(cmd *cobra.Command, args []string) error {
+	ctx := commandContext(cmd)
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	rawURL, _ := cmd.Flags().GetString("url")
+	validated, err := service.GHService{Root: workspace.root}.ImportReferenceURL(rawURL)
+	if err != nil {
+		return err
+	}
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	actor := normalizeActor(actorRaw)
+	reason, _ := cmd.Flags().GetString("reason")
+	comment := fmt.Sprintf("GitHub ref: %s", validated)
+	if err := workspace.actions.CommentTicket(ctx, args[0], comment, actor, optionalString(reason, "github ref imported")); err != nil {
+		return err
+	}
+	payload := map[string]string{"ticket_id": args[0], "url": validated}
+	return writeCommandOutput(cmd, payload, fmt.Sprintf("## GitHub Reference Imported\n\n- Ticket: %s\n- URL: %s\n", args[0], validated), fmt.Sprintf("imported github ref for %s", args[0]))
 }
 
 func runTemplatesList(cmd *cobra.Command, _ []string) error {

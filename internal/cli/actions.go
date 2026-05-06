@@ -127,6 +127,13 @@ func parseLabels(raw string) []string {
 	return labels
 }
 
+func optionalString(value string, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
 func listTicketEvents(ctx context.Context, w *workspace, ticketID string) ([]contracts.Event, error) {
 	events, err := w.events.StreamEvents(ctx, "", 0)
 	if err != nil {

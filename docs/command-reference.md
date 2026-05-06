@@ -21,6 +21,10 @@
 - `tracker git branch-name <ID>`
 - `tracker git refs <ID>`
 - `tracker git commit <ID> --message <TEXT>`
+- `tracker gh status`
+- `tracker gh prs <ID>`
+- `tracker gh create-pr <ID> [--title <TEXT>] [--body <TEXT>] [--base <BRANCH>] [--draft] [--actor <ACTOR>]`
+- `tracker gh import-url <ID> --url <URL> [--actor <ACTOR>]`
 - `tracker views list`
 - `tracker views view <NAME>`
 - `tracker views save <NAME> --kind <board|search|queue|next> [flags]`
@@ -160,6 +164,20 @@ Rules:
 - `tracker git branch-name <ID>`
 - `tracker git refs <ID>`
 - `tracker git commit <ID> --message <TEXT>`
+
+## GitHub
+
+- `tracker gh status`
+- `tracker gh prs <ID>`
+- `tracker gh create-pr <ID> [--title <TEXT>] [--body <TEXT>] [--base <BRANCH>] [--draft] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker gh import-url <ID> --url <URL> [--actor <ACTOR>] [--reason <TEXT>]`
+
+Notes:
+
+- `tracker gh status` is capability-only and degrades cleanly when `gh` is missing or unauthenticated
+- `tracker gh prs` is best-effort and returns no PRs when GitHub context is unavailable for the current workspace
+- `tracker gh create-pr` requires a local git repo and a working `gh` session, then writes the created PR URL back into ticket history as a comment
+- `tracker gh import-url` accepts GitHub issue and pull request URLs only, and records the reference in ticket history as a comment
 
 ## Automation
 
