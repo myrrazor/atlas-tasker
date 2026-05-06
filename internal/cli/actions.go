@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +26,7 @@ type workspace struct {
 	ticket     mdstore.TicketStore
 	events     *eventstore.Log
 	projection *sqlitestore.Store
+	locks      service.WriteLockManager
 	actions    *service.ActionService
 	queries    *service.QueryService
 }
@@ -36,22 +36,42 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
-	ticketStore := mdstore.TicketStore{RootDir: root}
+	root, err = service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
 	eventLog := &eventstore.Log{RootDir: root}
 	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
 	if err != nil {
 		return nil, err
 	}
 	projectStore := mdstore.ProjectStore{RootDir: root}
+	cfg, err := config.Load(root)
+	if err != nil {
+		return nil, err
+	}
 	w := &workspace{
 		root:       root,
 		project:    projectStore,
 		ticket:     ticketStore,
 		events:     eventLog,
 		projection: projection,
+		locks:      service.FileLockManager{Root: root},
 	}
-	w.actions = service.NewActionService(projectStore, ticketStore, eventLog, projection, defaultNow)
 	w.queries = service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
+	notifier, err := service.BuildNotifier(root, cfg, os.Stderr, service.SubscriptionResolver{
+		Store:   service.SubscriptionStore{Root: root},
+		Queries: w.queries,
+	})
+	if err != nil {
+		return nil, err
+	}
+	automation := &service.AutomationEngine{
+		Store:    service.AutomationStore{Root: root},
+		Notifier: notifier,
+	}
+	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
 	return w, nil
 }
 
@@ -59,6 +79,10 @@ func (w *workspace) close() {
 	if w.projection != nil {
 		_ = w.projection.Close()
 	}
+}
+
+func (w *workspace) withWriteLock(ctx context.Context, purpose string, fn func(context.Context) error) error {
+	return service.WithWriteLock(ctx, w.locks, purpose, fn)
 }
 
 func (w *workspace) nextEventID(ctx context.Context, project string) (int64, error) {
@@ -103,22 +127,6 @@ func parseLabels(raw string) []string {
 	return labels
 }
 
-func nextTicketID(project string, existing []contracts.TicketSnapshot) string {
-	max := 0
-	prefix := project + "-"
-	for _, ticket := range existing {
-		if !strings.HasPrefix(ticket.ID, prefix) {
-			continue
-		}
-		raw := strings.TrimPrefix(ticket.ID, prefix)
-		n, err := strconv.Atoi(raw)
-		if err == nil && n > max {
-			max = n
-		}
-	}
-	return fmt.Sprintf("%s-%d", project, max+1)
-}
-
 func listTicketEvents(ctx context.Context, w *workspace, ticketID string) ([]contracts.Event, error) {
 	events, err := w.events.StreamEvents(ctx, "", 0)
 	if err != nil {
@@ -144,10 +152,24 @@ func defaultNow() time.Time {
 }
 
 func ensureInitArtifacts(root string) error {
+	var err error
+	root, err = service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(storage.TrackerDir(root), 0o755); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(storage.EventsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.AutomationsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.ViewsDir(root), 0o755); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.SubscriptionsDir(root), 0o755); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "templates"), 0o755); err != nil {
@@ -170,10 +192,146 @@ func ensureInitArtifacts(root string) error {
 		}
 	}
 	templates := map[string]string{
-		"epic.md":    "# Summary\n\n## Description\n\n## Acceptance Criteria\n\n## Notes\n",
-		"task.md":    "# Summary\n\n## Description\n\n## Acceptance Criteria\n\n## Notes\n",
-		"bug.md":     "# Summary\n\n## Description\n\n## Acceptance Criteria\n\n## Notes\n",
-		"subtask.md": "# Summary\n\n## Description\n\n## Acceptance Criteria\n\n## Notes\n",
+		"epic.md": `---
+type: epic
+blueprint: design
+---
+# Summary
+
+## Description
+
+Shape the full slice before you break it into child work.
+
+## Acceptance Criteria
+- Scope is clear
+- Child tickets can be created from this epic
+`,
+		"task.md": `---
+type: task
+blueprint: implement
+---
+# Summary
+
+## Description
+
+Implement the scoped change.
+
+## Acceptance Criteria
+- Code is merged locally
+- Tests cover the new behavior
+`,
+		"bug.md": `---
+type: bug
+blueprint: qa
+---
+# Summary
+
+## Description
+
+Describe the broken behavior and the expected fix.
+
+## Acceptance Criteria
+- Repro is documented
+- Fix is verified
+`,
+		"subtask.md": `---
+type: subtask
+blueprint: implement
+---
+# Summary
+
+## Description
+
+Small child task under a parent item.
+
+## Acceptance Criteria
+- Parent stays up to date
+`,
+		"design.md": `---
+type: task
+labels:
+  - design
+blueprint: design
+skill_hint: design
+---
+# Summary
+
+## Description
+
+Capture the UX, constraints, and acceptance shape before implementation.
+
+## Acceptance Criteria
+- Design direction is written down
+- Open questions are resolved or tracked
+`,
+		"implement.md": `---
+type: task
+labels:
+  - implementation
+blueprint: implement
+skill_hint: implement
+---
+# Summary
+
+## Description
+
+Build the scoped change and keep the diff reviewable.
+
+## Acceptance Criteria
+- Behavior works locally
+- Tests are updated
+`,
+		"review.md": `---
+type: task
+labels:
+  - review
+blueprint: review
+skill_hint: review
+---
+# Summary
+
+## Description
+
+Audit the implementation for regressions and missing tests.
+
+## Acceptance Criteria
+- Findings are documented
+- Blocking issues are fixed or tracked
+`,
+		"qa.md": `---
+type: task
+labels:
+  - qa
+blueprint: qa
+skill_hint: qa
+---
+# Summary
+
+## Description
+
+Run end-to-end validation and record the results.
+
+## Acceptance Criteria
+- Happy path is verified
+- Edge cases are covered
+`,
+		"spike.md": `---
+type: task
+labels:
+  - spike
+blueprint: spike
+skill_hint: spike
+---
+# Summary
+
+## Description
+
+Time-boxed investigation with explicit follow-up output.
+
+## Acceptance Criteria
+- Findings are written down
+- Next steps are clear
+`,
 	}
 	for name, body := range templates {
 		path := filepath.Join(storage.TrackerDir(root), "templates", name)
