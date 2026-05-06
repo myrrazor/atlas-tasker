@@ -7,35 +7,65 @@ import (
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 func newKeyCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "key", Short: "Manage v1.7 signing keys"}
-	generate := v17MutationCommand("generate", "Generate a local signing key", "key_generate_result", cobra.NoArgs)
+	list := &cobra.Command{Use: "list", Short: "List signing keys", Args: cobra.NoArgs, RunE: runKeyList}
+	view := &cobra.Command{Use: "view <KEY-ID>", Short: "Show one signing key", Args: cobra.ExactArgs(1), RunE: runKeyView}
+	generate := &cobra.Command{Use: "generate", Short: "Generate a local signing key", Args: cobra.NoArgs, RunE: runKeyGenerate}
 	generate.Flags().String("scope", "workspace", "Key scope: workspace|collaborator|admin|release")
+	generate.Flags().String("owner-id", "", "Explicit key owner id")
+	exportPublic := &cobra.Command{Use: "export-public <KEY-ID>", Short: "Export a public key record", Args: cobra.ExactArgs(1), RunE: runKeyExportPublic}
+	importPublic := &cobra.Command{Use: "import-public <PATH>", Short: "Import an untrusted public key record", Args: cobra.ExactArgs(1), RunE: runKeyImportPublic}
+	rotate := &cobra.Command{Use: "rotate <KEY-ID>", Short: "Rotate a signing key", Args: cobra.ExactArgs(1), RunE: runKeyRotate}
+	revoke := &cobra.Command{Use: "revoke <KEY-ID>", Short: "Revoke a signing key", Args: cobra.ExactArgs(1), RunE: runKeyRevoke}
+	verify := &cobra.Command{Use: "verify <KEY-ID>", Short: "Verify key health and public material", Args: cobra.ExactArgs(1), RunE: runKeyView}
+	for _, sub := range []*cobra.Command{list, view, exportPublic, verify} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	for _, sub := range []*cobra.Command{generate, importPublic, rotate, revoke} {
+		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
+		addReadOutputFlags(sub, &outputFlags{})
+	}
 	cmd.AddCommand(
-		v17ReadCommand("list", "List signing keys", "key_list", cobra.NoArgs),
-		v17ReadCommand("view <KEY-ID>", "Show one signing key", "key_detail", cobra.ExactArgs(1)),
+		list,
+		view,
 		generate,
-		v17ReadCommand("export-public <KEY-ID>", "Export a public key record", "key_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("import-public <PATH>", "Import an untrusted public key record", "key_import_result", cobra.ExactArgs(1)),
-		v17MutationCommand("rotate <KEY-ID>", "Rotate a signing key", "key_rotation_result", cobra.ExactArgs(1)),
-		v17MutationCommand("revoke <KEY-ID>", "Revoke a signing key", "key_revocation_result", cobra.ExactArgs(1)),
-		v17ReadCommand("verify <KEY-ID>", "Verify key health and public material", "key_detail", cobra.ExactArgs(1)),
+		exportPublic,
+		importPublic,
+		rotate,
+		revoke,
+		verify,
 	)
 	return cmd
 }
 
 func newTrustCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "trust", Short: "Inspect and bind local v1.7 trust decisions"}
+	status := &cobra.Command{Use: "status", Short: "Show trust store status", Args: cobra.NoArgs, RunE: runTrustStatus}
+	list := &cobra.Command{Use: "list", Short: "List local trust bindings", Args: cobra.NoArgs, RunE: runTrustList}
+	collaborator := &cobra.Command{Use: "collaborator <COLLABORATOR-ID>", Short: "Show trust for one collaborator", Args: cobra.ExactArgs(1), RunE: runTrustCollaborator}
+	bindKey := &cobra.Command{Use: "bind-key <COLLABORATOR-ID> <PUBLIC-KEY-ID>", Short: "Trust a key for a collaborator", Args: cobra.ExactArgs(2), RunE: runTrustBindKey}
+	revokeKey := &cobra.Command{Use: "revoke-key <PUBLIC-KEY-ID>", Short: "Revoke local trust for a key", Args: cobra.ExactArgs(1), RunE: runTrustRevokeKey}
+	explain := &cobra.Command{Use: "explain <TARGET>", Short: "Explain trust for a target", Args: cobra.ExactArgs(1), RunE: runTrustExplain}
+	for _, sub := range []*cobra.Command{status, list, collaborator, explain} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	for _, sub := range []*cobra.Command{bindKey, revokeKey} {
+		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
+		addReadOutputFlags(sub, &outputFlags{})
+	}
 	cmd.AddCommand(
-		v17ReadCommand("status", "Show trust store status", "trust_status", cobra.NoArgs),
-		v17ReadCommand("list", "List local trust bindings", "trust_list", cobra.NoArgs),
-		v17ReadCommand("collaborator <COLLABORATOR-ID>", "Show trust for one collaborator", "trust_collaborator_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("bind-key <COLLABORATOR-ID> <PUBLIC-KEY-ID>", "Trust a key for a collaborator", "trust_binding_result", cobra.ExactArgs(2)),
-		v17MutationCommand("revoke-key <PUBLIC-KEY-ID>", "Revoke local trust for a key", "trust_revocation_result", cobra.ExactArgs(1)),
-		v17ReadCommand("explain <TARGET>", "Explain trust for a target", "trust_explanation", cobra.ExactArgs(1)),
+		status,
+		list,
+		collaborator,
+		bindKey,
+		revokeKey,
+		explain,
 	)
 	return cmd
 }
@@ -175,6 +205,268 @@ func newGoalCommand() *cobra.Command {
 		v17ReadCommand("verify <MANIFEST-ID|PATH>", "Verify a signed goal manifest", "goal_manifest_verify_result", cobra.ExactArgs(1)),
 	)
 	return cmd
+}
+
+func runKeyGenerate(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	scopeRaw, _ := cmd.Flags().GetString("scope")
+	ownerID, _ := cmd.Flags().GetString("owner-id")
+	view, err := w.actions.GenerateKey(cmd.Context(), service.KeyGenerateOptions{
+		Scope:   contracts.KeyScope(strings.TrimSpace(scopeRaw)),
+		OwnerID: strings.TrimSpace(ownerID),
+	}, actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, keyDetailMarkdown(view), keyDetailPretty(view))
+}
+
+func runKeyList(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ListKeys(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, keyListMarkdown(view), keyListPretty(view))
+}
+
+func runKeyView(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.KeyDetail(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, keyDetailMarkdown(view), keyDetailPretty(view))
+}
+
+func runKeyExportPublic(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.KeyDetail(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	exportDoc, err := publicKeyExportDocument(view.PublicKey)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view.PublicKey, exportDoc, exportDoc)
+}
+
+func runKeyImportPublic(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	view, err := w.actions.ImportPublicKey(cmd.Context(), args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, keyDetailMarkdown(view), keyDetailPretty(view))
+}
+
+func runKeyRotate(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	view, err := w.actions.RotateKey(cmd.Context(), args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, keyDetailMarkdown(view), keyDetailPretty(view))
+}
+
+func runKeyRevoke(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	view, err := w.actions.RevokeKey(cmd.Context(), args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, keyDetailMarkdown(view), keyDetailPretty(view))
+}
+
+func runTrustStatus(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.TrustStatus(cmd.Context())
+	if err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("public keys: %d\ntrusted bindings: %d\nrevoked bindings: %d\nimported untrusted keys: %d", view.PublicKeys, view.TrustedBindings, view.RevokedBindings, view.ImportedUntrusted)
+	return writeCommandOutput(cmd, view, pretty, pretty)
+}
+
+func runTrustList(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ListTrust(cmd.Context(), "")
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, trustListMarkdown(view), trustListPretty(view))
+}
+
+func runTrustCollaborator(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ListTrust(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, trustListMarkdown(view), trustListPretty(view))
+}
+
+func runTrustBindKey(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	binding, err := w.actions.BindTrust(cmd.Context(), args[0], args[1], actor, reason)
+	if err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("trusted %s for %s", binding.PublicKeyID, binding.TrustedOwnerID)
+	return writeCommandOutput(cmd, map[string]any{"kind": "trust_binding_result", "generated_at": time.Now().UTC(), "binding": binding}, pretty, pretty)
+}
+
+func runTrustRevokeKey(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	view, err := w.actions.RevokeTrustForKey(cmd.Context(), args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, trustListMarkdown(view), trustListPretty(view))
+}
+
+func runTrustExplain(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ExplainTrust(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("%s: %d trust bindings", view.Target, len(view.Bindings))
+	if len(view.ReasonCodes) > 0 {
+		pretty += "\n" + strings.Join(view.ReasonCodes, "\n")
+	}
+	return writeCommandOutput(cmd, view, pretty, pretty)
+}
+
+func mutationActorReason(cmd *cobra.Command) (contracts.Actor, string) {
+	actor, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	return contracts.Actor(strings.TrimSpace(actor)), strings.TrimSpace(reason)
+}
+
+func keyListPretty(view service.KeyListView) string {
+	if len(view.Items) == 0 {
+		return "no signing keys"
+	}
+	lines := make([]string, 0, len(view.Items))
+	for _, item := range view.Items {
+		lines = append(lines, keyDetailPretty(item))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func keyListMarkdown(view service.KeyListView) string {
+	if len(view.Items) == 0 {
+		return "# Signing Keys\n\nNo signing keys.\n"
+	}
+	lines := []string{"# Signing Keys", ""}
+	for _, item := range view.Items {
+		lines = append(lines, "- "+keyDetailPretty(item))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func keyDetailPretty(view service.KeyDetailView) string {
+	state := "cannot sign"
+	if view.CanSign {
+		state = "can sign"
+	}
+	return fmt.Sprintf("%s %s %s:%s %s", view.PublicKey.PublicKeyID, view.PublicKey.Status, view.PublicKey.OwnerKind, view.PublicKey.OwnerID, state)
+}
+
+func keyDetailMarkdown(view service.KeyDetailView) string {
+	return fmt.Sprintf("# %s\n\n- Status: %s\n- Owner: %s:%s\n- Fingerprint: `%s`\n- Can sign: %t\n", view.PublicKey.PublicKeyID, view.PublicKey.Status, view.PublicKey.OwnerKind, view.PublicKey.OwnerID, view.PublicKey.Fingerprint, view.CanSign)
+}
+
+func publicKeyExportDocument(record contracts.PublicKeyRecord) (string, error) {
+	raw, err := yaml.Marshal(struct {
+		contracts.PublicKeyRecord `yaml:",inline"`
+	}{PublicKeyRecord: record})
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("---\n%s---\n\nAtlas public key `%s` for `%s:%s`.\n", string(raw), record.PublicKeyID, record.OwnerKind, record.OwnerID), nil
+}
+
+func trustListPretty(view service.TrustListView) string {
+	if len(view.Items) == 0 {
+		return "no local trust bindings"
+	}
+	lines := make([]string, 0, len(view.Items))
+	for _, binding := range view.Items {
+		lines = append(lines, fmt.Sprintf("%s %s -> %s:%s", binding.TrustLevel, binding.PublicKeyID, binding.TrustedOwnerKind, binding.TrustedOwnerID))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func trustListMarkdown(view service.TrustListView) string {
+	if len(view.Items) == 0 {
+		return "# Trust Bindings\n\nNo local trust bindings.\n"
+	}
+	lines := []string{"# Trust Bindings", ""}
+	for _, binding := range view.Items {
+		lines = append(lines, fmt.Sprintf("- `%s` %s -> %s:%s", binding.PublicKeyID, binding.TrustLevel, binding.TrustedOwnerKind, binding.TrustedOwnerID))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func v17ReadCommand(use string, short string, kind string, args cobra.PositionalArgs) *cobra.Command {

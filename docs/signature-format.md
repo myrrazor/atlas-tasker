@@ -1,6 +1,6 @@
 # Signature Format
 
-Every signed Atlas artifact uses a `SignatureEnvelope` over `atlas-c14n-v1` canonical bytes. Embedded `signature_envelopes` are verification metadata and are excluded from canonical signed bytes, so adding or refreshing signatures does not change the payload hash being verified.
+Every signed Atlas artifact uses a `SignatureEnvelope` over `atlas-c14n-v1` canonical bytes. The signed preimage includes the artifact kind, artifact UID, and canonical payload, so a signature cannot be replayed onto a different artifact or trust scope. Embedded `signature_envelopes` are verification metadata and are excluded from canonical payload bytes, so adding or refreshing signatures does not change the payload hash being verified.
 
 ## Envelope Fields
 

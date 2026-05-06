@@ -106,6 +106,20 @@
 - `tracker evidence view <EVIDENCE-ID>`
 - `tracker handoff view <HANDOFF-ID>`
 - `tracker handoff export <HANDOFF-ID>`
+- `tracker key list`
+- `tracker key view <KEY-ID>`
+- `tracker key generate [--scope <workspace|collaborator|admin|release>] [--owner-id <ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker key export-public <KEY-ID>`
+- `tracker key import-public <PATH> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker key rotate <KEY-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker key revoke <KEY-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker key verify <KEY-ID>`
+- `tracker trust status`
+- `tracker trust list`
+- `tracker trust collaborator <COLLABORATOR-ID>`
+- `tracker trust bind-key <COLLABORATOR-ID> <PUBLIC-KEY-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker trust revoke-key <PUBLIC-KEY-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker trust explain <TARGET>`
 
 ## Agents
 
@@ -194,6 +208,31 @@ Rules:
 - rejecting a run-scoped gate sends the run back to `active`
 - approving or waiving the last open run-scoped gate relaxes the run back to `handoff_ready`
 - open gates block dispatch, `run complete`, and `ticket complete`
+
+## Security Keys And Trust
+
+- `tracker key list`
+- `tracker key view <KEY-ID>`
+- `tracker key generate [--scope <workspace|collaborator|admin|release>] [--owner-id <ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker key export-public <KEY-ID>`
+- `tracker key import-public <PATH> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker key rotate <KEY-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker key revoke <KEY-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker key verify <KEY-ID>`
+- `tracker trust status`
+- `tracker trust list`
+- `tracker trust collaborator <COLLABORATOR-ID>`
+- `tracker trust bind-key <COLLABORATOR-ID> <PUBLIC-KEY-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker trust revoke-key <PUBLIC-KEY-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker trust explain <TARGET>`
+
+Rules:
+
+- local signing keys use Ed25519 private material under `.tracker/security/keys/private/` with Unix mode `0600`; unsupported permission semantics are reported as unverified instead of silently trusted
+- public key records and revocations are syncable, but trust bindings are local-only
+- imported public keys stay untrusted until `trust bind-key` records a local trust decision
+- `key export-public` never exports private key bytes; private-key export is intentionally absent in v1.7
+- rotated and revoked keys cannot sign new artifacts, but old signatures still return deterministic verification states
 
 ## Inbox
 

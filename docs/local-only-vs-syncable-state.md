@@ -12,6 +12,7 @@ That rule is strict because worktrees, runtime artifacts, journals, mirror cache
 - runs, gates, handoffs, evidence metadata
 - changes and checks
 - import/export/archive metadata
+- public key records, revocation records, and signed-artifact envelopes
 - canonical event history
 - sync jobs, remotes, and conflicts
 
@@ -24,6 +25,8 @@ That rule is strict because worktrees, runtime artifacts, journals, mirror cache
 - `.tracker/sync/bundles/`
 - `.tracker/archives/*` payload dirs
 - `.tracker/exports/*` payload artifacts
+- `.tracker/security/keys/private/`
+- `.tracker/security/trust/`
 - linked worktrees under `.atlas-tasker-worktrees/`
 - notifier dead letters and delivery logs
 - launch manifests and other regenerated runtime files
