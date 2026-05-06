@@ -51,15 +51,16 @@ const (
 type dialogAction string
 
 const (
-	dialogCreate  dialogAction = "create"
-	dialogEdit    dialogAction = "edit"
-	dialogMove    dialogAction = "move"
-	dialogAssign  dialogAction = "assign"
-	dialogLink    dialogAction = "link"
-	dialogUnlink  dialogAction = "unlink"
-	dialogComment dialogAction = "comment"
-	dialogReject  dialogAction = "reject"
-	dialogBulk    dialogAction = "bulk"
+	dialogCreate             dialogAction = "create"
+	dialogEdit               dialogAction = "edit"
+	dialogMove               dialogAction = "move"
+	dialogAssign             dialogAction = "assign"
+	dialogLink               dialogAction = "link"
+	dialogUnlink             dialogAction = "unlink"
+	dialogComment            dialogAction = "comment"
+	dialogReject             dialogAction = "reject"
+	dialogBulk               dialogAction = "bulk"
+	dialogCollaboratorFilter dialogAction = "collaborator_filter"
 )
 
 type keyMap struct {
@@ -82,6 +83,7 @@ type keyMap struct {
 	Approve       key.Binding
 	Reject        key.Binding
 	Complete      key.Binding
+	Filter        key.Binding
 	BulkPreview   key.Binding
 	BulkApply     key.Binding
 	Cancel        key.Binding
@@ -89,13 +91,13 @@ type keyMap struct {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Palette, k.New, k.BulkPreview, k.Refresh, k.Quit}
+	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Palette, k.Filter, k.BulkPreview, k.Refresh, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Left, k.Right, k.Up, k.Down, k.Select, k.Refresh, k.Quit, k.Cancel},
-		{k.Palette, k.New, k.Edit, k.Move, k.Assign, k.Link, k.Unlink},
+		{k.Palette, k.New, k.Edit, k.Move, k.Assign, k.Link, k.Unlink, k.Filter},
 		{k.Claim, k.Comment, k.RequestReview, k.Approve, k.Reject, k.Complete, k.BulkPreview, k.BulkApply},
 	}
 }
@@ -124,36 +126,47 @@ func (d dialogState) active() bool {
 }
 
 type model struct {
-	root              string
-	actions           *service.ActionService
-	queries           *service.QueryService
-	projection        *sqlitestore.Store
-	actor             contracts.Actor
-	actorErr          string
-	keys              keyMap
-	help              help.Model
-	screen            screen
-	width             int
-	height            int
-	board             service.BoardViewModel
-	queue             service.QueueView
-	review            service.QueueView
-	owner             service.QueueView
-	inbox             []service.NotificationDelivery
-	deadLetters       []service.NotificationDelivery
-	savedViews        []contracts.SavedView
-	automations       []contracts.AutomationRule
-	automationExplain []service.AutomationResult
-	detail            service.TicketDetailView
-	search            textinput.Model
-	searchHits        []contracts.TicketSnapshot
-	selectedID        string
-	selectedView      string
-	cursor            int
-	status            string
-	dialog            dialogState
-	lastBulk          *service.BulkOperationResult
-	pendingBulk       *service.BulkOperation
+	root               string
+	actions            *service.ActionService
+	queries            *service.QueryService
+	projection         *sqlitestore.Store
+	actor              contracts.Actor
+	actorErr           string
+	keys               keyMap
+	help               help.Model
+	screen             screen
+	width              int
+	height             int
+	board              service.BoardViewModel
+	queue              service.QueueView
+	review             service.QueueView
+	owner              service.QueueView
+	runs               []contracts.RunSnapshot
+	runDetail          service.RunDetailView
+	runLaunch          service.RunLaunchManifestView
+	agents             []service.AgentDetailView
+	approvals          []service.ApprovalItemView
+	operatorInbox      []service.InboxItemView
+	dispatchQueue      service.DispatchQueueView
+	worktrees          []service.WorktreeStatusView
+	dashboard          service.DashboardSummaryView
+	timeline           service.TimelineView
+	inbox              []service.NotificationDelivery
+	deadLetters        []service.NotificationDelivery
+	savedViews         []contracts.SavedView
+	automations        []contracts.AutomationRule
+	automationExplain  []service.AutomationResult
+	detail             service.TicketDetailView
+	search             textinput.Model
+	searchHits         []contracts.TicketSnapshot
+	collaboratorFilter string
+	selectedID         string
+	selectedView       string
+	cursor             int
+	status             string
+	dialog             dialogState
+	lastBulk           *service.BulkOperationResult
+	pendingBulk        *service.BulkOperation
 }
 
 type loadedMsg struct {
@@ -161,6 +174,16 @@ type loadedMsg struct {
 	queue             service.QueueView
 	review            service.QueueView
 	owner             service.QueueView
+	runs              []contracts.RunSnapshot
+	runDetail         service.RunDetailView
+	runLaunch         service.RunLaunchManifestView
+	agents            []service.AgentDetailView
+	approvals         []service.ApprovalItemView
+	operatorInbox     []service.InboxItemView
+	dispatchQueue     service.DispatchQueueView
+	worktrees         []service.WorktreeStatusView
+	dashboard         service.DashboardSummaryView
+	timeline          service.TimelineView
 	inbox             []service.NotificationDelivery
 	deadLetters       []service.NotificationDelivery
 	savedViews        []contracts.SavedView
@@ -244,6 +267,7 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		Approve:       key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "approve")),
 		Reject:        key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "reject")),
 		Complete:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "complete")),
+		Filter:        key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "collab filter")),
 		BulkPreview:   key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "bulk preview")),
 		BulkApply:     key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "apply bulk")),
 		Cancel:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel dialog")),
@@ -293,6 +317,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.owner.Categories != nil {
 			m.owner = msg.owner
+		}
+		if msg.runs != nil {
+			m.runs = msg.runs
+		}
+		if msg.runDetail.GeneratedAt != (time.Time{}) {
+			m.runDetail = msg.runDetail
+		}
+		if msg.runLaunch.GeneratedAt != (time.Time{}) {
+			m.runLaunch = msg.runLaunch
+		}
+		if msg.agents != nil {
+			m.agents = msg.agents
+		}
+		if msg.approvals != nil {
+			m.approvals = msg.approvals
+		}
+		if msg.operatorInbox != nil {
+			m.operatorInbox = msg.operatorInbox
+		}
+		if msg.dispatchQueue.GeneratedAt != (time.Time{}) || msg.dispatchQueue.Entries != nil {
+			m.dispatchQueue = msg.dispatchQueue
+		}
+		if msg.worktrees != nil {
+			m.worktrees = msg.worktrees
+		}
+		if msg.dashboard.GeneratedAt != (time.Time{}) {
+			m.dashboard = msg.dashboard
+		}
+		if msg.timeline.GeneratedAt != (time.Time{}) {
+			m.timeline = msg.timeline
 		}
 		if msg.inbox != nil {
 			m.inbox = msg.inbox
@@ -451,6 +505,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.requestReviewSelected()
 		case key.Matches(msg, m.keys.Approve):
 			return m, m.approveSelected()
+		case key.Matches(msg, m.keys.Filter):
+			m.dialog = newPromptDialog(dialogCollaboratorFilter, "", "Collaborator Filter", "rev-1 or blank to clear", m.collaboratorFilter)
+			return m, nil
 		case key.Matches(msg, m.keys.Reject):
 			if id := m.selectedTicketID(); id != "" {
 				m.dialog = newPromptDialog(dialogReject, id, "Reject Review", "Why is this going back?", "")
@@ -491,7 +548,7 @@ func (m model) View() string {
 	if m.dialog.active() {
 		body = body + "\n\n" + m.dialogView()
 	}
-	footer := fmt.Sprintf("actor: %s | %s", optionalActor(m.actor, "unset"), m.status)
+	footer := fmt.Sprintf("actor: %s | collaborator: %s | %s", optionalActor(m.actor, "unset"), optionalString(strings.TrimSpace(m.collaboratorFilter), "all"), m.status)
 	if width := m.width; width > 0 && width < lipgloss.Width(body) {
 		body = lipgloss.NewStyle().Width(width).Render(body)
 	}
@@ -511,7 +568,7 @@ func (m model) bodyView() string {
 		if m.detail.Ticket.ID == "" {
 			return render.EmptyState("Detail", "No ticket selected yet.")
 		}
-		return detailWithGit(m.detail)
+		return detailWithOrchestration(m.detail, m.runs, m.runDetail, m.runLaunch, m.timeline, m.collaboratorFilter)
 	case screenSearch:
 		body := m.search.View() + "\n\n"
 		if len(m.searchHits) == 0 {
@@ -526,11 +583,11 @@ func (m model) bodyView() string {
 	case screenOwner:
 		return ticketsListView("Owner Attention", m.itemsForScreen(), m.cursor)
 	case screenInbox:
-		return inboxView(m.inbox, m.deadLetters)
+		return attentionView(m.approvals, m.operatorInbox, m.inbox, m.deadLetters)
 	case screenViews:
 		return savedViewsPanel(m.savedViews, m.selectedViewName(), m.cursor)
 	case screenOps:
-		return opsView(m.automations, m.automationExplain, m.lastBulk, m.pendingBulk)
+		return opsView(m.dashboard, m.agents, m.dispatchQueue, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk, m.collaboratorFilter)
 	default:
 		return ""
 	}
@@ -559,6 +616,16 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		}
 		queue := service.QueueView{}
 		review := service.QueueView{}
+		runs := []contracts.RunSnapshot{}
+		runDetail := service.RunDetailView{GeneratedAt: m.now()}
+		runLaunch := service.RunLaunchManifestView{GeneratedAt: m.now()}
+		agents := []service.AgentDetailView{}
+		approvals := []service.ApprovalItemView{}
+		operatorInbox := []service.InboxItemView{}
+		dispatchQueue := service.DispatchQueueView{}
+		worktrees := []service.WorktreeStatusView{}
+		dashboard := service.DashboardSummaryView{GeneratedAt: m.now()}
+		timeline := service.TimelineView{GeneratedAt: m.now()}
 		owner, err := m.queries.Queue(ctx, contracts.Actor("human:owner"))
 		if err != nil {
 			return loadedMsg{err: err}
@@ -584,6 +651,34 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			}
 		}
 		detail := service.TicketDetailView{}
+		runs, err = m.queries.ListRuns(ctx, "", "", "")
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		agents, err = m.queries.ListAgents(ctx)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		approvals, err = m.queries.Approvals(ctx, m.collaboratorFilter)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		operatorInbox, err = m.queries.Inbox(ctx, m.collaboratorFilter)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		dispatchQueue, err = m.queries.DispatchQueue(ctx)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		worktrees, err = m.queries.WorktreeList(ctx)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		dashboard, err = m.queries.Dashboard(ctx, m.collaboratorFilter)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
 		if selectedID == "" {
 			selectedID = firstBoardTicketID(board)
 		}
@@ -591,6 +686,20 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			detail, err = m.queries.TicketDetail(ctx, selectedID)
 			if err != nil {
 				return loadedMsg{err: err}
+			}
+			timeline, err = m.queries.Timeline(ctx, selectedID, m.collaboratorFilter)
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+			if focusRunID := focusRunIDForTicket(detail.Ticket, runs); focusRunID != "" {
+				runDetail, err = m.queries.RunDetail(ctx, focusRunID)
+				if err != nil {
+					return loadedMsg{err: err}
+				}
+				runLaunch, err = m.queries.RunOpen(ctx, focusRunID)
+				if err != nil {
+					return loadedMsg{err: err}
+				}
 			}
 		}
 		inbox, err := m.queries.NotificationLog(12)
@@ -620,7 +729,34 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		if selectedView == "" && len(savedViews) > 0 {
 			selectedView = savedViews[0].Name
 		}
-		return loadedMsg{board: board, queue: queue, review: review, owner: owner, inbox: inbox, deadLetters: deadLetters, savedViews: savedViews, automations: automations, automationExplain: automationExplain, detail: detail, searchHits: searchHits, selectedID: selectedID, selectedView: selectedView, actor: actor, actorErr: actorErr, status: status}
+		return loadedMsg{
+			board:             board,
+			queue:             queue,
+			review:            review,
+			owner:             owner,
+			runs:              runs,
+			runDetail:         runDetail,
+			runLaunch:         runLaunch,
+			agents:            agents,
+			approvals:         approvals,
+			operatorInbox:     operatorInbox,
+			dispatchQueue:     dispatchQueue,
+			worktrees:         worktrees,
+			dashboard:         dashboard,
+			timeline:          timeline,
+			inbox:             inbox,
+			deadLetters:       deadLetters,
+			savedViews:        savedViews,
+			automations:       automations,
+			automationExplain: automationExplain,
+			detail:            detail,
+			searchHits:        searchHits,
+			selectedID:        selectedID,
+			selectedView:      selectedView,
+			actor:             actor,
+			actorErr:          actorErr,
+			status:            status,
+		}
 	}
 }
 
@@ -630,10 +766,7 @@ func (m model) searchCmd() tea.Cmd {
 }
 
 func (m model) loadDetail(ticketID string) tea.Cmd {
-	return func() tea.Msg {
-		detail, err := m.queries.TicketDetail(context.Background(), ticketID)
-		return detailMsg{detail: detail, err: err}
-	}
+	return m.reload(ticketID, strings.TrimSpace(m.search.Value()), "detail synced")
 }
 
 func (m model) loadSavedView(name string) tea.Cmd {
@@ -893,6 +1026,9 @@ func (m model) updateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.dialog.Kind {
 	case dialogPalette, dialogPrompt:
 		if key.Matches(msg, m.keys.Select) {
+			if m.dialog.Action == dialogCollaboratorFilter {
+				m.collaboratorFilter = strings.TrimSpace(m.dialog.Input.Value())
+			}
 			cmd := m.submitDialog()
 			m.dialog = dialogState{}
 			return m, cmd
@@ -1035,35 +1171,104 @@ func nextTickets(next service.NextView) []contracts.TicketSnapshot {
 	return items
 }
 
-func detailWithGit(detail service.TicketDetailView) string {
+func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.RunSnapshot, runDetail service.RunDetailView, launch service.RunLaunchManifestView, timeline service.TimelineView, collaboratorFilter string) string {
 	body := render.TicketPretty(detail.Ticket, detail.Comments)
 	gitLines := []string{"Git Context:"}
 	if !detail.Git.Repo.Present {
 		gitLines = append(gitLines, "- repo: not detected")
-		return body + "\n\n" + strings.Join(gitLines, "\n")
-	}
-	gitLines = append(gitLines,
-		fmt.Sprintf("- branch: %s", optionalString(detail.Git.Repo.Branch, "detached")),
-		fmt.Sprintf("- dirty: %t", detail.Git.Repo.Dirty),
-		fmt.Sprintf("- suggested: %s", optionalString(detail.Git.SuggestedBranch, "n/a")),
-		fmt.Sprintf("- current matches ticket: %t", detail.Git.CurrentBranchMatches),
-	)
-	if len(detail.Git.Refs) == 0 {
-		gitLines = append(gitLines, "- refs: none")
 	} else {
-		gitLines = append(gitLines, "- refs:")
-		for _, ref := range detail.Git.Refs {
-			gitLines = append(gitLines, fmt.Sprintf("  - %s %s", shortHash(ref.Hash), ref.Subject))
+		gitLines = append(gitLines,
+			fmt.Sprintf("- branch: %s", optionalString(detail.Git.Repo.Branch, "detached")),
+			fmt.Sprintf("- dirty: %t", detail.Git.Repo.Dirty),
+			fmt.Sprintf("- suggested: %s", optionalString(detail.Git.SuggestedBranch, "n/a")),
+			fmt.Sprintf("- current matches ticket: %t", detail.Git.CurrentBranchMatches),
+		)
+		if len(detail.Git.Refs) == 0 {
+			gitLines = append(gitLines, "- refs: none")
+		} else {
+			gitLines = append(gitLines, "- refs:")
+			for _, ref := range detail.Git.Refs {
+				gitLines = append(gitLines, fmt.Sprintf("  - %s %s", shortHash(ref.Hash), ref.Subject))
+			}
 		}
 	}
-	return body + "\n\n" + strings.Join(gitLines, "\n")
+	runLines := []string{"Runs:"}
+	ticketRuns := runsForTicket(detail.Ticket.ID, runs)
+	if len(ticketRuns) == 0 {
+		runLines = append(runLines, "- none")
+	} else {
+		for _, run := range ticketRuns {
+			runLines = append(runLines, fmt.Sprintf("- %s [%s/%s] agent=%s", run.RunID, run.Status, run.Kind, optionalString(run.AgentID, "unassigned")))
+		}
+	}
+	evidenceLines := []string{"Evidence:"}
+	if len(runDetail.Evidence) == 0 {
+		evidenceLines = append(evidenceLines, "- none")
+	} else {
+		for _, item := range runDetail.Evidence {
+			evidenceLines = append(evidenceLines, fmt.Sprintf("- %s [%s] %s", item.EvidenceID, item.Type, optionalString(item.Title, "(untitled)")))
+		}
+	}
+	handoffLines := []string{"Handoffs:"}
+	if len(runDetail.Handoffs) == 0 {
+		handoffLines = append(handoffLines, "- none")
+	} else {
+		for _, item := range runDetail.Handoffs {
+			handoffLines = append(handoffLines, fmt.Sprintf("- %s next=%s gate=%s", item.HandoffID, optionalString(item.SuggestedNextActor, "n/a"), optionalString(string(item.SuggestedNextGate), "n/a")))
+		}
+	}
+	runtimeLines := []string{"Runtime:"}
+	if launch.RunID == "" {
+		runtimeLines = append(runtimeLines, "- none")
+	} else {
+		runtimeLines = append(runtimeLines,
+			"- dir: "+launch.RuntimeDir,
+			"- brief: "+launch.BriefPath,
+			"- context: "+launch.ContextPath,
+			"- codex: "+launch.CodexLaunchPath,
+			"- claude: "+launch.ClaudeLaunchPath,
+		)
+	}
+	timelineLines := []string{"Timeline:"}
+	if len(timeline.Entries) == 0 {
+		timelineLines = append(timelineLines, "- none")
+	} else {
+		if strings.TrimSpace(collaboratorFilter) != "" {
+			timelineLines = append(timelineLines, "- collaborator_filter: "+collaboratorFilter)
+		}
+		timelineLines = append(timelineLines,
+			fmt.Sprintf("- change_ready: %s", timeline.ChangeReady),
+			fmt.Sprintf("- open_gates: %s", optionalString(strings.Join(timeline.OpenGateIDs, ","), "none")),
+		)
+		start := len(timeline.Entries) - 5
+		if start < 0 {
+			start = 0
+		}
+		for _, entry := range timeline.Entries[start:] {
+			timelineLines = append(timelineLines, fmt.Sprintf("- %s %s %s", entry.Timestamp.Format(time.RFC3339), entry.Type, entry.Summary))
+		}
+	}
+	return body + "\n\n" + strings.Join(gitLines, "\n") + "\n\n" + strings.Join(runLines, "\n") + "\n\n" + strings.Join(evidenceLines, "\n") + "\n\n" + strings.Join(handoffLines, "\n") + "\n\n" + strings.Join(runtimeLines, "\n") + "\n\n" + strings.Join(timelineLines, "\n")
 }
 
-func inboxView(records []service.NotificationDelivery, deadLetters []service.NotificationDelivery) string {
-	if len(records) == 0 && len(deadLetters) == 0 {
-		return render.EmptyState("Inbox", "No notification traffic yet.")
+func attentionView(approvals []service.ApprovalItemView, items []service.InboxItemView, records []service.NotificationDelivery, deadLetters []service.NotificationDelivery) string {
+	lines := []string{"Approvals:"}
+	if len(approvals) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range approvals {
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.Gate.GateID, item.Gate.Kind, item.Summary))
+		}
 	}
-	lines := []string{"Recent Deliveries:"}
+	lines = append(lines, "", "Human Inbox:")
+	if len(items) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range items {
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.ID, item.State, item.Summary))
+		}
+	}
+	lines = append(lines, "", "Recent Deliveries:")
 	if len(records) == 0 {
 		lines = append(lines, "- none")
 	} else {
@@ -1104,8 +1309,96 @@ func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) s
 	return strings.Join(lines, "\n")
 }
 
-func opsView(rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation) string {
-	lines := []string{"Automation Rules:"}
+func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetailView, dispatch service.DispatchQueueView, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation, collaboratorFilter string) string {
+	lines := []string{
+		"Dashboard:",
+		fmt.Sprintf("- collaborator_filter: %s", optionalString(strings.TrimSpace(collaboratorFilter), "all")),
+		fmt.Sprintf("- active_runs: %d", dashboard.ActiveRuns),
+		fmt.Sprintf("- awaiting_review: %d", dashboard.AwaitingReview.Count),
+		fmt.Sprintf("- awaiting_owner: %d", dashboard.AwaitingOwner.Count),
+		fmt.Sprintf("- merge_ready: %d", dashboard.MergeReady.Count),
+		fmt.Sprintf("- blocked_by_checks: %d", dashboard.BlockedByChecks.Count),
+		fmt.Sprintf("- stale_worktrees: %s", optionalString(strings.Join(dashboard.StaleWorktrees, ","), "none")),
+		fmt.Sprintf("- retention_pressure: %s", optionalString(strings.Join(dashboard.RetentionTargets, ","), "none")),
+		"",
+		"Collaboration:",
+		fmt.Sprintf("- mentions: %d", len(dashboard.MentionQueue)),
+		fmt.Sprintf("- conflicts: %d", len(dashboard.ConflictQueue)),
+		fmt.Sprintf("- failed_sync_jobs: %s", optionalString(strings.Join(dashboard.FailedSyncJobs, ","), "none")),
+		"",
+		"Collaborator Workload:",
+	}
+	if len(dashboard.CollaboratorWorkload) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range dashboard.CollaboratorWorkload {
+			lines = append(lines, fmt.Sprintf("- %s approvals=%d inbox=%d mentions=%d handoffs=%d", item.CollaboratorID, item.Approvals, item.InboxItems, item.Mentions, item.Handoffs))
+		}
+	}
+	lines = append(lines, "", "Remote Health:")
+	if len(dashboard.RemoteHealth) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range dashboard.RemoteHealth {
+			lines = append(lines, fmt.Sprintf("- %s [%s] publications=%d failed=%d", item.RemoteID, item.State, item.PublicationCount, item.FailedJobs))
+		}
+	}
+	lines = append(lines, "", "Conflict Queue:")
+	if len(dashboard.ConflictQueue) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range dashboard.ConflictQueue {
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.ConflictID, item.EntityKind, item.ConflictType))
+		}
+	}
+	lines = append(lines, "", "Mention Queue:")
+	if len(dashboard.MentionQueue) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range dashboard.MentionQueue {
+			lines = append(lines, fmt.Sprintf("- %s @%s %s", item.MentionUID, item.CollaboratorID, item.Summary))
+		}
+	}
+	lines = append(lines, "", "Provider Mapping Warnings:")
+	if len(dashboard.ProviderMappingWarnings) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, warning := range dashboard.ProviderMappingWarnings {
+			lines = append(lines, "- "+warning)
+		}
+	}
+	lines = append(lines, "",
+		"Agents:",
+	)
+	if len(agents) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, agent := range agents {
+			state := "disabled"
+			if agent.Profile.Enabled {
+				state = "enabled"
+			}
+			lines = append(lines, fmt.Sprintf("- %s [%s] active=%d", agent.Profile.AgentID, state, agent.ActiveRuns))
+		}
+	}
+	lines = append(lines, "", "Dispatch Queue:")
+	if len(dispatch.Entries) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, entry := range dispatch.Entries {
+			auto := optionalString(entry.Suggestion.AutoRouteAgentID, "manual")
+			lines = append(lines, fmt.Sprintf("- %s auto=%s", entry.Ticket.ID, auto))
+		}
+	}
+	lines = append(lines, "", "Worktrees:")
+	if len(worktrees) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range worktrees {
+			lines = append(lines, fmt.Sprintf("- %s present=%t dirty=%t", item.RunID, item.Present, item.Dirty))
+		}
+	}
+	lines = append(lines, "", "Automation Rules:")
 	if len(rules) == 0 {
 		lines = append(lines, "- none")
 	} else {
@@ -1195,6 +1488,27 @@ func firstBoardTicketID(board service.BoardViewModel) string {
 		}
 	}
 	return ""
+}
+
+func focusRunIDForTicket(ticket contracts.TicketSnapshot, runs []contracts.RunSnapshot) string {
+	if strings.TrimSpace(ticket.LatestRunID) != "" {
+		return ticket.LatestRunID
+	}
+	items := runsForTicket(ticket.ID, runs)
+	if len(items) == 0 {
+		return ""
+	}
+	return items[0].RunID
+}
+
+func runsForTicket(ticketID string, runs []contracts.RunSnapshot) []contracts.RunSnapshot {
+	items := make([]contracts.RunSnapshot, 0)
+	for _, run := range runs {
+		if run.TicketID == ticketID {
+			items = append(items, run)
+		}
+	}
+	return items
 }
 
 func minInt(a int, b int) int {

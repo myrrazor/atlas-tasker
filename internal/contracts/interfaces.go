@@ -57,3 +57,21 @@ type ProjectionStore interface {
 	QuerySearch(ctx context.Context, query SearchQuery) ([]TicketSnapshot, error)
 	QueryHistory(ctx context.Context, ticketID string) ([]Event, error)
 }
+
+type CollaboratorStore interface {
+	SaveCollaborator(ctx context.Context, collaborator CollaboratorProfile) error
+	LoadCollaborator(ctx context.Context, collaboratorID string) (CollaboratorProfile, error)
+	ListCollaborators(ctx context.Context) ([]CollaboratorProfile, error)
+}
+
+type MembershipStore interface {
+	SaveMembership(ctx context.Context, membership MembershipBinding) error
+	LoadMembership(ctx context.Context, membershipUID string) (MembershipBinding, error)
+	ListMemberships(ctx context.Context, collaboratorID string) ([]MembershipBinding, error)
+}
+
+type MentionStore interface {
+	SaveMention(ctx context.Context, mention Mention) error
+	LoadMention(ctx context.Context, mentionUID string) (Mention, error)
+	ListMentions(ctx context.Context, collaboratorID string) ([]Mention, error)
+}

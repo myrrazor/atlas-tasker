@@ -36,8 +36,14 @@ func TestRebuildFromV1FixtureWorkspace(t *testing.T) {
 	if ticket.SchemaVersion != contracts.CurrentSchemaVersion {
 		t.Fatalf("expected normalized schema version, got %d", ticket.SchemaVersion)
 	}
+	if ticket.TicketUID == "" {
+		t.Fatalf("expected ticket uid to be backfilled during rebuild")
+	}
 	if ticket.ReviewState != contracts.ReviewStateNone {
 		t.Fatalf("unexpected review state: %s", ticket.ReviewState)
+	}
+	if len(ticket.ChangeIDs) != 0 || len(ticket.PermissionProfiles) != 0 || len(ticket.ChangeReadyReasons) != 0 {
+		t.Fatalf("expected v1.5 defaults to round-trip through projection: %#v", ticket)
 	}
 	history, err := store.QueryHistory(ctx, "APP-1")
 	if err != nil {
@@ -45,5 +51,8 @@ func TestRebuildFromV1FixtureWorkspace(t *testing.T) {
 	}
 	if len(history) != 1 || history[0].SchemaVersion != contracts.SchemaVersionV1 {
 		t.Fatalf("unexpected history after rebuild: %#v", history)
+	}
+	if history[0].EventUID == "" || history[0].LogicalClock == 0 {
+		t.Fatalf("expected legacy history to be normalized with event uid and logical clock: %#v", history[0])
 	}
 }

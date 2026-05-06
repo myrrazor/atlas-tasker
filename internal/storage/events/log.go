@@ -23,6 +23,7 @@ type Log struct {
 }
 
 func (l *Log) AppendEvent(_ context.Context, event contracts.Event) error {
+	event = contracts.NormalizeEvent(event)
 	if err := event.Validate(); err != nil {
 		return err
 	}
@@ -96,10 +97,16 @@ func (l *Log) StreamEvents(_ context.Context, project string, afterEventID int64
 	}
 
 	sort.Slice(events, func(i, j int) bool {
-		if events[i].EventID == events[j].EventID {
+		if events[i].LogicalClock != events[j].LogicalClock {
+			return events[i].LogicalClock < events[j].LogicalClock
+		}
+		if !events[i].Timestamp.Equal(events[j].Timestamp) {
 			return events[i].Timestamp.Before(events[j].Timestamp)
 		}
-		return events[i].EventID < events[j].EventID
+		if events[i].OriginWorkspaceID != events[j].OriginWorkspaceID {
+			return events[i].OriginWorkspaceID < events[j].OriginWorkspaceID
+		}
+		return events[i].EventUID < events[j].EventUID
 	})
 
 	return events, nil
@@ -125,6 +132,7 @@ func readEventFile(path string) ([]contracts.Event, error) {
 		if err := json.Unmarshal([]byte(raw), &event); err != nil {
 			return nil, fmt.Errorf("decode event line %d in %s: %w", line, path, err)
 		}
+		event = contracts.NormalizeEvent(event)
 		if err := event.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid event line %d in %s: %w", line, path, err)
 		}

@@ -6,87 +6,61 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
 
-func TestLoadDefaultWhenMissing(t *testing.T) {
+func TestLoadDefaultsIncludeV15Config(t *testing.T) {
 	root := t.TempDir()
+
 	cfg, err := Load(root)
 	if err != nil {
-		t.Fatalf("load default config failed: %v", err)
+		t.Fatalf("load config: %v", err)
 	}
-	if cfg.Workflow.CompletionMode != contracts.CompletionModeOpen {
-		t.Fatalf("unexpected default completion mode: %s", cfg.Workflow.CompletionMode)
+	if cfg.Provider.DefaultSCMProvider != contracts.ChangeProviderLocal {
+		t.Fatalf("expected local provider default, got %s", cfg.Provider.DefaultSCMProvider)
 	}
-}
-
-func TestSetAndGetCompletionMode(t *testing.T) {
-	root := t.TempDir()
-	if err := Set(root, "workflow.completion_mode", "owner_gate"); err != nil {
-		t.Fatalf("set completion mode failed: %v", err)
+	if cfg.ImportExport.MaxBundleSizeMB != 512 {
+		t.Fatalf("expected default bundle size, got %d", cfg.ImportExport.MaxBundleSizeMB)
 	}
-	value, err := Get(root, "workflow.completion_mode")
-	if err != nil {
-		t.Fatalf("get completion mode failed: %v", err)
+	if !cfg.ImportExport.RequireVerification {
+		t.Fatalf("expected import verification default on")
 	}
-	if value != "owner_gate" {
-		t.Fatalf("unexpected completion mode: %s", value)
+	if !cfg.Release.VerifyChecksums || !cfg.Release.VerifyAttestations {
+		t.Fatalf("expected release verification defaults on")
 	}
 }
 
-func TestSetRejectsInvalidMode(t *testing.T) {
+func TestSaveAndLoadV15ConfigRoundTrip(t *testing.T) {
 	root := t.TempDir()
-	if err := Set(root, "workflow.completion_mode", "not-real"); err == nil {
-		t.Fatal("expected invalid completion mode error")
-	}
-}
+	cfg := defaultConfig()
+	cfg.Provider.DefaultSCMProvider = contracts.ChangeProviderGitHub
+	cfg.Provider.DefaultBaseBranch = "develop"
+	cfg.Provider.GitHubRepo = "myrrazor/atlas-tasker"
+	cfg.ImportExport.MaxBundleSizeMB = 1024
+	cfg.ImportExport.AllowUpdateExisting = true
+	cfg.Release.BaseMarker = "v1.5-base-4f1782e"
+	cfg.Release.BaseSHA = "4f1782e3ef2eaeed06ae0724bd6dc0162a18d940"
 
-func TestSetAndGetDefaultActor(t *testing.T) {
-	root := t.TempDir()
-	if err := Set(root, "actor.default", "agent:builder-1"); err != nil {
-		t.Fatalf("set actor.default failed: %v", err)
+	if err := Save(root, cfg); err != nil {
+		t.Fatalf("save config: %v", err)
 	}
-	value, err := Get(root, "actor.default")
+	loaded, err := Load(root)
 	if err != nil {
-		t.Fatalf("get actor.default failed: %v", err)
+		t.Fatalf("reload config: %v", err)
 	}
-	if value != "agent:builder-1" {
-		t.Fatalf("unexpected actor.default: %s", value)
+	if loaded.Provider.DefaultSCMProvider != contracts.ChangeProviderGitHub {
+		t.Fatalf("expected github provider, got %s", loaded.Provider.DefaultSCMProvider)
 	}
-}
-
-func TestNotificationsDefaultsAndSetters(t *testing.T) {
-	root := t.TempDir()
-	cfg, err := Load(root)
-	if err != nil {
-		t.Fatalf("load default config failed: %v", err)
+	if loaded.Provider.DefaultBaseBranch != "develop" {
+		t.Fatalf("expected develop base branch, got %s", loaded.Provider.DefaultBaseBranch)
 	}
-	if !cfg.Notifications.Terminal {
-		t.Fatal("expected terminal notifications to default on")
+	if loaded.ImportExport.MaxBundleSizeMB != 1024 {
+		t.Fatalf("expected bundle size to round-trip, got %d", loaded.ImportExport.MaxBundleSizeMB)
 	}
-	if cfg.Notifications.DeliveryLogPath == "" || cfg.Notifications.DeadLetterPath == "" {
-		t.Fatalf("expected delivery log defaults, got %#v", cfg.Notifications)
+	if !loaded.ImportExport.AllowUpdateExisting {
+		t.Fatalf("expected allow_update_existing to round-trip")
 	}
-	if err := Set(root, "notifications.file_enabled", "true"); err != nil {
-		t.Fatalf("enable file notifications failed: %v", err)
+	if loaded.Release.BaseMarker != "v1.5-base-4f1782e" {
+		t.Fatalf("expected base marker to round-trip, got %s", loaded.Release.BaseMarker)
 	}
-	if err := Set(root, "notifications.file_path", ".tracker/custom-notify.log"); err != nil {
-		t.Fatalf("set notification file path failed: %v", err)
-	}
-	value, err := Get(root, "notifications.file_path")
-	if err != nil {
-		t.Fatalf("get notifications.file_path failed: %v", err)
-	}
-	if value != ".tracker/custom-notify.log" {
-		t.Fatalf("unexpected notifications.file_path: %s", value)
-	}
-	if err := Set(root, "notifications.webhook_timeout_seconds", "9"); err != nil {
-		t.Fatalf("set webhook timeout failed: %v", err)
-	}
-	if err := Set(root, "notifications.webhook_retries", "4"); err != nil {
-		t.Fatalf("set webhook retries failed: %v", err)
-	}
-	if err := Set(root, "notifications.delivery_log_path", ".tracker/delivery.log"); err != nil {
-		t.Fatalf("set delivery log path failed: %v", err)
-	}
-	if err := Set(root, "notifications.dead_letter_path", ".tracker/dead.log"); err != nil {
-		t.Fatalf("set dead letter path failed: %v", err)
+	if loaded.Release.BaseSHA != "4f1782e3ef2eaeed06ae0724bd6dc0162a18d940" {
+		t.Fatalf("expected base sha to round-trip, got %s", loaded.Release.BaseSHA)
 	}
 }

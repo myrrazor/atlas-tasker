@@ -10,7 +10,10 @@ import (
 const (
 	SchemaVersionV1      = 1
 	SchemaVersionV2      = 2
-	CurrentSchemaVersion = SchemaVersionV2
+	SchemaVersionV3      = 3
+	SchemaVersionV4      = 4
+	SchemaVersionV5      = 5
+	CurrentSchemaVersion = SchemaVersionV5
 	DefaultLeaseTTL      = 60 * time.Minute
 )
 
@@ -164,7 +167,7 @@ func (p Project) Validate() error {
 	if strings.TrimSpace(p.Name) == "" {
 		return fmt.Errorf("project name is required")
 	}
-	if p.SchemaVersion != 0 && p.SchemaVersion != SchemaVersionV1 && p.SchemaVersion != SchemaVersionV2 {
+	if p.SchemaVersion != 0 && p.SchemaVersion != SchemaVersionV1 && p.SchemaVersion != SchemaVersionV2 && p.SchemaVersion != SchemaVersionV3 && p.SchemaVersion != SchemaVersionV4 && p.SchemaVersion != SchemaVersionV5 {
 		return fmt.Errorf("invalid project schema version: %d", p.SchemaVersion)
 	}
 	if err := p.Defaults.Validate(); err != nil {
@@ -190,6 +193,9 @@ type TrackerConfig struct {
 	Workflow      WorkflowConfig      `json:"workflow"`
 	Actor         ActorConfig         `json:"actor"`
 	Notifications NotificationsConfig `json:"notifications"`
+	Provider      ProviderConfig      `json:"provider,omitempty"`
+	ImportExport  ImportExportConfig  `json:"import_export,omitempty"`
+	Release       ReleaseConfig       `json:"release,omitempty"`
 }
 
 func (c TrackerConfig) Validate() error {
@@ -199,7 +205,16 @@ func (c TrackerConfig) Validate() error {
 	if err := c.Actor.Validate(); err != nil {
 		return err
 	}
-	return c.Notifications.Validate()
+	if err := c.Notifications.Validate(); err != nil {
+		return err
+	}
+	if err := c.Provider.Validate(); err != nil {
+		return err
+	}
+	if err := c.ImportExport.Validate(); err != nil {
+		return err
+	}
+	return c.Release.Validate()
 }
 
 // ActorConfig holds local actor defaults for CLI/TUI convenience.
@@ -215,6 +230,12 @@ func (c ActorConfig) Validate() error {
 }
 
 // NotificationsConfig controls the built-in v1.2 notifier sinks.
+const (
+	DefaultWebhookTimeoutSeconds = 3
+	MaxWebhookTimeoutSeconds     = 30
+	MaxWebhookRetries            = 5
+)
+
 type NotificationsConfig struct {
 	Terminal              bool   `json:"terminal"`
 	FileEnabled           bool   `json:"file_enabled,omitempty"`
@@ -235,11 +256,11 @@ func (c NotificationsConfig) Validate() error {
 			return fmt.Errorf("invalid notifications.webhook_url: %w", err)
 		}
 	}
-	if c.WebhookTimeoutSeconds < 0 {
-		return fmt.Errorf("notifications.webhook_timeout_seconds must be >= 0")
+	if c.WebhookTimeoutSeconds < 0 || c.WebhookTimeoutSeconds > MaxWebhookTimeoutSeconds {
+		return fmt.Errorf("notifications.webhook_timeout_seconds must be between 0 and %d", MaxWebhookTimeoutSeconds)
 	}
-	if c.WebhookRetries < 0 {
-		return fmt.Errorf("notifications.webhook_retries must be >= 0")
+	if c.WebhookRetries < 0 || c.WebhookRetries > MaxWebhookRetries {
+		return fmt.Errorf("notifications.webhook_retries must be between 0 and %d", MaxWebhookRetries)
 	}
 	if strings.TrimSpace(c.DeliveryLogPath) == "" {
 		return fmt.Errorf("notifications.delivery_log_path is required")
@@ -250,14 +271,117 @@ func (c NotificationsConfig) Validate() error {
 	return nil
 }
 
+type ProviderConfig struct {
+	DefaultSCMProvider ChangeProvider `json:"default_scm_provider,omitempty"`
+	DefaultBaseBranch  string         `json:"default_base_branch,omitempty"`
+	GitHubRepo         string         `json:"github_repo,omitempty"`
+}
+
+func (c ProviderConfig) Validate() error {
+	if c.DefaultSCMProvider != "" && !c.DefaultSCMProvider.IsValid() {
+		return fmt.Errorf("invalid provider.default_scm_provider: %s", c.DefaultSCMProvider)
+	}
+	return nil
+}
+
+type ImportExportConfig struct {
+	MaxBundleSizeMB     int  `json:"max_bundle_size_mb,omitempty"`
+	RequireVerification bool `json:"require_verification,omitempty"`
+	AllowUpdateExisting bool `json:"allow_update_existing,omitempty"`
+}
+
+func (c ImportExportConfig) Validate() error {
+	if c.MaxBundleSizeMB < 0 {
+		return fmt.Errorf("import_export.max_bundle_size_mb must be >= 0")
+	}
+	return nil
+}
+
+type ReleaseConfig struct {
+	BaseMarker         string `json:"base_marker,omitempty"`
+	BaseSHA            string `json:"base_sha,omitempty"`
+	VerifyChecksums    bool   `json:"verify_checksums,omitempty"`
+	VerifyAttestations bool   `json:"verify_attestations,omitempty"`
+}
+
+func (c ReleaseConfig) Validate() error { return nil }
+
+type ProviderTeamMapping struct {
+	Alias    string         `json:"alias" yaml:"alias"`
+	Provider ChangeProvider `json:"provider" yaml:"provider"`
+	Handle   string         `json:"handle" yaml:"handle"`
+}
+
+func (m ProviderTeamMapping) Validate() error {
+	if strings.TrimSpace(m.Alias) == "" {
+		return fmt.Errorf("provider team alias is required")
+	}
+	if m.Provider == "" || !m.Provider.IsValid() {
+		return fmt.Errorf("invalid provider team provider: %s", m.Provider)
+	}
+	if strings.TrimSpace(m.Handle) == "" {
+		return fmt.Errorf("provider team handle is required")
+	}
+	return nil
+}
+
+type CodeownersRule struct {
+	Pattern       string   `json:"pattern" yaml:"pattern"`
+	Collaborators []string `json:"collaborators,omitempty" yaml:"collaborators,omitempty"`
+	Teams         []string `json:"teams,omitempty" yaml:"teams,omitempty"`
+}
+
+func (r CodeownersRule) Validate() error {
+	if strings.TrimSpace(r.Pattern) == "" {
+		return fmt.Errorf("codeowners rule pattern is required")
+	}
+	return nil
+}
+
+type ProviderRule struct {
+	Name              string   `json:"name" yaml:"name"`
+	Paths             []string `json:"paths,omitempty" yaml:"paths,omitempty"`
+	Collaborators     []string `json:"collaborators,omitempty" yaml:"collaborators,omitempty"`
+	Teams             []string `json:"teams,omitempty" yaml:"teams,omitempty"`
+	RequiredApprovals int      `json:"required_approvals,omitempty" yaml:"required_approvals,omitempty"`
+}
+
+func (r ProviderRule) Validate() error {
+	if strings.TrimSpace(r.Name) == "" {
+		return fmt.Errorf("provider rule name is required")
+	}
+	if len(r.Paths) == 0 {
+		return fmt.Errorf("provider rule paths are required")
+	}
+	if r.RequiredApprovals < 0 {
+		return fmt.Errorf("provider rule required_approvals must be >= 0")
+	}
+	return nil
+}
+
 // ProjectDefaults captures project-level policy defaults introduced in v1.2.
 type ProjectDefaults struct {
-	CompletionMode   CompletionMode `json:"completion_mode,omitempty"`
-	LeaseTTLMinutes  int            `json:"lease_ttl_minutes,omitempty"`
-	AllowedWorkers   []Actor        `json:"allowed_workers,omitempty"`
-	RequiredReviewer Actor          `json:"required_reviewer,omitempty"`
-	TemplatesPath    string         `json:"templates_path,omitempty"`
-	HooksEnabled     bool           `json:"hooks_enabled,omitempty"`
+	CompletionMode      CompletionMode        `json:"completion_mode,omitempty"`
+	LeaseTTLMinutes     int                   `json:"lease_ttl_minutes,omitempty"`
+	AllowedWorkers      []Actor               `json:"allowed_workers,omitempty"`
+	RequiredReviewer    Actor                 `json:"required_reviewer,omitempty"`
+	TemplatesPath       string                `json:"templates_path,omitempty"`
+	HooksEnabled        bool                  `json:"hooks_enabled,omitempty"`
+	Worktrees           WorktreeConfig        `json:"worktrees,omitempty"`
+	RunbookMappings     []RunbookMap          `json:"runbook_mappings,omitempty"`
+	RoutingHints        []RoutingHint         `json:"routing_hints,omitempty"`
+	GateTemplates       []GateTemplate        `json:"gate_templates,omitempty"`
+	ExecutionSafety     ExecutionSafety       `json:"execution_safety,omitempty"`
+	PermissionProfiles  []string              `json:"permission_profiles,omitempty"`
+	SCMProvider         ChangeProvider        `json:"scm_provider,omitempty"`
+	SCMBaseBranch       string                `json:"scm_base_branch,omitempty"`
+	SCMRepo             string                `json:"scm_repo,omitempty"`
+	RetentionPolicies   []string              `json:"retention_policies,omitempty"`
+	ImportTemplate      string                `json:"import_template,omitempty"`
+	ReleaseVerification string                `json:"release_verification,omitempty"`
+	ProviderTeams       []ProviderTeamMapping `json:"provider_teams,omitempty"`
+	CodeownersRules     []CodeownersRule      `json:"codeowners_rules,omitempty"`
+	ProviderRules       []ProviderRule        `json:"provider_rules,omitempty"`
 }
 
 func (p ProjectDefaults) Validate() error {
@@ -272,6 +396,45 @@ func (p ProjectDefaults) Validate() error {
 	}
 	if p.RequiredReviewer != "" && !p.RequiredReviewer.IsValid() {
 		return fmt.Errorf("invalid required reviewer: %s", p.RequiredReviewer)
+	}
+	if err := p.Worktrees.Validate(); err != nil {
+		return err
+	}
+	for _, mapping := range p.RunbookMappings {
+		if err := mapping.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, hint := range p.RoutingHints {
+		if err := hint.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, template := range p.GateTemplates {
+		if err := template.Validate(); err != nil {
+			return err
+		}
+	}
+	if p.SCMProvider != "" && !p.SCMProvider.IsValid() {
+		return fmt.Errorf("invalid project scm_provider: %s", p.SCMProvider)
+	}
+	for _, mapping := range p.ProviderTeams {
+		if err := mapping.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, rule := range p.CodeownersRules {
+		if err := rule.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, rule := range p.ProviderRules {
+		if err := rule.Validate(); err != nil {
+			return err
+		}
+	}
+	if err := p.ExecutionSafety.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -375,29 +538,44 @@ func (p ProgressSummary) Validate() error {
 
 // TicketSnapshot mirrors v1 ticket markdown frontmatter plus body sections.
 type TicketSnapshot struct {
-	ID            string          `json:"id"`
-	Project       string          `json:"project"`
-	Title         string          `json:"title"`
-	Type          TicketType      `json:"type"`
-	Status        Status          `json:"status"`
-	Priority      Priority        `json:"priority"`
-	Parent        string          `json:"parent,omitempty"`
-	Labels        []string        `json:"labels"`
-	Assignee      Actor           `json:"assignee,omitempty"`
-	Reviewer      Actor           `json:"reviewer,omitempty"`
-	BlockedBy     []string        `json:"blocked_by"`
-	Blocks        []string        `json:"blocks"`
-	CreatedAt     time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
-	SchemaVersion int             `json:"schema_version"`
-	Archived      bool            `json:"archived"`
-	Policy        TicketPolicy    `json:"policy,omitempty"`
-	ReviewState   ReviewState     `json:"review_state,omitempty"`
-	Lease         LeaseState      `json:"lease,omitempty"`
-	Template      string          `json:"template,omitempty"`
-	SkillHint     string          `json:"skill_hint,omitempty"`
-	Blueprint     string          `json:"blueprint,omitempty"`
-	Progress      ProgressSummary `json:"progress,omitempty"`
+	ID                   string           `json:"id"`
+	TicketUID            string           `json:"ticket_uid,omitempty"`
+	Project              string           `json:"project"`
+	Title                string           `json:"title"`
+	Type                 TicketType       `json:"type"`
+	Status               Status           `json:"status"`
+	Priority             Priority         `json:"priority"`
+	Parent               string           `json:"parent,omitempty"`
+	Labels               []string         `json:"labels"`
+	Assignee             Actor            `json:"assignee,omitempty"`
+	Reviewer             Actor            `json:"reviewer,omitempty"`
+	BlockedBy            []string         `json:"blocked_by"`
+	Blocks               []string         `json:"blocks"`
+	CreatedAt            time.Time        `json:"created_at"`
+	UpdatedAt            time.Time        `json:"updated_at"`
+	SchemaVersion        int              `json:"schema_version"`
+	Archived             bool             `json:"archived"`
+	Policy               TicketPolicy     `json:"policy,omitempty"`
+	ReviewState          ReviewState      `json:"review_state,omitempty"`
+	Lease                LeaseState       `json:"lease,omitempty"`
+	Template             string           `json:"template,omitempty"`
+	SkillHint            string           `json:"skill_hint,omitempty"`
+	Blueprint            string           `json:"blueprint,omitempty"`
+	Progress             ProgressSummary  `json:"progress,omitempty"`
+	RequiredCapabilities []string         `json:"required_capabilities,omitempty"`
+	DispatchMode         DispatchMode     `json:"dispatch_mode,omitempty"`
+	AllowParallelRuns    bool             `json:"allow_parallel_runs,omitempty"`
+	Runbook              string           `json:"runbook,omitempty"`
+	LatestRunID          string           `json:"latest_run_id,omitempty"`
+	LatestHandoffID      string           `json:"latest_handoff_id,omitempty"`
+	OpenGateIDs          []string         `json:"open_gate_ids,omitempty"`
+	LastDispatchAt       time.Time        `json:"last_dispatch_at,omitempty"`
+	ChangeIDs            []string         `json:"change_ids,omitempty"`
+	ChangeReadyState     ChangeReadyState `json:"change_ready_state,omitempty"`
+	ChangeReadyReasons   []string         `json:"change_ready_reasons,omitempty"`
+	PermissionProfiles   []string         `json:"permission_profiles,omitempty"`
+	Protected            bool             `json:"protected,omitempty"`
+	Sensitive            bool             `json:"sensitive,omitempty"`
 
 	Summary            string   `json:"summary,omitempty"`
 	Description        string   `json:"description,omitempty"`
@@ -452,6 +630,17 @@ func (t TicketSnapshot) ValidateForCreate() error {
 	if err := t.Progress.Validate(); err != nil {
 		return err
 	}
+	if t.DispatchMode != "" && !t.DispatchMode.IsValid() {
+		return fmt.Errorf("invalid dispatch mode: %s", t.DispatchMode)
+	}
+	if t.ChangeReadyState != "" && !t.ChangeReadyState.IsValid() {
+		return fmt.Errorf("invalid change_ready_state: %s", t.ChangeReadyState)
+	}
+	for _, capability := range t.RequiredCapabilities {
+		if strings.TrimSpace(capability) == "" {
+			return fmt.Errorf("required_capabilities cannot contain blanks")
+		}
+	}
 	return nil
 }
 
@@ -479,6 +668,9 @@ func NormalizeProject(project Project) Project {
 	if project.Defaults.LeaseTTLMinutes == 0 {
 		project.Defaults.LeaseTTLMinutes = int(DefaultLeaseTTL / time.Minute)
 	}
+	if project.Defaults.Worktrees.DefaultMode == "" {
+		project.Defaults.Worktrees.DefaultMode = WorktreeModePerRun
+	}
 	if project.SchemaVersion == 0 {
 		project.SchemaVersion = SchemaVersionV1
 	}
@@ -492,6 +684,9 @@ func NormalizeTicketSnapshot(ticket TicketSnapshot) TicketSnapshot {
 	if ticket.SchemaVersion == 0 {
 		ticket.SchemaVersion = SchemaVersionV1
 	}
+	if ticket.TicketUID == "" {
+		ticket.TicketUID = TicketUID(ticket.Project, ticket.ID)
+	}
 	if ticket.Labels == nil {
 		ticket.Labels = []string{}
 	}
@@ -504,8 +699,26 @@ func NormalizeTicketSnapshot(ticket TicketSnapshot) TicketSnapshot {
 	if ticket.AcceptanceCriteria == nil {
 		ticket.AcceptanceCriteria = []string{}
 	}
+	if ticket.RequiredCapabilities == nil {
+		ticket.RequiredCapabilities = []string{}
+	}
+	if ticket.OpenGateIDs == nil {
+		ticket.OpenGateIDs = []string{}
+	}
+	if ticket.ChangeIDs == nil {
+		ticket.ChangeIDs = []string{}
+	}
+	if ticket.ChangeReadyReasons == nil {
+		ticket.ChangeReadyReasons = []string{}
+	}
+	if ticket.PermissionProfiles == nil {
+		ticket.PermissionProfiles = []string{}
+	}
 	if ticket.ReviewState == "" {
 		ticket.ReviewState = ReviewStateNone
+	}
+	if ticket.DispatchMode == "" {
+		ticket.DispatchMode = DispatchModeManual
 	}
 	if ticket.SchemaVersion < SchemaVersionV2 && !ticket.Policy.HasOverrides() {
 		ticket.Policy.Inherit = true

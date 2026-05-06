@@ -13,15 +13,34 @@ import (
 )
 
 type ActionService struct {
-	Root        string
-	Projects    contracts.ProjectStore
-	Tickets     contracts.TicketStore
-	Events      contracts.EventLog
-	Projection  contracts.ProjectionStore
-	Clock       func() time.Time
-	LockManager WriteLockManager
-	Notifier    Notifier
-	Automation  *AutomationEngine
+	Root               string
+	Projects           contracts.ProjectStore
+	Tickets            contracts.TicketStore
+	Collaborators      contracts.CollaboratorStore
+	Memberships        contracts.MembershipStore
+	Mentions           contracts.MentionStore
+	SyncRemotes        contracts.SyncRemoteStore
+	SyncJobs           contracts.SyncJobStore
+	Conflicts          contracts.ConflictStore
+	Agents             contracts.AgentStore
+	PermissionProfiles contracts.PermissionProfileStore
+	Runs               contracts.RunStore
+	Runbooks           contracts.RunbookStore
+	Gates              contracts.GateStore
+	Evidence           contracts.EvidenceStore
+	Handoffs           contracts.HandoffStore
+	Changes            contracts.ChangeStore
+	Checks             contracts.CheckStore
+	ImportJobs         contracts.ImportJobStore
+	ExportBundles      contracts.ExportBundleStore
+	RetentionPolicies  contracts.RetentionPolicyStore
+	Archives           contracts.ArchiveRecordStore
+	Events             contracts.EventLog
+	Projection         contracts.ProjectionStore
+	Clock              func() time.Time
+	LockManager        WriteLockManager
+	Notifier           Notifier
+	Automation         *AutomationEngine
 }
 
 func NewActionService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time, locks WriteLockManager, notifier Notifier, automation *AutomationEngine) *ActionService {
@@ -33,7 +52,7 @@ func NewActionService(root string, projects contracts.ProjectStore, tickets cont
 		fm.Root = canonicalRoot
 		locks = fm
 	}
-	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
+	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Collaborators: CollaboratorStore{Root: canonicalRoot}, Memberships: MembershipStore{Root: canonicalRoot}, Mentions: MentionStore{Root: canonicalRoot}, SyncRemotes: SyncRemoteStore{Root: canonicalRoot}, SyncJobs: SyncJobStore{Root: canonicalRoot}, Conflicts: ConflictStore{Root: canonicalRoot}, Agents: AgentStore{Root: canonicalRoot}, PermissionProfiles: PermissionProfileStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Gates: GateStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Changes: ChangeStore{Root: canonicalRoot}, Checks: CheckStore{Root: canonicalRoot}, ImportJobs: ImportJobStore{Root: canonicalRoot}, ExportBundles: ExportBundleStore{Root: canonicalRoot}, RetentionPolicies: RetentionPolicyStore{Root: canonicalRoot}, Archives: ArchiveRecordStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
 }
 
 func (s *ActionService) now() time.Time {
@@ -51,26 +70,46 @@ func (s *ActionService) newEvent(ctx context.Context, project string, at time.Ti
 	if !lockHeld(ctx) {
 		return contracts.Event{}, apperr.New(apperr.CodeInternal, "event allocation requires workspace write lock")
 	}
+	workspaceID, err := ensureWorkspaceIdentity(s.Root)
+	if err != nil {
+		return contracts.Event{}, err
+	}
 	eventID, err := s.NextEventID(ctx, project)
 	if err != nil {
 		return contracts.Event{}, err
 	}
-	return contracts.Event{
-		EventID:       eventID,
-		Timestamp:     at.UTC(),
-		Actor:         actor,
-		Reason:        reason,
-		Type:          eventType,
-		Project:       project,
-		TicketID:      ticketID,
-		Payload:       payload,
-		Metadata:      eventMetadataFromContext(ctx, actor),
-		SchemaVersion: contracts.CurrentSchemaVersion,
-	}, nil
+	logicalClock, err := s.NextLogicalClock(ctx)
+	if err != nil {
+		return contracts.Event{}, err
+	}
+	return contracts.NormalizeEvent(contracts.Event{
+		EventID:           eventID,
+		EventUID:          contracts.CanonicalEventUID(contracts.Event{EventID: eventID, Timestamp: at.UTC(), OriginWorkspaceID: workspaceID, LogicalClock: logicalClock, Type: eventType, Project: project, TicketID: ticketID, SchemaVersion: contracts.CurrentSchemaVersion}),
+		Timestamp:         at.UTC(),
+		OriginWorkspaceID: workspaceID,
+		LogicalClock:      logicalClock,
+		Actor:             actor,
+		Reason:            reason,
+		Type:              eventType,
+		Project:           project,
+		TicketID:          ticketID,
+		Payload:           payload,
+		Metadata:          eventMetadataFromContext(ctx, actor),
+		SchemaVersion:     contracts.CurrentSchemaVersion,
+	}), nil
 }
 
 func (s *ActionService) commitMutation(ctx context.Context, purpose string, canonicalKind string, event contracts.Event, writeCanonical func(context.Context) error) error {
 	ctx = contextWithDefaultReplayMode(ctx)
+	if lockHeld(ctx) {
+		normalized, err := s.normalizeAppendOnlyEvent(ctx, event)
+		if err != nil {
+			return err
+		}
+		event = normalized
+	} else {
+		event = contracts.NormalizeEvent(event)
+	}
 	journal, err := s.journal().Begin(purpose, canonicalKind, event)
 	if err != nil {
 		return err
@@ -150,6 +189,25 @@ func (s *ActionService) NextEventID(ctx context.Context, project string) (int64,
 	})
 }
 
+func (s *ActionService) NextLogicalClock(ctx context.Context) (int64, error) {
+	return withWriteLock(ctx, s.LockManager, "allocate logical clock", func(ctx context.Context) (int64, error) {
+		events, err := s.Events.StreamEvents(ctx, "", 0)
+		if err != nil {
+			return 0, err
+		}
+		var maxClock int64
+		for _, event := range events {
+			if event.LogicalClock > maxClock {
+				maxClock = event.LogicalClock
+			}
+			if event.LogicalClock == 0 && event.EventID > maxClock {
+				maxClock = event.EventID
+			}
+		}
+		return maxClock + 1, nil
+	})
+}
+
 func (s *ActionService) CreateProject(ctx context.Context, project contracts.Project) error {
 	_, err := withWriteLock(ctx, s.LockManager, "create project", func(ctx context.Context) (struct{}, error) {
 		return struct{}{}, s.Projects.CreateProject(ctx, contracts.NormalizeProject(project))
@@ -162,6 +220,63 @@ func (s *ActionService) UpdateProject(ctx context.Context, project contracts.Pro
 		return struct{}{}, s.Projects.UpdateProject(ctx, contracts.NormalizeProject(project))
 	})
 	return err
+}
+
+func (s *ActionService) SaveAgentProfile(ctx context.Context, profile contracts.AgentProfile, actor contracts.Actor, reason string) (contracts.AgentProfile, error) {
+	return withWriteLock(ctx, s.LockManager, "save agent profile", func(ctx context.Context) (contracts.AgentProfile, error) {
+		if !actor.IsValid() {
+			return contracts.AgentProfile{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+		}
+		profile.AgentID = sanitizeAgentID(profile.AgentID)
+		existing, err := s.Agents.LoadAgent(ctx, profile.AgentID)
+		eventType := contracts.EventAgentCreated
+		if err == nil {
+			eventType = contracts.EventAgentUpdated
+			if strings.TrimSpace(profile.DisplayName) == "" {
+				profile.DisplayName = existing.DisplayName
+			}
+		}
+		if !profile.Enabled && eventType == contracts.EventAgentCreated {
+			profile.Enabled = true
+		}
+		event, err := s.newEvent(ctx, workspaceProjectKey, s.now(), actor, reason, eventType, "", profile)
+		if err != nil {
+			return contracts.AgentProfile{}, err
+		}
+		if err := s.commitMutation(ctx, "save agent profile", "agent_profile", event, func(ctx context.Context) error {
+			return s.Agents.SaveAgent(ctx, profile)
+		}); err != nil {
+			return contracts.AgentProfile{}, err
+		}
+		return profile, nil
+	})
+}
+
+func (s *ActionService) SetAgentEnabled(ctx context.Context, agentID string, enabled bool, actor contracts.Actor, reason string) (contracts.AgentProfile, error) {
+	return withWriteLock(ctx, s.LockManager, "set agent enabled", func(ctx context.Context) (contracts.AgentProfile, error) {
+		if !actor.IsValid() {
+			return contracts.AgentProfile{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+		}
+		profile, err := s.Agents.LoadAgent(ctx, agentID)
+		if err != nil {
+			return contracts.AgentProfile{}, err
+		}
+		profile.Enabled = enabled
+		eventType := contracts.EventAgentDisabled
+		if enabled {
+			eventType = contracts.EventAgentEnabled
+		}
+		event, err := s.newEvent(ctx, workspaceProjectKey, s.now(), actor, reason, eventType, "", profile)
+		if err != nil {
+			return contracts.AgentProfile{}, err
+		}
+		if err := s.commitMutation(ctx, "set agent enabled", "agent_profile", event, func(ctx context.Context) error {
+			return s.Agents.SaveAgent(ctx, profile)
+		}); err != nil {
+			return contracts.AgentProfile{}, err
+		}
+		return profile, nil
+	})
 }
 
 func (s *ActionService) CreateTicket(ctx context.Context, ticket contracts.TicketSnapshot) error {
@@ -187,9 +302,35 @@ func (s *ActionService) SoftDeleteTicket(ctx context.Context, id string, actor c
 
 func (s *ActionService) AppendAndProject(ctx context.Context, event contracts.Event) error {
 	_, err := withWriteLock(ctx, s.LockManager, "append and project event", func(ctx context.Context) (struct{}, error) {
-		return struct{}{}, s.commitMutation(ctx, "append and project event", "event_only", event, nil)
+		normalized, err := s.normalizeAppendOnlyEvent(ctx, event)
+		if err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, s.commitMutation(ctx, "append and project event", "event_only", normalized, nil)
 	})
 	return err
+}
+
+func (s *ActionService) normalizeAppendOnlyEvent(ctx context.Context, event contracts.Event) (contracts.Event, error) {
+	event = contracts.NormalizeEvent(event)
+	if event.OriginWorkspaceID == "" {
+		workspaceID, err := ensureWorkspaceIdentity(s.Root)
+		if err != nil {
+			return contracts.Event{}, err
+		}
+		event.OriginWorkspaceID = workspaceID
+	}
+	if event.LogicalClock == 0 {
+		next, err := s.NextLogicalClock(ctx)
+		if err != nil {
+			return contracts.Event{}, err
+		}
+		event.LogicalClock = next
+	}
+	if event.EventUID == "" {
+		event.EventUID = contracts.CanonicalEventUID(event)
+	}
+	return contracts.NormalizeEvent(event), nil
 }
 
 func (s *ActionService) AllocateTicketID(ctx context.Context, project string) (string, error) {
@@ -356,7 +497,24 @@ func (s *ActionService) CommentTicket(ctx context.Context, ticketID string, body
 		if err != nil {
 			return struct{}{}, err
 		}
-		return struct{}{}, s.commitMutation(ctx, "comment ticket", "event_only", event, nil)
+		mentions, err := s.extractMentions(ctx, event, "ticket_comment", event.EventUID, ticket.ID, body)
+		if err != nil {
+			return struct{}{}, err
+		}
+		if err := s.commitMutation(ctx, "comment ticket", "comment", event, func(ctx context.Context) error {
+			for _, mention := range mentions.Mentions {
+				if err := s.Mentions.SaveMention(ctx, mention); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return struct{}{}, err
+		}
+		if err := s.recordMentionEvents(ctx, ticket.Project, actor, reason, mentions.Mentions); err != nil {
+			return struct{}{}, err
+		}
+		return struct{}{}, nil
 	})
 	return err
 }
@@ -721,6 +879,22 @@ func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, act
 		}
 		if ticket.ReviewState != contracts.ReviewStateApproved {
 			return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be approved before completion", ticket.ID))
+		}
+		if len(ticket.OpenGateIDs) > 0 {
+			return contracts.TicketSnapshot{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("ticket %s cannot complete while gates are open", ticket.ID))
+		}
+		actorAgent, _ := actorAgentProfile(ctx, s.Agents, actor)
+		changedFiles, known := permissionChangedFilesForTicket(ctx, s.Runs, s.Changes, s.Root, ticket)
+		if _, err := s.requirePermission(ctx, permissionEvalInput{
+			Action:            contracts.PermissionActionTicketComplete,
+			Actor:             actor,
+			Ticket:            ticket,
+			ActorAgent:        actorAgent,
+			Runbook:           permissionRunbook(ticket, nil),
+			ChangedFiles:      changedFiles,
+			ChangedFilesKnown: known,
+		}); err != nil {
+			return contracts.TicketSnapshot{}, err
 		}
 		if err := domain.CheckCompletionPermission(policy.CompletionMode, actor, ticket.Reviewer); err != nil {
 			return contracts.TicketSnapshot{}, &apperr.Error{Code: apperr.CodePermissionDenied, Message: err.Error(), Cause: err}
