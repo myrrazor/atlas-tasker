@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -215,5 +216,378 @@ func TestQueryServiceTicketDetailUsesProjection(t *testing.T) {
 	}
 	if len(detail.Comments) != 1 || detail.Comments[0] != "first comment" {
 		t.Fatalf("unexpected comments: %#v", detail.Comments)
+	}
+}
+
+func TestQueryServiceInspectIncludesQueueCategories(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 23, 3, 0, 0, 0, time.UTC)
+
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root}
+	eventsLog := &eventstore.Log{RootDir: root}
+	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventsLog)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer projection.Close()
+
+	if err := config.Save(root, contracts.TrackerConfig{
+		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
+		Actor:    contracts.ActorConfig{Default: contracts.Actor("agent:reviewer-1")},
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := projectStore.CreateProject(ctx, contracts.Project{
+		Key:       "APP",
+		Name:      "App",
+		CreatedAt: now,
+		Defaults:  contracts.ProjectDefaults{CompletionMode: contracts.CompletionModeDualGate},
+	}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket := contracts.TicketSnapshot{
+		ID:            "APP-1",
+		Project:       "APP",
+		Title:         "Inspect",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusInReview,
+		Priority:      contracts.PriorityHigh,
+		Reviewer:      contracts.Actor("agent:reviewer-1"),
+		ReviewState:   contracts.ReviewStateApproved,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	event := contracts.Event{
+		EventID:       1,
+		Timestamp:     now,
+		Actor:         contracts.Actor("human:owner"),
+		Type:          contracts.EventTicketCreated,
+		Project:       "APP",
+		TicketID:      ticket.ID,
+		Payload:       ticket,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := eventsLog.AppendEvent(ctx, event); err != nil {
+		t.Fatalf("append event: %v", err)
+	}
+	if err := projection.ApplyEvent(ctx, event); err != nil {
+		t.Fatalf("apply event: %v", err)
+	}
+
+	queries := NewQueryService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return now })
+	view, err := queries.InspectTicket(ctx, ticket.ID, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("inspect ticket: %v", err)
+	}
+	if view.BoardStatus != contracts.StatusInReview {
+		t.Fatalf("unexpected board status: %s", view.BoardStatus)
+	}
+	if len(view.QueueCategories) == 0 || view.QueueCategories[0] != QueueAwaitingOwner {
+		t.Fatalf("unexpected queue categories: %#v", view.QueueCategories)
+	}
+}
+
+func TestQueryServiceRunSavedView(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 24, 1, 0, 0, 0, time.UTC)
+
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root}
+	eventsLog := &eventstore.Log{RootDir: root}
+	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventsLog)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer projection.Close()
+
+	if err := config.Save(root, contracts.TrackerConfig{
+		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
+		Actor:    contracts.ActorConfig{Default: contracts.Actor("agent:builder-1")},
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	tickets := []contracts.TicketSnapshot{
+		{
+			ID:            "APP-1",
+			Project:       "APP",
+			Title:         "Ready work",
+			Type:          contracts.TicketTypeTask,
+			Status:        contracts.StatusReady,
+			Priority:      contracts.PriorityHigh,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		},
+		{
+			ID:            "APP-2",
+			Project:       "APP",
+			Title:         "Claimed work",
+			Type:          contracts.TicketTypeTask,
+			Status:        contracts.StatusInProgress,
+			Priority:      contracts.PriorityMedium,
+			CreatedAt:     now,
+			UpdatedAt:     now.Add(time.Minute),
+			SchemaVersion: contracts.CurrentSchemaVersion,
+			Lease: contracts.LeaseState{
+				Actor:      contracts.Actor("agent:builder-1"),
+				Kind:       contracts.LeaseKindWork,
+				AcquiredAt: now,
+				ExpiresAt:  now.Add(time.Hour),
+			},
+		},
+	}
+	for index, ticket := range tickets {
+		if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
+			t.Fatalf("create ticket: %v", err)
+		}
+		event := contracts.Event{
+			EventID:       int64(index + 1),
+			Timestamp:     ticket.UpdatedAt,
+			Actor:         contracts.Actor("human:owner"),
+			Type:          contracts.EventTicketCreated,
+			Project:       ticket.Project,
+			TicketID:      ticket.ID,
+			Payload:       ticket,
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		}
+		if err := eventsLog.AppendEvent(ctx, event); err != nil {
+			t.Fatalf("append event: %v", err)
+		}
+		if err := projection.ApplyEvent(ctx, event); err != nil {
+			t.Fatalf("apply event: %v", err)
+		}
+	}
+
+	views := ViewStore{Root: root}
+	if err := views.SaveView(contracts.SavedView{
+		Name:  "ready-search",
+		Kind:  contracts.SavedViewKindSearch,
+		Query: "status=ready",
+	}); err != nil {
+		t.Fatalf("save search view: %v", err)
+	}
+	if err := views.SaveView(contracts.SavedView{
+		Name:  "my-queue",
+		Kind:  contracts.SavedViewKindQueue,
+		Actor: contracts.Actor("agent:builder-1"),
+		Queue: contracts.SavedQueueConfig{Categories: []string{string(QueueClaimedByMe)}},
+	}); err != nil {
+		t.Fatalf("save queue view: %v", err)
+	}
+	if err := views.SaveView(contracts.SavedView{
+		Name:    "ready-board",
+		Kind:    contracts.SavedViewKindBoard,
+		Project: "APP",
+		Board:   contracts.SavedBoardConfig{Columns: []contracts.Status{contracts.StatusReady}},
+	}); err != nil {
+		t.Fatalf("save board view: %v", err)
+	}
+	if err := views.SaveView(contracts.SavedView{
+		Name:  "override-next",
+		Kind:  contracts.SavedViewKindNext,
+		Actor: contracts.Actor("agent:builder-2"),
+		Queue: contracts.SavedQueueConfig{Categories: []string{string(QueueReadyForMe)}},
+	}); err != nil {
+		t.Fatalf("save next view: %v", err)
+	}
+
+	queries := NewQueryService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return now })
+	searchResult, err := queries.RunSavedView(ctx, "ready-search", "")
+	if err != nil {
+		t.Fatalf("run search view: %v", err)
+	}
+	if len(searchResult.Tickets) != 1 || searchResult.Tickets[0].ID != "APP-1" {
+		t.Fatalf("unexpected search result: %#v", searchResult.Tickets)
+	}
+	queueResult, err := queries.RunSavedView(ctx, "my-queue", "")
+	if err != nil {
+		t.Fatalf("run queue view: %v", err)
+	}
+	if queueResult.Queue == nil || len(queueResult.Queue.Categories[QueueClaimedByMe]) != 1 {
+		t.Fatalf("unexpected queue result: %#v", queueResult.Queue)
+	}
+	if len(queueResult.Queue.Categories) != 1 {
+		t.Fatalf("expected filtered queue categories, got %#v", queueResult.Queue.Categories)
+	}
+	boardResult, err := queries.RunSavedView(ctx, "ready-board", "")
+	if err != nil {
+		t.Fatalf("run board view: %v", err)
+	}
+	if boardResult.Board == nil || len(boardResult.Board.Board.Columns) != 1 || len(boardResult.Board.Board.Columns[contracts.StatusReady]) != 1 {
+		t.Fatalf("unexpected board result: %#v", boardResult.Board)
+	}
+	nextResult, err := queries.RunSavedView(ctx, "override-next", contracts.Actor("agent:builder-1"))
+	if err != nil {
+		t.Fatalf("run next view: %v", err)
+	}
+	if nextResult.Actor != contracts.Actor("agent:builder-1") {
+		t.Fatalf("expected actor override to win, got %s", nextResult.Actor)
+	}
+	if nextResult.Next == nil || len(nextResult.Next.Entries) != 1 || nextResult.Next.Entries[0].Category != QueueReadyForMe {
+		t.Fatalf("unexpected next result: %#v", nextResult.Next)
+	}
+}
+
+func TestSavedViewFilterHelpers(t *testing.T) {
+	board := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady:    {{ID: "APP-1"}},
+		contracts.StatusBlocked:  {{ID: "APP-2"}},
+		contracts.StatusInReview: {{ID: "APP-3"}},
+	}}
+	filteredBoard := filterBoardColumns(board, []contracts.Status{contracts.StatusReady, contracts.StatusBlocked})
+	if len(filteredBoard.Columns) != 2 || len(filteredBoard.Columns[contracts.StatusReady]) != 1 || len(filteredBoard.Columns[contracts.StatusBlocked]) != 1 {
+		t.Fatalf("unexpected filtered board: %#v", filteredBoard)
+	}
+
+	entries := []NextEntry{
+		{Category: QueueReadyForMe, Entry: QueueEntry{Ticket: contracts.TicketSnapshot{ID: "APP-1"}}},
+		{Category: QueueClaimedByMe, Entry: QueueEntry{Ticket: contracts.TicketSnapshot{ID: "APP-2"}}},
+	}
+	filteredNext := filterNextEntries(entries, []string{string(QueueClaimedByMe)})
+	if len(filteredNext) != 1 || filteredNext[0].Entry.Ticket.ID != "APP-2" {
+		t.Fatalf("unexpected filtered next entries: %#v", filteredNext)
+	}
+
+	queue := map[QueueCategory][]QueueEntry{
+		QueueReadyForMe:  {{Ticket: contracts.TicketSnapshot{ID: "APP-1"}}},
+		QueueClaimedByMe: {{Ticket: contracts.TicketSnapshot{ID: "APP-2"}}},
+	}
+	filteredQueue := filterQueueView(queue, []string{string(QueueClaimedByMe)})
+	if len(filteredQueue) != 1 || len(filteredQueue[QueueClaimedByMe]) != 1 || filteredQueue[QueueClaimedByMe][0].Ticket.ID != "APP-2" {
+		t.Fatalf("unexpected filtered queue: %#v", filteredQueue)
+	}
+}
+
+func TestQueryServiceTemplateNextAndProgress(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 23, 5, 0, 0, 0, time.UTC)
+
+	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "templates"), 0o755); err != nil {
+		t.Fatalf("mkdir templates: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(storage.TrackerDir(root), "templates", "design.md"), []byte(`---
+type: task
+labels: [design]
+blueprint: design
+skill_hint: design
+---
+# Summary
+
+## Description
+
+Map the UX.
+
+## Acceptance Criteria
+- Wireframe exists
+`), 0o644); err != nil {
+		t.Fatalf("write template: %v", err)
+	}
+
+	projectStore := mdstore.ProjectStore{RootDir: root}
+	ticketStore := mdstore.TicketStore{RootDir: root}
+	eventsLog := &eventstore.Log{RootDir: root}
+	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventsLog)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer projection.Close()
+
+	if err := config.Save(root, contracts.TrackerConfig{
+		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
+		Actor:    contracts.ActorConfig{Default: contracts.Actor("agent:builder-1")},
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	epic := contracts.TicketSnapshot{
+		ID:            "APP-1",
+		Project:       "APP",
+		Title:         "Epic",
+		Type:          contracts.TicketTypeEpic,
+		Status:        contracts.StatusInProgress,
+		Priority:      contracts.PriorityHigh,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	child := contracts.TicketSnapshot{
+		ID:            "APP-2",
+		Project:       "APP",
+		Title:         "Child",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusDone,
+		Priority:      contracts.PriorityCritical,
+		Parent:        epic.ID,
+		CreatedAt:     now,
+		UpdatedAt:     now.Add(time.Minute),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	ready := contracts.TicketSnapshot{
+		ID:            "APP-3",
+		Project:       "APP",
+		Title:         "Ready",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusReady,
+		Priority:      contracts.PriorityMedium,
+		CreatedAt:     now,
+		UpdatedAt:     now.Add(2 * time.Minute),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	for index, ticket := range []contracts.TicketSnapshot{epic, child, ready} {
+		if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
+			t.Fatalf("create ticket: %v", err)
+		}
+		event := contracts.Event{
+			EventID:       int64(index + 1),
+			Timestamp:     ticket.UpdatedAt,
+			Actor:         contracts.Actor("human:owner"),
+			Type:          contracts.EventTicketCreated,
+			Project:       ticket.Project,
+			TicketID:      ticket.ID,
+			Payload:       ticket,
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		}
+		if err := eventsLog.AppendEvent(ctx, event); err != nil {
+			t.Fatalf("append event: %v", err)
+		}
+		if err := projection.ApplyEvent(ctx, event); err != nil {
+			t.Fatalf("apply event: %v", err)
+		}
+	}
+
+	queries := NewQueryService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return now })
+	template, err := queries.Template(ctx, "design")
+	if err != nil {
+		t.Fatalf("template: %v", err)
+	}
+	if template.Blueprint != "design" || template.Description != "Map the UX." {
+		t.Fatalf("unexpected template: %#v", template)
+	}
+	detail, err := queries.TicketDetail(ctx, epic.ID)
+	if err != nil {
+		t.Fatalf("ticket detail: %v", err)
+	}
+	if detail.Ticket.Progress.Percent != 100 || detail.Ticket.Progress.TotalChildren != 1 {
+		t.Fatalf("unexpected progress: %#v", detail.Ticket.Progress)
+	}
+	next, err := queries.Next(ctx, "")
+	if err != nil {
+		t.Fatalf("next: %v", err)
+	}
+	if len(next.Entries) == 0 || next.Entries[0].Category != QueueReadyForMe || next.Entries[0].Entry.Ticket.ID != ready.ID {
+		t.Fatalf("unexpected next entries: %#v", next.Entries)
 	}
 }
