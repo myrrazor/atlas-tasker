@@ -1,17 +1,17 @@
 ?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/apperr	0.144s
-ok  	github.com/myrrazor/atlas-tasker/internal/cli	17.164s
-ok  	github.com/myrrazor/atlas-tasker/internal/config	0.141s
-ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.362s
-ok  	github.com/myrrazor/atlas-tasker/internal/domain	0.597s
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations	1.293s
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp	1.109s
-ok  	github.com/myrrazor/atlas-tasker/internal/render	0.273s
-ok  	github.com/myrrazor/atlas-tasker/internal/service	4.890s
-ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	1.187s
+ok  	github.com/myrrazor/atlas-tasker/internal/apperr	0.160s
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	17.673s
+ok  	github.com/myrrazor/atlas-tasker/internal/config	0.142s
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.244s
+ok  	github.com/myrrazor/atlas-tasker/internal/domain	0.667s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations	0.565s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp	0.826s
+ok  	github.com/myrrazor/atlas-tasker/internal/render	0.931s
+ok  	github.com/myrrazor/atlas-tasker/internal/service	5.429s
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	1.183s
 ?   	github.com/myrrazor/atlas-tasker/internal/storage	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	0.928s
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	1.273s
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	1.308s
-ok  	github.com/myrrazor/atlas-tasker/internal/testutil	1.291s
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	2.585s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	1.294s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	1.301s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	1.377s
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	1.126s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	2.550s

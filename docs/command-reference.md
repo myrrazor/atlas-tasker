@@ -120,6 +120,13 @@
 - `tracker trust bind-key <COLLABORATOR-ID> <PUBLIC-KEY-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker trust revoke-key <PUBLIC-KEY-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker trust explain <TARGET>`
+- `tracker governance pack list`
+- `tracker governance pack view <PACK-ID>`
+- `tracker governance pack create <NAME> [--scope <SCOPE>] [--protected-action <ACTION>]... [--required-signatures <N>] [--quorum-count <N>] [--quorum-role <ROLE>]... [--separation-event <EVENT>]... [--allow-owner-override] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker governance pack apply <PACK-ID> [--scope <SCOPE>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker governance validate`
+- `tracker governance explain <TARGET> [--action <ACTION>] [--actor <ACTOR>] [--reason <TEXT>] [--approval-actor <ACTOR>]... [--trusted-signatures <N>]`
+- `tracker governance simulate <ACTION> [--ticket <ID>] [--run <ID>] [--change <ID>] [--gate <ID>] [--actor <ACTOR>] [--reason <TEXT>] [--approval-actor <ACTOR>]... [--trusted-signatures <N>]`
 
 ## Agents
 
@@ -248,6 +255,37 @@ Rules:
 - sync publications store signatures in the matching publication metadata; directory-level `publication.json` is only used when it names the requested archive
 - verification is pure by default and returns `missing_signature` for unsigned artifacts
 
+## Governance
+
+- `tracker governance pack list`
+- `tracker governance pack view <PACK-ID>`
+- `tracker governance pack create <NAME> [--scope <SCOPE>] [--protected-action <ACTION>]... [--required-signatures <N>] [--quorum-count <N>] [--quorum-role <ROLE>]... [--separation-event <EVENT>]... [--allow-owner-override] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker governance pack apply <PACK-ID> [--scope <SCOPE>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker governance validate`
+- `tracker governance explain <TARGET> [--action <ACTION>] [--actor <ACTOR>] [--reason <TEXT>] [--approval-actor <ACTOR>]... [--trusted-signatures <N>]`
+- `tracker governance simulate <ACTION> [--ticket <ID>] [--run <ID>] [--change <ID>] [--gate <ID>] [--actor <ACTOR>] [--reason <TEXT>] [--approval-actor <ACTOR>]... [--trusted-signatures <N>]`
+
+Rules:
+
+- governance packs and applied policies are TOML files under `.tracker/governance/`
+- governance TOML uses the same snake_case field names as JSON output, and `tracker governance validate` emits a structured report plus non-zero exit when any pack or policy is invalid
+- all protected write paths use one evaluator after legacy permission checks and before live side effects
+- gate rejection is not governed by `gate_approve`; PR-704 only protects gate approval and waiver
+- trusted-signature requirements are not bypassed by owner override
+- structured CSV/GitHub import apply uses `import_apply`; signed sync/bundle imports use `sync_import_apply` and `bundle_import_apply`
+- sync export/import governance runs before migration scaffolding writes, so denied operations do not stamp migration state
+- `explain` and `simulate` accept `--reason` so reason-required owner overrides can be modeled before a mutation
+- PR-704 only accepts trusted-signature requirements for artifact import actions with real signature evidence: `bundle_import_apply` and `sync_import_apply`
+- duplicate envelopes from the same trusted signer count once toward trusted-signature requirements
+- quorum rules with `require_trusted_signatures` count distinct trusted signer identities instead of gate approval actors
+- before PR-705 lands inherited labels, classification-scoped governance only treats legacy `protected`/`sensitive` tickets as `classification:restricted`
+- remote sync pulls enforce `sync_import_apply` once and do not also require manual `bundle_import_apply` policy
+- denied remote sync pulls do not promote fetched publications or Git fetch caches into the durable sync mirror
+- project-filtered archive apply/restore evaluates project-scoped governance policies
+- applying a pack to multiple scopes creates scope-bound applied policy ids instead of overwriting the earlier scope
+- quorum counts root collaborator identities at action time; suspended or removed collaborators' old approvals stay historical but do not satisfy active quorum
+- owner overrides require an explicit policy rule on every failed matching policy, must also satisfy matching `owner_override` policies, and record `governance.override.recorded` only after the protected mutation succeeds
+
 ## Inbox
 
 - `tracker inbox`
@@ -336,6 +374,7 @@ Rules:
 - preview is deterministic and side-effect free with respect to imported canonical data; it records a persistent import-job snapshot and audit event
 - apply transitions the job through `validated`, `applying`, and then `applied` or `failed`
 - Atlas bundle export writes three sidecars under `.tracker/exports/`: the `.tar.gz` archive, `.manifest.json`, and `.sha256`
+- Atlas bundle export includes active governance packs and applied policies under `.tracker/governance/`
 - `export verify` works by bundle id or direct archive path and validates manifest membership plus per-file checksums
 - Atlas bundle import is snapshot-first: it restores canonical markdown snapshots into the target workspace, but it does not copy the source workspace's `.tracker/events/` files into the live target workspace
 - structured Jira CSV and GitHub JSON imports are create-only in v1.5; existing ticket ids are reported as conflicts during preview and block apply

@@ -117,6 +117,16 @@ func (s *ActionService) CreateExportBundle(ctx context.Context, scope string, ac
 		if scope != "workspace" {
 			return ExportBundleDetailView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unsupported export scope: %s", scope))
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionExportCreate,
+			Target: "workspace",
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return ExportBundleDetailView{}, err
+		}
 		bundleID := "bundle_" + NewOpaqueID()
 		manifestPath := filepath.Join(storage.ExportsDir(s.Root), bundleID+".manifest.json")
 		artifactPath := filepath.Join(storage.ExportsDir(s.Root), bundleID+".tar.gz")
@@ -169,6 +179,9 @@ func (s *ActionService) CreateExportBundle(ctx context.Context, scope string, ac
 			return s.ExportBundles.SaveExportBundle(ctx, bundle)
 		}); err != nil {
 			cleanupExportSidecars(manifestPath, artifactPath, checksumPath)
+			return ExportBundleDetailView{}, err
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
 			return ExportBundleDetailView{}, err
 		}
 		return ExportBundleDetailView{Bundle: bundle, FileCount: len(manifest.Files), GeneratedAt: s.now()}, nil
@@ -260,6 +273,26 @@ func (s *ActionService) ApplyImport(ctx context.Context, jobID string, actor con
 			}
 			return ImportJobDetailView{Job: job, Plan: plan, GeneratedAt: s.now()}, apperr.New(apperr.CodeConflict, "import preview has conflicts or errors")
 		}
+		trustedSignatures := 0
+		protectedAction := contracts.ProtectedActionImportApply
+		if plan.SourceType == contracts.ImportSourceAtlasBundle {
+			protectedAction = contracts.ProtectedActionBundleImportApply
+			count, signatureErr := s.trustedExportBundleSignatureCount(ctx, plan.SourcePath)
+			if signatureErr == nil {
+				trustedSignatures = count
+			}
+		}
+		governanceInput := GovernanceEvaluationInput{
+			Action:                protectedAction,
+			Target:                "workspace",
+			Actor:                 actor,
+			Reason:                reason,
+			TrustedSignatureCount: trustedSignatures,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return ImportJobDetailView{}, err
+		}
 		job.Status = contracts.ImportJobValidated
 		if err := s.saveImportJobStage(ctx, "validate import", actor, reason, contracts.EventImportValidated, job, false); err != nil {
 			return ImportJobDetailView{}, err
@@ -298,6 +331,9 @@ func (s *ActionService) ApplyImport(ctx context.Context, jobID string, actor con
 		}
 		if applyErr != nil {
 			return ImportJobDetailView{Job: job, Plan: plan, GeneratedAt: s.now()}, applyErr
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+			return ImportJobDetailView{}, err
 		}
 		return ImportJobDetailView{Job: job, Plan: plan, GeneratedAt: s.now()}, nil
 	})
@@ -414,6 +450,8 @@ func collectExportFiles(root string) ([]string, error) {
 		filepath.ToSlash(filepath.Join(".tracker", "security", "keys", "public")),
 		filepath.ToSlash(filepath.Join(".tracker", "security", "revocations")),
 		filepath.ToSlash(filepath.Join(".tracker", "security", "signatures")),
+		filepath.ToSlash(filepath.Join(".tracker", "governance", "policies")),
+		filepath.ToSlash(filepath.Join(".tracker", "governance", "packs")),
 	}
 	files := make([]string, 0)
 	seen := map[string]struct{}{}

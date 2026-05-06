@@ -118,25 +118,55 @@ func newVerifyCommand() *cobra.Command {
 func newGovernanceCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "governance", Short: "Manage v1.7 governance policy packs"}
 	pack := &cobra.Command{Use: "pack", Short: "Manage governance packs"}
-	packApply := v17MutationCommand("apply <PACK-ID>", "Apply a governance pack to a scope", "governance_pack_detail", cobra.ExactArgs(1))
+	packList := &cobra.Command{Use: "list", Short: "List governance packs", Args: cobra.NoArgs, RunE: runGovernancePackList}
+	packView := &cobra.Command{Use: "view <PACK-ID>", Short: "Show one governance pack", Args: cobra.ExactArgs(1), RunE: runGovernancePackView}
+	packCreate := &cobra.Command{Use: "create <NAME>", Short: "Create a governance pack", Args: cobra.ExactArgs(1), RunE: runGovernancePackCreate}
+	packCreate.Flags().String("policy-id", "", "Policy id; defaults to the pack name")
+	packCreate.Flags().String("scope", "workspace", "Policy scope: workspace|project:<KEY>|runbook:<NAME>|ticket_type:<TYPE>|classification:<LEVEL>")
+	packCreate.Flags().StringArray("protected-action", nil, "Protected action; repeat to protect multiple actions")
+	packCreate.Flags().Int("required-signatures", 0, "Trusted signatures required before the action can proceed")
+	packCreate.Flags().Int("quorum-count", 0, "Required approver count for each protected action")
+	packCreate.Flags().StringArray("quorum-role", nil, "Allowed quorum membership role; repeat to allow multiple roles")
+	packCreate.Flags().StringArray("separation-event", nil, "Prior event type that current actor cannot also own")
+	packCreate.Flags().Bool("allow-owner-override", false, "Allow human:owner to override quorum/separation denials")
+	packCreate.Flags().Bool("require-override-reason", true, "Require a non-empty reason for owner override")
+	packCreate.Flags().Bool("require-trusted-signature", false, "Require trusted signature evidence for quorum/override rules")
+	packApply := &cobra.Command{Use: "apply <PACK-ID>", Short: "Apply a governance pack to a scope", Args: cobra.ExactArgs(1), RunE: runGovernancePackApply}
 	packApply.Flags().String("scope", "", "Policy scope, e.g. project:APP")
+	for _, sub := range []*cobra.Command{packList, packView} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	for _, sub := range []*cobra.Command{packCreate, packApply} {
+		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
+		addReadOutputFlags(sub, &outputFlags{})
+	}
 	pack.AddCommand(
-		v17ReadCommand("list", "List governance packs", "governance_pack_list", cobra.NoArgs),
-		v17ReadCommand("view <PACK-ID>", "Show one governance pack", "governance_pack_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("create <NAME>", "Create a governance pack", "governance_pack_detail", cobra.ExactArgs(1)),
+		packList,
+		packView,
+		packCreate,
 		packApply,
 	)
 	cmd.AddCommand(pack)
-	simulate := v17ReadCommand("simulate <ACTION>", "Simulate a protected action", "governance_simulation_result", cobra.ExactArgs(1))
+	validate := &cobra.Command{Use: "validate", Short: "Validate governance packs", Args: cobra.NoArgs, RunE: runGovernanceValidate}
+	explain := &cobra.Command{Use: "explain <TARGET>", Short: "Explain governance for a target", Args: cobra.ExactArgs(1), RunE: runGovernanceExplain}
+	explain.Flags().String("action", string(contracts.ProtectedActionTicketComplete), "Protected action to explain")
+	explain.Flags().String("actor", "human:owner", "Actor to explain")
+	explain.Flags().String("reason", "", "Reason to include in the evaluation")
+	explain.Flags().StringArray("approval-actor", nil, "Approval actor to include in the evaluation")
+	explain.Flags().Int("trusted-signatures", 0, "Trusted signature count to include in the evaluation")
+	simulate := &cobra.Command{Use: "simulate <ACTION>", Short: "Simulate a protected action", Args: cobra.ExactArgs(1), RunE: runGovernanceSimulate}
 	simulate.Flags().String("actor", "", "Actor to simulate")
+	simulate.Flags().String("reason", "", "Reason to include in the evaluation")
 	simulate.Flags().String("ticket", "", "Ticket id")
 	simulate.Flags().String("run", "", "Run id")
 	simulate.Flags().String("change", "", "Change id")
-	cmd.AddCommand(
-		v17ReadCommand("validate", "Validate governance packs", "governance_validation_result", cobra.NoArgs),
-		v17ReadCommand("explain <TARGET>", "Explain governance for a target", "governance_explanation", cobra.ExactArgs(1)),
-		simulate,
-	)
+	simulate.Flags().String("gate", "", "Gate id")
+	simulate.Flags().StringArray("approval-actor", nil, "Approval actor to include in the evaluation")
+	simulate.Flags().Int("trusted-signatures", 0, "Trusted signature count to include in the evaluation")
+	for _, sub := range []*cobra.Command{validate, explain, simulate} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	cmd.AddCommand(validate, explain, simulate)
 	return cmd
 }
 
@@ -463,6 +493,129 @@ func runVerifySyncPublicationSignature(cmd *cobra.Command, args []string) error 
 	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
 }
 
+func runGovernancePackCreate(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	opts, err := governancePackCreateOptionsFromFlags(cmd, args[0])
+	if err != nil {
+		return err
+	}
+	view, err := w.actions.CreateGovernancePack(cmd.Context(), opts, actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, governancePackMarkdown(view), governancePackPretty(view))
+}
+
+func runGovernancePackApply(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	scope, _ := cmd.Flags().GetString("scope")
+	view, err := w.actions.ApplyGovernancePack(cmd.Context(), args[0], scope, actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, governancePackMarkdown(view), governancePackPretty(view))
+}
+
+func runGovernancePackList(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ListGovernancePacks(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, governancePackListMarkdown(view), governancePackListPretty(view))
+}
+
+func runGovernancePackView(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.GovernancePackDetail(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, governancePackMarkdown(view), governancePackPretty(view))
+}
+
+func runGovernanceValidate(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ValidateGovernance(cmd.Context())
+	if err != nil {
+		return err
+	}
+	pretty := fmt.Sprintf("governance valid=%t policies=%d packs=%d", view.Valid, view.Policies, view.Packs)
+	if len(view.Errors) > 0 {
+		pretty += "\n" + strings.Join(view.Errors, "\n")
+	}
+	if err := writeCommandOutput(cmd, view, governanceValidationMarkdown(view), pretty); err != nil {
+		return err
+	}
+	if !view.Valid {
+		return apperr.New(apperr.CodeConflict, "governance validation failed")
+	}
+	return nil
+}
+
+func runGovernanceExplain(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actionRaw, _ := cmd.Flags().GetString("action")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	input, err := governanceEvaluationInputFromFlags(cmd, contracts.ProtectedAction(strings.TrimSpace(actionRaw)), contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	input.Target = args[0]
+	view, err := w.actions.ExplainGovernance(cmd.Context(), input)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, governanceExplanationMarkdown(view), governanceExplanationPretty(view))
+}
+
+func runGovernanceSimulate(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	if strings.TrimSpace(actorRaw) == "" {
+		actorRaw = "human:owner"
+	}
+	input, err := governanceEvaluationInputFromFlags(cmd, contracts.ProtectedAction(strings.TrimSpace(args[0])), contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	view, err := w.actions.SimulateGovernance(cmd.Context(), input)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, governanceExplanationMarkdown(view.Explanation), governanceExplanationPretty(view.Explanation))
+}
+
 func mutationActorReason(cmd *cobra.Command) (contracts.Actor, string) {
 	actor, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
@@ -519,6 +672,172 @@ func signatureIntegrityStatus(integrity any) (bool, bool, []string, []string) {
 	default:
 		return false, false, nil, nil
 	}
+}
+
+func governancePackCreateOptionsFromFlags(cmd *cobra.Command, name string) (service.GovernancePackCreateOptions, error) {
+	policyID, _ := cmd.Flags().GetString("policy-id")
+	scope, _ := cmd.Flags().GetString("scope")
+	actionRaw, _ := cmd.Flags().GetStringArray("protected-action")
+	actions := make([]contracts.ProtectedAction, 0, len(actionRaw))
+	for _, raw := range actionRaw {
+		for _, item := range strings.Split(raw, ",") {
+			action := contracts.ProtectedAction(strings.TrimSpace(item))
+			if action == "" {
+				continue
+			}
+			if !action.IsValid() {
+				return service.GovernancePackCreateOptions{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid protected action: %s", action))
+			}
+			actions = append(actions, action)
+		}
+	}
+	roleRaw, _ := cmd.Flags().GetStringArray("quorum-role")
+	roles := make([]contracts.MembershipRole, 0, len(roleRaw))
+	for _, raw := range roleRaw {
+		for _, item := range strings.Split(raw, ",") {
+			role := contracts.MembershipRole(strings.TrimSpace(item))
+			if role == "" {
+				continue
+			}
+			if !role.IsValid() {
+				return service.GovernancePackCreateOptions{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid quorum role: %s", role))
+			}
+			roles = append(roles, role)
+		}
+	}
+	eventRaw, _ := cmd.Flags().GetStringArray("separation-event")
+	events := make([]contracts.EventType, 0, len(eventRaw))
+	for _, raw := range eventRaw {
+		for _, item := range strings.Split(raw, ",") {
+			eventType := contracts.EventType(strings.TrimSpace(item))
+			if eventType == "" {
+				continue
+			}
+			if !eventType.IsValid() {
+				return service.GovernancePackCreateOptions{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid separation event: %s", eventType))
+			}
+			events = append(events, eventType)
+		}
+	}
+	requiredSignatures, _ := cmd.Flags().GetInt("required-signatures")
+	quorumCount, _ := cmd.Flags().GetInt("quorum-count")
+	allowOverride, _ := cmd.Flags().GetBool("allow-owner-override")
+	requireOverrideReason, _ := cmd.Flags().GetBool("require-override-reason")
+	requireTrustedSignature, _ := cmd.Flags().GetBool("require-trusted-signature")
+	return service.GovernancePackCreateOptions{
+		Name:                    strings.TrimSpace(name),
+		PolicyID:                strings.TrimSpace(policyID),
+		Scope:                   strings.TrimSpace(scope),
+		ProtectedActions:        actions,
+		RequiredSignatures:      requiredSignatures,
+		QuorumCount:             quorumCount,
+		QuorumRoles:             roles,
+		SeparationEventTypes:    events,
+		AllowOwnerOverride:      allowOverride,
+		RequireOverrideReason:   requireOverrideReason,
+		RequireTrustedSignature: requireTrustedSignature,
+	}, nil
+}
+
+func governanceEvaluationInputFromFlags(cmd *cobra.Command, action contracts.ProtectedAction, actor contracts.Actor) (service.GovernanceEvaluationInput, error) {
+	if !action.IsValid() {
+		return service.GovernanceEvaluationInput{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid protected action: %s", action))
+	}
+	if !actor.IsValid() {
+		return service.GovernanceEvaluationInput{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+	}
+	ticketID, _ := cmd.Flags().GetString("ticket")
+	runID, _ := cmd.Flags().GetString("run")
+	changeID, _ := cmd.Flags().GetString("change")
+	gateID, _ := cmd.Flags().GetString("gate")
+	reason, _ := cmd.Flags().GetString("reason")
+	approvalRaw, _ := cmd.Flags().GetStringArray("approval-actor")
+	approvals := make([]contracts.Actor, 0, len(approvalRaw))
+	for _, raw := range approvalRaw {
+		for _, item := range strings.Split(raw, ",") {
+			approval := contracts.Actor(strings.TrimSpace(item))
+			if approval == "" {
+				continue
+			}
+			if !approval.IsValid() {
+				return service.GovernanceEvaluationInput{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid approval actor: %s", approval))
+			}
+			approvals = append(approvals, approval)
+		}
+	}
+	trustedSignatures, _ := cmd.Flags().GetInt("trusted-signatures")
+	return service.GovernanceEvaluationInput{
+		Action:                action,
+		Actor:                 actor,
+		TicketID:              strings.TrimSpace(ticketID),
+		RunID:                 strings.TrimSpace(runID),
+		ChangeID:              strings.TrimSpace(changeID),
+		GateID:                strings.TrimSpace(gateID),
+		Reason:                strings.TrimSpace(reason),
+		ApprovalActors:        approvals,
+		TrustedSignatureCount: trustedSignatures,
+	}, nil
+}
+
+func governancePackPretty(view service.GovernancePackDetailView) string {
+	return fmt.Sprintf("%s policies=%d", view.Pack.PackID, len(view.Pack.Policies))
+}
+
+func governancePackMarkdown(view service.GovernancePackDetailView) string {
+	lines := []string{"# Governance Pack", "", fmt.Sprintf("- Pack: `%s`", view.Pack.PackID), fmt.Sprintf("- Policies: `%d`", len(view.Pack.Policies))}
+	for _, policy := range view.Pack.Policies {
+		lines = append(lines, fmt.Sprintf("- Policy `%s`: `%s` `%s`", policy.PolicyID, policy.ScopeKind, policy.ScopeID))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func governancePackListPretty(view service.GovernancePackListView) string {
+	if len(view.Items) == 0 {
+		return "no governance packs"
+	}
+	lines := make([]string, 0, len(view.Items))
+	for _, pack := range view.Items {
+		lines = append(lines, fmt.Sprintf("%s policies=%d", pack.PackID, len(pack.Policies)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func governancePackListMarkdown(view service.GovernancePackListView) string {
+	if len(view.Items) == 0 {
+		return "# Governance Packs\n\nNo governance packs.\n"
+	}
+	lines := []string{"# Governance Packs", ""}
+	for _, pack := range view.Items {
+		lines = append(lines, fmt.Sprintf("- `%s` policies=%d", pack.PackID, len(pack.Policies)))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func governanceValidationMarkdown(view service.GovernanceValidationView) string {
+	lines := []string{"# Governance Validation", "", fmt.Sprintf("- Valid: `%t`", view.Valid), fmt.Sprintf("- Policies: `%d`", view.Policies), fmt.Sprintf("- Packs: `%d`", view.Packs)}
+	for _, item := range view.Errors {
+		lines = append(lines, fmt.Sprintf("- Error: `%s`", item))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func governanceExplanationPretty(view contracts.GovernanceExplanation) string {
+	out := fmt.Sprintf("%s %s allowed=%t", view.Action, view.Target, view.Allowed)
+	if len(view.ReasonCodes) > 0 {
+		out += " reasons=" + strings.Join(view.ReasonCodes, ",")
+	}
+	return out
+}
+
+func governanceExplanationMarkdown(view contracts.GovernanceExplanation) string {
+	lines := []string{"# Governance", "", fmt.Sprintf("- Action: `%s`", view.Action), fmt.Sprintf("- Target: `%s`", view.Target), fmt.Sprintf("- Actor: `%s`", view.Actor), fmt.Sprintf("- Allowed: `%t`", view.Allowed)}
+	for _, policy := range view.MatchedPolicies {
+		lines = append(lines, fmt.Sprintf("- Matched policy: `%s`", policy))
+	}
+	for _, reason := range view.ReasonCodes {
+		lines = append(lines, fmt.Sprintf("- Reason: `%s`", reason))
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func keyListPretty(view service.KeyListView) string {

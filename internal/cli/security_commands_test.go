@@ -45,7 +45,6 @@ func TestV17ReadStubJSONEnvelope(t *testing.T) {
 func TestV17PendingVerificationReadsFailClosed(t *testing.T) {
 	for _, args := range [][]string{
 		{"verify", "backup", "no-such-file"},
-		{"governance", "validate"},
 		{"backup", "verify", "backup_1"},
 		{"backup", "drill"},
 	} {
@@ -61,6 +60,177 @@ func TestV17PendingVerificationReadsFailClosed(t *testing.T) {
 		if strings.TrimSpace(out.String()) != "" {
 			t.Fatalf("%v should not write success-shaped output while failing closed:\n%s", args, out.String())
 		}
+	}
+}
+
+func TestV17GovernanceCLIAndProtectedCompletion(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Governed", "--type", "task", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_review", "--actor", "human:owner")
+	must("ticket", "approve", "APP-1", "--actor", "human:owner")
+
+	createdRaw := must(
+		"governance", "pack", "create", "Release quorum",
+		"--scope", "project:APP",
+		"--protected-action", "ticket_complete",
+		"--quorum-count", "1",
+		"--actor", "human:owner",
+		"--reason", "protect release completion",
+		"--json",
+	)
+	var created struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Pack          struct {
+			PackID   string `json:"pack_id"`
+			Policies []struct {
+				ScopeKind          string   `json:"scope_kind"`
+				ScopeID            string   `json:"scope_id"`
+				ProtectedActions   []string `json:"protected_actions"`
+				RequiredSignatures int      `json:"required_signatures"`
+				QuorumRules        []struct {
+					RequiredCount int `json:"required_count"`
+				} `json:"quorum_rules"`
+			} `json:"policies"`
+		} `json:"pack"`
+	}
+	if err := json.Unmarshal([]byte(createdRaw), &created); err != nil {
+		t.Fatalf("parse governance pack create: %v\n%s", err, createdRaw)
+	}
+	if created.FormatVersion != jsonFormatVersion || created.Kind != "governance_pack_detail" || created.Pack.PackID != "release-quorum" || len(created.Pack.Policies) != 1 {
+		t.Fatalf("unexpected governance pack create payload: %#v", created)
+	}
+	if created.Pack.Policies[0].ScopeKind != "project" || created.Pack.Policies[0].ScopeID != "APP" || len(created.Pack.Policies[0].QuorumRules) != 1 || created.Pack.Policies[0].QuorumRules[0].RequiredCount != 1 {
+		t.Fatalf("unexpected governance policy payload: %#v", created.Pack.Policies[0])
+	}
+	must("governance", "pack", "apply", created.Pack.PackID, "--scope", "project:APP", "--actor", "human:owner", "--reason", "enable release policy")
+
+	validateRaw := must("governance", "validate", "--json")
+	var validation struct {
+		Kind     string `json:"kind"`
+		Valid    bool   `json:"valid"`
+		Policies int    `json:"policies"`
+		Packs    int    `json:"packs"`
+	}
+	if err := json.Unmarshal([]byte(validateRaw), &validation); err != nil {
+		t.Fatalf("parse governance validate: %v\n%s", err, validateRaw)
+	}
+	if validation.Kind != "governance_validation_result" || !validation.Valid || validation.Policies != 1 || validation.Packs != 1 {
+		t.Fatalf("unexpected governance validation: %#v", validation)
+	}
+
+	blockedRaw := must("governance", "simulate", "ticket_complete", "--ticket", "APP-1", "--actor", "human:owner", "--json")
+	var blocked struct {
+		Explanation struct {
+			Allowed     bool     `json:"allowed"`
+			ReasonCodes []string `json:"reason_codes"`
+		} `json:"explanation"`
+	}
+	if err := json.Unmarshal([]byte(blockedRaw), &blocked); err != nil {
+		t.Fatalf("parse governance simulate: %v\n%s", err, blockedRaw)
+	}
+	if blocked.Explanation.Allowed || !strings.Contains(strings.Join(blocked.Explanation.ReasonCodes, ","), "quorum_unsatisfied") {
+		t.Fatalf("missing approval should block simulated completion: %#v", blocked.Explanation)
+	}
+	allowedRaw := must("governance", "simulate", "ticket_complete", "--ticket", "APP-1", "--actor", "human:owner", "--approval-actor", "human:owner", "--json")
+	if !strings.Contains(allowedRaw, `"allowed": true`) && !strings.Contains(allowedRaw, `"allowed":true`) {
+		t.Fatalf("approval actor should allow simulation:\n%s", allowedRaw)
+	}
+	if out, err := runCLI(t, "ticket", "complete", "APP-1", "--actor", "human:owner", "--reason", "ship"); err == nil || !strings.Contains(out+err.Error(), "quorum_unsatisfied") {
+		t.Fatalf("protected ticket complete should enforce governance, err=%v out=%s", err, out)
+	}
+}
+
+func TestV17GovernanceOwnerOverrideIsEvented(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Override", "--type", "task", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_review", "--actor", "human:owner")
+	must("ticket", "approve", "APP-1", "--actor", "human:owner")
+	packRaw := must(
+		"governance", "pack", "create", "Release quorum",
+		"--scope", "project:APP",
+		"--protected-action", "ticket_complete",
+		"--quorum-count", "2",
+		"--allow-owner-override",
+		"--actor", "human:owner",
+		"--reason", "protect owner override",
+		"--json",
+	)
+	var pack struct {
+		Pack struct {
+			PackID string `json:"pack_id"`
+		} `json:"pack"`
+	}
+	if err := json.Unmarshal([]byte(packRaw), &pack); err != nil {
+		t.Fatalf("parse override pack: %v\n%s", err, packRaw)
+	}
+	must("governance", "pack", "apply", pack.Pack.PackID, "--scope", "project:APP", "--actor", "human:owner", "--reason", "enable override policy")
+	overrideRaw := must("governance", "simulate", "ticket_complete", "--ticket", "APP-1", "--actor", "human:owner", "--reason", "emergency release override", "--json")
+	if !strings.Contains(overrideRaw, `"allowed": true`) && !strings.Contains(overrideRaw, `"allowed":true`) {
+		t.Fatalf("governance simulate should model reason-backed owner override:\n%s", overrideRaw)
+	}
+	if !strings.Contains(overrideRaw, "owner_override_applied") {
+		t.Fatalf("governance simulate should report owner override:\n%s", overrideRaw)
+	}
+	must("ticket", "complete", "APP-1", "--actor", "human:owner", "--reason", "emergency release override")
+	history := must("ticket", "history", "APP-1", "--json")
+	if !strings.Contains(history, "governance.override.recorded") {
+		t.Fatalf("owner override should be evented in ticket history:\n%s", history)
+	}
+}
+
+func TestV17GovernanceValidateFailsForInvalidPolicy(t *testing.T) {
+	withTempWorkspace(t)
+	if out, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v\n%s", err, out)
+	}
+	if err := os.MkdirAll(storage.GovernancePoliciesDir("."), 0o755); err != nil {
+		t.Fatalf("mkdir governance policies: %v", err)
+	}
+	raw := []byte(`
+policy_id = "invalid-ticket-signature"
+name = "Invalid ticket signature"
+scope_kind = "workspace"
+protected_actions = ["ticket_complete"]
+required_signatures = 1
+schema_version = 1
+`)
+	if err := os.WriteFile(filepath.Join(storage.GovernancePoliciesDir("."), "invalid-ticket-signature.toml"), raw, 0o644); err != nil {
+		t.Fatalf("write invalid governance policy: %v", err)
+	}
+	out, err := runCLI(t, "governance", "validate", "--json")
+	if err == nil {
+		t.Fatalf("invalid governance should fail validation:\n%s", out)
+	}
+	if !strings.Contains(out, `"valid": false`) && !strings.Contains(out, `"valid":false`) {
+		t.Fatalf("invalid governance output should include valid=false:\n%s", out)
+	}
+	if !strings.Contains(out+err.Error(), "required_signatures is not supported") {
+		t.Fatalf("validation output should explain the invalid policy, err=%v out=%s", err, out)
 	}
 }
 
