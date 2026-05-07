@@ -7,7 +7,7 @@ Local-first task orchestration for AI coding agents and humans.
 
 Atlas Tasker is a terminal-first, markdown-native issue tracker and orchestration layer. It gives you Jira-like tickets, Kanban views, review gates, agent runs, evidence, handoffs, Git/worktree integration, collaboration sync, signed artifacts, audit packets, backups, goal manifests, and MCP access without requiring a hosted server.
 
-`v1.8.0-rc1` is planned, not shipped. Release sign-off is blocked until the hosted gates in [public release gates](docs/release/public-release-gates.md) pass.
+`v1.8.0-rc1` is planned, not shipped. Release sign-off is blocked until hosted gates pass, an owner-selected `LICENSE` is committed, and human README/docs/aesthetic review is complete. See [public release gates](docs/release/public-release-gates.md).
 
 ## Why Atlas
 
@@ -48,6 +48,8 @@ Ready (1)
 In Progress (0)
   - (empty)
 ```
+
+For a longer end-to-end example, read the [demo workspace transcript](docs/examples/transcripts/demo-workspace.md).
 
 ## Agent Workflows
 
@@ -118,7 +120,7 @@ Do not paste private keys, webhook URLs, tokens, full `.tracker` archives, or un
 ## Project Status
 
 - Current train: `v1.8.0-rc1` planned
-- Local v1.7.1 proof: green
+- Local v1.8 proof: green
 - Hosted prerelease proof: blocked until a release actor publishes and verifies assets
 - License: pending owner selection; public reuse terms are not finalized yet
 

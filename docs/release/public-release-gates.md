@@ -48,4 +48,11 @@ Hosted release sign-off requires:
 
 ## Stable Release Gate
 
-A stable public release requires the hosted RC gate plus owner sign-off in `docs/release/v1.8-release-evidence.md`. If any hosted gate is blocked, the decision must be `no-ship` with the exact blocked command and reason code.
+A stable public release requires:
+
+- the hosted RC gate
+- an owner-selected committed `LICENSE`
+- human README/docs/aesthetic review
+- owner sign-off in `docs/release/v1.8-release-evidence.md`
+
+If any hosted gate is blocked, the decision must be `no-ship` with the exact blocked command and reason code. If the license or human review is missing, the decision must also remain `no-ship`.

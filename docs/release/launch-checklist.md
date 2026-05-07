@@ -32,7 +32,9 @@ Use this checklist before calling `v1.8.0-rc1` public-release ready. Local proof
 ## Stable Release
 
 - [ ] hosted RC gate is green
+- [ ] owner-selected `LICENSE` is committed
 - [ ] owner signs off in release evidence
+- [ ] human README/docs/aesthetic review is complete
 - [ ] README status changes from planned/blocked to released
 - [ ] changelog moves `v1.8.0-rc1` from candidate status to released status
 - [ ] installer docs point to verified hosted assets
