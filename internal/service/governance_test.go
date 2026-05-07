@@ -164,6 +164,18 @@ func TestGovernanceSeparationAndSignatureBypassProtection(t *testing.T) {
 	if blocked.Allowed || !strings.Contains(strings.Join(blocked.ReasonCodes, ","), "owner_override_cannot_bypass_signature") {
 		t.Fatalf("owner override must not bypass missing trusted signatures: %#v", blocked)
 	}
+	unavailable, err := actions.ExplainGovernance(ctx, GovernanceEvaluationInput{
+		Action:                       contracts.ProtectedActionBundleImportApply,
+		Target:                       "workspace",
+		Actor:                        contracts.Actor("agent:builder-1"),
+		SignatureEvidenceUnavailable: true,
+	})
+	if err != nil {
+		t.Fatalf("explain unavailable signature evidence: %v", err)
+	}
+	if unavailable.Allowed || !strings.Contains(strings.Join(unavailable.ReasonCodes, ","), "signature_evidence_unavailable") || unavailable.Inputs["signature_evidence"] != "unavailable" {
+		t.Fatalf("corrupt signature evidence should be visible in governance explanation: %#v", unavailable)
+	}
 
 	separationPolicy := contracts.GovernancePolicy{
 		PolicyID:         "release-separation",
@@ -237,6 +249,114 @@ func TestGovernanceSeparationHonorsNamedRelationships(t *testing.T) {
 	}
 	if explanation.Allowed || !strings.Contains(strings.Join(explanation.ReasonCodes, ","), "separation_of_duties_violation:implemented-work") {
 		t.Fatalf("implemented relationship should block the same root actor: %#v", explanation)
+	}
+}
+
+func TestGovernanceRunLookbackUsesExactPayloadIDs(t *testing.T) {
+	ctx, actions, ticket := newGovernanceHarness(t)
+	run := contracts.RunSnapshot{
+		RunID:         "run_1",
+		TicketID:      ticket.ID,
+		Project:       "APP",
+		Status:        contracts.RunStatusActive,
+		Kind:          contracts.RunKindWork,
+		CreatedAt:     actions.now(),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := actions.Runs.SaveRun(ctx, run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	if err := actions.AppendAndProject(ctx, contracts.Event{
+		EventID:       2,
+		Timestamp:     actions.now().Add(time.Minute),
+		Actor:         contracts.Actor("agent:builder-1"),
+		Type:          contracts.EventRunCompleted,
+		Project:       "APP",
+		TicketID:      ticket.ID,
+		Payload:       map[string]string{"run_id": "run_10"},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("append nearby run event: %v", err)
+	}
+	if err := actions.GovernancePolicies.SaveGovernancePolicy(ctx, contracts.GovernancePolicy{
+		PolicyID:         "run-exact-separation",
+		Name:             "Run exact separation",
+		ScopeKind:        contracts.PolicyScopeProject,
+		ScopeID:          "APP",
+		ProtectedActions: []contracts.ProtectedAction{contracts.ProtectedActionRunComplete},
+		SeparationOfDutiesRules: []contracts.SeparationOfDutiesRule{{
+			RuleID:                      "same-run-only",
+			ActionKind:                  contracts.ProtectedActionRunComplete,
+			ForbiddenActorRelationships: []string{"same_actor"},
+			LookbackEventTypes:          []contracts.EventType{contracts.EventRunCompleted},
+			LookbackScope:               "run",
+		}},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save exact run policy: %v", err)
+	}
+	explanation, err := actions.ExplainGovernance(ctx, GovernanceEvaluationInput{
+		Action: contracts.ProtectedActionRunComplete,
+		Target: "run:" + run.RunID,
+		Actor:  contracts.Actor("agent:builder-1"),
+	})
+	if err != nil {
+		t.Fatalf("explain run governance: %v", err)
+	}
+	if !explanation.Allowed || strings.Contains(strings.Join(explanation.ReasonCodes, ","), "separation_of_duties_violation") {
+		t.Fatalf("run_10 event should not match run_1 lookback scope: %#v", explanation)
+	}
+}
+
+func TestGovernanceDuplicateAtlasActorMappingsDoNotSatisfyQuorum(t *testing.T) {
+	ctx, actions, ticket := newGovernanceHarness(t)
+	for _, id := range []string{"reviewer-a", "reviewer-b"} {
+		if _, err := actions.AddCollaborator(ctx, contracts.CollaboratorProfile{
+			CollaboratorID: id,
+			Status:         contracts.CollaboratorStatusActive,
+			TrustState:     contracts.CollaboratorTrustStateTrusted,
+			AtlasActors:    []contracts.Actor{contracts.Actor("agent:shared-reviewer")},
+		}, contracts.Actor("human:owner"), "add duplicate reviewer"); err != nil {
+			t.Fatalf("add collaborator %s: %v", id, err)
+		}
+		if _, err := actions.BindMembership(ctx, contracts.MembershipBinding{
+			CollaboratorID: id,
+			ScopeKind:      contracts.MembershipScopeProject,
+			ScopeID:        "APP",
+			Role:           contracts.MembershipRoleReviewer,
+			Status:         contracts.MembershipStatusActive,
+		}, contracts.Actor("human:owner"), "bind duplicate reviewer"); err != nil {
+			t.Fatalf("bind membership %s: %v", id, err)
+		}
+	}
+	if err := actions.GovernancePolicies.SaveGovernancePolicy(ctx, contracts.GovernancePolicy{
+		PolicyID:         "reviewer-quorum",
+		Name:             "Reviewer quorum",
+		ScopeKind:        contracts.PolicyScopeProject,
+		ScopeID:          "APP",
+		ProtectedActions: []contracts.ProtectedAction{contracts.ProtectedActionTicketComplete},
+		QuorumRules: []contracts.QuorumRule{{
+			RuleID:        "one-reviewer",
+			ActionKind:    contracts.ProtectedActionTicketComplete,
+			RequiredCount: 1,
+			AllowedRoles:  []contracts.MembershipRole{contracts.MembershipRoleReviewer},
+		}},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save quorum policy: %v", err)
+	}
+	explanation, err := actions.ExplainGovernance(ctx, GovernanceEvaluationInput{
+		Action:         contracts.ProtectedActionTicketComplete,
+		Target:         "ticket:" + ticket.ID,
+		Actor:          contracts.Actor("human:owner"),
+		ApprovalActors: []contracts.Actor{contracts.Actor("agent:shared-reviewer")},
+	})
+	if err != nil {
+		t.Fatalf("explain duplicate actor governance: %v", err)
+	}
+	reasons := strings.Join(explanation.ReasonCodes, ",")
+	if explanation.Allowed || !strings.Contains(reasons, "quorum_unsatisfied") || !strings.Contains(reasons, "quorum_approval_inactive:ambiguous:agent:shared-reviewer") {
+		t.Fatalf("ambiguous actor mapping should not satisfy reviewer quorum: %#v", explanation)
 	}
 }
 
@@ -1066,6 +1186,63 @@ func TestGovernanceArchiveUsesProjectScopedTargets(t *testing.T) {
 	}
 	if _, err := actions.RestoreArchive(ctx, applied.Record.ArchiveID, contracts.Actor("human:owner"), "restore runtime"); err == nil || !strings.Contains(err.Error(), "quorum_unsatisfied") {
 		t.Fatalf("project-scoped archive restore policy should block APP restore, got %v", err)
+	}
+}
+
+func TestGovernanceBackupRestoreAndRedactionPreviewUseProtectedActions(t *testing.T) {
+	ctx, actions, _ := newGovernanceHarness(t)
+	backup, err := actions.CreateBackup(ctx, "workspace", contracts.Actor("human:owner"), "create backup")
+	if err != nil {
+		t.Fatalf("create backup: %v", err)
+	}
+	projectPath := storage.ProjectFile(actions.Root, "APP")
+	if err := os.WriteFile(projectPath, []byte("tampered\n"), 0o644); err != nil {
+		t.Fatalf("tamper project file: %v", err)
+	}
+	if err := actions.GovernancePolicies.SaveGovernancePolicy(ctx, contracts.GovernancePolicy{
+		PolicyID:         "backup-restore-quorum",
+		Name:             "Backup restore quorum",
+		ScopeKind:        contracts.PolicyScopeWorkspace,
+		ProtectedActions: []contracts.ProtectedAction{contracts.ProtectedActionBackupRestore},
+		QuorumRules: []contracts.QuorumRule{{
+			RuleID:        "restore-review",
+			ActionKind:    contracts.ProtectedActionBackupRestore,
+			RequiredCount: 1,
+		}},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save backup restore policy: %v", err)
+	}
+	if _, err := actions.ApplyRestorePlan(ctx, backup.Snapshot.BackupID, contracts.Actor("human:owner"), "restore backup", true); err == nil || !strings.Contains(err.Error(), "quorum_unsatisfied") {
+		t.Fatalf("backup restore should enforce backup_restore governance, got %v", err)
+	}
+	after, err := os.ReadFile(projectPath)
+	if err != nil {
+		t.Fatalf("read project file: %v", err)
+	}
+	if !strings.Contains(string(after), "tampered") {
+		t.Fatalf("blocked restore should not write files")
+	}
+
+	if err := os.RemoveAll(storage.GovernancePoliciesDir(actions.Root)); err != nil {
+		t.Fatalf("clear governance policies: %v", err)
+	}
+	if err := actions.GovernancePolicies.SaveGovernancePolicy(ctx, contracts.GovernancePolicy{
+		PolicyID:         "redaction-preview-quorum",
+		Name:             "Redaction preview quorum",
+		ScopeKind:        contracts.PolicyScopeWorkspace,
+		ProtectedActions: []contracts.ProtectedAction{contracts.ProtectedActionRedactionOverride},
+		QuorumRules: []contracts.QuorumRule{{
+			RuleID:        "redaction-review",
+			ActionKind:    contracts.ProtectedActionRedactionOverride,
+			RequiredCount: 1,
+		}},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save redaction preview policy: %v", err)
+	}
+	if _, err := actions.CreateRedactionPreview(ctx, "workspace", contracts.RedactionTargetExport, contracts.Actor("human:owner"), "preview redaction"); err == nil || !strings.Contains(err.Error(), "quorum_unsatisfied") {
+		t.Fatalf("redaction preview should enforce redaction_override governance, got %v", err)
 	}
 }
 

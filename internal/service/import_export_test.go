@@ -313,6 +313,37 @@ func TestPreviewImportRejectsPathTraversalBundle(t *testing.T) {
 	}
 }
 
+func TestPreviewImportWarnsOnRedactedBundleReimport(t *testing.T) {
+	_, actions, _, _, _, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	archivePath := filepath.Join(t.TempDir(), "redacted.tar.gz")
+	ticketBody := []byte("redacted ticket\n")
+	if err := writeTestBundle(archivePath, map[string][]byte{
+		"manifest.json": mustJSON(t, bundleManifest{
+			FormatVersion:      "v1",
+			BundleID:           "bundle_redacted",
+			Scope:              "workspace",
+			CreatedAt:          actions.now(),
+			RedactionPreviewID: "redact_705",
+			Files: []bundleFileRecord{{
+				Path:   "projects/APP/tickets/APP-1.md",
+				SHA256: hashBytes(ticketBody),
+				Size:   int64(len(ticketBody)),
+			}},
+		}),
+		"projects/APP/tickets/APP-1.md": ticketBody,
+	}); err != nil {
+		t.Fatalf("write redacted bundle: %v", err)
+	}
+	preview, err := actions.PreviewImport(ctx, archivePath, contracts.Actor("human:owner"), "preview redacted bundle")
+	if err != nil {
+		t.Fatalf("preview redacted bundle: %v", err)
+	}
+	if !slices.Contains(preview.Plan.Warnings, "redacted_bundle_reimport_requires_review") || !slices.Contains(preview.Job.Warnings, "redacted_bundle_reimport_requires_review") {
+		t.Fatalf("redacted bundle re-import should carry warning: %#v %#v", preview.Plan.Warnings, preview.Job.Warnings)
+	}
+}
+
 func TestPreviewImportRejectsAbsolutePathBundle(t *testing.T) {
 	_, actions, _, _, _, _ := newImportExportHarness(t)
 	ctx := context.Background()

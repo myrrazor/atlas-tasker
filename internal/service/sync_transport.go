@@ -394,11 +394,12 @@ func (s *ActionService) importSyncBundleLocked(ctx context.Context, bundleRef st
 	var governanceExplanation contracts.GovernanceExplanation
 	if governanceAction != "" {
 		governanceInput = GovernanceEvaluationInput{
-			Action:                governanceAction,
-			Target:                "workspace",
-			Actor:                 actor,
-			Reason:                reason,
-			TrustedSignatureCount: trustedSignatures,
+			Action:                       governanceAction,
+			Target:                       "workspace",
+			Actor:                        actor,
+			Reason:                       reason,
+			TrustedSignatureCount:        trustedSignatures,
+			SignatureEvidenceUnavailable: signatureErr != nil,
 		}
 		var err error
 		governanceExplanation, err = s.requireGovernance(ctx, governanceInput)
@@ -576,11 +577,12 @@ func (s *ActionService) SyncPull(ctx context.Context, remoteID string, sourceWor
 			trustedSignatures = count
 		}
 		governanceInput := GovernanceEvaluationInput{
-			Action:                contracts.ProtectedActionSyncImportApply,
-			Target:                "workspace",
-			Actor:                 actor,
-			Reason:                reason,
-			TrustedSignatureCount: trustedSignatures,
+			Action:                       contracts.ProtectedActionSyncImportApply,
+			Target:                       "workspace",
+			Actor:                        actor,
+			Reason:                       reason,
+			TrustedSignatureCount:        trustedSignatures,
+			SignatureEvidenceUnavailable: signatureErr != nil,
 		}
 		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
 		if err != nil {

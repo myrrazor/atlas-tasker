@@ -309,6 +309,17 @@ func (s *ActionService) BindTrust(ctx context.Context, collaboratorID string, pu
 		if record.OwnerKind != contracts.PublicKeyOwnerCollaborator || record.OwnerID != collaboratorID {
 			return contracts.TrustBinding{}, apperr.New(apperr.CodeInvalidInput, "public key owner does not match collaborator")
 		}
+		if record.Status != contracts.KeyStateActive && record.Status != contracts.KeyStateImported {
+			return contracts.TrustBinding{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("cannot bind trust for key in state %s", record.Status))
+		}
+		if keyExpired(record, s.now()) {
+			return contracts.TrustBinding{}, apperr.New(apperr.CodeInvalidInput, "cannot bind trust for expired key")
+		}
+		if revoked, err := s.publicKeyRevoked(ctx, record); err != nil {
+			return contracts.TrustBinding{}, err
+		} else if revoked {
+			return contracts.TrustBinding{}, apperr.New(apperr.CodeInvalidInput, "cannot bind trust for revoked key")
+		}
 		governanceInput := GovernanceEvaluationInput{
 			Action: contracts.ProtectedActionTrustKey,
 			Target: "workspace",
@@ -757,8 +768,8 @@ func fingerprintPublicKey(public ed25519.PublicKey) string {
 func fingerprintShort(fingerprint string) string {
 	clean := strings.TrimPrefix(strings.TrimSpace(fingerprint), "ed25519:")
 	clean = strings.ReplaceAll(clean, ":", "")
-	if len(clean) > 16 {
-		return clean[:16]
+	if len(clean) > 32 {
+		return clean[:32]
 	}
 	if clean == "" {
 		return "unknown"

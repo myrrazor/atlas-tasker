@@ -28,7 +28,7 @@ Stored backup state is split intentionally:
 
 ## Restore Rules
 
-Restore is preview-first. `backup restore-plan` is side-effect free and does not persist a plan or append an event. `backup restore-apply` recomputes the plan under the write lock, requires `--yes`, requires a valid actor and non-empty reason, writes only allowlisted Atlas-owned files, and records `backup.restored` after the mutation lands.
+Restore is preview-first. `backup restore-plan` is side-effect free and does not persist a plan or append an event. `backup restore-apply` recomputes the plan under the write lock, requires `--yes`, requires a valid actor and non-empty reason, enforces `backup_restore` governance before file writes, writes allowlisted Atlas-owned files via temp-file rename, and records `backup.restored` after the mutation lands.
 
 Restore items must be clean relative paths on the canonical Atlas restore allowlist: project markdown, event logs, run/gate/handoff/evidence/change/check markdown, collaboration metadata, permission/retention/archive metadata, public security records, governance policies/packs, classification policies/labels, redaction rules, and audit reports/packets.
 

@@ -158,11 +158,8 @@ func (s SecurityKeyStore) SavePrivateKey(_ context.Context, key privateKeyFile) 
 		return fmt.Errorf("encode private key metadata: %w", err)
 	}
 	path := storage.PrivateKeyFile(s.Root, sanitizeSecurityID(key.PublicKeyID))
-	if err := os.WriteFile(path, append(raw, '\n'), 0o600); err != nil {
+	if err := writeFileAtomic(path, append(raw, '\n'), 0o600); err != nil {
 		return fmt.Errorf("write private key %s: %w", key.PublicKeyID, err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		return fmt.Errorf("set private key permissions: %w", err)
 	}
 	return nil
 }

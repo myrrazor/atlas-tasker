@@ -687,6 +687,75 @@ func TestCustomGoalRuleKeepsDefaultExportOmission(t *testing.T) {
 	}
 }
 
+func TestCustomExportEntityRuleKeepsCatchAllDefaultOmission(t *testing.T) {
+	_, actions, _, projectStore, ticketStore, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	now := actions.now()
+
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if err := ticketStore.CreateTicket(ctx, contracts.TicketSnapshot{
+		ID:            "APP-1",
+		Project:       "APP",
+		Title:         "Run-backed secret",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusReady,
+		Priority:      contracts.PriorityMedium,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	run := contracts.RunSnapshot{
+		RunID:         "run_custom_rule_secret",
+		TicketID:      "APP-1",
+		Project:       "APP",
+		Status:        contracts.RunStatusActive,
+		Kind:          contracts.RunKindWork,
+		Summary:       "SECRET-CUSTOM-RULE-705",
+		CreatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := actions.Runs.SaveRun(ctx, run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	if _, err := actions.SetClassification(ctx, "run:"+run.RunID, contracts.ClassificationRestricted, contracts.Actor("human:owner"), "restricted run"); err != nil {
+		t.Fatalf("classify run: %v", err)
+	}
+	if err := actions.RedactionRules.SaveRedactionRule(ctx, contracts.RedactionRule{
+		RuleID:        "ticket-only-export-omit",
+		Target:        contracts.RedactionTargetExport,
+		EntityKind:    contracts.ClassifiedEntityTicket,
+		FieldPath:     "*",
+		MinLevel:      contracts.ClassificationRestricted,
+		Action:        contracts.RedactionOmit,
+		Reason:        "ticket-specific export omit",
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save ticket-only rule: %v", err)
+	}
+
+	preview, err := actions.CreateRedactionPreview(ctx, "workspace", contracts.RedactionTargetExport, contracts.Actor("human:owner"), "preview redacted export")
+	if err != nil {
+		t.Fatalf("create redaction preview: %v", err)
+	}
+	created, err := actions.CreateRedactedExport(ctx, "workspace", preview.Preview.PreviewID, contracts.Actor("human:owner"), "create redacted export")
+	if err != nil {
+		t.Fatalf("create redacted export: %v", err)
+	}
+	entries := exportBundleEntries(t, created.Bundle.ArtifactPath)
+	if _, ok := entries[".tracker/runs/run_custom_rule_secret.md"]; ok {
+		t.Fatalf("run-level restricted file should still be covered by the catch-all export default")
+	}
+	for path, raw := range entries {
+		if strings.Contains(string(raw), "SECRET-CUSTOM-RULE-705") {
+			t.Fatalf("run-level restricted content leaked through %s", path)
+		}
+	}
+}
+
 func TestRedactedExportOmitsRunBackedRestrictedMetadata(t *testing.T) {
 	_, actions, _, projectStore, ticketStore, _ := newImportExportHarness(t)
 	ctx := context.Background()

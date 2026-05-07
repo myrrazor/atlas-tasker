@@ -16,6 +16,8 @@ Private key files default to mode `0600` on Unix. Atlas accepts stricter owner-o
 
 Keys move through `generated`, `active`, `rotated`, `revoked`, `expired`, `lost`, `imported`, and `disabled`. Revocation is terminal. Rotation keeps historical verification material and verifies old signatures with `valid_rotated_key`. Expiration blocks new authority even if a synced record still says `active`, but old signatures verify with `valid_expired_key`.
 
+Key and trust ids use the first 128 bits of the Ed25519 fingerprint. Trust binding is only allowed for active or imported, unexpired, unrevoked collaborator-owned keys; rotated, revoked, and expired keys remain historical verification material, not new trust material.
+
 ## Commands
 
 PR-702 implements the local key and trust ceremony:

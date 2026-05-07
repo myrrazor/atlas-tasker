@@ -29,7 +29,16 @@ func CanonicalizeAtlasV1(value any) ([]byte, error) {
 
 var timeType = reflect.TypeOf(time.Time{})
 
+const maxCanonicalDepth = 128
+
 func normalizeCanonicalValue(value reflect.Value) (any, error) {
+	return normalizeCanonicalValueDepth(value, 0)
+}
+
+func normalizeCanonicalValueDepth(value reflect.Value, depth int) (any, error) {
+	if depth > maxCanonicalDepth {
+		return nil, fmt.Errorf("canonical payload exceeds max depth")
+	}
 	if !value.IsValid() {
 		return nil, nil
 	}
@@ -60,7 +69,7 @@ func normalizeCanonicalValue(value reflect.Value) (any, error) {
 	case reflect.Slice, reflect.Array:
 		items := make([]any, 0, value.Len())
 		for i := 0; i < value.Len(); i++ {
-			item, err := normalizeCanonicalValue(value.Index(i))
+			item, err := normalizeCanonicalValueDepth(value.Index(i), depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -78,7 +87,7 @@ func normalizeCanonicalValue(value reflect.Value) (any, error) {
 			if !utf8.ValidString(key) {
 				return nil, fmt.Errorf("canonical map key contains invalid utf-8")
 			}
-			item, err := normalizeCanonicalValue(iter.Value())
+			item, err := normalizeCanonicalValueDepth(iter.Value(), depth+1)
 			if err != nil {
 				return nil, err
 			}
@@ -101,7 +110,7 @@ func normalizeCanonicalValue(value reflect.Value) (any, error) {
 			if omitEmpty && isCanonicalEmptyValue(fieldValue) {
 				continue
 			}
-			item, err := normalizeCanonicalValue(fieldValue)
+			item, err := normalizeCanonicalValueDepth(fieldValue, depth+1)
 			if err != nil {
 				return nil, err
 			}

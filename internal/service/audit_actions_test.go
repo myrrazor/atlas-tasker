@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"strings"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
 func TestAuditReportPacketSignAndTamperDetection(t *testing.T) {
@@ -140,6 +143,51 @@ func TestAuditReportPacketSignAndTamperDetection(t *testing.T) {
 	tamperedIntegrity, ok := tamperedVerify.Integrity.(AuditIntegrityView)
 	if !ok || tamperedIntegrity.Verified || !strings.Contains(strings.Join(tamperedIntegrity.Errors, ","), "packet_hash_mismatch") {
 		t.Fatalf("tampered packet should fail integrity: %#v", tamperedVerify.Integrity)
+	}
+
+	bodyTampered := packet
+	bodyTampered.Report.Findings = append(bodyTampered.Report.Findings, contracts.AuditFinding{
+		FindingID: "tampered-body",
+		Severity:  contracts.AuditFindingCritical,
+		Code:      "tampered",
+		Message:   "body changed after packet hash",
+	})
+	bodyTamperedRaw, err := json.MarshalIndent(bodyTampered, "", "  ")
+	if err != nil {
+		t.Fatalf("encode body-tampered packet: %v", err)
+	}
+	bodyTamperedPath := packetView.Path + ".body-tampered.json"
+	if err := os.WriteFile(bodyTamperedPath, append(bodyTamperedRaw, '\n'), 0o644); err != nil {
+		t.Fatalf("write body-tampered packet: %v", err)
+	}
+	bodyTamperedVerify, err := actions.VerifyAuditArtifact(ctx, bodyTamperedPath)
+	if err != nil {
+		t.Fatalf("verify body-tampered packet: %v", err)
+	}
+	bodyTamperedIntegrity, ok := bodyTamperedVerify.Integrity.(AuditIntegrityView)
+	if !ok || bodyTamperedIntegrity.Verified || !strings.Contains(strings.Join(bodyTamperedIntegrity.Errors, ","), "packet_hash_mismatch") {
+		t.Fatalf("body-tampered packet should fail integrity: %#v", bodyTamperedVerify.Integrity)
+	}
+
+	if _, err := actions.RevokeKey(ctx, key.PublicKey.PublicKeyID, contracts.Actor("human:owner"), "revoke audit signer"); err != nil {
+		t.Fatalf("revoke audit signer: %v", err)
+	}
+	revokedVerify, err := actions.VerifyAuditArtifact(ctx, packet.PacketID)
+	if err != nil {
+		t.Fatalf("verify packet after revocation: %v", err)
+	}
+	if revokedVerify.Signature.State != contracts.VerificationValidRevokedKey {
+		t.Fatalf("revoked packet signer should be surfaced, got %#v", revokedVerify.Signature)
+	}
+	if err := os.Remove(storage.PublicKeyFile(actions.Root, key.PublicKey.PublicKeyID)); err != nil {
+		t.Fatalf("remove public key: %v", err)
+	}
+	unknownVerify, err := actions.VerifyAuditArtifact(ctx, packet.PacketID)
+	if err != nil {
+		t.Fatalf("verify packet after public key removal: %v", err)
+	}
+	if unknownVerify.Signature.State != contracts.VerificationValidUnknownKey {
+		t.Fatalf("unknown packet signer should be surfaced, got %#v", unknownVerify.Signature)
 	}
 }
 
@@ -311,7 +359,7 @@ func TestAuditTicketScopeUsesExactIDs(t *testing.T) {
 }
 
 func TestAuditPolicyExplainRequiresEventUID(t *testing.T) {
-	ctx, actions, _ := newGovernanceHarness(t)
+	ctx, actions, ticket := newGovernanceHarness(t)
 	if _, err := actions.ExplainAuditPolicy(ctx, "1"); err == nil || !strings.Contains(err.Error(), "event_uid is required") {
 		t.Fatalf("bare numeric event id should be rejected, got %v", err)
 	}
@@ -328,6 +376,92 @@ func TestAuditPolicyExplainRequiresEventUID(t *testing.T) {
 	}
 	if view.Event == nil || view.Event.EventUID != events[0].EventUID || view.Target != events[0].EventUID {
 		t.Fatalf("wrong explanation target: %#v", view)
+	}
+
+	if err := actions.GovernancePolicies.SaveGovernancePolicy(ctx, contracts.GovernancePolicy{
+		PolicyID:         "ticket-complete-review",
+		Name:             "Ticket complete review",
+		ScopeKind:        contracts.PolicyScopeProject,
+		ScopeID:          "APP",
+		ProtectedActions: []contracts.ProtectedAction{contracts.ProtectedActionTicketComplete},
+		QuorumRules: []contracts.QuorumRule{{
+			RuleID:        "needs-reviewer",
+			ActionKind:    contracts.ProtectedActionTicketComplete,
+			RequiredCount: 1,
+		}},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save governance policy: %v", err)
+	}
+	if err := actions.AppendAndProject(ctx, contracts.Event{
+		EventID:       2,
+		Timestamp:     actions.now().Add(time.Minute),
+		Actor:         contracts.Actor("agent:builder-1"),
+		Reason:        "complete ticket",
+		Type:          contracts.EventTicketMoved,
+		Project:       "APP",
+		TicketID:      ticket.ID,
+		Payload:       map[string]any{"from": contracts.StatusInReview, "to": contracts.StatusDone, "ticket": ticket},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("append completion event: %v", err)
+	}
+	events, err = actions.Events.StreamEvents(ctx, "APP", 0)
+	if err != nil {
+		t.Fatalf("stream updated events: %v", err)
+	}
+	explained, err := actions.ExplainAuditPolicy(ctx, events[len(events)-1].EventUID)
+	if err != nil {
+		t.Fatalf("explain completion event: %v", err)
+	}
+	if explained.Governance == nil || explained.Inputs["action"] != string(contracts.ProtectedActionTicketComplete) || explained.Inputs["actor"] != "agent:builder-1" {
+		t.Fatalf("policy explanation should surface governance inputs: %#v", explained)
+	}
+	reasons := strings.Join(explained.ReasonCodes, ",")
+	if !strings.Contains(reasons, "governance_denied") || !strings.Contains(strings.Join(explained.Governance.ReasonCodes, ","), "quorum_unsatisfied") {
+		t.Fatalf("policy explanation should distinguish denied governance: %#v", explained)
+	}
+}
+
+func TestAuditSnapshotHashesUseAtlasCanonicalization(t *testing.T) {
+	snapshot := map[string]any{
+		"policies": []contracts.GovernancePolicy{{
+			PolicyID:      "policy-1",
+			Name:          "Canonical policy",
+			Description:   "line\r\nbreak",
+			ScopeKind:     contracts.PolicyScopeWorkspace,
+			CreatedAt:     time.Date(2026, 5, 6, 12, 0, 0, 0, time.FixedZone("offset", -4*60*60)),
+			UpdatedAt:     time.Date(2026, 5, 6, 12, 0, 0, 0, time.FixedZone("offset", -4*60*60)),
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		}},
+		"packs": []contracts.PolicyPack{},
+	}
+	raw, err := contracts.CanonicalizeAtlasV1(snapshot)
+	if err != nil {
+		t.Fatalf("canonicalize snapshot: %v", err)
+	}
+	if !strings.Contains(string(raw), `line\nbreak`) || strings.Contains(string(raw), "\r") {
+		t.Fatalf("snapshot bytes should be c14n-normalized, got %s", raw)
+	}
+	sum := sha256.Sum256(raw)
+	want := hex.EncodeToString(sum[:])
+	got, err := canonicalSnapshotHash(snapshot)
+	if err != nil {
+		t.Fatalf("hash snapshot: %v", err)
+	}
+	if got != want {
+		t.Fatalf("snapshot hash should be over atlas-c14n-v1 bytes: got %s want %s", got, want)
+	}
+}
+
+func TestAuditArtifactPathMustStayInsideWorkspace(t *testing.T) {
+	ctx, actions, _ := newGovernanceHarness(t)
+	outside := actions.Root + "-outside.json"
+	if err := os.WriteFile(outside, []byte(`{"audit_report_id":"audit_outside"}`), 0o644); err != nil {
+		t.Fatalf("write outside artifact: %v", err)
+	}
+	if _, err := actions.VerifyAuditArtifact(ctx, outside); err == nil || !strings.Contains(err.Error(), "inside the workspace") {
+		t.Fatalf("outside audit path should be rejected, got %v", err)
 	}
 }
 

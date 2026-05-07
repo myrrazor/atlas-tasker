@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -145,6 +146,38 @@ func TestGoalManifestSignVerifyAndAdminStatus(t *testing.T) {
 	}
 	if admin.PublicKeys == 0 || admin.TrustBindings == 0 || admin.GoalManifests == 0 {
 		t.Fatalf("admin security status should count v1.7 artifacts: %#v", admin)
+	}
+}
+
+func TestGoalManifestRedactsRestrictedTicketContext(t *testing.T) {
+	ctx, actions, ticket := newGovernanceHarness(t)
+	ticket.Summary = "SECRET-GOAL-SUMMARY-707"
+	ticket.Description = "SECRET-GOAL-DESCRIPTION-707"
+	ticket.AcceptanceCriteria = []string{"SECRET-GOAL-ACCEPTANCE-707"}
+	if _, err := actions.SaveTrackedTicket(ctx, ticket, contracts.Actor("human:owner"), "add restricted goal context"); err != nil {
+		t.Fatalf("save ticket: %v", err)
+	}
+	if _, err := actions.SetClassification(ctx, "ticket:"+ticket.ID, contracts.ClassificationRestricted, contracts.Actor("human:owner"), "restricted goal context"); err != nil {
+		t.Fatalf("classify ticket: %v", err)
+	}
+	brief, err := actions.GoalBrief(ctx, ticket.ID)
+	if err != nil {
+		t.Fatalf("goal brief: %v", err)
+	}
+	briefRaw, _ := json.Marshal(brief.Brief)
+	if strings.Contains(string(briefRaw), "SECRET-GOAL-") || !strings.Contains(string(briefRaw), "[redacted: restricted]") {
+		t.Fatalf("restricted goal brief should use the goal redaction marker: %s", briefRaw)
+	}
+	manifest, err := actions.CreateGoalManifest(ctx, ticket.ID, contracts.Actor("human:owner"), "create redacted goal manifest")
+	if err != nil {
+		t.Fatalf("goal manifest: %v", err)
+	}
+	manifestRaw, _ := json.Marshal(manifest.Manifest)
+	if strings.Contains(string(manifestRaw), "SECRET-GOAL-") {
+		t.Fatalf("restricted goal manifest leaked source context: %s", manifestRaw)
+	}
+	if manifest.Manifest.RedactionPreviewID == "" || !strings.Contains(string(manifestRaw), "[redacted: restricted]") {
+		t.Fatalf("redacted goal manifest should bind a preview and show the marker: %#v", manifest.Manifest)
 	}
 }
 

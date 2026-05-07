@@ -283,13 +283,19 @@ func defaultRedactionRules() []contracts.RedactionRule {
 }
 
 func withMissingDefaultRedactionRules(items []contracts.RedactionRule) []contracts.RedactionRule {
-	coveredTargets := map[contracts.RedactionTarget]struct{}{}
+	type ruleCoverage struct {
+		Target     contracts.RedactionTarget
+		EntityKind contracts.ClassifiedEntityKind
+		MinLevel   contracts.ClassificationLevel
+	}
+	coveredRules := map[ruleCoverage]struct{}{}
 	for _, item := range items {
-		coveredTargets[item.Target] = struct{}{}
+		coveredRules[ruleCoverage{Target: item.Target, EntityKind: item.EntityKind, MinLevel: item.MinLevel}] = struct{}{}
 	}
 	out := append([]contracts.RedactionRule{}, items...)
 	for _, rule := range defaultRedactionRules() {
-		if _, ok := coveredTargets[rule.Target]; !ok {
+		key := ruleCoverage{Target: rule.Target, EntityKind: rule.EntityKind, MinLevel: rule.MinLevel}
+		if _, ok := coveredRules[key]; !ok {
 			out = append(out, rule)
 		}
 	}

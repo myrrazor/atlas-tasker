@@ -27,16 +27,17 @@ type GovernancePackCreateOptions struct {
 }
 
 type GovernanceEvaluationInput struct {
-	Action                contracts.ProtectedAction
-	Target                string
-	Actor                 contracts.Actor
-	TicketID              string
-	RunID                 string
-	ChangeID              string
-	GateID                string
-	ApprovalActors        []contracts.Actor
-	TrustedSignatureCount int
-	Reason                string
+	Action                       contracts.ProtectedAction
+	Target                       string
+	Actor                        contracts.Actor
+	TicketID                     string
+	RunID                        string
+	ChangeID                     string
+	GateID                       string
+	ApprovalActors               []contracts.Actor
+	TrustedSignatureCount        int
+	SignatureEvidenceUnavailable bool
+	Reason                       string
 }
 
 type GovernancePackDetailView struct {
@@ -316,6 +317,7 @@ func (s *ActionService) evaluateGovernance(ctx context.Context, input Governance
 			"project":                  target.Project,
 			"runbook":                  target.Runbook,
 			"trusted_signature_count":  fmt.Sprintf("%d", input.TrustedSignatureCount),
+			"signature_evidence":       signatureEvidenceInput(input),
 			"explicit_approval_actors": fmt.Sprintf("%d", len(input.ApprovalActors)),
 		},
 	}
@@ -370,6 +372,9 @@ func (s *ActionService) evaluateGovernancePolicy(ctx context.Context, policy con
 	reasons := make([]string, 0)
 	if policy.RequiredSignatures > 0 && input.TrustedSignatureCount < policy.RequiredSignatures {
 		reasons = append(reasons, "trusted_signature_required")
+		if input.SignatureEvidenceUnavailable {
+			reasons = append(reasons, "signature_evidence_unavailable")
+		}
 	}
 	for _, rule := range policy.QuorumRules {
 		if rule.ActionKind != input.Action {
@@ -386,6 +391,9 @@ func (s *ActionService) evaluateGovernancePolicy(ctx context.Context, policy con
 		reasons = append(reasons, details...)
 		if rule.RequireTrustedSignatures && input.TrustedSignatureCount < rule.RequiredCount {
 			reasons = append(reasons, "trusted_signature_required")
+			if input.SignatureEvidenceUnavailable {
+				reasons = append(reasons, "signature_evidence_unavailable")
+			}
 		}
 	}
 	for _, rule := range policy.SeparationOfDutiesRules {
@@ -397,6 +405,13 @@ func (s *ActionService) evaluateGovernancePolicy(ctx context.Context, policy con
 		}
 	}
 	return dedupeStrings(reasons)
+}
+
+func signatureEvidenceInput(input GovernanceEvaluationInput) string {
+	if input.SignatureEvidenceUnavailable {
+		return "unavailable"
+	}
+	return "available"
 }
 
 func (s *ActionService) evaluateOwnerOverrideGovernance(ctx context.Context, policies []contracts.GovernancePolicy, input GovernanceEvaluationInput, target governanceTargetContext) []string {
@@ -667,21 +682,29 @@ func (s *ActionService) actorGovernanceIdentity(ctx context.Context, actor contr
 	if err != nil {
 		return governanceActorIdentity{RootID: string(actor), Status: contracts.CollaboratorStatusActive}, nil
 	}
+	matches := make([]contracts.CollaboratorProfile, 0, 1)
 	for _, collaborator := range collaborators {
 		for _, mapped := range collaborator.AtlasActors {
-			if mapped != actor {
-				continue
+			if mapped == actor {
+				matches = append(matches, collaborator)
+				break
 			}
-			memberships, err := s.Memberships.ListMemberships(ctx, collaborator.CollaboratorID)
-			if err != nil {
-				return governanceActorIdentity{RootID: "collaborator:" + collaborator.CollaboratorID, Status: collaborator.Status}, nil
-			}
-			roles := make([]contracts.MembershipRole, 0)
-			for _, membership := range activeMembershipsForProject(memberships, project) {
-				roles = append(roles, membership.Role)
-			}
-			return governanceActorIdentity{RootID: "collaborator:" + collaborator.CollaboratorID, Status: collaborator.Status}, uniqueMembershipRoles(roles)
 		}
+	}
+	if len(matches) > 1 {
+		return governanceActorIdentity{RootID: "ambiguous:" + string(actor), Status: contracts.CollaboratorStatusSuspended}, nil
+	}
+	if len(matches) == 1 {
+		collaborator := matches[0]
+		memberships, err := s.Memberships.ListMemberships(ctx, collaborator.CollaboratorID)
+		if err != nil {
+			return governanceActorIdentity{RootID: "collaborator:" + collaborator.CollaboratorID, Status: collaborator.Status}, nil
+		}
+		roles := make([]contracts.MembershipRole, 0)
+		for _, membership := range activeMembershipsForProject(memberships, project) {
+			roles = append(roles, membership.Role)
+		}
+		return governanceActorIdentity{RootID: "collaborator:" + collaborator.CollaboratorID, Status: collaborator.Status}, uniqueMembershipRoles(roles)
 	}
 	return governanceActorIdentity{RootID: string(actor), Status: contracts.CollaboratorStatusActive}, nil
 }
@@ -808,7 +831,31 @@ func eventPayloadContains(payload any, needle string) bool {
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(raw), needle)
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return false
+	}
+	return governanceAnyStringEquals(decoded, needle)
+}
+
+func governanceAnyStringEquals(value any, needle string) bool {
+	switch item := value.(type) {
+	case string:
+		return item == needle
+	case []any:
+		for _, child := range item {
+			if governanceAnyStringEquals(child, needle) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, child := range item {
+			if governanceAnyStringEquals(child, needle) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func governanceEventProject(explanation contracts.GovernanceExplanation) string {
