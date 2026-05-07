@@ -134,6 +134,19 @@
 - `tracker redact preview [--scope <SCOPE>] [--target <export|sync|audit|backup|goal>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker redact export [--scope <SCOPE>] --preview-id <PREVIEW-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker redact verify <BUNDLE-ID|PATH>`
+- `tracker backup create [--scope <workspace|project:KEY>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker backup list`
+- `tracker backup view <BACKUP-ID>`
+- `tracker backup verify <BACKUP-ID|PATH>`
+- `tracker backup restore-plan <BACKUP-ID|PATH>`
+- `tracker backup restore-apply <BACKUP-ID|PATH> --yes [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker backup drill`
+- `tracker admin security-status`
+- `tracker admin trust-store`
+- `tracker admin recovery-status`
+- `tracker goal brief <TICKET-ID|RUN-ID>`
+- `tracker goal manifest <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker goal verify <MANIFEST-ID|PATH>`
 
 ## Agents
 
@@ -257,6 +270,8 @@ Rules:
 - `tracker sign evidence <EVIDENCE-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker sign audit <AUDIT-REPORT-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker sign audit-packet <PACKET-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker sign backup <BACKUP-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker sign goal <MANIFEST-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker verify bundle <BUNDLE-ID|PATH>`
 - `tracker verify sync-publication <BUNDLE-ID|PATH>`
 - `tracker verify approval <GATE-ID>`
@@ -264,6 +279,8 @@ Rules:
 - `tracker verify evidence <EVIDENCE-ID>`
 - `tracker verify audit <REPORT-ID|PATH>`
 - `tracker verify audit-packet <PACKET-ID|PATH>`
+- `tracker verify backup <BACKUP-ID|PATH>`
+- `tracker verify goal <MANIFEST-ID|PATH>`
 
 Rules:
 
@@ -271,6 +288,8 @@ Rules:
 - signature envelopes are stored under `.tracker/security/signatures/`; export bundles also get an adjacent `<bundle>.signatures.json` sidecar so copied artifacts can verify by path
 - sync publications store signatures in the matching publication metadata; directory-level `publication.json` is only used when it names the requested archive
 - approval, handoff, and evidence signatures are stored as standalone signature envelopes and do not rewrite the source artifact
+- backup signatures are embedded in the local backup snapshot record after integrity verification; copied archive verification reports archive integrity and `missing_signature` unless the local snapshot record is present
+- goal signatures are embedded in the local goal manifest record and verify the stored manifest snapshot, not current live policy meaning
 - verification is pure by default and returns `missing_signature` for unsigned artifacts
 
 ## Classification And Redaction
@@ -315,6 +334,42 @@ Rules:
 - packet verification recomputes `packet_hash` from the canonical report payload and reports `packet_hash_mismatch` on tampering
 - policy explanation requires `event_uid`; numeric `event_id` values are project-scoped and intentionally rejected
 - policy explanation loads the target event and current local policy context; historical reports bind the exact `policy_snapshot_hash`
+
+## Backups And Recovery
+
+- `tracker backup create [--scope <workspace|project:KEY>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker backup list`
+- `tracker backup view <BACKUP-ID>`
+- `tracker backup verify <BACKUP-ID|PATH>`
+- `tracker backup restore-plan <BACKUP-ID|PATH>`
+- `tracker backup restore-apply <BACKUP-ID|PATH> --yes [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker backup drill`
+- `tracker admin security-status`
+- `tracker admin trust-store`
+- `tracker admin recovery-status`
+
+Rules:
+
+- backup snapshots include canonical Atlas-owned data only; private keys, local trust decisions, redaction previews, backup snapshots, generated goal files, runtime/worktree/provider state, remotes, notifiers, and MCP approvals are excluded
+- backup records and manifests live under `.tracker/backups/manifests/`; archives live under `.tracker/backups/snapshots/`
+- `backup restore-plan` is side-effect free and does not persist a plan or append an event
+- `backup restore-apply` recomputes the plan under the write lock, requires `--yes`, and writes only paths on the restore allowlist
+- `backup drill` is read-only and reports recovery warnings without mutating the workspace
+- admin diagnostics are read-only and never print private key material
+
+## Goal Manifests
+
+- `tracker goal brief <TICKET-ID|RUN-ID>`
+- `tracker goal manifest <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker goal verify <MANIFEST-ID|PATH>`
+
+Rules:
+
+- goal briefs are pure derived output for agent handoff
+- goal manifests write local derived artifacts under `.tracker/goal/manifests/` and require actor/reason because Atlas records the manifest creation event
+- goal markdown uses the stable section order from `docs/goal-manifests.md`
+- manifests bind `policy_snapshot_hash`, `trust_snapshot_hash`, and `source_hash`
+- verification checks the stored manifest snapshot and signatures, not current live policy meaning
 
 ## Governance
 

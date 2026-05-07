@@ -79,16 +79,11 @@ func newSignCommand() *cobra.Command {
 	evidence := &cobra.Command{Use: "evidence <EVIDENCE-ID>", Short: "Sign an evidence packet", Args: cobra.ExactArgs(1), RunE: runSignEvidence}
 	audit := &cobra.Command{Use: "audit <AUDIT-REPORT-ID>", Short: "Sign an audit report", Args: cobra.ExactArgs(1), RunE: runSignAudit}
 	auditPacket := &cobra.Command{Use: "audit-packet <PACKET-ID>", Short: "Sign an audit packet", Args: cobra.ExactArgs(1), RunE: runSignAuditPacket}
-	for _, sub := range []*cobra.Command{bundle, syncPublication, approval, handoff, evidence, audit, auditPacket} {
+	backup := &cobra.Command{Use: "backup <BACKUP-ID>", Short: "Sign a backup snapshot", Args: cobra.ExactArgs(1), RunE: runSignBackup}
+	goal := &cobra.Command{Use: "goal <MANIFEST-ID>", Short: "Sign a goal manifest", Args: cobra.ExactArgs(1), RunE: runSignGoal}
+	for _, sub := range []*cobra.Command{bundle, syncPublication, approval, handoff, evidence, audit, auditPacket, backup, goal} {
 		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
 		addReadOutputFlags(sub, &outputFlags{})
-		sub.Flags().String("signing-key", "", "Signing key id")
-		cmd.AddCommand(sub)
-	}
-	for _, sub := range []*cobra.Command{
-		v17MutationCommand("backup <BACKUP-ID>", "Sign a backup snapshot", "signature_detail", cobra.ExactArgs(1)),
-		v17MutationCommand("goal <MANIFEST-ID>", "Sign a goal manifest", "signature_detail", cobra.ExactArgs(1)),
-	} {
 		sub.Flags().String("signing-key", "", "Signing key id")
 		cmd.AddCommand(sub)
 	}
@@ -104,14 +99,12 @@ func newVerifyCommand() *cobra.Command {
 	evidence := &cobra.Command{Use: "evidence <EVIDENCE-ID|PATH>", Short: "Verify evidence packet signature state", Args: cobra.ExactArgs(1), RunE: runVerifyEvidenceSignature}
 	audit := &cobra.Command{Use: "audit <REPORT-ID|PATH>", Short: "Verify audit report signature state", Args: cobra.ExactArgs(1), RunE: runVerifyAuditReportArtifact}
 	auditPacket := &cobra.Command{Use: "audit-packet <PACKET-ID|PATH>", Short: "Verify audit packet signature state", Args: cobra.ExactArgs(1), RunE: runVerifyAuditPacketArtifact}
-	for _, sub := range []*cobra.Command{bundle, syncPublication, approval, handoff, evidence, audit, auditPacket} {
+	backup := &cobra.Command{Use: "backup <BACKUP-ID|PATH>", Short: "Verify backup signature state", Args: cobra.ExactArgs(1), RunE: runVerifyBackup}
+	goal := &cobra.Command{Use: "goal <MANIFEST-ID|PATH>", Short: "Verify goal manifest signature state", Args: cobra.ExactArgs(1), RunE: runVerifyGoal}
+	for _, sub := range []*cobra.Command{bundle, syncPublication, approval, handoff, evidence, audit, auditPacket, backup, goal} {
 		addReadOutputFlags(sub, &outputFlags{})
 		cmd.AddCommand(sub)
 	}
-	cmd.AddCommand(
-		v17ReadCommand("backup <BACKUP-ID|PATH>", "Verify backup signature state", "backup_verify_result", cobra.ExactArgs(1)),
-		v17ReadCommand("goal <MANIFEST-ID|PATH>", "Verify goal manifest signature state", "goal_manifest_verify_result", cobra.ExactArgs(1)),
-	)
 	return cmd
 }
 
@@ -238,18 +231,27 @@ func newAuditCommand() *cobra.Command {
 
 func newBackupCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "backup", Short: "Create and restore Atlas-owned backups"}
-	create := v17MutationCommand("create", "Create a backup snapshot", "backup_detail", cobra.NoArgs)
+	create := &cobra.Command{Use: "create", Short: "Create a backup snapshot", Args: cobra.NoArgs, RunE: runBackupCreate}
 	create.Flags().String("scope", "workspace", "Backup scope: workspace|project:<KEY>")
-	restoreApply := v17MutationCommand("restore-apply <BACKUP-ID|PATH>", "Apply a backup restore plan", "backup_restore_result", cobra.ExactArgs(1))
+	restorePlan := &cobra.Command{Use: "restore-plan <BACKUP-ID|PATH>", Short: "Preview a backup restore", Args: cobra.ExactArgs(1), RunE: runBackupRestorePlan}
+	restoreApply := &cobra.Command{Use: "restore-apply <BACKUP-ID|PATH>", Short: "Apply a backup restore plan", Args: cobra.ExactArgs(1), RunE: runBackupRestoreApply}
 	restoreApply.Flags().Bool("yes", false, "Apply restore without prompting")
+	drill := &cobra.Command{Use: "drill", Short: "Run a read-only recovery drill", Args: cobra.NoArgs, RunE: runBackupDrill}
+	for _, sub := range []*cobra.Command{create, restoreApply} {
+		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	for _, sub := range []*cobra.Command{restorePlan, drill} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
 	cmd.AddCommand(
 		create,
-		v17ReadCommand("list", "List backup snapshots", "backup_list", cobra.NoArgs),
-		v17ReadCommand("view <BACKUP-ID>", "Show one backup snapshot", "backup_detail", cobra.ExactArgs(1)),
-		v17ReadCommand("verify <BACKUP-ID|PATH>", "Verify a backup snapshot", "backup_verify_result", cobra.ExactArgs(1)),
-		v17ReadCommand("restore-plan <BACKUP-ID|PATH>", "Preview a backup restore", "backup_restore_plan", cobra.ExactArgs(1)),
+		readCommand("list", "List backup snapshots", cobra.NoArgs, runBackupList),
+		readCommand("view <BACKUP-ID>", "Show one backup snapshot", cobra.ExactArgs(1), runBackupView),
+		readCommand("verify <BACKUP-ID|PATH>", "Verify a backup snapshot", cobra.ExactArgs(1), runVerifyBackup),
+		restorePlan,
 		restoreApply,
-		v17ReadCommand("drill", "Run a read-only recovery drill", "recovery_drill_result", cobra.NoArgs),
+		drill,
 	)
 	return cmd
 }
@@ -257,19 +259,26 @@ func newBackupCommand() *cobra.Command {
 func newAdminCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "admin", Short: "Admin diagnostics"}
 	cmd.AddCommand(
-		v17ReadCommand("security-status", "Show v1.7 security status", "admin_security_status", cobra.NoArgs),
-		v17ReadCommand("trust-store", "Inspect trust store health", "trust_store_status", cobra.NoArgs),
-		v17ReadCommand("recovery-status", "Inspect recovery readiness", "recovery_status", cobra.NoArgs),
+		readCommand("security-status", "Show v1.7 security status", cobra.NoArgs, runAdminSecurityStatus),
+		readCommand("trust-store", "Inspect trust store health", cobra.NoArgs, runAdminTrustStore),
+		readCommand("recovery-status", "Inspect recovery readiness", cobra.NoArgs, runAdminRecoveryStatus),
 	)
 	return cmd
 }
 
 func newGoalCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "goal", Short: "Generate read-only agent goal briefs and manifests"}
+	brief := &cobra.Command{Use: "brief <TICKET-ID|RUN-ID>", Short: "Render a goal-ready brief", Args: cobra.ExactArgs(1), RunE: runGoalBrief}
+	manifest := &cobra.Command{Use: "manifest <TICKET-ID|RUN-ID>", Short: "Write a goal-ready manifest", Args: cobra.ExactArgs(1), RunE: runGoalManifest}
+	verify := &cobra.Command{Use: "verify <MANIFEST-ID|PATH>", Short: "Verify a signed goal manifest", Args: cobra.ExactArgs(1), RunE: runVerifyGoal}
+	addReadOutputFlags(brief, &outputFlags{})
+	addMutationFlags(manifest, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(manifest, &outputFlags{})
+	addReadOutputFlags(verify, &outputFlags{})
 	cmd.AddCommand(
-		v17ReadCommand("brief <TICKET-ID|RUN-ID>", "Render a goal-ready brief", "goal_brief", cobra.ExactArgs(1)),
-		v17ReadCommand("manifest <TICKET-ID|RUN-ID>", "Render a goal-ready manifest", "goal_manifest", cobra.ExactArgs(1)),
-		v17ReadCommand("verify <MANIFEST-ID|PATH>", "Verify a signed goal manifest", "goal_manifest_verify_result", cobra.ExactArgs(1)),
+		brief,
+		manifest,
+		verify,
 	)
 	return cmd
 }
@@ -673,6 +682,210 @@ func runVerifyAuditPacketArtifact(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
 }
 
+func runSignBackup(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	signingKey, _ := cmd.Flags().GetString("signing-key")
+	view, err := w.actions.SignBackupSnapshot(cmd.Context(), args[0], strings.TrimSpace(signingKey), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureDetailMarkdown(view), signatureDetailPretty(view))
+}
+
+func runVerifyBackup(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifyBackupSnapshot(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
+}
+
+func runSignGoal(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	signingKey, _ := cmd.Flags().GetString("signing-key")
+	view, err := w.actions.SignGoalManifest(cmd.Context(), args[0], strings.TrimSpace(signingKey), actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureDetailMarkdown(view), signatureDetailPretty(view))
+}
+
+func runVerifyGoal(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.VerifyGoalManifest(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, signatureVerifyMarkdown(view), signatureVerifyPretty(view))
+}
+
+func runBackupCreate(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	scope, _ := cmd.Flags().GetString("scope")
+	view, err := w.actions.CreateBackup(cmd.Context(), scope, actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, backupDetailMarkdown(view), backupDetailPretty(view))
+}
+
+func runBackupList(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ListBackups(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, backupListMarkdown(view), backupListPretty(view))
+}
+
+func runBackupView(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.BackupDetail(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, backupDetailMarkdown(view), backupDetailPretty(view))
+}
+
+func runBackupRestorePlan(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.CreateRestorePlan(cmd.Context(), args[0], contracts.Actor("human:owner"))
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, restorePlanMarkdown(view), restorePlanPretty(view))
+}
+
+func runBackupRestoreApply(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	yes, _ := cmd.Flags().GetBool("yes")
+	view, err := w.actions.ApplyRestorePlan(cmd.Context(), args[0], actor, reason, yes)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, restoreApplyMarkdown(view), restoreApplyPretty(view))
+}
+
+func runBackupDrill(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.RecoveryDrill(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, recoveryDrillMarkdown(view), recoveryDrillPretty(view))
+}
+
+func runAdminSecurityStatus(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.AdminSecurityStatus(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, adminSecurityMarkdown(view), adminSecurityPretty(view))
+}
+
+func runAdminTrustStore(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.TrustStoreStatus(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, trustStoreStatusMarkdown(view), trustStoreStatusPretty(view))
+}
+
+func runAdminRecoveryStatus(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.RecoveryStatus(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, recoveryStatusMarkdown(view), recoveryStatusPretty(view))
+}
+
+func runGoalBrief(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.GoalBrief(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, goalBriefMarkdown(view), goalBriefPretty(view))
+}
+
+func runGoalManifest(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	actor, reason := mutationActorReason(cmd)
+	view, err := w.actions.CreateGoalManifest(cmd.Context(), args[0], actor, reason)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, goalManifestMarkdown(view), goalManifestPretty(view))
+}
+
 func runAuditReport(cmd *cobra.Command, _ []string) error {
 	w, err := openWorkspace()
 	if err != nil {
@@ -1008,6 +1221,8 @@ func signatureIntegrityStatus(integrity any) (bool, bool, []string, []string) {
 		return true, view.Verified, append([]string{}, view.Errors...), append([]string{}, view.Warnings...)
 	case service.AuditIntegrityView:
 		return true, view.Verified, append([]string{}, view.Errors...), append([]string{}, view.Warnings...)
+	case service.BackupIntegrityView:
+		return true, view.Verified, append([]string{}, view.Errors...), append([]string{}, view.Warnings...)
 	default:
 		return false, false, nil, nil
 	}
@@ -1084,6 +1299,139 @@ func auditPolicyMarkdown(view service.AuditPolicyExplanationView) string {
 		lines = append(lines, "", view.SnapshotGuidance)
 	}
 	return strings.Join(lines, "\n") + "\n"
+}
+
+func backupDetailPretty(view service.BackupDetailView) string {
+	return fmt.Sprintf("%s %s:%s files=%d", view.Snapshot.BackupID, view.Snapshot.ScopeKind, view.Snapshot.ScopeID, view.FileCount)
+}
+
+func backupDetailMarkdown(view service.BackupDetailView) string {
+	return fmt.Sprintf("# Backup\n\n- Backup: `%s`\n- Scope: `%s` `%s`\n- Files: `%d`\n- Manifest hash: `%s`\n- Archive: `%s`\n", view.Snapshot.BackupID, view.Snapshot.ScopeKind, view.Snapshot.ScopeID, view.FileCount, view.Snapshot.ManifestHash, view.ArchivePath)
+}
+
+func backupListPretty(view service.BackupListView) string {
+	if len(view.Items) == 0 {
+		return "no backups"
+	}
+	lines := make([]string, 0, len(view.Items))
+	for _, item := range view.Items {
+		lines = append(lines, fmt.Sprintf("%s %s:%s %s", item.BackupID, item.ScopeKind, item.ScopeID, item.CreatedAt.Format(time.RFC3339)))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func backupListMarkdown(view service.BackupListView) string {
+	if len(view.Items) == 0 {
+		return "# Backups\n\nNo backups.\n"
+	}
+	lines := []string{"# Backups", ""}
+	for _, item := range view.Items {
+		lines = append(lines, fmt.Sprintf("- `%s` `%s` `%s` `%s`", item.BackupID, item.ScopeKind, item.ScopeID, item.CreatedAt.Format(time.RFC3339)))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func restorePlanPretty(view service.RestorePlanDetailView) string {
+	return fmt.Sprintf("%s backup=%s items=%d warnings=%d", view.Plan.RestorePlanID, view.Plan.BackupID, len(view.Plan.Items), len(view.Plan.Warnings))
+}
+
+func restorePlanMarkdown(view service.RestorePlanDetailView) string {
+	lines := []string{"# Restore Plan", "", fmt.Sprintf("- Plan: `%s`", view.Plan.RestorePlanID), fmt.Sprintf("- Backup: `%s`", view.Plan.BackupID), fmt.Sprintf("- Items: `%d`", len(view.Plan.Items))}
+	for _, item := range view.Plan.Items {
+		lines = append(lines, fmt.Sprintf("- `%s` `%s`", item.Action, item.Path))
+	}
+	for _, warning := range view.Plan.Warnings {
+		lines = append(lines, fmt.Sprintf("- Warning: `%s`", warning))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func restoreApplyPretty(view service.RestoreApplyResultView) string {
+	return fmt.Sprintf("%s applied=%d skipped=%d", view.Plan.RestorePlanID, view.Applied, view.Skipped)
+}
+
+func restoreApplyMarkdown(view service.RestoreApplyResultView) string {
+	return fmt.Sprintf("# Restore Applied\n\n- Plan: `%s`\n- Backup: `%s`\n- Applied: `%d`\n- Skipped: `%d`\n", view.Plan.RestorePlanID, view.Plan.BackupID, view.Applied, view.Skipped)
+}
+
+func recoveryDrillPretty(view service.RecoveryDrillView) string {
+	return fmt.Sprintf("backups=%d verified=%d side_effect_free=%t", view.BackupCount, view.VerifiedBackups, view.SideEffectFree)
+}
+
+func recoveryDrillMarkdown(view service.RecoveryDrillView) string {
+	lines := []string{"# Recovery Drill", "", fmt.Sprintf("- Backups: `%d`", view.BackupCount), fmt.Sprintf("- Verified backups: `%d`", view.VerifiedBackups), fmt.Sprintf("- Side-effect free: `%t`", view.SideEffectFree)}
+	for _, warning := range view.Warnings {
+		lines = append(lines, fmt.Sprintf("- Warning: `%s`", warning))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func adminSecurityPretty(view service.AdminSecurityStatusView) string {
+	return fmt.Sprintf("keys=%d trust=%d governance=%d audits=%d backups=%d", view.PublicKeys, view.TrustBindings, view.GovernancePolicies, view.AuditReports, view.Backups)
+}
+
+func adminSecurityMarkdown(view service.AdminSecurityStatusView) string {
+	lines := []string{"# Security Status", "", fmt.Sprintf("- Public keys: `%d`", view.PublicKeys), fmt.Sprintf("- Trust bindings: `%d`", view.TrustBindings), fmt.Sprintf("- Governance policies: `%d`", view.GovernancePolicies), fmt.Sprintf("- Audit reports: `%d`", view.AuditReports), fmt.Sprintf("- Backups: `%d`", view.Backups)}
+	for _, warning := range view.Warnings {
+		lines = append(lines, fmt.Sprintf("- Warning: `%s`", warning))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func trustStoreStatusPretty(view service.TrustStoreStatusView) string {
+	return fmt.Sprintf("public_keys=%d local=%d trusted=%d revoked=%d expired=%d", view.PublicKeys, view.LocalKeys, view.TrustedKeys, view.RevokedKeys, view.ExpiredKeys)
+}
+
+func trustStoreStatusMarkdown(view service.TrustStoreStatusView) string {
+	lines := []string{"# Trust Store", "", fmt.Sprintf("- Public keys: `%d`", view.PublicKeys), fmt.Sprintf("- Local keys: `%d`", view.LocalKeys), fmt.Sprintf("- Trusted keys: `%d`", view.TrustedKeys), fmt.Sprintf("- Revoked keys: `%d`", view.RevokedKeys), fmt.Sprintf("- Expired keys: `%d`", view.ExpiredKeys)}
+	for _, warning := range view.Warnings {
+		lines = append(lines, fmt.Sprintf("- Warning: `%s`", warning))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func recoveryStatusPretty(view service.RecoveryStatusView) string {
+	return fmt.Sprintf("backups=%d latest=%s plans=%d", view.BackupCount, view.LatestBackupID, view.RestorePlanCount)
+}
+
+func recoveryStatusMarkdown(view service.RecoveryStatusView) string {
+	lines := []string{"# Recovery Status", "", fmt.Sprintf("- Backups: `%d`", view.BackupCount), fmt.Sprintf("- Latest backup: `%s`", view.LatestBackupID), fmt.Sprintf("- Restore plans: `%d`", view.RestorePlanCount)}
+	for _, warning := range view.Warnings {
+		lines = append(lines, fmt.Sprintf("- Warning: `%s`", warning))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func goalBriefPretty(view service.GoalBriefView) string {
+	return fmt.Sprintf("%s %s sections=%d", view.Brief.TargetKind, view.Brief.TargetID, len(view.Brief.Sections))
+}
+
+func goalBriefMarkdown(view service.GoalBriefView) string {
+	return goalSectionsMarkdown(view.Brief.Objective, view.Brief.Sections)
+}
+
+func goalManifestPretty(view service.GoalManifestDetailView) string {
+	return fmt.Sprintf("%s %s:%s sections=%d", view.Manifest.ManifestID, view.Manifest.TargetKind, view.Manifest.TargetID, len(view.Manifest.Sections))
+}
+
+func goalManifestMarkdown(view service.GoalManifestDetailView) string {
+	return goalSectionsMarkdown(view.Manifest.Objective, view.Manifest.Sections)
+}
+
+func goalSectionsMarkdown(objective string, sections []contracts.GoalSection) string {
+	lines := []string{"# Goal", "", strings.TrimSpace(objective), ""}
+	for _, section := range sections {
+		lines = append(lines, "## "+section.Heading, "")
+		if len(section.Items) > 0 {
+			for _, item := range section.Items {
+				lines = append(lines, "- "+item)
+			}
+		} else {
+			lines = append(lines, strings.TrimSpace(section.Body))
+		}
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func governancePackCreateOptionsFromFlags(cmd *cobra.Command, name string) (service.GovernancePackCreateOptions, error) {
@@ -1409,6 +1757,12 @@ func trustListMarkdown(view service.TrustListView) string {
 
 func v17ReadCommand(use string, short string, kind string, args cobra.PositionalArgs) *cobra.Command {
 	cmd := &cobra.Command{Use: use, Short: short, Args: args, RunE: v17PendingRead(kind, v17ReadFailsClosed(use, kind))}
+	addReadOutputFlags(cmd, &outputFlags{})
+	return cmd
+}
+
+func readCommand(use string, short string, args cobra.PositionalArgs, run func(*cobra.Command, []string) error) *cobra.Command {
+	cmd := &cobra.Command{Use: use, Short: short, Args: args, RunE: run}
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }

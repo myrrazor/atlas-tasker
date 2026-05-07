@@ -14,22 +14,24 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
-func TestV17ReadStubJSONEnvelope(t *testing.T) {
+func TestV17AdminSecurityStatusJSONEnvelope(t *testing.T) {
+	withTempWorkspace(t)
+	if out, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v\n%s", err, out)
+	}
 	cmd := NewRootCommand()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
 	cmd.SetArgs([]string{"admin", "security-status", "--json"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("admin security status stub should succeed: %v\n%s", err, out.String())
+		t.Fatalf("admin security status should succeed: %v\n%s", err, out.String())
 	}
 	var got struct {
 		FormatVersion string `json:"format_version"`
 		Kind          string `json:"kind"`
 		GeneratedAt   string `json:"generated_at"`
-		Warnings      []struct {
-			Code string `json:"code"`
-		} `json:"warnings"`
+		PublicKeys    int    `json:"public_keys"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatalf("decode json: %v\n%s", err, out.String())
@@ -37,29 +39,66 @@ func TestV17ReadStubJSONEnvelope(t *testing.T) {
 	if got.FormatVersion != jsonFormatVersion || got.Kind != "admin_security_status" || got.GeneratedAt == "" {
 		t.Fatalf("unexpected v1.7 read envelope: %+v", got)
 	}
-	if len(got.Warnings) != 1 || got.Warnings[0].Code != "v1_7_contract_only" {
-		t.Fatalf("expected v1.7 contract-only warning: %+v", got.Warnings)
-	}
 }
 
-func TestV17PendingVerificationReadsFailClosed(t *testing.T) {
-	for _, args := range [][]string{
-		{"verify", "backup", "no-such-file"},
-		{"backup", "verify", "backup_1"},
-		{"backup", "drill"},
-	} {
-		cmd := NewRootCommand()
-		var out bytes.Buffer
-		cmd.SetOut(&out)
-		cmd.SetErr(&out)
-		cmd.SetArgs(args)
-		err := cmd.Execute()
-		if err == nil || !strings.Contains(err.Error(), "frozen for v1.7 follow-up implementation") {
-			t.Fatalf("%v should fail closed while pending, got %v\n%s", args, err, out.String())
+func TestV17BackupAndGoalCLI(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
 		}
-		if strings.TrimSpace(out.String()) != "" {
-			t.Fatalf("%v should not write success-shaped output while failing closed:\n%s", args, out.String())
-		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Backup goal", "--type", "task", "--actor", "human:owner")
+	backupRaw := must("backup", "create", "--actor", "human:owner", "--reason", "release backup", "--json")
+	var backup struct {
+		Kind     string `json:"kind"`
+		Snapshot struct {
+			BackupID     string `json:"backup_id"`
+			ManifestHash string `json:"manifest_hash"`
+		} `json:"snapshot"`
+	}
+	if err := json.Unmarshal([]byte(backupRaw), &backup); err != nil {
+		t.Fatalf("parse backup create: %v\n%s", err, backupRaw)
+	}
+	if backup.Kind != "backup_detail" || backup.Snapshot.BackupID == "" || backup.Snapshot.ManifestHash == "" {
+		t.Fatalf("unexpected backup create: %#v", backup)
+	}
+	verifyRaw := must("backup", "verify", backup.Snapshot.BackupID, "--json")
+	if !strings.Contains(verifyRaw, `"kind": "backup_verify_result"`) || !strings.Contains(verifyRaw, `"verified": true`) {
+		t.Fatalf("backup verify should report integrity:\n%s", verifyRaw)
+	}
+	planRaw := must("backup", "restore-plan", backup.Snapshot.BackupID, "--json")
+	if !strings.Contains(planRaw, `"kind": "backup_restore_plan"`) {
+		t.Fatalf("restore plan should be concrete json:\n%s", planRaw)
+	}
+	drillRaw := must("backup", "drill", "--json")
+	if !strings.Contains(drillRaw, `"side_effect_free": true`) {
+		t.Fatalf("recovery drill should be side-effect free:\n%s", drillRaw)
+	}
+	goalRaw := must("goal", "manifest", "APP-1", "--actor", "human:owner", "--reason", "prepare goal", "--json")
+	var goal struct {
+		Kind     string `json:"kind"`
+		Manifest struct {
+			ManifestID string `json:"manifest_id"`
+			Sections   []struct {
+				Heading string `json:"heading"`
+			} `json:"sections"`
+		} `json:"manifest"`
+	}
+	if err := json.Unmarshal([]byte(goalRaw), &goal); err != nil {
+		t.Fatalf("parse goal manifest: %v\n%s", err, goalRaw)
+	}
+	if goal.Kind != "goal_manifest" || goal.Manifest.ManifestID == "" || len(goal.Manifest.Sections) != len(contracts.GoalManifestSectionOrder) {
+		t.Fatalf("unexpected goal manifest: %#v", goal)
+	}
+	goalVerify := must("goal", "verify", goal.Manifest.ManifestID, "--json")
+	if !strings.Contains(goalVerify, `"kind": "goal_manifest_verify_result"`) || !strings.Contains(goalVerify, "missing_signature") {
+		t.Fatalf("unsigned goal should verify as missing signature:\n%s", goalVerify)
 	}
 }
 
@@ -386,6 +425,7 @@ func TestV17AuditCLIReportSignExportAndVerify(t *testing.T) {
 }
 
 func TestV17FailClosedExecuteWritesOnlyErrorEnvelope(t *testing.T) {
+	withTempWorkspace(t)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	exit := Execute([]string{"verify", "backup", "no-such-file", "--json"}, &stdout, &stderr)
@@ -406,19 +446,20 @@ func TestV17FailClosedExecuteWritesOnlyErrorEnvelope(t *testing.T) {
 	if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode error envelope: %v\n%s", err, stderr.String())
 	}
-	if envelope.FormatVersion != jsonFormatVersion || envelope.OK || envelope.Error.Code != "internal" || envelope.Error.Exit != exit {
+	if envelope.FormatVersion != jsonFormatVersion || envelope.OK || envelope.Error.Code != "not_found" || envelope.Error.Exit != exit {
 		t.Fatalf("unexpected fail-closed envelope: %+v", envelope)
 	}
 }
 
-func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
+func TestV17BackupCreateRequiresActorAndReason(t *testing.T) {
+	withTempWorkspace(t)
 	cmd := NewRootCommand()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
 	cmd.SetArgs([]string{"backup", "create", "--actor", "human:owner"})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "non-empty --reason") {
+	if err == nil || !strings.Contains(err.Error(), "reason is required") {
 		t.Fatalf("expected missing reason error, got %v", err)
 	}
 
@@ -428,7 +469,7 @@ func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
 	cmd.SetErr(&out)
 	cmd.SetArgs([]string{"backup", "create", "--actor", "human:owner", "--reason", "   "})
 	err = cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "non-empty --reason") {
+	if err == nil || !strings.Contains(err.Error(), "reason is required") {
 		t.Fatalf("expected blank reason error, got %v", err)
 	}
 
@@ -438,18 +479,8 @@ func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
 	cmd.SetErr(&out)
 	cmd.SetArgs([]string{"backup", "create", "--actor", "robot:mallory", "--reason", "contract smoke"})
 	err = cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "valid --actor") {
+	if err == nil || !strings.Contains(err.Error(), "invalid actor") {
 		t.Fatalf("expected invalid actor error, got %v", err)
-	}
-
-	cmd = NewRootCommand()
-	out.Reset()
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"backup", "create", "--actor", "human:owner", "--reason", "contract smoke"})
-	err = cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "frozen for v1.7 follow-up implementation") {
-		t.Fatalf("expected non-zero implementation-pending error, got %v", err)
 	}
 }
 
