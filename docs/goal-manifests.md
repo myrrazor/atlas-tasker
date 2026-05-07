@@ -29,7 +29,7 @@ Goal markdown uses this order:
 11. Context links
 12. Done when
 
-JSON output mirrors the same sections with stable fields. Goal manifests are redaction-aware and may be signed/verified as `goal_manifest` artifacts.
+JSON output mirrors the same sections with stable fields. Goal briefs and manifests are redaction-aware: restricted ticket or run context is replaced with the configured goal marker, and generated manifests bind the redaction preview id. They may be signed/verified as `goal_manifest` artifacts.
 
 ## Output Contract
 
@@ -38,6 +38,7 @@ Every manifest includes:
 - `format_version`, `manifest_id`, `target_kind`, `target_id`, `generated_at`, `generated_by`, and `reason`
 - the stable section list above
 - `policy_snapshot_hash`, `trust_snapshot_hash`, and `source_hash`
+- `redaction_preview_id` when restricted context was marker-redacted
 - optional `signature_envelopes`
 
 The markdown form intentionally stays compact and pasteable. It avoids local private-key details, provider credentials, MCP approvals, runtime directories, and generated backup state. Verification checks the stored manifest payload and signature envelopes; it does not re-interpret the goal against current live policy.

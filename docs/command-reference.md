@@ -308,10 +308,10 @@ Rules:
 - explicit labels are stored under `.tracker/classification/labels/` using collision-resistant `class-<slug>-<hash>.md` filenames; workspace default is `internal`
 - project and ticket labels inherit downward, and higher sensitivity wins over lower child labels
 - legacy `protected` or `sensitive` ticket flags still contribute `restricted`
-- redaction previews are local actor-bound records under `.tracker/redaction/previews/` with Unix mode `0600`
+- redaction previews are local actor-bound records under `.tracker/redaction/previews/` with Unix mode `0600`; preview creation is governed by `redaction_override`
 - previews are single-use and bound to target, actor, source hash, policy hash, classification hash, command target, recomputed items, and a 10-minute TTL
 - PR-705 implements redacted workspace exports; default export redaction omits restricted files, restricted ticket- or run-owned gate/change/check/classification metadata, and extra files under restricted project directories, always omits `.tracker/events/` history, and writes `redaction_preview_id` into both the bundle record and artifact manifest
-- built-in defaults stay active per redaction target unless a custom stored rule exists for that same target
+- built-in defaults stay active unless a custom stored rule exists for the same target, entity kind, and minimum level
 - redacted exports enforce the same `export_create` governance policies as normal exports
 - export redaction only supports `omit`; stored `mask`, `hash`, or marker export rules fail closed
 - redacted artifact verification checks bundle integrity, confirms the preview binding, and fails if omitted preview paths are present
@@ -333,7 +333,7 @@ Rules:
 - report verification and packet verification are read-only and check the snapshot artifact, not current workspace meaning
 - packet verification recomputes `packet_hash` from the canonical report payload and reports `packet_hash_mismatch` on tampering
 - policy explanation requires `event_uid`; numeric `event_id` values are project-scoped and intentionally rejected
-- policy explanation loads the target event and current local policy context; historical reports bind the exact `policy_snapshot_hash`
+- policy explanation loads the target event, infers protected-action inputs when possible, and reports current allow/deny/override reason codes; historical reports bind the exact `policy_snapshot_hash`
 
 ## Backups And Recovery
 
@@ -353,7 +353,7 @@ Rules:
 - backup snapshots include canonical Atlas-owned data only; private keys, local trust decisions, redaction previews, backup snapshots, generated goal files, runtime/worktree/provider state, remotes, notifiers, and MCP approvals are excluded
 - backup records and manifests live under `.tracker/backups/manifests/`; archives live under `.tracker/backups/snapshots/`
 - `backup restore-plan` is side-effect free and does not persist a plan or append an event
-- `backup restore-apply` recomputes the plan under the write lock, requires `--yes`, and writes only paths on the restore allowlist
+- `backup restore-apply` recomputes the plan under the write lock, requires `--yes`, enforces `backup_restore`, and writes only paths on the restore allowlist via atomic rename
 - `backup drill` is read-only and reports recovery warnings without mutating the workspace
 - admin diagnostics are read-only and never print private key material
 
@@ -368,7 +368,8 @@ Rules:
 - goal briefs are pure derived output for agent handoff
 - goal manifests write local derived artifacts under `.tracker/goal/manifests/` and require actor/reason because Atlas records the manifest creation event
 - goal markdown uses the stable section order from `docs/goal-manifests.md`
-- manifests bind `policy_snapshot_hash`, `trust_snapshot_hash`, and `source_hash`
+- restricted ticket/run context is marker-redacted before brief or manifest output
+- manifests bind `policy_snapshot_hash`, `trust_snapshot_hash`, `source_hash`, and `redaction_preview_id` when redaction was applied
 - verification checks the stored manifest snapshot and signatures, not current live policy meaning
 
 ## Governance

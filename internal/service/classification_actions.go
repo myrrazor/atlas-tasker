@@ -175,6 +175,25 @@ func (s *ActionService) CreateRedactionPreview(ctx context.Context, scope string
 		if err != nil {
 			return RedactionPreviewDetailView{}, err
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionRedactionOverride,
+			Target: "workspace",
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return RedactionPreviewDetailView{}, err
+		}
+		if stringSliceContains(governanceExplanation.ReasonCodes, "owner_override_applied") {
+			if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+				return RedactionPreviewDetailView{}, err
+			}
+			preview, err = s.buildRedactionPreview(ctx, scope, target, actor)
+			if err != nil {
+				return RedactionPreviewDetailView{}, err
+			}
+		}
 		if err := s.RedactionPreviews.SaveRedactionPreview(ctx, preview); err != nil {
 			return RedactionPreviewDetailView{}, err
 		}

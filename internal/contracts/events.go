@@ -290,19 +290,21 @@ type EventMetadata struct {
 }
 
 type Event struct {
-	EventID           int64         `json:"event_id"`
-	EventUID          string        `json:"event_uid,omitempty"`
-	Timestamp         time.Time     `json:"timestamp"`
-	OriginWorkspaceID string        `json:"origin_workspace_id,omitempty"`
-	LogicalClock      int64         `json:"logical_clock,omitempty"`
-	Actor             Actor         `json:"actor"`
-	Reason            string        `json:"reason,omitempty"`
-	Type              EventType     `json:"type"`
-	Project           string        `json:"project"`
-	TicketID          string        `json:"ticket_id,omitempty"`
-	Payload           any           `json:"payload,omitempty"`
-	Metadata          EventMetadata `json:"metadata,omitempty"`
-	SchemaVersion     int           `json:"schema_version"`
+	EventID           int64     `json:"event_id"`
+	EventUID          string    `json:"event_uid,omitempty"`
+	Timestamp         time.Time `json:"timestamp"`
+	OriginWorkspaceID string    `json:"origin_workspace_id,omitempty"`
+	LogicalClock      int64     `json:"logical_clock,omitempty"`
+	Actor             Actor     `json:"actor"`
+	Reason            string    `json:"reason,omitempty"`
+	Type              EventType `json:"type"`
+	Project           string    `json:"project"`
+	TicketID          string    `json:"ticket_id,omitempty"`
+	// Payload is event-log context, not a signed artifact contract. If a future
+	// release signs events, promote this to a typed payload first.
+	Payload       any           `json:"payload,omitempty"`
+	Metadata      EventMetadata `json:"metadata,omitempty"`
+	SchemaVersion int           `json:"schema_version"`
 }
 
 func (e Event) Validate() error {

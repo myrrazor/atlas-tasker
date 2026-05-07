@@ -53,6 +53,16 @@ func TestCanonicalizeAtlasV1RejectsFloatsAndInvalidUTF8(t *testing.T) {
 	}
 }
 
+func TestCanonicalizeAtlasV1RejectsExcessiveDepth(t *testing.T) {
+	payload := any("leaf")
+	for i := 0; i < maxCanonicalDepth+2; i++ {
+		payload = map[string]any{"next": payload}
+	}
+	if _, err := CanonicalizeAtlasV1(payload); err == nil || !strings.Contains(err.Error(), "max depth") {
+		t.Fatalf("excessive nesting should fail closed, got %v", err)
+	}
+}
+
 func TestCanonicalizeAtlasV1TamperChangesBytes(t *testing.T) {
 	base, err := CanonicalizeAtlasV1(map[string]any{"payload_hash": strings.Repeat("a", 64)})
 	if err != nil {

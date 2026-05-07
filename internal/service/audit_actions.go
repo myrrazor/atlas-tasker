@@ -47,13 +47,15 @@ type AuditIntegrityView struct {
 }
 
 type AuditPolicyExplanationView struct {
-	Kind             string                       `json:"kind"`
-	GeneratedAt      time.Time                    `json:"generated_at"`
-	Target           string                       `json:"target"`
-	Event            *contracts.Event             `json:"event,omitempty"`
-	Policies         []contracts.GovernancePolicy `json:"policies,omitempty"`
-	ReasonCodes      []string                     `json:"reason_codes,omitempty"`
-	SnapshotGuidance string                       `json:"snapshot_guidance"`
+	Kind             string                           `json:"kind"`
+	GeneratedAt      time.Time                        `json:"generated_at"`
+	Target           string                           `json:"target"`
+	Event            *contracts.Event                 `json:"event,omitempty"`
+	Policies         []contracts.GovernancePolicy     `json:"policies,omitempty"`
+	Governance       *contracts.GovernanceExplanation `json:"governance,omitempty"`
+	Inputs           map[string]string                `json:"inputs,omitempty"`
+	ReasonCodes      []string                         `json:"reason_codes,omitempty"`
+	SnapshotGuidance string                           `json:"snapshot_guidance"`
 }
 
 type auditScope struct {
@@ -401,12 +403,43 @@ func (s *ActionService) ExplainAuditPolicy(ctx context.Context, target string) (
 	if len(policies) == 0 {
 		reasonCodes = append(reasonCodes, "no_governance_policies")
 	}
+	input, inferred := auditGovernanceInputForEvent(*found)
+	var governance *contracts.GovernanceExplanation
+	inputs := map[string]string{}
+	if inferred {
+		reasonCodes = append(reasonCodes, "protected_action_inferred")
+		explained, err := s.ExplainGovernance(ctx, input)
+		if err != nil {
+			return AuditPolicyExplanationView{}, err
+		}
+		governance = &explained
+		inputs = map[string]string{
+			"action": string(explained.Action),
+			"actor":  string(explained.Actor),
+			"target": explained.Target,
+		}
+		for key, value := range explained.Inputs {
+			inputs[key] = value
+		}
+		if explained.Allowed {
+			reasonCodes = append(reasonCodes, "governance_allowed")
+		} else {
+			reasonCodes = append(reasonCodes, "governance_denied")
+		}
+		if stringSliceContains(explained.ReasonCodes, "owner_override_applied") {
+			reasonCodes = append(reasonCodes, "governance_override_applied")
+		}
+	} else {
+		reasonCodes = append(reasonCodes, "protected_action_not_inferred")
+	}
 	return AuditPolicyExplanationView{
 		Kind:             "governance_explanation",
 		GeneratedAt:      s.now(),
 		Target:           lookup,
 		Event:            found,
 		Policies:         policies,
+		Governance:       governance,
+		Inputs:           inputs,
 		ReasonCodes:      reasonCodes,
 		SnapshotGuidance: "audit reports bind policy_snapshot_hash; this explanation uses the current local policy store for operator context",
 	}, nil
@@ -543,7 +576,7 @@ func (s *ActionService) signaturesForArtifact(ctx context.Context, kind contract
 }
 
 func (s *ActionService) resolveAuditArtifact(ctx context.Context, ref string) (*contracts.AuditReport, *contracts.AuditPacket, string, error) {
-	if raw, ok, err := readAuditRefPath(ref); err != nil {
+	if raw, ok, err := readAuditRefPath(s.Root, ref); err != nil {
 		return nil, nil, "", err
 	} else if ok {
 		var packet contracts.AuditPacket
@@ -570,7 +603,7 @@ func (s *ActionService) resolveAuditArtifact(ctx context.Context, ref string) (*
 	return &report, nil, "report", nil
 }
 
-func readAuditRefPath(ref string) ([]byte, bool, error) {
+func readAuditRefPath(root string, ref string) ([]byte, bool, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return nil, false, nil
@@ -578,7 +611,23 @@ func readAuditRefPath(ref string) ([]byte, bool, error) {
 	if !strings.Contains(ref, string(os.PathSeparator)) && !strings.HasSuffix(ref, ".json") {
 		return nil, false, nil
 	}
-	raw, err := os.ReadFile(ref)
+	path := ref
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, path)
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, false, err
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, false, err
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+		return nil, false, apperr.New(apperr.CodeInvalidInput, "audit artifact path must stay inside the workspace")
+	}
+	raw, err := os.ReadFile(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, false, nil
@@ -720,6 +769,135 @@ func auditLooksNumeric(value string) bool {
 		}
 	}
 	return true
+}
+
+func auditGovernanceInputForEvent(event contracts.Event) (GovernanceEvaluationInput, bool) {
+	input := GovernanceEvaluationInput{Actor: event.Actor, Reason: event.Reason}
+	workspace := func(action contracts.ProtectedAction) (GovernanceEvaluationInput, bool) {
+		input.Action = action
+		input.Target = "workspace"
+		return input, true
+	}
+	switch event.Type {
+	case contracts.EventTicketMoved:
+		if auditPayloadString(event.Payload, "to") != string(contracts.StatusDone) {
+			return GovernanceEvaluationInput{}, false
+		}
+		ticketID := firstNonEmpty(event.TicketID, auditPayloadString(event.Payload, "ticket_id"))
+		if ticketID == "" {
+			return GovernanceEvaluationInput{}, false
+		}
+		input.Action = contracts.ProtectedActionTicketComplete
+		input.Target = "ticket:" + ticketID
+		input.TicketID = ticketID
+		return input, true
+	case contracts.EventRunCompleted:
+		runID := auditPayloadString(event.Payload, "run_id")
+		if runID == "" {
+			return GovernanceEvaluationInput{}, false
+		}
+		input.Action = contracts.ProtectedActionRunComplete
+		input.Target = "run:" + runID
+		input.RunID = runID
+		input.TicketID = event.TicketID
+		return input, true
+	case contracts.EventGateApproved:
+		gateID := auditPayloadString(event.Payload, "gate_id")
+		if gateID == "" {
+			return GovernanceEvaluationInput{}, false
+		}
+		input.Action = contracts.ProtectedActionGateApprove
+		input.Target = "gate:" + gateID
+		input.GateID = gateID
+		input.TicketID = event.TicketID
+		return input, true
+	case contracts.EventGateWaived:
+		gateID := auditPayloadString(event.Payload, "gate_id")
+		if gateID == "" {
+			return GovernanceEvaluationInput{}, false
+		}
+		input.Action = contracts.ProtectedActionGateWaive
+		input.Target = "gate:" + gateID
+		input.GateID = gateID
+		input.TicketID = event.TicketID
+		return input, true
+	case contracts.EventChangeMerged:
+		changeID := auditPayloadString(event.Payload, "change_id")
+		if changeID == "" {
+			return GovernanceEvaluationInput{}, false
+		}
+		input.Action = contracts.ProtectedActionChangeMerge
+		input.Target = "change:" + changeID
+		input.ChangeID = changeID
+		input.TicketID = event.TicketID
+		return input, true
+	case contracts.EventExportCreated, contracts.EventRedactionExported:
+		return workspace(contracts.ProtectedActionExportCreate)
+	case contracts.EventArchiveApplied:
+		return workspace(contracts.ProtectedActionArchiveApply)
+	case contracts.EventArchiveRestored:
+		return workspace(contracts.ProtectedActionArchiveRestore)
+	case contracts.EventBackupRestored:
+		return workspace(contracts.ProtectedActionBackupRestore)
+	case contracts.EventTrustBound:
+		return workspace(contracts.ProtectedActionTrustKey)
+	case contracts.EventKeyRevoked, contracts.EventTrustRevoked:
+		return workspace(contracts.ProtectedActionRevokeKey)
+	case contracts.EventImportApplied:
+		return workspace(contracts.ProtectedActionImportApply)
+	case contracts.EventBundleImported, contracts.EventSyncCompleted:
+		return workspace(contracts.ProtectedActionSyncImportApply)
+	case contracts.EventRedactionPreviewed:
+		return workspace(contracts.ProtectedActionRedactionOverride)
+	default:
+		return GovernanceEvaluationInput{}, false
+	}
+}
+
+func auditPayloadString(payload any, keys ...string) string {
+	if len(keys) == 0 || payload == nil {
+		return ""
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return ""
+	}
+	allowed := map[string]struct{}{}
+	for _, key := range keys {
+		allowed[key] = struct{}{}
+	}
+	return auditPayloadStringFromAny(decoded, allowed)
+}
+
+func auditPayloadStringFromAny(value any, keys map[string]struct{}) string {
+	switch item := value.(type) {
+	case string:
+		return ""
+	case []any:
+		for _, child := range item {
+			if found := auditPayloadStringFromAny(child, keys); found != "" {
+				return found
+			}
+		}
+	case map[string]any:
+		for key, child := range item {
+			if _, ok := keys[key]; ok {
+				if value, ok := child.(string); ok {
+					return strings.TrimSpace(value)
+				}
+			}
+		}
+		for _, child := range item {
+			if found := auditPayloadStringFromAny(child, keys); found != "" {
+				return found
+			}
+		}
+	}
+	return ""
 }
 
 func auditEventRange(events []contracts.Event) contracts.EventRange {
@@ -936,7 +1114,7 @@ func (s *ActionService) auditPolicySnapshotHash(ctx context.Context) (string, er
 	if err != nil {
 		return "", err
 	}
-	return hashJSON(map[string]any{"policies": policies, "packs": packs}), nil
+	return canonicalSnapshotHash(map[string]any{"policies": policies, "packs": packs})
 }
 
 func (s *ActionService) auditTrustSnapshotHash(ctx context.Context) (string, error) {
@@ -952,7 +1130,16 @@ func (s *ActionService) auditTrustSnapshotHash(ctx context.Context) (string, err
 	if err != nil {
 		return "", err
 	}
-	return hashJSON(map[string]any{"public_keys": keys, "revocations": revocations, "trust_bindings": bindings}), nil
+	return canonicalSnapshotHash(map[string]any{"public_keys": keys, "revocations": revocations, "trust_bindings": bindings})
+}
+
+func canonicalSnapshotHash(value any) (string, error) {
+	raw, err := contracts.CanonicalizeAtlasV1(value)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func (s *ActionService) auditArtifactHashes(ctx context.Context, scope auditScope) ([]contracts.ArtifactHash, error) {

@@ -323,6 +323,16 @@ func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor 
 		if err != nil {
 			return RestoreApplyResultView{}, err
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionBackupRestore,
+			Target: "workspace",
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return RestoreApplyResultView{}, err
+		}
 		applied := 0
 		skipped := 0
 		event, err := s.newEvent(ctx, workspaceProjectKey, s.now(), actor, reason, contracts.EventBackupRestored, "", plan)
@@ -343,13 +353,16 @@ func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor 
 				if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 					return err
 				}
-				if err := os.WriteFile(target, raw, 0o644); err != nil {
+				if err := writeFileAtomic(target, raw, 0o644); err != nil {
 					return err
 				}
 				applied++
 			}
 			return nil
 		}); err != nil {
+			return RestoreApplyResultView{}, err
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
 			return RestoreApplyResultView{}, err
 		}
 		return RestoreApplyResultView{Kind: "backup_restore_result", GeneratedAt: s.now(), Plan: plan, Applied: applied, Skipped: skipped}, nil
@@ -505,6 +518,16 @@ func (s *ActionService) CreateGoalManifest(ctx context.Context, target string, a
 		if err != nil {
 			return GoalManifestDetailView{}, err
 		}
+		var redactionPreview *contracts.RedactionPreview
+		if _, redacted, err := s.goalRedactionMarker(ctx, brief); err != nil {
+			return GoalManifestDetailView{}, err
+		} else if redacted {
+			preview, err := s.buildRedactionPreview(ctx, "workspace", contracts.RedactionTargetGoal, actor)
+			if err != nil {
+				return GoalManifestDetailView{}, err
+			}
+			redactionPreview = &preview
+		}
 		policyHash, err := s.auditPolicySnapshotHash(ctx)
 		if err != nil {
 			return GoalManifestDetailView{}, err
@@ -531,12 +554,20 @@ func (s *ActionService) CreateGoalManifest(ctx context.Context, target string, a
 			Reason:             reason,
 			SchemaVersion:      contracts.CurrentSchemaVersion,
 		}
+		if redactionPreview != nil {
+			manifest.RedactionPreviewID = redactionPreview.PreviewID
+		}
 		manifest = normalizeGoalManifest(manifest)
 		event, err := s.newEvent(ctx, workspaceProjectKey, s.now(), actor, reason, contracts.EventGoalManifestGenerated, goalTicketID(manifest), manifest)
 		if err != nil {
 			return GoalManifestDetailView{}, err
 		}
 		if err := s.commitMutation(ctx, "create goal manifest", "goal_manifest", event, func(ctx context.Context) error {
+			if redactionPreview != nil {
+				if err := s.RedactionPreviews.SaveRedactionPreview(ctx, *redactionPreview); err != nil {
+					return err
+				}
+			}
 			return s.GoalManifests.SaveGoalManifest(ctx, manifest)
 		}); err != nil {
 			return GoalManifestDetailView{}, err
@@ -899,7 +930,56 @@ func (s *ActionService) goalBriefForTicket(ctx context.Context, ticket contracts
 		return contracts.GoalBrief{}, err
 	}
 	brief := contracts.GoalBrief{TargetKind: targetKind, TargetID: targetID, Objective: objective, Sections: sections, GeneratedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion}
+	brief, err = s.redactGoalBrief(ctx, brief)
+	if err != nil {
+		return contracts.GoalBrief{}, err
+	}
 	return brief, brief.Validate()
+}
+
+func (s *ActionService) redactGoalBrief(ctx context.Context, brief contracts.GoalBrief) (contracts.GoalBrief, error) {
+	marker, redacted, err := s.goalRedactionMarker(ctx, brief)
+	if err != nil || !redacted {
+		return brief, err
+	}
+	brief.Objective = marker
+	for idx := range brief.Sections {
+		if strings.TrimSpace(brief.Sections[idx].Body) != "" {
+			brief.Sections[idx].Body = marker
+		}
+		if len(brief.Sections[idx].Items) > 0 {
+			brief.Sections[idx].Items = []string{marker}
+		}
+	}
+	return brief, nil
+}
+
+func (s *ActionService) goalRedactionMarker(ctx context.Context, brief contracts.GoalBrief) (string, bool, error) {
+	kind := contracts.ClassifiedEntityTicket
+	if brief.TargetKind == contracts.GoalTargetRun {
+		kind = contracts.ClassifiedEntityRun
+	}
+	level, _, _, err := s.effectiveClassification(ctx, kind, brief.TargetID)
+	if err != nil {
+		return "", false, err
+	}
+	rules, err := s.RedactionRules.ListRedactionRules(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	for _, rule := range rules {
+		if rule.Target != contracts.RedactionTargetGoal || (rule.EntityKind != "" && rule.EntityKind != kind) {
+			continue
+		}
+		if !classificationAtLeast(level, rule.MinLevel) {
+			continue
+		}
+		if rule.Action == contracts.RedactionReplaceWithMarker && strings.TrimSpace(rule.Marker) != "" {
+			return rule.Marker, true, nil
+		}
+		return "[redacted: " + string(level) + "]", true, nil
+	}
+	return "", false, nil
 }
 
 func (s *ActionService) goalSections(ctx context.Context, ticket contracts.TicketSnapshot, run *contracts.RunSnapshot) ([]contracts.GoalSection, error) {

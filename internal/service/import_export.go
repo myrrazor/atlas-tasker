@@ -275,20 +275,24 @@ func (s *ActionService) ApplyImport(ctx context.Context, jobID string, actor con
 			return ImportJobDetailView{Job: job, Plan: plan, GeneratedAt: s.now()}, apperr.New(apperr.CodeConflict, "import preview has conflicts or errors")
 		}
 		trustedSignatures := 0
+		signatureEvidenceUnavailable := false
 		protectedAction := contracts.ProtectedActionImportApply
 		if plan.SourceType == contracts.ImportSourceAtlasBundle {
 			protectedAction = contracts.ProtectedActionBundleImportApply
 			count, signatureErr := s.trustedExportBundleSignatureCount(ctx, plan.SourcePath)
 			if signatureErr == nil {
 				trustedSignatures = count
+			} else {
+				signatureEvidenceUnavailable = true
 			}
 		}
 		governanceInput := GovernanceEvaluationInput{
-			Action:                protectedAction,
-			Target:                "workspace",
-			Actor:                 actor,
-			Reason:                reason,
-			TrustedSignatureCount: trustedSignatures,
+			Action:                       protectedAction,
+			Target:                       "workspace",
+			Actor:                        actor,
+			Reason:                       reason,
+			TrustedSignatureCount:        trustedSignatures,
+			SignatureEvidenceUnavailable: signatureEvidenceUnavailable,
 		}
 		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
 		if err != nil {
@@ -688,6 +692,9 @@ func previewAtlasBundle(root string, sourcePath string) (ImportPlan, error) {
 		return ImportPlan{}, err
 	}
 	plan := ImportPlan{SourcePath: sourcePath, SourceType: contracts.ImportSourceAtlasBundle, Fingerprint: fingerprint, FileCount: len(manifest.Files)}
+	if strings.TrimSpace(manifest.RedactionPreviewID) != "" {
+		plan.Warnings = append(plan.Warnings, "redacted_bundle_reimport_requires_review")
+	}
 	for _, file := range manifest.Files {
 		if skipAtlasBundleImportPath(file.Path) {
 			continue

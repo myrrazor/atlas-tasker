@@ -55,6 +55,9 @@ func TestSecurityKeysGenerateTrustAndStayLocal(t *testing.T) {
 	if key.PublicKey.PublicKeyMaterial == "" || strings.Contains(key.PublicKey.PublicKeyMaterial, "PRIVATE") {
 		t.Fatalf("public key output looks wrong: %#v", key.PublicKey)
 	}
+	if got := strings.TrimPrefix(key.PublicKey.PublicKeyID, "key-"); len(got) != 32 {
+		t.Fatalf("public key ids should use 128-bit fingerprint prefixes, got %s", key.PublicKey.PublicKeyID)
+	}
 	privateInfo, err := os.Stat(storage.PrivateKeyFile(root, key.PublicKey.PublicKeyID))
 	if err != nil {
 		t.Fatalf("stat private key: %v", err)
@@ -98,6 +101,44 @@ func TestSecurityKeysGenerateTrustAndStayLocal(t *testing.T) {
 		if event.Type == contracts.EventTrustBound || event.Type == contracts.EventTrustRevoked {
 			t.Fatalf("local trust ceremonies must not enter syncable event history: %#v", event)
 		}
+	}
+}
+
+func TestBindTrustRejectsInactiveOrExpiredKeys(t *testing.T) {
+	ctx, _, actions := newSecurityTestActions(t)
+	rotated, err := actions.GenerateKey(ctx, KeyGenerateOptions{Scope: contracts.KeyScopeCollaborator, OwnerID: "rotated"}, contracts.Actor("human:owner"), "create rotated key")
+	if err != nil {
+		t.Fatalf("generate rotated key: %v", err)
+	}
+	if _, err := actions.RotateKey(ctx, rotated.PublicKey.PublicKeyID, contracts.Actor("human:owner"), "rotate before trust"); err != nil {
+		t.Fatalf("rotate key: %v", err)
+	}
+	if _, err := actions.BindTrust(ctx, "rotated", rotated.PublicKey.PublicKeyID, contracts.Actor("human:owner"), "trust rotated key"); err == nil || !strings.Contains(err.Error(), "state rotated") {
+		t.Fatalf("rotated key should not be trust-bound, got %v", err)
+	}
+
+	revoked, err := actions.GenerateKey(ctx, KeyGenerateOptions{Scope: contracts.KeyScopeCollaborator, OwnerID: "revoked"}, contracts.Actor("human:owner"), "create revoked key")
+	if err != nil {
+		t.Fatalf("generate revoked key: %v", err)
+	}
+	if _, err := actions.RevokeKey(ctx, revoked.PublicKey.PublicKeyID, contracts.Actor("human:owner"), "revoke before trust"); err != nil {
+		t.Fatalf("revoke key: %v", err)
+	}
+	if _, err := actions.BindTrust(ctx, "revoked", revoked.PublicKey.PublicKeyID, contracts.Actor("human:owner"), "trust revoked key"); err == nil || !strings.Contains(err.Error(), "state revoked") {
+		t.Fatalf("revoked key should not be trust-bound, got %v", err)
+	}
+
+	expired, err := actions.GenerateKey(ctx, KeyGenerateOptions{Scope: contracts.KeyScopeCollaborator, OwnerID: "expired"}, contracts.Actor("human:owner"), "create expired key")
+	if err != nil {
+		t.Fatalf("generate expired key: %v", err)
+	}
+	expiredRecord := expired.PublicKey
+	expiredRecord.ExpiresAt = actions.now().Add(-time.Second)
+	if err := actions.SecurityKeys.SavePublicKey(ctx, expiredRecord); err != nil {
+		t.Fatalf("save expired key: %v", err)
+	}
+	if _, err := actions.BindTrust(ctx, "expired", expired.PublicKey.PublicKeyID, contracts.Actor("human:owner"), "trust expired key"); err == nil || !strings.Contains(err.Error(), "expired key") {
+		t.Fatalf("expired key should not be trust-bound, got %v", err)
 	}
 }
 
