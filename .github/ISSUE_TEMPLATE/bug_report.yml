@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible Atlas problem without sharing secrets.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste private keys, tokens, webhook URLs, full `.tracker` archives, or unredacted logs. Redact sensitive workspace details before submitting.
+  - type: input
+    id: version
+    attributes:
+      label: Atlas version or commit
+      description: Use a tag, branch, commit SHA, or PR number.
+      placeholder: v1.8.0-rc1 planned / 9b2ec1a / PR #77
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and architecture
+      placeholder: macOS arm64, Linux amd64
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or workflow
+      description: Include the smallest command sequence that reproduces the issue.
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Redact all secrets and private workspace data.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets, private keys, webhook URLs, full `.tracker` archives, and unredacted logs.
+          required: true
