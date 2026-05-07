@@ -1,0 +1,12 @@
+{
+  "version": "v1.8",
+  "theme": "Release Candidate Polish",
+  "public_candidate_version": "v1.8.0-rc1",
+  "base_branch": "codex/pr-709-v171-release-signoff",
+  "base_sha": "5a75aec336311abd1844c8578342e7da0af5388e",
+  "base_pr": 76,
+  "base_pr_title": "chore: close out v1.7.1 release proof",
+  "created_at": "2026-05-07T00:00:00Z",
+  "stacking_rule": "PR-801 starts from the unmerged v1.7.1 closeout tip and the v1.8 train stacks PR-801 through PR-809. Retarget or rebase to main after PRs 68-76 are merged.",
+  "release_rule": "v1.8 may polish the public release candidate from this base, but it must not claim ship readiness until hosted assets, checksums, attestations, install smoke, SBOM, vulnerability scan, and final release evidence pass."
+}
