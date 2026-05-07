@@ -2,6 +2,8 @@
 
 Atlas `v1.8.0-rc1` is planned, not shipped. This guide explains the release workflow and points to the current proof gates.
 
+Current evidence: [v1.8 release evidence](release/v1.8-release-evidence.md) and [launch checklist](release/launch-checklist.md).
+
 ## Release States
 
 - Source build: proves the local checkout can compile.
