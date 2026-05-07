@@ -21,6 +21,7 @@ Passing this gate does not mean Atlas is ship-ready.
 - full tests: `go test -count=1 ./... 2>&1 | tee TEST_STDOUT.log`
 - `go vet ./...`
 - `VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh`
+- `VERSION=v1.8.0-rc1 sh scripts/validate-rc.sh`
 - `sh scripts/stability-smoke.sh`
 - `VERSION=v1.8.0-rc1 ./scripts/release-rehearsal.sh`
 - `go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...`

@@ -56,12 +56,31 @@ func TestBoardPrettyWithWidthNarrowGolden(t *testing.T) {
 	}}
 	out := BoardPrettyWithWidth(board, 32)
 	for _, line := range strings.Split(out, "\n") {
-		if strings.HasPrefix(line, "  - ") && visibleWidth(line) > 32 {
+		if visibleWidth(line) > 32 {
 			t.Fatalf("expected board item line to fit width, got width=%d line=%q", visibleWidth(line), line)
 		}
 	}
 	if !strings.Contains(out, "APP-1 [ready] [high] A ve...") {
 		t.Fatalf("unexpected narrow board output:\n%s", out)
+	}
+}
+
+func TestBoardPrettyWithTinyWidthKeepsHeadersInsideWidth(t *testing.T) {
+	board := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady: {{ID: "APP-1", Status: contracts.StatusReady, Priority: contracts.PriorityHigh, Title: "Tiny terminal", UpdatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}},
+	}}
+	out := BoardPrettyWithWidth(board, 8)
+	for _, line := range strings.Split(out, "\n") {
+		if visibleWidth(line) > 8 {
+			t.Fatalf("expected every board line to fit width, got width=%d line=%q", visibleWidth(line), line)
+		}
+	}
+}
+
+func TestTerminalWidthUsesColumnsWhenStdoutIsNotTTY(t *testing.T) {
+	t.Setenv("COLUMNS", "41")
+	if got := TerminalWidth(100); got != 41 {
+		t.Fatalf("expected COLUMNS fallback width, got %d", got)
 	}
 }
 

@@ -26,11 +26,12 @@ Each archive contains a single `tracker` binary.
 
 ```bash
 VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh
+VERSION=v1.8.0-rc1 sh scripts/validate-rc.sh
 VERSION=v1.8.0-rc1 ./scripts/release-rehearsal.sh
 sh scripts/stability-smoke.sh
 ```
 
-The preflight checks release script syntax and verifies the stamped `tracker version --json` contract. The rehearsal builds the current binary, packages archives, generates checksums, verifies a local archive, serves local artifacts, installs through `scripts/install.sh`, checks the installed version metadata, and runs the packaged smoke flow.
+The preflight checks release script syntax and verifies the stamped `tracker version --json` contract. The RC validator checks public docs, examples, terminal output, CLI/slash-shell read parity, MCP read-profile tool presence, leakage, stale release strings, quickstart smoke, and local performance budgets without network access. The rehearsal builds the current binary, packages archives, generates checksums, verifies a local archive, serves local artifacts, installs through `scripts/install.sh`, checks the installed version metadata, and runs the packaged smoke flow.
 
 Local vulnerability and SBOM proof is generated explicitly:
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
@@ -23,11 +24,20 @@ func ColorEnabled() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
-func terminalWidth(defaultWidth int) int {
+func TerminalWidth(defaultWidth int) int {
 	if width, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && width > 0 {
 		return width
 	}
+	if raw := strings.TrimSpace(os.Getenv("COLUMNS")); raw != "" {
+		if width, err := strconv.Atoi(raw); err == nil && width > 0 {
+			return width
+		}
+	}
 	return defaultWidth
+}
+
+func terminalWidth(defaultWidth int) int {
+	return TerminalWidth(defaultWidth)
 }
 
 func normalizedWidth(width int) int {
@@ -127,12 +137,16 @@ func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
 			}
 			return tickets[i].UpdatedAt.Before(tickets[j].UpdatedAt)
 		})
-		section := []string{fmt.Sprintf("%s (%d)", labels[status], len(tickets))}
+		section := []string{TruncateDisplay(fmt.Sprintf("%s (%d)", labels[status], len(tickets)), width)}
 		if len(tickets) == 0 {
-			section = append(section, "  - (empty)")
+			section = append(section, TruncateDisplay("  - (empty)", width))
 		} else {
 			for _, ticket := range tickets {
-				section = append(section, "  - "+TicketSummary(ticket, width-4))
+				summaryWidth := width - 4
+				if summaryWidth < 1 {
+					summaryWidth = 1
+				}
+				section = append(section, TruncateDisplay("  - "+TicketSummary(ticket, summaryWidth), width))
 			}
 		}
 		sections = append(sections, strings.Join(section, "\n"))
