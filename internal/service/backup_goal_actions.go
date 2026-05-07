@@ -941,16 +941,18 @@ func (s *ActionService) goalSections(ctx context.Context, ticket contracts.Ticke
 	return completeGoalSections([]contracts.GoalSection{
 		{Heading: "Goal", Body: ticket.Title},
 		{Heading: "Objective", Body: firstNonEmpty(ticket.Summary, ticket.Description, ticket.Title)},
-		{Heading: "Current ticket/run", Items: goalCompactStrings(current, "status: "+string(ticket.Status), "priority: "+string(ticket.Priority), latestRunLine(run, ticket))},
-		{Heading: "Acceptance criteria", Items: fallbackItems(ticket.AcceptanceCriteria, "Satisfy the ticket acceptance criteria and record evidence.")},
+		{Heading: "Current State", Items: currentStateLines(ticket, run, gates)},
+		{Heading: "Ticket / Run", Items: goalCompactStrings(current, latestRunLine(run, ticket))},
+		{Heading: "Acceptance Criteria", Items: fallbackItems(ticket.AcceptanceCriteria, "Satisfy the ticket acceptance criteria and record evidence.")},
 		{Heading: "Constraints", Items: goalCompactStrings("preserve existing user work", "do not bypass governance gates", strings.Join(ticket.RequiredCapabilities, ", "))},
-		{Heading: "Required gates", Items: gateLines(gates)},
-		{Heading: "Evidence needed", Items: evidenceNeedLines(ticket, gates)},
-		{Heading: "Allowed actions", Items: goalCompactStrings("read and update Atlas-owned files for this ticket", "run local tests and attach evidence", "request review when done")},
-		{Heading: "Do not do", Items: goalCompactStrings("do not alter private keys or trust decisions", "do not recreate provider state from local manifests", "do not skip required approvals")},
-		{Heading: "Current blockers", Items: blockerLines(ticket, gates)},
-		{Heading: "Context links", Items: contextLines(ticket, runs, changes, handoffs, evidenceItems)},
-		{Heading: "Done when", Items: doneWhenLines(ticket, gates)},
+		{Heading: "Required Evidence", Items: evidenceNeedLines(ticket, gates)},
+		{Heading: "Required Gates", Items: gateLines(gates)},
+		{Heading: "Allowed Actions", Items: goalCompactStrings("read and update Atlas-owned files for this ticket", "run local tests and attach evidence", "request review when done")},
+		{Heading: "Do Not Do", Items: goalCompactStrings("do not alter private keys or trust decisions", "do not recreate provider state from local manifests", "do not skip required approvals")},
+		{Heading: "Context", Items: contextLines(ticket, runs, changes, handoffs, evidenceItems)},
+		{Heading: "Suggested Commands", Items: suggestedCommandLines(ticket, run)},
+		{Heading: "Done When", Items: doneWhenLines(ticket, gates)},
+		{Heading: "Verification", Items: verificationLines(ticket, run)},
 	}), nil
 }
 
@@ -1042,6 +1044,22 @@ func latestRunLine(run *contracts.RunSnapshot, ticket contracts.TicketSnapshot) 
 	return ""
 }
 
+func currentStateLines(ticket contracts.TicketSnapshot, run *contracts.RunSnapshot, gates []contracts.GateSnapshot) []string {
+	lines := []string{
+		"ticket status: " + string(ticket.Status),
+		"priority: " + string(ticket.Priority),
+	}
+	if run != nil {
+		lines = append(lines, "run status: "+string(run.Status))
+	}
+	for _, blocker := range blockerLines(ticket, gates) {
+		if blocker != "None" {
+			lines = append(lines, blocker)
+		}
+	}
+	return goalCompactStrings(lines...)
+}
+
 func gateLines(gates []contracts.GateSnapshot) []string {
 	lines := []string{}
 	for _, gate := range gates {
@@ -1087,6 +1105,27 @@ func contextLines(ticket contracts.TicketSnapshot, runs []contracts.RunSnapshot,
 	return goalCompactStrings(lines...)
 }
 
+func suggestedCommandLines(ticket contracts.TicketSnapshot, run *contracts.RunSnapshot) []string {
+	target := ticket.ID
+	lines := []string{
+		"tracker inspect " + ticket.ID + " --actor <actor> --json",
+		"tracker ticket claim " + ticket.ID + " --actor <actor>",
+		"tracker ticket move " + ticket.ID + " in_progress --actor <actor> --reason \"start work\"",
+	}
+	if run != nil {
+		target = run.RunID
+		lines = append(lines,
+			"tracker run checkpoint "+run.RunID+" --title \"progress\" --body \"what changed\" --actor <actor> --reason \"record progress\"",
+			"tracker run evidence add "+run.RunID+" --type test_result --title \"verification\" --body \"test output\" --actor <actor> --reason \"record verification\"",
+		)
+	} else if strings.TrimSpace(ticket.LatestRunID) != "" {
+		target = ticket.LatestRunID
+		lines = append(lines, "tracker run open "+ticket.LatestRunID+" --json")
+	}
+	lines = append(lines, "tracker goal brief "+target+" --md")
+	return goalCompactStrings(lines...)
+}
+
 func doneWhenLines(ticket contracts.TicketSnapshot, gates []contracts.GateSnapshot) []string {
 	lines := append([]string{}, ticket.AcceptanceCriteria...)
 	for _, gate := range gates {
@@ -1095,5 +1134,19 @@ func doneWhenLines(ticket contracts.TicketSnapshot, gates []contracts.GateSnapsh
 		}
 	}
 	lines = append(lines, "tests and handoff evidence are recorded")
+	return goalCompactStrings(lines...)
+}
+
+func verificationLines(ticket contracts.TicketSnapshot, run *contracts.RunSnapshot) []string {
+	lines := []string{
+		"run the relevant local tests before requesting review",
+		"attach command output or artifact evidence to Atlas",
+		"confirm required gates are approved before completion",
+	}
+	if run != nil {
+		lines = append(lines, "verify run "+run.RunID+" evidence before handoff")
+	} else if strings.TrimSpace(ticket.LatestRunID) != "" {
+		lines = append(lines, "review latest run "+ticket.LatestRunID+" before completion")
+	}
 	return goalCompactStrings(lines...)
 }

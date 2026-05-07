@@ -20,16 +20,18 @@ func (k GoalTargetKind) IsValid() bool {
 var GoalManifestSectionOrder = []string{
 	"Goal",
 	"Objective",
-	"Current ticket/run",
-	"Acceptance criteria",
+	"Current State",
+	"Ticket / Run",
+	"Acceptance Criteria",
 	"Constraints",
-	"Required gates",
-	"Evidence needed",
-	"Allowed actions",
-	"Do not do",
-	"Current blockers",
-	"Context links",
-	"Done when",
+	"Required Evidence",
+	"Required Gates",
+	"Allowed Actions",
+	"Do Not Do",
+	"Context",
+	"Suggested Commands",
+	"Done When",
+	"Verification",
 }
 
 type GoalBrief struct {

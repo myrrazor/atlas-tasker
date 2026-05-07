@@ -1419,7 +1419,7 @@ func goalManifestMarkdown(view service.GoalManifestDetailView) string {
 }
 
 func goalSectionsMarkdown(objective string, sections []contracts.GoalSection) string {
-	lines := []string{"# Goal", "", strings.TrimSpace(objective), ""}
+	lines := []string{"# Agent Goal", "", strings.TrimSpace(objective), ""}
 	for _, section := range sections {
 		lines = append(lines, "## "+section.Heading, "")
 		if len(section.Items) > 0 {

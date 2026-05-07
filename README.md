@@ -42,7 +42,7 @@ Backlog (0)
   - (empty)
 
 Ready (1)
-  - APP-1 Ship first feature
+  - APP-1 [ready] [medium] Ship first feature
 
 In Progress (0)
   - (empty)
@@ -92,7 +92,12 @@ Start with the [docs landing page](docs/README.md), or jump straight to:
 - [Getting started](docs/getting-started.md)
 - [Quickstart](docs/quickstart.md)
 - [First agent workflow](docs/first-agent-workflow.md)
+- [Codex guide](docs/guides/codex.md)
+- [Codex `/goal` guide](docs/guides/codex-goals.md)
+- [Claude Code guide](docs/guides/claude-code.md)
+- [Generic agent guide](docs/guides/generic-agent.md)
 - [Tutorials](docs/README.md#tutorials)
+- [MCP for agents](docs/guides/mcp-for-agents.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Doctor and repair](docs/guides/doctor-and-repair.md)
 - [Release verification](docs/guides/release-verification.md)

@@ -80,6 +80,23 @@ func TestV17BackupAndGoalCLI(t *testing.T) {
 	if !strings.Contains(drillRaw, `"side_effect_free": true`) {
 		t.Fatalf("recovery drill should be side-effect free:\n%s", drillRaw)
 	}
+	briefRaw := must("goal", "brief", "APP-1", "--json")
+	var brief struct {
+		Kind  string `json:"kind"`
+		Brief struct {
+			Sections []struct {
+				Heading string `json:"heading"`
+			} `json:"sections"`
+		} `json:"brief"`
+	}
+	if err := json.Unmarshal([]byte(briefRaw), &brief); err != nil {
+		t.Fatalf("parse goal brief: %v\n%s", err, briefRaw)
+	}
+	if brief.Kind != "goal_brief" || strings.Join(goalJSONHeadings(brief.Brief.Sections), "\n") != strings.Join(contracts.GoalManifestSectionOrder, "\n") {
+		t.Fatalf("goal brief headings mismatch: %#v", brief)
+	}
+	briefMD := must("goal", "brief", "APP-1", "--md")
+	assertGoalMarkdownHeadings(t, briefMD)
 	goalRaw := must("goal", "manifest", "APP-1", "--actor", "human:owner", "--reason", "prepare goal", "--json")
 	var goal struct {
 		Kind     string `json:"kind"`
@@ -96,9 +113,40 @@ func TestV17BackupAndGoalCLI(t *testing.T) {
 	if goal.Kind != "goal_manifest" || goal.Manifest.ManifestID == "" || len(goal.Manifest.Sections) != len(contracts.GoalManifestSectionOrder) {
 		t.Fatalf("unexpected goal manifest: %#v", goal)
 	}
+	if strings.Join(goalJSONHeadings(goal.Manifest.Sections), "\n") != strings.Join(contracts.GoalManifestSectionOrder, "\n") {
+		t.Fatalf("goal manifest headings mismatch: %#v", goal.Manifest.Sections)
+	}
+	manifestMD := must("goal", "manifest", "APP-1", "--actor", "human:owner", "--reason", "prepare markdown goal", "--md")
+	assertGoalMarkdownHeadings(t, manifestMD)
 	goalVerify := must("goal", "verify", goal.Manifest.ManifestID, "--json")
 	if !strings.Contains(goalVerify, `"kind": "goal_manifest_verify_result"`) || !strings.Contains(goalVerify, "missing_signature") {
 		t.Fatalf("unsigned goal should verify as missing signature:\n%s", goalVerify)
+	}
+}
+
+func goalJSONHeadings(sections []struct {
+	Heading string `json:"heading"`
+}) []string {
+	out := make([]string, 0, len(sections))
+	for _, section := range sections {
+		out = append(out, section.Heading)
+	}
+	return out
+}
+
+func assertGoalMarkdownHeadings(t *testing.T, markdown string) {
+	t.Helper()
+	if strings.Contains(markdown, "Current ticket/run") || strings.Contains(markdown, "Evidence needed") || strings.Contains(markdown, "Current blockers") || strings.Contains(markdown, "Context links") {
+		t.Fatalf("goal markdown contains old headings:\n%s", markdown)
+	}
+	headings := []string{}
+	for _, line := range strings.Split(markdown, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			headings = append(headings, strings.TrimPrefix(line, "## "))
+		}
+	}
+	if strings.Join(headings, "\n") != strings.Join(contracts.GoalManifestSectionOrder, "\n") {
+		t.Fatalf("goal markdown headings mismatch:\ngot  %v\nwant %v\n%s", headings, contracts.GoalManifestSectionOrder, markdown)
 	}
 }
 

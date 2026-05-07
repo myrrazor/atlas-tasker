@@ -28,10 +28,14 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 
 ## Guides
 
+- [Codex](guides/codex.md)
+- [Codex `/goal`](guides/codex-goals.md)
+- [Claude Code](guides/claude-code.md)
+- [Generic agents](guides/generic-agent.md)
+- [MCP for agents](guides/mcp-for-agents.md)
 - [Doctor and repair](guides/doctor-and-repair.md)
 - [Release verification](guides/release-verification.md)
 - [Operations](guides/operations.md)
-- Codex, Claude Code, generic agent, and MCP workflow guides land in PR-805.
 
 ## Reference
 
