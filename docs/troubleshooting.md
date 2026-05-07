@@ -2,15 +2,25 @@
 
 ## `tracker doctor --repair` keeps finding pending work
 
-Run it twice.
+Start read-only:
 
-The first run may replay a journaled event and rebuild the projection.
-The second run should usually show `repair_pending: 0`.
+```bash
+tracker doctor --json
+```
+
+Use repair only when you intend to rebuild derived projection state:
+
+```bash
+tracker doctor --repair --json
+```
+
+The first repair run may replay a journaled event and rebuild the projection. The next read-only doctor run should usually show `repair_pending: 0`.
 
 If it does not:
 - inspect `.tracker/mutations/`
 - inspect `.tracker/events/*.jsonl`
 - run `tracker inspect <ID> --json`
+- read [doctor and repair](guides/doctor-and-repair.md)
 
 ## Queue and board disagree
 

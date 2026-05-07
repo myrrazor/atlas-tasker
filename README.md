@@ -86,22 +86,18 @@ VERSION=v1.8.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 
 ## Docs
 
-Current docs:
+Start with the [docs landing page](docs/README.md), or jump straight to:
 
-- [Product positioning](docs/product-positioning.md)
-- [Docs architecture](docs/docs-architecture.md)
-- [Public release gates](docs/release/public-release-gates.md)
-- [Command reference](docs/command-reference.md)
-- [Architecture](docs/architecture.md)
-- [Operator manual](docs/operator-manual.md)
-- [MCP adapter](docs/mcp.md)
-- [MCP security](docs/mcp-security.md)
-- [Goal manifests](docs/goal-manifests.md)
-- [Security limitations](docs/security-limitations.md)
+- [Installation](docs/installation.md)
+- [Getting started](docs/getting-started.md)
+- [Quickstart](docs/quickstart.md)
+- [First agent workflow](docs/first-agent-workflow.md)
+- [Tutorials](docs/README.md#tutorials)
 - [Troubleshooting](docs/troubleshooting.md)
-- [Release guide](docs/release.md)
-
-The public getting-started docs, tutorials, and examples are part of the v1.8 stack after PR-802.
+- [Doctor and repair](docs/guides/doctor-and-repair.md)
+- [Release verification](docs/guides/release-verification.md)
+- [Command reference](docs/reference/commands.md)
+- [Security limitations](docs/security-limitations.md)
 
 ## Security
 
