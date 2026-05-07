@@ -96,6 +96,7 @@ Start with the [docs landing page](docs/README.md), or jump straight to:
 - [Codex `/goal` guide](docs/guides/codex-goals.md)
 - [Claude Code guide](docs/guides/claude-code.md)
 - [Generic agent guide](docs/guides/generic-agent.md)
+- [Demo examples](docs/examples/README.md)
 - [Tutorials](docs/README.md#tutorials)
 - [MCP for agents](docs/guides/mcp-for-agents.md)
 - [Troubleshooting](docs/troubleshooting.md)

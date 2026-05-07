@@ -17,6 +17,10 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 - [Review and approve work](tutorials/04-review-and-approve-work.md)
 - [Use the TUI](tutorials/05-use-the-tui.md)
 
+## Examples
+
+- [Demo outputs, prompt packs, and transcripts](examples/README.md)
+
 ## Concepts
 
 - [Tickets and projects](concepts/tickets-and-projects.md)
