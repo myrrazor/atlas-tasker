@@ -10,6 +10,7 @@ tracker ticket --help
 tracker run --help
 tracker goal --help
 tracker mcp --help
+tracker version --json
 ```
 
 PR-803 retitles the historical command page to a v1.8 release-candidate reference. PR-808 adds automated command/documentation parity checks.

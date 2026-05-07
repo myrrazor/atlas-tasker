@@ -98,6 +98,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
 	root.AddCommand(newRenderCommand())
+	root.AddCommand(newVersionCommand())
 	root.AddCommand(newShellCommand())
 	root.AddCommand(newMCPCommand())
 	root.AddCommand(newKeyCommand())

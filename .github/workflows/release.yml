@@ -37,8 +37,23 @@ jobs:
         run: |
           set -eu
           version="${GITHUB_REF_NAME#v}"
+          json_version="${GITHUB_REF_NAME}"
+          buildinfo_pkg="github.com/myrrazor/atlas-tasker/internal/buildinfo"
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ldflags="-s -w -X ${buildinfo_pkg}.Version=${json_version} -X ${buildinfo_pkg}.Commit=${GITHUB_SHA} -X ${buildinfo_pkg}.BuildDate=${build_date}"
+          runner_goos="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          runner_goarch="$(uname -m)"
+          case "${runner_goarch}" in
+            x86_64|amd64) runner_goarch="amd64" ;;
+            arm64|aarch64) runner_goarch="arm64" ;;
+          esac
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o dist/tracker ./cmd/tracker
+          go build -trimpath -ldflags="${ldflags}" -o dist/tracker ./cmd/tracker
+          if [ "${GOOS}/${GOARCH}" = "${runner_goos}/${runner_goarch}" ]; then
+            ./dist/tracker version --json
+          else
+            echo "skipping version smoke for cross-compiled target ${GOOS}/${GOARCH} on ${runner_goos}/${runner_goarch}"
+          fi
           archive="tracker_${version}_${GOOS}_${GOARCH}.tar.gz"
           tar -czf "dist/${archive}" -C dist tracker
           shasum -a 256 "dist/${archive}" > "dist/${archive}.sha256"

@@ -25,24 +25,32 @@ Each archive contains a single `tracker` binary.
 ## Local Rehearsal
 
 ```bash
+VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh
 VERSION=v1.8.0-rc1 ./scripts/release-rehearsal.sh
 sh scripts/stability-smoke.sh
 ```
 
-The rehearsal builds the current binary, packages archives, generates checksums, verifies a local archive, serves local artifacts, installs through `scripts/install.sh`, and runs the packaged smoke flow.
+The preflight checks release script syntax and verifies the stamped `tracker version --json` contract. The rehearsal builds the current binary, packages archives, generates checksums, verifies a local archive, serves local artifacts, installs through `scripts/install.sh`, checks the installed version metadata, and runs the packaged smoke flow.
+
+Local vulnerability and SBOM proof is generated explicitly:
+
+```bash
+VERSION=v1.8.0-rc1 RUN_GOVULNCHECK=1 RUN_SBOM=1 sh scripts/preflight-release.sh
+```
 
 ## Hosted Release Gate
 
 Before public sign-off, a release actor must:
 
-1. run `sh scripts/preflight-release-proof.sh`
+1. run `VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh --hosted`
 2. create a prerelease tag such as `v1.8.0-rc1`
 3. let GitHub publish archives and `checksums.txt`
 4. download at least one published archive
 5. run `scripts/verify-release.sh` against that archive with attestation verification enabled
 6. install from published assets through `scripts/install.sh`
-7. run the packaged smoke flow from the installed binary
-8. record checksum, attestation, install, smoke, SBOM, vulnerability scan, and ship/no-ship evidence
+7. run `tracker version --json` from the installed binary and compare it to the hosted tag, commit, build date, and platform
+8. run the packaged smoke flow from the installed binary
+9. record checksum, attestation, install, smoke, SBOM, vulnerability scan, and ship/no-ship evidence
 
 Read [public release gates](release/public-release-gates.md) for the source of truth.
 

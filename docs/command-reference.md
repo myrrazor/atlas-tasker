@@ -43,6 +43,7 @@
 - `tracker templates view <NAME>`
 - `tracker integrations install codex [--force]`
 - `tracker integrations install claude [--force]`
+- `tracker version [--json]`
 - `tracker tui [--actor <ACTOR>]`
 - `tracker config get [KEY]`
 - `tracker config set <KEY> <VALUE>`
@@ -786,3 +787,31 @@ Useful config keys:
 - `notifications.webhook_retries`
 - `notifications.delivery_log_path`
 - `notifications.dead_letter_path`
+
+## Version Metadata
+
+`tracker version` prints release metadata in text form:
+
+```text
+tracker v1.8.0-rc1
+commit: abc123
+build date: 2026-05-07T04:00:00Z
+go: go1.26.2
+platform: darwin/arm64
+```
+
+`tracker version --json` has a stable release-proof shape:
+
+```json
+{
+  "format_version": "v1",
+  "kind": "tracker_version",
+  "version": "v1.8.0-rc1",
+  "commit": "abc123",
+  "build_date": "2026-05-07T04:00:00Z",
+  "go_version": "go1.26.2",
+  "platform": "darwin/arm64"
+}
+```
+
+Source builds that are not stamped by release scripts return `version: "dev"`, `commit: "unknown"`, and `build_date: "unknown"`.

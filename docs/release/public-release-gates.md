@@ -20,10 +20,11 @@ Passing this gate does not mean Atlas is ship-ready.
 
 - full tests: `go test -count=1 ./... 2>&1 | tee TEST_STDOUT.log`
 - `go vet ./...`
+- `VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh`
 - `sh scripts/stability-smoke.sh`
 - `VERSION=v1.8.0-rc1 ./scripts/release-rehearsal.sh`
 - `go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...`
-- CycloneDX SBOM generation for the local release target
+- CycloneDX SBOM generation for the local release target with `cyclonedx-gomod@v1.10.0`
 - no private key or obvious secret material in logs, transcripts, docs assets, or `TEST_STDOUT.log`
 - final GStack/Codex review attempts recorded
 - GStack CSO run recorded, with verified in-scope findings fixed or explicitly deferred
@@ -34,14 +35,15 @@ Passing this gate means the local RC is green. It still does not prove hosted re
 
 Hosted release sign-off requires:
 
-1. `sh scripts/preflight-release-proof.sh` passes with a token that can read required GitHub Actions release settings. PR-807 will add `scripts/preflight-release.sh` as the friendlier wrapper.
+1. `VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh --hosted` passes with a token that can read required GitHub Actions release settings.
 2. A prerelease tag such as `v1.8.0-rc1` is created.
 3. GitHub publishes all supported archives and `checksums.txt`.
 4. At least one published archive is downloaded from GitHub.
 5. `scripts/verify-release.sh` verifies checksum and attestation for the downloaded archive.
 6. `scripts/install.sh` installs from published release assets into a clean directory.
-7. The installed binary completes the packaged smoke flow.
-8. The release evidence records archive name, checksum result, attestation result, install result, packaged smoke result, SBOM result, vulnerability result, and final ship/no-ship decision.
+7. The installed binary reports `tracker version --json` matching the hosted tag, commit, build date, and platform.
+8. The installed binary completes the packaged smoke flow.
+9. The release evidence records archive name, checksum result, attestation result, install result, version metadata result, packaged smoke result, SBOM result, vulnerability result, and final ship/no-ship decision.
 
 ## Stable Release Gate
 

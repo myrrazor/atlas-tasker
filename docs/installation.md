@@ -9,9 +9,10 @@ Use this while `v1.8.0-rc1` hosted assets are still blocked:
 ```bash
 go build -o tracker ./cmd/tracker
 ./tracker --help
+./tracker version --json
 ```
 
-You can keep the binary local to the repo or move it onto your `PATH`.
+You can keep the binary local to the repo or move it onto your `PATH`. Unstamped source builds report `version: "dev"` in JSON.
 
 ## Install From A Published Release
 
@@ -19,6 +20,7 @@ The installer expects a real GitHub release with archives and `checksums.txt`. I
 
 ```bash
 VERSION=v1.8.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+"$HOME/.local/bin/tracker" version --json
 ```
 
 The one-line form is convenient once a release is trusted:
