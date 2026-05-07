@@ -549,6 +549,9 @@ func (m model) View() string {
 		body = body + "\n\n" + m.dialogView()
 	}
 	footer := fmt.Sprintf("actor: %s | collaborator: %s | %s", optionalActor(m.actor, "unset"), optionalString(strings.TrimSpace(m.collaboratorFilter), "all"), m.status)
+	if m.width > 0 {
+		footer = render.TruncateDisplay(footer, m.width)
+	}
 	if width := m.width; width > 0 && width < lipgloss.Width(body) {
 		body = lipgloss.NewStyle().Width(width).Render(body)
 	}
@@ -558,12 +561,12 @@ func (m model) View() string {
 func (m model) bodyView() string {
 	switch m.screen {
 	case screenBoard:
-		return ticketsListView("Board", m.itemsForScreen(), m.cursor)
+		return ticketsListView("Board", m.itemsForScreen(), m.cursor, m.width)
 	case screenQueues:
 		if m.actor == "" {
-			return render.EmptyState("Queues", "Set --actor, TRACKER_ACTOR, or actor.default to populate queue tabs.")
+			return render.EmptyState("Queues", "Set --actor, TRACKER_ACTOR, or actor.default to populate queues.")
 		}
-		return ticketsListView("Queues", m.itemsForScreen(), m.cursor)
+		return ticketsListView("Queues", m.itemsForScreen(), m.cursor, m.width)
 	case screenDetail:
 		if m.detail.Ticket.ID == "" {
 			return render.EmptyState("Detail", "No ticket selected yet.")
@@ -574,14 +577,14 @@ func (m model) bodyView() string {
 		if len(m.searchHits) == 0 {
 			return body + render.EmptyState("Search", "Type a query and press enter.")
 		}
-		return body + ticketsListView("Search Results", m.searchHits, m.cursor)
+		return body + ticketsListView("Search Results", m.searchHits, m.cursor, m.width)
 	case screenReview:
 		if m.actor == "" {
 			return render.EmptyState("Review", "Set an actor to see review work.")
 		}
-		return ticketsListView("Review Inbox", m.itemsForScreen(), m.cursor)
+		return ticketsListView("Review Inbox", m.itemsForScreen(), m.cursor, m.width)
 	case screenOwner:
-		return ticketsListView("Owner Attention", m.itemsForScreen(), m.cursor)
+		return ticketsListView("Owner Attention", m.itemsForScreen(), m.cursor, m.width)
 	case screenInbox:
 		return attentionView(m.approvals, m.operatorInbox, m.inbox, m.deadLetters)
 	case screenViews:
@@ -1257,7 +1260,7 @@ func attentionView(approvals []service.ApprovalItemView, items []service.InboxIt
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range approvals {
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.Gate.GateID, item.Gate.Kind, item.Summary))
+			lines = append(lines, fmt.Sprintf("- %s %s [%s] %s", item.Gate.GateID, render.GateBadge(item.Gate.State), item.Gate.Kind, item.Summary))
 		}
 	}
 	lines = append(lines, "", "Human Inbox:")
@@ -1340,7 +1343,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range dashboard.RemoteHealth {
-			lines = append(lines, fmt.Sprintf("- %s [%s] publications=%d failed=%d", item.RemoteID, item.State, item.PublicationCount, item.FailedJobs))
+			lines = append(lines, fmt.Sprintf("- %s %s publications=%d failed=%d", item.RemoteID, render.SyncBadge(item.State), item.PublicationCount, item.FailedJobs))
 		}
 	}
 	lines = append(lines, "", "Conflict Queue:")
@@ -1439,9 +1442,13 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 	return strings.Join(lines, "\n")
 }
 
-func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor int) string {
+func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor int, widths ...int) string {
 	if len(tickets) == 0 {
 		return render.EmptyState(title, "No items in this view yet.")
+	}
+	width := 88
+	if len(widths) > 0 && widths[0] > 0 {
+		width = widths[0]
 	}
 	lines := []string{title + ":"}
 	for idx, ticket := range tickets {
@@ -1449,7 +1456,7 @@ func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor in
 		if idx == cursor {
 			prefix = "> "
 		}
-		lines = append(lines, fmt.Sprintf("%s%s [%s/%s] %s", prefix, ticket.ID, ticket.Status, ticket.Priority, ticket.Title))
+		lines = append(lines, prefix+render.TicketSummary(ticket, width-lipgloss.Width(prefix)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1477,7 +1484,7 @@ func optionalActor(actor contracts.Actor, fallback string) string {
 }
 
 func renderEnabled() bool {
-	return strings.TrimSpace(os.Getenv("NO_COLOR")) == ""
+	return render.ColorEnabled()
 }
 
 func firstBoardTicketID(board service.BoardViewModel) string {

@@ -13,6 +13,10 @@ import (
 )
 
 func colorEnabled() bool {
+	return ColorEnabled()
+}
+
+func ColorEnabled() bool {
 	if strings.TrimSpace(os.Getenv("NO_COLOR")) != "" {
 		return false
 	}
@@ -26,6 +30,21 @@ func terminalWidth(defaultWidth int) int {
 	return defaultWidth
 }
 
+func normalizedWidth(width int) int {
+	if width <= 0 {
+		return 80
+	}
+	return width
+}
+
+func markdownWidth(width int) int {
+	width = normalizedWidth(width)
+	if width < 16 {
+		return 16
+	}
+	return width
+}
+
 func TicketPretty(ticket contracts.TicketSnapshot, comments []string) string {
 	useColor := colorEnabled()
 	titleStyle := lipgloss.NewStyle().Bold(true)
@@ -36,9 +55,9 @@ func TicketPretty(ticket contracts.TicketSnapshot, comments []string) string {
 	}
 
 	out := strings.Builder{}
-	out.WriteString(titleStyle.Render(fmt.Sprintf("%s [%s] %s", ticket.ID, ticket.Status, ticket.Title)))
+	out.WriteString(titleStyle.Render(fmt.Sprintf("%s %s %s", ticket.ID, StatusBadge(ticket.Status), ticket.Title)))
 	out.WriteString("\n")
-	out.WriteString(mutedStyle.Render(fmt.Sprintf("Type: %s  Priority: %s  Assignee: %s", ticket.Type, ticket.Priority, optionalString(string(ticket.Assignee), "-"))))
+	out.WriteString(mutedStyle.Render(fmt.Sprintf("Type: %s  Priority: %s  Assignee: %s", ticket.Type, PriorityBadge(ticket.Priority), optionalString(string(ticket.Assignee), "-"))))
 	out.WriteString("\n\n")
 	if strings.TrimSpace(ticket.Description) != "" {
 		out.WriteString("Description:\n")
@@ -62,17 +81,27 @@ func TicketPretty(ticket contracts.TicketSnapshot, comments []string) string {
 }
 
 func TicketsPretty(title string, tickets []contracts.TicketSnapshot) string {
+	return TicketsPrettyWithWidth(title, tickets, terminalWidth(100))
+}
+
+func TicketsPrettyWithWidth(title string, tickets []contracts.TicketSnapshot, width int) string {
 	if len(tickets) == 0 {
 		return EmptyState(title, "No tickets found. Try creating one with `tracker ticket create`.")
 	}
+	width = normalizedWidth(width)
 	lines := []string{title + ":"}
 	for _, ticket := range tickets {
-		lines = append(lines, fmt.Sprintf("- %s [%s] (%s) %s", ticket.ID, ticket.Status, ticket.Priority, ticket.Title))
+		lines = append(lines, "- "+TicketSummary(ticket, width-2))
 	}
 	return strings.Join(lines, "\n")
 }
 
 func BoardPretty(board contracts.BoardView) string {
+	return BoardPrettyWithWidth(board, terminalWidth(100))
+}
+
+func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
+	width = normalizedWidth(width)
 	ordered := []contracts.Status{
 		contracts.StatusBacklog,
 		contracts.StatusReady,
@@ -103,7 +132,7 @@ func BoardPretty(board contracts.BoardView) string {
 			section = append(section, "  - (empty)")
 		} else {
 			for _, ticket := range tickets {
-				section = append(section, fmt.Sprintf("  - %s %s", ticket.ID, ticket.Title))
+				section = append(section, "  - "+TicketSummary(ticket, width-4))
 			}
 		}
 		sections = append(sections, strings.Join(section, "\n"))
@@ -112,9 +141,13 @@ func BoardPretty(board contracts.BoardView) string {
 }
 
 func Markdown(input string) string {
+	return MarkdownWithWidth(input, terminalWidth(100)-4)
+}
+
+func MarkdownWithWidth(input string, width int) string {
 	renderer, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
-		glamour.WithWordWrap(terminalWidth(100)-4),
+		glamour.WithWordWrap(markdownWidth(width)),
 	)
 	if err != nil {
 		return input
@@ -126,8 +159,74 @@ func Markdown(input string) string {
 	return out
 }
 
+func StatusBadge(status contracts.Status) string {
+	return valueBadge(string(status))
+}
+
+func PriorityBadge(priority contracts.Priority) string {
+	return valueBadge(string(priority))
+}
+
+func GateBadge(state any) string {
+	return namedBadge("gate", fmt.Sprint(state))
+}
+
+func SignatureBadge(state any) string {
+	return namedBadge("sig", fmt.Sprint(state))
+}
+
+func SyncBadge(state any) string {
+	return namedBadge("sync", fmt.Sprint(state))
+}
+
+func TicketSummary(ticket contracts.TicketSnapshot, width int) string {
+	head := strings.TrimSpace(fmt.Sprintf("%s %s %s", ticket.ID, StatusBadge(ticket.Status), PriorityBadge(ticket.Priority)))
+	title := strings.TrimSpace(ticket.Title)
+	if title == "" {
+		title = "(untitled)"
+	}
+	full := head + " " + title
+	width = normalizedWidth(width)
+	if lipgloss.Width(full) <= width {
+		return full
+	}
+	titleWidth := width - lipgloss.Width(head) - 1
+	if titleWidth <= 4 {
+		return TruncateDisplay(head, width)
+	}
+	return head + " " + TruncateDisplay(title, titleWidth)
+}
+
+func TruncateDisplay(value string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if lipgloss.Width(value) <= maxWidth {
+		return value
+	}
+	suffix := "..."
+	if maxWidth <= lipgloss.Width(suffix) {
+		suffix = ""
+	}
+	limit := maxWidth - lipgloss.Width(suffix)
+	var out strings.Builder
+	for _, r := range value {
+		next := out.String() + string(r)
+		if lipgloss.Width(next) > limit {
+			break
+		}
+		out.WriteRune(r)
+	}
+	return strings.TrimRight(out.String(), " ") + suffix
+}
+
 func EmptyState(title string, action string) string {
-	return fmt.Sprintf("%s\n\n%s", title, action)
+	title = strings.TrimSpace(title)
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return fmt.Sprintf("%s\n  (empty)", title)
+	}
+	return fmt.Sprintf("%s\n  (empty)\n  next: %s", title, action)
 }
 
 func optionalString(value string, fallback string) string {
@@ -135,4 +234,47 @@ func optionalString(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func valueBadge(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = "unknown"
+	}
+	text := "[" + value + "]"
+	if !ColorEnabled() {
+		return text
+	}
+	return lipgloss.NewStyle().Foreground(colorFor(value)).Render(text)
+}
+
+func namedBadge(kind string, value string) string {
+	kind = strings.TrimSpace(strings.ToLower(kind))
+	value = strings.TrimSpace(value)
+	if kind == "" {
+		kind = "state"
+	}
+	if value == "" {
+		value = "unknown"
+	}
+	text := "[" + kind + ":" + value + "]"
+	if !ColorEnabled() {
+		return text
+	}
+	return lipgloss.NewStyle().Foreground(colorFor(value)).Render(text)
+}
+
+func colorFor(value string) lipgloss.Color {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "ready", "active", "approved", "trusted_valid", "completed", "resolved", "passing", "success", "enabled":
+		return lipgloss.Color("10")
+	case "blocked", "failed", "rejected", "invalid_signature", "payload_hash_mismatch", "canonicalization_mismatch", "dirty":
+		return lipgloss.Color("9")
+	case "in_progress", "in_review", "open", "running", "verifying", "publishing", "planned", "valid_untrusted", "valid_unknown_key":
+		return lipgloss.Color("11")
+	case "done", "merged", "synced":
+		return lipgloss.Color("14")
+	default:
+		return lipgloss.Color("8")
+	}
 }
