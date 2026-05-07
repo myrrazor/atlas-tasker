@@ -215,3 +215,7 @@ For v1.6.1 closeout, also capture the hosted proof and merge order in:
 
 - `docs/v1.6.1-release-evidence.md`
 - `docs/v1.6.1-merge-order.md`
+
+For v1.7 release-candidate proof, capture local proof, hosted prerelease status, SBOM/vulnerability status, and the final ship/no-ship decision in:
+
+- `docs/v1.7-release-evidence.md`
