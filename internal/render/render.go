@@ -55,6 +55,26 @@ func markdownWidth(width int) int {
 	return width
 }
 
+func SanitizeDisplay(value string) string {
+	if value == "" {
+		return ""
+	}
+	var out strings.Builder
+	for _, r := range value {
+		switch {
+		case r == '\n' || r == '\t':
+			out.WriteRune(r)
+		case r == '\r':
+			out.WriteRune('\n')
+		case r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f):
+			out.WriteRune('?')
+		default:
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
+}
+
 func TicketPretty(ticket contracts.TicketSnapshot, comments []string) string {
 	useColor := colorEnabled()
 	titleStyle := lipgloss.NewStyle().Bold(true)
@@ -65,26 +85,26 @@ func TicketPretty(ticket contracts.TicketSnapshot, comments []string) string {
 	}
 
 	out := strings.Builder{}
-	out.WriteString(titleStyle.Render(fmt.Sprintf("%s %s %s", ticket.ID, StatusBadge(ticket.Status), ticket.Title)))
+	out.WriteString(titleStyle.Render(fmt.Sprintf("%s %s %s", SanitizeDisplay(ticket.ID), StatusBadge(ticket.Status), SanitizeDisplay(ticket.Title))))
 	out.WriteString("\n")
-	out.WriteString(mutedStyle.Render(fmt.Sprintf("Type: %s  Priority: %s  Assignee: %s", ticket.Type, PriorityBadge(ticket.Priority), optionalString(string(ticket.Assignee), "-"))))
+	out.WriteString(mutedStyle.Render(fmt.Sprintf("Type: %s  Priority: %s  Assignee: %s", SanitizeDisplay(string(ticket.Type)), PriorityBadge(ticket.Priority), optionalString(SanitizeDisplay(string(ticket.Assignee)), "-"))))
 	out.WriteString("\n\n")
 	if strings.TrimSpace(ticket.Description) != "" {
 		out.WriteString("Description:\n")
-		out.WriteString(ticket.Description)
+		out.WriteString(SanitizeDisplay(ticket.Description))
 		out.WriteString("\n\n")
 	}
 	if len(ticket.AcceptanceCriteria) > 0 {
 		out.WriteString("Acceptance Criteria:\n")
 		for _, criterion := range ticket.AcceptanceCriteria {
-			out.WriteString("- " + criterion + "\n")
+			out.WriteString("- " + SanitizeDisplay(criterion) + "\n")
 		}
 		out.WriteString("\n")
 	}
 	if len(comments) > 0 {
 		out.WriteString("Recent Comments:\n")
 		for _, comment := range comments {
-			out.WriteString("- " + comment + "\n")
+			out.WriteString("- " + SanitizeDisplay(comment) + "\n")
 		}
 	}
 	return strings.TrimSpace(out.String())
@@ -99,7 +119,7 @@ func TicketsPrettyWithWidth(title string, tickets []contracts.TicketSnapshot, wi
 		return EmptyState(title, "No tickets found. Try creating one with `tracker ticket create`.")
 	}
 	width = normalizedWidth(width)
-	lines := []string{title + ":"}
+	lines := []string{SanitizeDisplay(title) + ":"}
 	for _, ticket := range tickets {
 		lines = append(lines, "- "+TicketSummary(ticket, width-2))
 	}
@@ -159,6 +179,7 @@ func Markdown(input string) string {
 }
 
 func MarkdownWithWidth(input string, width int) string {
+	input = SanitizeDisplay(input)
 	renderer, err := glamour.NewTermRenderer(
 		glamour.WithAutoStyle(),
 		glamour.WithWordWrap(markdownWidth(width)),
@@ -194,8 +215,8 @@ func SyncBadge(state any) string {
 }
 
 func TicketSummary(ticket contracts.TicketSnapshot, width int) string {
-	head := strings.TrimSpace(fmt.Sprintf("%s %s %s", ticket.ID, StatusBadge(ticket.Status), PriorityBadge(ticket.Priority)))
-	title := strings.TrimSpace(ticket.Title)
+	head := strings.TrimSpace(fmt.Sprintf("%s %s %s", SanitizeDisplay(ticket.ID), StatusBadge(ticket.Status), PriorityBadge(ticket.Priority)))
+	title := strings.TrimSpace(SanitizeDisplay(ticket.Title))
 	if title == "" {
 		title = "(untitled)"
 	}
@@ -212,6 +233,7 @@ func TicketSummary(ticket contracts.TicketSnapshot, width int) string {
 }
 
 func TruncateDisplay(value string, maxWidth int) string {
+	value = SanitizeDisplay(value)
 	if maxWidth <= 0 {
 		return ""
 	}
@@ -235,8 +257,8 @@ func TruncateDisplay(value string, maxWidth int) string {
 }
 
 func EmptyState(title string, action string) string {
-	title = strings.TrimSpace(title)
-	action = strings.TrimSpace(action)
+	title = strings.TrimSpace(SanitizeDisplay(title))
+	action = strings.TrimSpace(SanitizeDisplay(action))
 	if action == "" {
 		return fmt.Sprintf("%s\n  (empty)", title)
 	}
@@ -244,6 +266,7 @@ func EmptyState(title string, action string) string {
 }
 
 func optionalString(value string, fallback string) string {
+	value = SanitizeDisplay(value)
 	if strings.TrimSpace(value) == "" {
 		return fallback
 	}
@@ -251,7 +274,7 @@ func optionalString(value string, fallback string) string {
 }
 
 func valueBadge(value string) string {
-	value = strings.TrimSpace(value)
+	value = strings.TrimSpace(SanitizeDisplay(value))
 	if value == "" {
 		value = "unknown"
 	}
@@ -263,8 +286,8 @@ func valueBadge(value string) string {
 }
 
 func namedBadge(kind string, value string) string {
-	kind = strings.TrimSpace(strings.ToLower(kind))
-	value = strings.TrimSpace(value)
+	kind = strings.TrimSpace(strings.ToLower(SanitizeDisplay(kind)))
+	value = strings.TrimSpace(SanitizeDisplay(value))
 	if kind == "" {
 		kind = "state"
 	}

@@ -44,8 +44,17 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 ## Reference
 
 - [Commands](reference/commands.md)
+- [CLI behavior](reference/cli.md)
+- [Slash shell](reference/shell.md)
+- [TUI](reference/tui.md)
 - [JSON contracts](reference/json-contracts.md)
+- [JSON output](reference/json-output.md)
+- [Markdown format](reference/markdown-format.md)
+- [Config](reference/config.md)
+- [Events](reference/events.md)
 - [File layout](reference/file-layout.md)
+- [Storage layout](reference/storage-layout.md)
+- [Security model](reference/security-model.md)
 - [Release scripts](reference/release-scripts.md)
 - [Troubleshooting index](reference/troubleshooting.md)
 

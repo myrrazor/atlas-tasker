@@ -31,7 +31,7 @@ Goal markdown uses this order:
 13. Done When
 14. Verification
 
-JSON output mirrors the same sections with stable fields. Goal manifests are redaction-aware and may be signed/verified as `goal_manifest` artifacts.
+JSON output mirrors the same sections with stable fields. Goal manifests may be signed/verified as `goal_manifest` artifacts. Current goal output is not a redaction boundary: operators must avoid generating or sharing goal briefs from sensitive tickets unless the source ticket has already been redacted or classified for that audience.
 
 ## Output Contract
 

@@ -50,7 +50,7 @@ Before public sign-off, a release actor must:
 3. let GitHub publish archives and `checksums.txt`
 4. download at least one published archive
 5. run `scripts/verify-release.sh` against that archive with attestation verification enabled
-6. install from published assets through `scripts/install.sh`
+6. install from published assets through `scripts/install.sh`; the installer verifies checksums and attestations before copying the binary
 7. run `tracker version --json` from the installed binary and compare it to the hosted tag, commit, build date, and platform
 8. run the packaged smoke flow from the installed binary
 9. record checksum, attestation, install, smoke, SBOM, vulnerability scan, and ship/no-ship evidence
@@ -59,7 +59,7 @@ Read [public release gates](release/public-release-gates.md) for the source of t
 
 ## Install
 
-The one-line installer is for published releases:
+The one-line installer is for published releases after hosted proof is green:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
@@ -79,6 +79,8 @@ gh attestation verify ./tracker_1.8.0-rc1_darwin_arm64.tar.gz --repo myrrazor/at
 ```
 
 Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.
+
+`RELEASE_BASE_URL` must use `https://`; loopback `http://` is accepted only for local rehearsals with `ALLOW_INSECURE_RELEASE_BASE_URL=1`.
 
 ## Packaged Smoke Coverage
 

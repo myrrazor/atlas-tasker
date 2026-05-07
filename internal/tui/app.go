@@ -1142,8 +1142,10 @@ func newEditDialog(ticket contracts.TicketSnapshot) dialogState {
 func newFormField(keyName string, label string, required bool, placeholder string, value string) formField {
 	input := textinput.New()
 	input.Prompt = ""
+	placeholder = render.SanitizeDisplay(placeholder)
+	value = render.SanitizeDisplay(value)
 	input.Placeholder = placeholder
-	input.SetValue(value)
+	input.SetValue(render.SanitizeDisplay(value))
 	input.Width = 72
 	return formField{Key: keyName, Label: label, Required: required, Placeholder: placeholder, Input: input}
 }
@@ -1176,6 +1178,7 @@ func nextTickets(next service.NextView) []contracts.TicketSnapshot {
 
 func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.RunSnapshot, runDetail service.RunDetailView, launch service.RunLaunchManifestView, timeline service.TimelineView, collaboratorFilter string) string {
 	body := render.TicketPretty(detail.Ticket, detail.Comments)
+	safe := render.SanitizeDisplay
 	gitLines := []string{"Git Context:"}
 	if !detail.Git.Repo.Present {
 		gitLines = append(gitLines, "- repo: not detected")
@@ -1191,7 +1194,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		} else {
 			gitLines = append(gitLines, "- refs:")
 			for _, ref := range detail.Git.Refs {
-				gitLines = append(gitLines, fmt.Sprintf("  - %s %s", shortHash(ref.Hash), ref.Subject))
+				gitLines = append(gitLines, fmt.Sprintf("  - %s %s", safe(shortHash(ref.Hash)), safe(ref.Subject)))
 			}
 		}
 	}
@@ -1201,7 +1204,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		runLines = append(runLines, "- none")
 	} else {
 		for _, run := range ticketRuns {
-			runLines = append(runLines, fmt.Sprintf("- %s [%s/%s] agent=%s", run.RunID, run.Status, run.Kind, optionalString(run.AgentID, "unassigned")))
+			runLines = append(runLines, fmt.Sprintf("- %s [%s/%s] agent=%s", safe(run.RunID), run.Status, run.Kind, optionalString(run.AgentID, "unassigned")))
 		}
 	}
 	evidenceLines := []string{"Evidence:"}
@@ -1209,7 +1212,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		evidenceLines = append(evidenceLines, "- none")
 	} else {
 		for _, item := range runDetail.Evidence {
-			evidenceLines = append(evidenceLines, fmt.Sprintf("- %s [%s] %s", item.EvidenceID, item.Type, optionalString(item.Title, "(untitled)")))
+			evidenceLines = append(evidenceLines, fmt.Sprintf("- %s [%s] %s", safe(item.EvidenceID), item.Type, optionalString(item.Title, "(untitled)")))
 		}
 	}
 	handoffLines := []string{"Handoffs:"}
@@ -1217,7 +1220,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		handoffLines = append(handoffLines, "- none")
 	} else {
 		for _, item := range runDetail.Handoffs {
-			handoffLines = append(handoffLines, fmt.Sprintf("- %s next=%s gate=%s", item.HandoffID, optionalString(item.SuggestedNextActor, "n/a"), optionalString(string(item.SuggestedNextGate), "n/a")))
+			handoffLines = append(handoffLines, fmt.Sprintf("- %s next=%s gate=%s", safe(item.HandoffID), optionalString(item.SuggestedNextActor, "n/a"), optionalString(string(item.SuggestedNextGate), "n/a")))
 		}
 	}
 	runtimeLines := []string{"Runtime:"}
@@ -1225,11 +1228,11 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		runtimeLines = append(runtimeLines, "- none")
 	} else {
 		runtimeLines = append(runtimeLines,
-			"- dir: "+launch.RuntimeDir,
-			"- brief: "+launch.BriefPath,
-			"- context: "+launch.ContextPath,
-			"- codex: "+launch.CodexLaunchPath,
-			"- claude: "+launch.ClaudeLaunchPath,
+			"- dir: "+safe(launch.RuntimeDir),
+			"- brief: "+safe(launch.BriefPath),
+			"- context: "+safe(launch.ContextPath),
+			"- codex: "+safe(launch.CodexLaunchPath),
+			"- claude: "+safe(launch.ClaudeLaunchPath),
 		)
 	}
 	timelineLines := []string{"Timeline:"}
@@ -1237,7 +1240,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		timelineLines = append(timelineLines, "- none")
 	} else {
 		if strings.TrimSpace(collaboratorFilter) != "" {
-			timelineLines = append(timelineLines, "- collaborator_filter: "+collaboratorFilter)
+			timelineLines = append(timelineLines, "- collaborator_filter: "+safe(collaboratorFilter))
 		}
 		timelineLines = append(timelineLines,
 			fmt.Sprintf("- change_ready: %s", timeline.ChangeReady),
@@ -1248,7 +1251,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 			start = 0
 		}
 		for _, entry := range timeline.Entries[start:] {
-			timelineLines = append(timelineLines, fmt.Sprintf("- %s %s %s", entry.Timestamp.Format(time.RFC3339), entry.Type, entry.Summary))
+			timelineLines = append(timelineLines, fmt.Sprintf("- %s %s %s", entry.Timestamp.Format(time.RFC3339), entry.Type, safe(entry.Summary)))
 		}
 	}
 	return body + "\n\n" + strings.Join(gitLines, "\n") + "\n\n" + strings.Join(runLines, "\n") + "\n\n" + strings.Join(evidenceLines, "\n") + "\n\n" + strings.Join(handoffLines, "\n") + "\n\n" + strings.Join(runtimeLines, "\n") + "\n\n" + strings.Join(timelineLines, "\n")
@@ -1260,7 +1263,7 @@ func attentionView(approvals []service.ApprovalItemView, items []service.InboxIt
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range approvals {
-			lines = append(lines, fmt.Sprintf("- %s %s [%s] %s", item.Gate.GateID, render.GateBadge(item.Gate.State), item.Gate.Kind, item.Summary))
+			lines = append(lines, fmt.Sprintf("- %s %s [%s] %s", render.SanitizeDisplay(item.Gate.GateID), render.GateBadge(item.Gate.State), item.Gate.Kind, render.SanitizeDisplay(item.Summary)))
 		}
 	}
 	lines = append(lines, "", "Human Inbox:")
@@ -1268,7 +1271,7 @@ func attentionView(approvals []service.ApprovalItemView, items []service.InboxIt
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range items {
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.ID, item.State, item.Summary))
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", render.SanitizeDisplay(item.ID), item.State, render.SanitizeDisplay(item.Summary)))
 		}
 	}
 	lines = append(lines, "", "Recent Deliveries:")
@@ -1276,7 +1279,7 @@ func attentionView(approvals []service.ApprovalItemView, items []service.InboxIt
 		lines = append(lines, "- none")
 	} else {
 		for _, record := range records {
-			lines = append(lines, fmt.Sprintf("- %s %s %s via %s", record.Timestamp.Format(time.RFC3339), record.Event.Type, optionalString(record.Event.TicketID, record.Event.Project), record.Sink))
+			lines = append(lines, fmt.Sprintf("- %s %s %s via %s", record.Timestamp.Format(time.RFC3339), record.Event.Type, optionalString(record.Event.TicketID, record.Event.Project), render.SanitizeDisplay(record.Sink)))
 		}
 	}
 	lines = append(lines, "", "Dead Letters:")
@@ -1284,7 +1287,7 @@ func attentionView(approvals []service.ApprovalItemView, items []service.InboxIt
 		lines = append(lines, "- none")
 	} else {
 		for _, record := range deadLetters {
-			lines = append(lines, fmt.Sprintf("- %s %s via %s (%s)", record.Timestamp.Format(time.RFC3339), record.Event.Type, record.Sink, record.Error))
+			lines = append(lines, fmt.Sprintf("- %s %s via %s (%s)", record.Timestamp.Format(time.RFC3339), record.Event.Type, render.SanitizeDisplay(record.Sink), render.SanitizeDisplay(record.Error)))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -1300,14 +1303,14 @@ func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) s
 		if idx == cursor {
 			prefix = "> "
 		}
-		title := view.Title
+		title := render.SanitizeDisplay(view.Title)
 		if strings.TrimSpace(title) == "" {
-			title = view.Name
+			title = render.SanitizeDisplay(view.Name)
 		}
-		lines = append(lines, fmt.Sprintf("%s%s [%s] %s", prefix, view.Name, view.Kind, title))
+		lines = append(lines, fmt.Sprintf("%s%s [%s] %s", prefix, render.SanitizeDisplay(view.Name), view.Kind, title))
 	}
 	if strings.TrimSpace(selected) != "" {
-		lines = append(lines, "", fmt.Sprintf("enter runs %s into the matching tab", selected))
+		lines = append(lines, "", fmt.Sprintf("enter runs %s into the matching tab", render.SanitizeDisplay(selected)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1335,7 +1338,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range dashboard.CollaboratorWorkload {
-			lines = append(lines, fmt.Sprintf("- %s approvals=%d inbox=%d mentions=%d handoffs=%d", item.CollaboratorID, item.Approvals, item.InboxItems, item.Mentions, item.Handoffs))
+			lines = append(lines, fmt.Sprintf("- %s approvals=%d inbox=%d mentions=%d handoffs=%d", render.SanitizeDisplay(item.CollaboratorID), item.Approvals, item.InboxItems, item.Mentions, item.Handoffs))
 		}
 	}
 	lines = append(lines, "", "Remote Health:")
@@ -1343,7 +1346,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range dashboard.RemoteHealth {
-			lines = append(lines, fmt.Sprintf("- %s %s publications=%d failed=%d", item.RemoteID, render.SyncBadge(item.State), item.PublicationCount, item.FailedJobs))
+			lines = append(lines, fmt.Sprintf("- %s %s publications=%d failed=%d", render.SanitizeDisplay(item.RemoteID), render.SyncBadge(item.State), item.PublicationCount, item.FailedJobs))
 		}
 	}
 	lines = append(lines, "", "Conflict Queue:")
@@ -1351,7 +1354,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range dashboard.ConflictQueue {
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.ConflictID, item.EntityKind, item.ConflictType))
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", render.SanitizeDisplay(item.ConflictID), item.EntityKind, render.SanitizeDisplay(string(item.ConflictType))))
 		}
 	}
 	lines = append(lines, "", "Mention Queue:")
@@ -1359,7 +1362,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range dashboard.MentionQueue {
-			lines = append(lines, fmt.Sprintf("- %s @%s %s", item.MentionUID, item.CollaboratorID, item.Summary))
+			lines = append(lines, fmt.Sprintf("- %s @%s %s", render.SanitizeDisplay(item.MentionUID), render.SanitizeDisplay(item.CollaboratorID), render.SanitizeDisplay(item.Summary)))
 		}
 	}
 	lines = append(lines, "", "Provider Mapping Warnings:")
@@ -1367,7 +1370,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, warning := range dashboard.ProviderMappingWarnings {
-			lines = append(lines, "- "+warning)
+			lines = append(lines, "- "+render.SanitizeDisplay(warning))
 		}
 	}
 	lines = append(lines, "",
@@ -1381,7 +1384,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 			if agent.Profile.Enabled {
 				state = "enabled"
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s] active=%d", agent.Profile.AgentID, state, agent.ActiveRuns))
+			lines = append(lines, fmt.Sprintf("- %s [%s] active=%d", render.SanitizeDisplay(agent.Profile.AgentID), state, agent.ActiveRuns))
 		}
 	}
 	lines = append(lines, "", "Dispatch Queue:")
@@ -1390,7 +1393,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 	} else {
 		for _, entry := range dispatch.Entries {
 			auto := optionalString(entry.Suggestion.AutoRouteAgentID, "manual")
-			lines = append(lines, fmt.Sprintf("- %s auto=%s", entry.Ticket.ID, auto))
+			lines = append(lines, fmt.Sprintf("- %s auto=%s", render.SanitizeDisplay(entry.Ticket.ID), auto))
 		}
 	}
 	lines = append(lines, "", "Worktrees:")
@@ -1398,7 +1401,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range worktrees {
-			lines = append(lines, fmt.Sprintf("- %s present=%t dirty=%t", item.RunID, item.Present, item.Dirty))
+			lines = append(lines, fmt.Sprintf("- %s present=%t dirty=%t", render.SanitizeDisplay(item.RunID), item.Present, item.Dirty))
 		}
 	}
 	lines = append(lines, "", "Automation Rules:")
@@ -1410,7 +1413,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 			if rule.Enabled {
 				state = "enabled"
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s]", rule.Name, state))
+			lines = append(lines, fmt.Sprintf("- %s [%s]", render.SanitizeDisplay(rule.Name), state))
 		}
 	}
 	lines = append(lines, "", "Automation Explain:")
@@ -1422,19 +1425,19 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 			if result.Matched {
 				state = "match"
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", result.Rule.Name, state, strings.Join(result.Actions, ", ")))
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", render.SanitizeDisplay(result.Rule.Name), state, render.SanitizeDisplay(strings.Join(result.Actions, ", "))))
 		}
 	}
 	lines = append(lines, "", "Bulk Preview:")
 	switch {
 	case lastBulk != nil:
 		lines = append(lines,
-			fmt.Sprintf("- last batch: %s", lastBulk.BatchID),
-			fmt.Sprintf("- kind: %s", lastBulk.Preview.Kind),
+			fmt.Sprintf("- last batch: %s", render.SanitizeDisplay(lastBulk.BatchID)),
+			fmt.Sprintf("- kind: %s", render.SanitizeDisplay(string(lastBulk.Preview.Kind))),
 			fmt.Sprintf("- total: %d ok=%d failed=%d skipped=%d", lastBulk.Summary.Total, lastBulk.Summary.Succeeded, lastBulk.Summary.Failed, lastBulk.Summary.Skipped),
 		)
 	case pendingBulk != nil:
-		lines = append(lines, fmt.Sprintf("- pending %s on %d tickets", pendingBulk.Kind, len(pendingBulk.TicketIDs)))
+		lines = append(lines, fmt.Sprintf("- pending %s on %d tickets", render.SanitizeDisplay(string(pendingBulk.Kind)), len(pendingBulk.TicketIDs)))
 	default:
 		lines = append(lines, "- press b to preview a bulk action for the current ticket list")
 	}
@@ -1450,7 +1453,7 @@ func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor in
 	if len(widths) > 0 && widths[0] > 0 {
 		width = widths[0]
 	}
-	lines := []string{title + ":"}
+	lines := []string{render.SanitizeDisplay(title) + ":"}
 	for idx, ticket := range tickets {
 		prefix := "  "
 		if idx == cursor {
@@ -1462,6 +1465,7 @@ func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor in
 }
 
 func optionalString(value string, fallback string) string {
+	value = render.SanitizeDisplay(value)
 	if strings.TrimSpace(value) == "" {
 		return fallback
 	}

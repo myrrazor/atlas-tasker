@@ -7,6 +7,8 @@ Atlas is not yet published as a stable public release. This changelog starts wit
 - v1.8 release-candidate polish is implementation-complete on the stacked PR train.
 - Local RC proof for `v1.8.0-rc1` is green: tests, vet, RC validation, stability smoke, release rehearsal, `govulncheck`, SBOM generation, proof-log leakage scan, and CSO closeout.
 - Hosted release assets, checksums, attestations, install smoke from published assets, and packaged smoke from a hosted binary remain blocked until a release actor creates and verifies the GitHub prerelease.
+- PR-811 fixes installer verification, HTTPS-only release downloads by default, CI security gates, release SBOM publication, terminal control-byte sanitization, README/tutorial copy-paste issues, and release evidence for v1.7 carry-forward findings.
+- Stable public release remains blocked by owner-selected license, hosted proof, human docs/aesthetic review, and unresolved/deferred v1.7 governance-security carry-forward verdicts.
 
 ## v1.8.0-rc1 - Local RC Proof Complete
 

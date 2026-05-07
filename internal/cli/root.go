@@ -44,6 +44,7 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
+	root.PersistentFlags().Bool("plain", false, "Disable terminal styling and print plain text output")
 
 	root.AddCommand(newInitCommand())
 	root.AddCommand(newDoctorCommand())

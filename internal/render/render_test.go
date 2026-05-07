@@ -19,6 +19,45 @@ func TestTicketsPrettyIncludesTicketID(t *testing.T) {
 	}
 }
 
+func TestSanitizeDisplayStripsTerminalControls(t *testing.T) {
+	out := SanitizeDisplay("safe\x1b[2J\x7f\nnext\tcell")
+	if strings.Contains(out, "\x1b") || strings.Contains(out, "\x7f") {
+		t.Fatalf("expected control bytes to be removed from terminal display, got %q", out)
+	}
+	if !strings.Contains(out, "\nnext\tcell") {
+		t.Fatalf("expected newline and tab to remain readable, got %q", out)
+	}
+}
+
+func TestTicketPrettySanitizesUserContent(t *testing.T) {
+	ticket := contracts.TicketSnapshot{
+		ID:                 "APP-1",
+		Status:             contracts.StatusReady,
+		Priority:           contracts.PriorityHigh,
+		Title:              "wipe\x1b[2J",
+		Description:        "desc\x1b[H",
+		AcceptanceCriteria: []string{"criteria\x1b[31m"},
+	}
+	out := TicketPretty(ticket, []string{"comment\x1b[0m"})
+	if strings.Contains(out, "\x1b") {
+		t.Fatalf("expected pretty output to remove terminal escapes, got %q", out)
+	}
+	if !strings.Contains(out, "wipe?") || !strings.Contains(out, "comment?") {
+		t.Fatalf("expected sanitized content to remain visible, got %q", out)
+	}
+}
+
+func TestTicketSummarySanitizesTitle(t *testing.T) {
+	ticket := contracts.TicketSnapshot{ID: "APP-1", Status: contracts.StatusReady, Priority: contracts.PriorityHigh, Title: "\x1b[2Junsafe"}
+	out := TicketSummary(ticket, 80)
+	if strings.Contains(out, "\x1b") {
+		t.Fatalf("expected summary to remove terminal escapes, got %q", out)
+	}
+	if !strings.Contains(out, "?[2Junsafe") {
+		t.Fatalf("expected sanitized title to remain readable, got %q", out)
+	}
+}
+
 func TestBoardPrettyIncludesColumnLabels(t *testing.T) {
 	board := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
 		contracts.StatusReady: {{ID: "APP-1", Title: "Task", UpdatedAt: time.Now()}},

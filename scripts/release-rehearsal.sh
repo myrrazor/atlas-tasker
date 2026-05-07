@@ -11,7 +11,6 @@ INSTALL_DIR="${INSTALL_DIR:-$(mktemp -d)}"
 BUILDINFO_PKG="github.com/myrrazor/atlas-tasker/internal/buildinfo"
 COMMIT="${COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}"
 BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
-LDFLAGS="-s -w -X ${BUILDINFO_PKG}.Version=${VERSION} -X ${BUILDINFO_PKG}.Commit=${COMMIT} -X ${BUILDINFO_PKG}.BuildDate=${BUILD_DATE}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -19,6 +18,19 @@ need_cmd() {
     exit 1
   fi
 }
+
+validate_release_version() {
+  case "$VERSION" in
+    ""|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._+-]*)
+      echo "unsafe release version: $VERSION" >&2
+      exit 1
+      ;;
+  esac
+}
+
+validate_release_version
+
+LDFLAGS="-s -w -X ${BUILDINFO_PKG}.Version=${VERSION} -X ${BUILDINFO_PKG}.Commit=${COMMIT} -X ${BUILDINFO_PKG}.BuildDate=${BUILD_DATE}"
 
 need_cmd go
 need_cmd git
@@ -87,8 +99,8 @@ if [ ! -f "$PORT_FILE" ]; then
 fi
 
 PORT="$(cat "$PORT_FILE")"
-VERSION="$VERSION" RELEASE_BASE_URL="http://127.0.0.1:$PORT" VERIFY_ATTESTATIONS=0 sh "$ROOT_DIR/scripts/verify-release.sh" "$DIST_DIR/$ARCHIVE"
-RELEASE_BASE_URL="http://127.0.0.1:$PORT" VERSION="$VERSION" BIN_DIR="$INSTALL_DIR" sh "$ROOT_DIR/scripts/install.sh"
+VERSION="$VERSION" RELEASE_BASE_URL="http://127.0.0.1:$PORT" VERIFY_ATTESTATIONS=0 ALLOW_INSECURE_RELEASE_BASE_URL=1 sh "$ROOT_DIR/scripts/verify-release.sh" "$DIST_DIR/$ARCHIVE"
+RELEASE_BASE_URL="http://127.0.0.1:$PORT" VERSION="$VERSION" BIN_DIR="$INSTALL_DIR" VERIFY_ATTESTATIONS=0 ALLOW_INSECURE_RELEASE_BASE_URL=1 sh "$ROOT_DIR/scripts/install.sh"
 VERSION_JSON="$("$INSTALL_DIR/$BIN_NAME" version --json)"
 case "$VERSION_JSON" in
   *"\"version\": \"$VERSION\""*) ;;
