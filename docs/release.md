@@ -219,3 +219,7 @@ For v1.6.1 closeout, also capture the hosted proof and merge order in:
 For v1.7 release-candidate proof, capture local proof, hosted prerelease status, SBOM/vulnerability status, and the final ship/no-ship decision in:
 
 - `docs/v1.7-release-evidence.md`
+
+The v1.7.1 release-signoff closeout also stores local proof artifacts in:
+
+- `docs/release-proof/`
