@@ -1184,9 +1184,9 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		gitLines = append(gitLines, "- repo: not detected")
 	} else {
 		gitLines = append(gitLines,
-			fmt.Sprintf("- branch: %s", optionalString(detail.Git.Repo.Branch, "detached")),
+			fmt.Sprintf("- branch: %s", optionalString(safe(detail.Git.Repo.Branch), "detached")),
 			fmt.Sprintf("- dirty: %t", detail.Git.Repo.Dirty),
-			fmt.Sprintf("- suggested: %s", optionalString(detail.Git.SuggestedBranch, "n/a")),
+			fmt.Sprintf("- suggested: %s", optionalString(safe(detail.Git.SuggestedBranch), "n/a")),
 			fmt.Sprintf("- current matches ticket: %t", detail.Git.CurrentBranchMatches),
 		)
 		if len(detail.Git.Refs) == 0 {
@@ -1204,7 +1204,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		runLines = append(runLines, "- none")
 	} else {
 		for _, run := range ticketRuns {
-			runLines = append(runLines, fmt.Sprintf("- %s [%s/%s] agent=%s", safe(run.RunID), run.Status, run.Kind, optionalString(run.AgentID, "unassigned")))
+			runLines = append(runLines, fmt.Sprintf("- %s [%s/%s] agent=%s", safe(run.RunID), run.Status, run.Kind, optionalString(safe(run.AgentID), "unassigned")))
 		}
 	}
 	evidenceLines := []string{"Evidence:"}
@@ -1212,7 +1212,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		evidenceLines = append(evidenceLines, "- none")
 	} else {
 		for _, item := range runDetail.Evidence {
-			evidenceLines = append(evidenceLines, fmt.Sprintf("- %s [%s] %s", safe(item.EvidenceID), item.Type, optionalString(item.Title, "(untitled)")))
+			evidenceLines = append(evidenceLines, fmt.Sprintf("- %s [%s] %s", safe(item.EvidenceID), item.Type, optionalString(safe(item.Title), "(untitled)")))
 		}
 	}
 	handoffLines := []string{"Handoffs:"}
@@ -1220,7 +1220,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		handoffLines = append(handoffLines, "- none")
 	} else {
 		for _, item := range runDetail.Handoffs {
-			handoffLines = append(handoffLines, fmt.Sprintf("- %s next=%s gate=%s", safe(item.HandoffID), optionalString(item.SuggestedNextActor, "n/a"), optionalString(string(item.SuggestedNextGate), "n/a")))
+			handoffLines = append(handoffLines, fmt.Sprintf("- %s next=%s gate=%s", safe(item.HandoffID), optionalString(safe(item.SuggestedNextActor), "n/a"), optionalString(safe(string(item.SuggestedNextGate)), "n/a")))
 		}
 	}
 	runtimeLines := []string{"Runtime:"}
@@ -1228,12 +1228,16 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		runtimeLines = append(runtimeLines, "- none")
 	} else {
 		runtimeLines = append(runtimeLines,
+			fmt.Sprintf("- needs_launch: %t", launch.NeedsLaunch),
 			"- dir: "+safe(launch.RuntimeDir),
 			"- brief: "+safe(launch.BriefPath),
 			"- context: "+safe(launch.ContextPath),
 			"- codex: "+safe(launch.CodexLaunchPath),
 			"- claude: "+safe(launch.ClaudeLaunchPath),
 		)
+		for _, path := range launch.Missing {
+			runtimeLines = append(runtimeLines, "- missing: "+safe(path))
+		}
 	}
 	timelineLines := []string{"Timeline:"}
 	if len(timeline.Entries) == 0 {
@@ -1244,7 +1248,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		}
 		timelineLines = append(timelineLines,
 			fmt.Sprintf("- change_ready: %s", timeline.ChangeReady),
-			fmt.Sprintf("- open_gates: %s", optionalString(strings.Join(timeline.OpenGateIDs, ","), "none")),
+			fmt.Sprintf("- open_gates: %s", optionalString(safe(strings.Join(timeline.OpenGateIDs, ",")), "none")),
 		)
 		start := len(timeline.Entries) - 5
 		if start < 0 {

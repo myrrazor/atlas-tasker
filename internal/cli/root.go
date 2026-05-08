@@ -496,7 +496,7 @@ func newTicketCommand() *cobra.Command {
 	addMutationFlags(edit, &mutationFlags{Actor: "human:owner"})
 	cmd.AddCommand(edit)
 
-	deleteCmd := &cobra.Command{Use: "delete <ID>", Args: cobra.ExactArgs(1), Short: "Soft-delete ticket", RunE: runTicketDelete}
+	deleteCmd := &cobra.Command{Use: "delete <ID>", Args: cobra.ExactArgs(1), Short: "Archive a ticket", RunE: runTicketDelete}
 	addMutationFlags(deleteCmd, &mutationFlags{Actor: "human:owner"})
 	cmd.AddCommand(deleteCmd)
 
@@ -792,7 +792,7 @@ func addReadOutputFlags(cmd *cobra.Command, flags *outputFlags) {
 
 func addMutationFlags(cmd *cobra.Command, flags *mutationFlags) {
 	cmd.Flags().StringVar(&flags.Actor, "actor", flags.Actor, "Mutation actor (e.g. human:owner)")
-	cmd.Flags().StringVar(&flags.Reason, "reason", "", "Optional reason for change")
+	cmd.Flags().StringVar(&flags.Reason, "reason", "", "Reason for change; required by security/protected mutations and recommended for all writes")
 }
 
 func executeArgs(args []string) error {
@@ -855,7 +855,7 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	}
 	ticketType := contracts.TicketType(typeValue)
 	if !ticketType.IsValid() {
-		return fmt.Errorf("invalid ticket type: %s", typeValue)
+		return fmt.Errorf("invalid ticket type: %s (valid: %s)", typeValue, strings.Join(contracts.ValidTicketTypeValues(), ", "))
 	}
 	status := contracts.Status(statusValue)
 	if !status.IsValid() {
@@ -1901,7 +1901,11 @@ func boardMarkdown(title string, board contracts.BoardView, columns []contracts.
 			continue
 		}
 		for _, ticket := range tickets {
-			markdown += fmt.Sprintf("- %s %s\n", ticket.ID, ticket.Title)
+			typeBadge := markdownTypeBadge(ticket.Type)
+			if typeBadge != "" {
+				typeBadge += " "
+			}
+			markdown += fmt.Sprintf("- %s %s%s\n", render.SanitizeDisplay(ticket.ID), typeBadge, render.SanitizeDisplay(ticket.Title))
 		}
 	}
 	return markdown
@@ -3077,10 +3081,21 @@ func queueMarkdownSelected(queue service.QueueView, categories []string, title s
 			continue
 		}
 		for _, entry := range entries {
-			md += fmt.Sprintf("- %s [%s] %s — %s\n", entry.Ticket.ID, entry.Ticket.Priority, entry.Ticket.Title, entry.Reason)
+			typeBadge := markdownTypeBadge(entry.Ticket.Type)
+			if typeBadge != "" {
+				typeBadge += " "
+			}
+			md += fmt.Sprintf("- %s %s[%s] %s - %s\n", render.SanitizeDisplay(entry.Ticket.ID), typeBadge, entry.Ticket.Priority, render.SanitizeDisplay(entry.Ticket.Title), render.SanitizeDisplay(entry.Reason))
 		}
 	}
 	return md
+}
+
+func markdownTypeBadge(ticketType contracts.TicketType) string {
+	if !ticketType.IsValid() {
+		return ""
+	}
+	return "[" + string(ticketType) + "]"
 }
 
 func queuePretty(queue service.QueueView) string {

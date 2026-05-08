@@ -1,18 +1,18 @@
 ?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/apperr	0.173s
+ok  	github.com/myrrazor/atlas-tasker/internal/apperr	0.131s
 ?   	github.com/myrrazor/atlas-tasker/internal/buildinfo	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/cli	22.088s
-ok  	github.com/myrrazor/atlas-tasker/internal/config	0.153s
-ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.651s
-ok  	github.com/myrrazor/atlas-tasker/internal/domain	0.278s
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations	0.932s
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp	1.141s
-ok  	github.com/myrrazor/atlas-tasker/internal/render	0.817s
-ok  	github.com/myrrazor/atlas-tasker/internal/service	7.399s
-ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	1.388s
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	17.238s
+ok  	github.com/myrrazor/atlas-tasker/internal/config	0.135s
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.357s
+ok  	github.com/myrrazor/atlas-tasker/internal/domain	0.240s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations	0.821s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp	1.165s
+ok  	github.com/myrrazor/atlas-tasker/internal/render	0.975s
+ok  	github.com/myrrazor/atlas-tasker/internal/service	5.969s
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	1.240s
 ?   	github.com/myrrazor/atlas-tasker/internal/storage	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	1.517s
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	1.499s
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	1.585s
-ok  	github.com/myrrazor/atlas-tasker/internal/testutil	1.279s
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	3.403s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	0.713s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	1.398s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	1.470s
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	1.460s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	2.799s

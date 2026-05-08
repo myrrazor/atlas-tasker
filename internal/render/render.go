@@ -198,6 +198,13 @@ func StatusBadge(status contracts.Status) string {
 	return valueBadge(string(status))
 }
 
+func TypeBadge(ticketType contracts.TicketType) string {
+	if !ticketType.IsValid() {
+		return ""
+	}
+	return valueBadge(string(ticketType))
+}
+
 func PriorityBadge(priority contracts.Priority) string {
 	return valueBadge(string(priority))
 }
@@ -215,7 +222,7 @@ func SyncBadge(state any) string {
 }
 
 func TicketSummary(ticket contracts.TicketSnapshot, width int) string {
-	head := strings.TrimSpace(fmt.Sprintf("%s %s %s", SanitizeDisplay(ticket.ID), StatusBadge(ticket.Status), PriorityBadge(ticket.Priority)))
+	head := strings.TrimSpace(strings.Join(compactNonEmpty(SanitizeDisplay(ticket.ID), TypeBadge(ticket.Type), StatusBadge(ticket.Status), PriorityBadge(ticket.Priority)), " "))
 	title := strings.TrimSpace(SanitizeDisplay(ticket.Title))
 	if title == "" {
 		title = "(untitled)"
@@ -230,6 +237,17 @@ func TicketSummary(ticket contracts.TicketSnapshot, width int) string {
 		return TruncateDisplay(head, width)
 	}
 	return head + " " + TruncateDisplay(title, titleWidth)
+}
+
+func compactNonEmpty(values ...string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func TruncateDisplay(value string, maxWidth int) string {

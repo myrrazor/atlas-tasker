@@ -60,6 +60,28 @@ func withTempWorkspace(t *testing.T) {
 	})
 }
 
+func TestCommandOutputSanitizesTerminalControls(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "wipe\x1b[2J", "--type", "task", "--actor", "human:owner")
+	out := must("ticket", "view", "APP-1")
+	if strings.Contains(out, "\x1b") {
+		t.Fatalf("expected CLI text output to sanitize terminal controls, got %q", out)
+	}
+	if !strings.Contains(out, "wipe?") {
+		t.Fatalf("expected sanitized title to remain readable, got %q", out)
+	}
+}
+
 func TestTicketLifecycleAndHistory(t *testing.T) {
 	withTempWorkspace(t)
 

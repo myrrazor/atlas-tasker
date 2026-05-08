@@ -271,6 +271,8 @@ func newGoalCommand() *cobra.Command {
 	brief := &cobra.Command{Use: "brief <TICKET-ID|RUN-ID>", Short: "Render a goal-ready brief", Args: cobra.ExactArgs(1), RunE: runGoalBrief}
 	manifest := &cobra.Command{Use: "manifest <TICKET-ID|RUN-ID>", Short: "Write a goal-ready manifest", Args: cobra.ExactArgs(1), RunE: runGoalManifest}
 	verify := &cobra.Command{Use: "verify <MANIFEST-ID|PATH>", Short: "Verify a signed goal manifest", Args: cobra.ExactArgs(1), RunE: runVerifyGoal}
+	brief.Flags().String("actor", "", "Optional actor context accepted for copy-paste parity; goal brief is read-only")
+	brief.Flags().String("reason", "", "Optional reason context accepted for copy-paste parity; goal brief is read-only")
 	addReadOutputFlags(brief, &outputFlags{})
 	addMutationFlags(manifest, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(manifest, &outputFlags{})
@@ -1419,12 +1421,12 @@ func goalManifestMarkdown(view service.GoalManifestDetailView) string {
 }
 
 func goalSectionsMarkdown(objective string, sections []contracts.GoalSection) string {
-	lines := []string{"# Agent Goal", "", strings.TrimSpace(objective), ""}
+	lines := []string{"# Agent Goal", ""}
 	for _, section := range sections {
 		lines = append(lines, "## "+section.Heading, "")
 		if len(section.Items) > 0 {
 			for _, item := range section.Items {
-				lines = append(lines, "- "+item)
+				lines = append(lines, markdownListItem(item, 78)...)
 			}
 		} else {
 			lines = append(lines, strings.TrimSpace(section.Body))
@@ -1432,6 +1434,41 @@ func goalSectionsMarkdown(objective string, sections []contracts.GoalSection) st
 		lines = append(lines, "")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func markdownListItem(item string, width int) []string {
+	item = strings.TrimSpace(item)
+	if item == "" {
+		return []string{"- None"}
+	}
+	if width < 12 {
+		width = 78
+	}
+	firstPrefix := "- "
+	nextPrefix := "  "
+	words := strings.Fields(item)
+	if len(words) == 0 {
+		return []string{"- None"}
+	}
+	lines := []string{}
+	current := firstPrefix
+	prefix := firstPrefix
+	for _, word := range words {
+		candidate := current
+		if strings.TrimSpace(candidate) != "" && candidate != prefix {
+			candidate += " "
+		}
+		candidate += word
+		if len(candidate) <= width || current == prefix {
+			current = candidate
+			continue
+		}
+		lines = append(lines, current)
+		prefix = nextPrefix
+		current = prefix + word
+	}
+	lines = append(lines, current)
+	return lines
 }
 
 func governancePackCreateOptionsFromFlags(cmd *cobra.Command, name string) (service.GovernancePackCreateOptions, error) {

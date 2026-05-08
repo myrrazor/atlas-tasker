@@ -112,9 +112,17 @@ func (t TicketType) IsValid() bool {
 	return ok
 }
 
+func ValidTicketTypeValues() []string {
+	return []string{string(TicketTypeEpic), string(TicketTypeTask), string(TicketTypeBug), string(TicketTypeSubtask)}
+}
+
 func (s Status) IsValid() bool {
 	_, ok := validStatuses[s]
 	return ok
+}
+
+func ValidStatusValues() []string {
+	return []string{string(StatusBacklog), string(StatusReady), string(StatusInProgress), string(StatusInReview), string(StatusBlocked), string(StatusDone), string(StatusCanceled)}
 }
 
 func (p Priority) IsValid() bool {

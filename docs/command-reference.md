@@ -145,7 +145,7 @@
 - `tracker admin security-status`
 - `tracker admin trust-store`
 - `tracker admin recovery-status`
-- `tracker goal brief <TICKET-ID|RUN-ID>`
+- `tracker goal brief <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal manifest <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal verify <MANIFEST-ID|PATH>`
 
@@ -186,7 +186,7 @@ Rules:
 - dispatch creates a run snapshot first, then the managed worktree and runtime directory
 - one active run per ticket is the default; parallel dispatch requires `allow_parallel_runs=true`
 - `run attach` is idempotent for the same provider/session pair
-- `run open` is read-only and only reports the canonical runtime, evidence, and worktree paths
+- `run open` is read-only and reports the canonical runtime, evidence, and worktree paths; if `needs_launch=true`, run `tracker run launch <RUN-ID> --actor <ACTOR> --reason "prepare launch files"` before handing the files to an agent
 - `run launch` writes `brief.md`, `context.json`, `launch.codex.txt`, and `launch.claude.txt` under `.tracker/runtime/<run-id>/`
 - `run launch` is idempotent by default; `--refresh` rewrites stale runtime artifacts
 - cleanup is explicit and only allowed after `completed`, `failed`, or `aborted`
@@ -360,13 +360,13 @@ Rules:
 
 ## Goal Manifests
 
-- `tracker goal brief <TICKET-ID|RUN-ID>`
+- `tracker goal brief <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal manifest <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal verify <MANIFEST-ID|PATH>`
 
 Rules:
 
-- goal briefs are pure derived output for agent handoff
+- goal briefs are pure derived output for agent handoff; optional actor/reason flags are accepted for copy-paste parity and do not create an event
 - goal manifests write local derived artifacts under `.tracker/goal/manifests/` and require actor/reason because Atlas records the manifest creation event
 - goal markdown uses the stable section order from `docs/goal-manifests.md`
 - manifests bind `policy_snapshot_hash`, `trust_snapshot_hash`, and `source_hash`
@@ -503,6 +503,7 @@ Rules:
 - `tracker evidence list <RUN-ID>`
 - `tracker evidence view <EVIDENCE-ID>`
 - `tracker run checkpoint <RUN-ID> [--title <TEXT>] [--body <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run evidence add <RUN-ID> --type <note|test_result|file_diff_summary|log_excerpt|screenshot|artifact_ref|commit_ref|manual_assertion|unresolved_question|review_checklist> [--title <TEXT>] [--body <TEXT>] [--artifact <PATH>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run evidence add <RUN-ID> --type <TYPE> [--title <TEXT>] [--body <TEXT>] [--artifact <PATH>] [--supersedes <EVIDENCE-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 
 Rules:
@@ -567,7 +568,8 @@ Palette shortcuts:
 - `tracker ticket claim <ID> [--actor <ACTOR>]`
 - `tracker ticket release <ID> [--actor <ACTOR>]`
 - `tracker ticket heartbeat <ID> [--actor <ACTOR>]`
-- `tracker ticket request-review <ID> [--actor <ACTOR>]`
+- `tracker ticket request-review <ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `ticket request-review` now opens or reuses a review gate for the ticket so `gate list`, `approvals`, and `inbox` show the review work explicitly
 - `tracker ticket approve <ID> [--actor <ACTOR>]`
 - `tracker ticket reject <ID> --reason <TEXT> [--actor <ACTOR>]`
 - `tracker ticket complete <ID> [--actor <ACTOR>]`

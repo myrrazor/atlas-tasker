@@ -1,8 +1,6 @@
 $ tracker goal brief APP-1 --md
 # Agent Goal
 
-Add health check
-
 ## Goal
 
 Add health check
@@ -66,8 +64,21 @@ Add health check
 - tracker inspect APP-1 --actor <actor> --json
 - tracker ticket claim APP-1 --actor <actor>
 - tracker ticket move APP-1 in_progress --actor <actor> --reason "start work"
+- tracker run launch <RUN-ID> --actor <actor> --reason "prepare launch files"
 - tracker run open <RUN-ID> --json
+- tracker run checkpoint <RUN-ID> --title "progress" --body "what changed"
+  --actor <actor> --reason "record progress"
+- tracker run evidence add <RUN-ID> --type test_result --title "verification"
+  --body "test output" --actor <actor> --reason "record verification"
+- tracker run handoff <RUN-ID> --next-actor <reviewer> --next-gate review
+  --actor <actor> --reason "ready for review"
+- tracker gate list --run <RUN-ID> --json
 - tracker goal brief <RUN-ID> --md
+- valid evidence types: note, test_result, file_diff_summary, log_excerpt,
+  screenshot, artifact_ref, commit_ref, manual_assertion, unresolved_question,
+  review_checklist
+- when review passes: tracker ticket complete APP-1 --actor <actor>
+  --reason "done"
 
 ## Done When
 
@@ -82,4 +93,3 @@ Add health check
 - attach command output or artifact evidence to Atlas
 - confirm required gates are approved before completion
 - review latest run <RUN-ID> before completion
-

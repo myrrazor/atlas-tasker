@@ -938,8 +938,12 @@ func (s *ActionService) goalSections(ctx context.Context, ticket contracts.Ticke
 	if run != nil {
 		current = run.RunID + " for " + ticket.ID
 	}
+	goalBody := "Complete " + ticket.ID + ": " + ticket.Title
+	if strings.TrimSpace(ticket.Summary) != "" {
+		goalBody = ticket.Summary
+	}
 	return completeGoalSections([]contracts.GoalSection{
-		{Heading: "Goal", Body: ticket.Title},
+		{Heading: "Goal", Body: goalBody},
 		{Heading: "Objective", Body: firstNonEmpty(ticket.Summary, ticket.Description, ticket.Title)},
 		{Heading: "Current State", Items: currentStateLines(ticket, run, gates)},
 		{Heading: "Ticket / Run", Items: goalCompactStrings(current, latestRunLine(run, ticket))},
@@ -1107,6 +1111,7 @@ func contextLines(ticket contracts.TicketSnapshot, runs []contracts.RunSnapshot,
 
 func suggestedCommandLines(ticket contracts.TicketSnapshot, run *contracts.RunSnapshot) []string {
 	target := ticket.ID
+	evidenceTypes := strings.Join(contracts.ValidEvidenceTypeValues(), ", ")
 	lines := []string{
 		"tracker inspect " + ticket.ID + " --actor <actor> --json",
 		"tracker ticket claim " + ticket.ID + " --actor <actor>",
@@ -1115,14 +1120,30 @@ func suggestedCommandLines(ticket contracts.TicketSnapshot, run *contracts.RunSn
 	if run != nil {
 		target = run.RunID
 		lines = append(lines,
+			"tracker run launch "+run.RunID+" --actor <actor> --reason \"prepare launch files\"",
+			"tracker run open "+run.RunID+" --json",
+			"tracker run start "+run.RunID+" --summary \"implementation started\" --actor <actor> --reason \"begin work\"",
 			"tracker run checkpoint "+run.RunID+" --title \"progress\" --body \"what changed\" --actor <actor> --reason \"record progress\"",
 			"tracker run evidence add "+run.RunID+" --type test_result --title \"verification\" --body \"test output\" --actor <actor> --reason \"record verification\"",
+			"tracker run handoff "+run.RunID+" --next-actor <reviewer> --next-gate review --actor <actor> --reason \"ready for review\"",
+			"tracker gate list --run "+run.RunID+" --json",
 		)
 	} else if strings.TrimSpace(ticket.LatestRunID) != "" {
 		target = ticket.LatestRunID
-		lines = append(lines, "tracker run open "+ticket.LatestRunID+" --json")
+		lines = append(lines,
+			"tracker run launch "+ticket.LatestRunID+" --actor <actor> --reason \"prepare launch files\"",
+			"tracker run open "+ticket.LatestRunID+" --json",
+			"tracker run checkpoint "+ticket.LatestRunID+" --title \"progress\" --body \"what changed\" --actor <actor> --reason \"record progress\"",
+			"tracker run evidence add "+ticket.LatestRunID+" --type test_result --title \"verification\" --body \"test output\" --actor <actor> --reason \"record verification\"",
+			"tracker run handoff "+ticket.LatestRunID+" --next-actor <reviewer> --next-gate review --actor <actor> --reason \"ready for review\"",
+			"tracker gate list --run "+ticket.LatestRunID+" --json",
+		)
 	}
-	lines = append(lines, "tracker goal brief "+target+" --md")
+	lines = append(lines,
+		"tracker goal brief "+target+" --md",
+		"valid evidence types: "+evidenceTypes,
+		"when review passes: tracker ticket complete "+ticket.ID+" --actor <actor> --reason \"done\"",
+	)
 	return goalCompactStrings(lines...)
 }
 
