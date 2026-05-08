@@ -496,9 +496,9 @@ func newTicketCommand() *cobra.Command {
 	addMutationFlags(edit, &mutationFlags{Actor: "human:owner"})
 	cmd.AddCommand(edit)
 
-	deleteCmd := &cobra.Command{Use: "delete <ID>", Args: cobra.ExactArgs(1), Short: "Archive a ticket", RunE: runTicketDelete}
-	addMutationFlags(deleteCmd, &mutationFlags{Actor: "human:owner"})
-	cmd.AddCommand(deleteCmd)
+	archiveCmd := &cobra.Command{Use: "archive <ID>", Aliases: []string{"delete"}, Args: cobra.ExactArgs(1), Short: "Archive a ticket (soft delete)", RunE: runTicketDelete}
+	addMutationFlags(archiveCmd, &mutationFlags{Actor: "human:owner"})
+	cmd.AddCommand(archiveCmd)
 
 	list := &cobra.Command{Use: "list", Short: "List tickets", RunE: runTicketList}
 	list.Flags().String("project", "", "Project filter")
@@ -823,6 +823,7 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 
 	project, _ := cmd.Flags().GetString("project")
 	title, _ := cmd.Flags().GetString("title")
+	title = render.SanitizeDisplayLine(title)
 	typeValue, _ := cmd.Flags().GetString("type")
 	templateName, _ := cmd.Flags().GetString("template")
 	statusValue, _ := cmd.Flags().GetString("status")
@@ -979,7 +980,7 @@ func runTicketView(cmd *cobra.Command, args []string) error {
 			rawMD += fmt.Sprintf("- %s [%s/%s] %s\n", check.CheckID, check.Status, check.Conclusion, check.Name)
 		}
 	}
-	pretty := fmt.Sprintf("%s [%s] %s open_gates=%d change_ready=%s mentions=%d", detail.Ticket.ID, detail.Ticket.Status, detail.Ticket.Title, len(detail.Ticket.OpenGateIDs), detail.Ticket.ChangeReadyState, len(detail.Mentions))
+	pretty := fmt.Sprintf("%s [%s] %s open_gates=%d change_ready=%s mentions=%d", render.SanitizeDisplayLine(detail.Ticket.ID), detail.Ticket.Status, render.SanitizeDisplayLine(detail.Ticket.Title), len(detail.Ticket.OpenGateIDs), detail.Ticket.ChangeReadyState, len(detail.Mentions))
 	payload := map[string]any{"ticket": detail.Ticket, "comments": detail.Comments, "mentions": detail.Mentions, "gates": detail.Gates, "changes": detail.Changes, "checks": detail.Checks, "effective_policy": detail.EffectivePolicy}
 	return writeCommandOutput(cmd, payload, rawMD, pretty)
 }
@@ -996,6 +997,7 @@ func runTicketEdit(cmd *cobra.Command, args []string) error {
 	ticket, err := workspace.actions.MutateTrackedTicket(ctx, args[0], normalizeActor(actorRaw), reason, "edit ticket", func(ticket *contracts.TicketSnapshot) error {
 		if cmd.Flags().Changed("title") {
 			title, _ := cmd.Flags().GetString("title")
+			title = render.SanitizeDisplayLine(title)
 			ticket.Title = title
 			ticket.Summary = title
 		}
@@ -1905,7 +1907,7 @@ func boardMarkdown(title string, board contracts.BoardView, columns []contracts.
 			if typeBadge != "" {
 				typeBadge += " "
 			}
-			markdown += fmt.Sprintf("- %s %s%s\n", render.SanitizeDisplay(ticket.ID), typeBadge, render.SanitizeDisplay(ticket.Title))
+			markdown += fmt.Sprintf("- %s %s%s\n", render.SanitizeDisplayLine(ticket.ID), typeBadge, render.SanitizeDisplayLine(ticket.Title))
 		}
 	}
 	return markdown
@@ -3085,7 +3087,7 @@ func queueMarkdownSelected(queue service.QueueView, categories []string, title s
 			if typeBadge != "" {
 				typeBadge += " "
 			}
-			md += fmt.Sprintf("- %s %s[%s] %s - %s\n", render.SanitizeDisplay(entry.Ticket.ID), typeBadge, entry.Ticket.Priority, render.SanitizeDisplay(entry.Ticket.Title), render.SanitizeDisplay(entry.Reason))
+			md += fmt.Sprintf("- %s %s[%s] %s - %s\n", render.SanitizeDisplayLine(entry.Ticket.ID), typeBadge, entry.Ticket.Priority, render.SanitizeDisplayLine(entry.Ticket.Title), render.SanitizeDisplayLine(entry.Reason))
 		}
 	}
 	return md

@@ -1,13 +1,9 @@
 $ tracker goal manifest APP-1 --actor human:owner --reason "prepare demo goal" --md
-# Agent Goal
-
-## Goal
-
-Add health check
+# Add health check
 
 ## Objective
 
-Add health check
+Expose a local health check endpoint and record smoke-test evidence before review.
 
 ## Current State
 

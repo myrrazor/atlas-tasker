@@ -11,11 +11,24 @@ import (
 	"unicode/utf8"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/myrrazor/atlas-tasker/internal/buildinfo"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
 )
+
+func TestServerImplementationUsesBuildInfoVersion(t *testing.T) {
+	oldVersion := buildinfo.Version
+	buildinfo.Version = "v9.9.9-test"
+	t.Cleanup(func() {
+		buildinfo.Version = oldVersion
+	})
+	impl := serverImplementation()
+	if impl.Version != "v9.9.9-test" {
+		t.Fatalf("expected MCP implementation version from buildinfo, got %s", impl.Version)
+	}
+}
 
 func TestInventoryProfilesGateHighImpactTools(t *testing.T) {
 	read := Inventory(Options{Profile: ProfileRead}.Normalized())

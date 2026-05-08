@@ -1,13 +1,9 @@
 $ tracker goal brief APP-1 --md
-# Agent Goal
-
-## Goal
-
-Add health check
+# Add health check
 
 ## Objective
 
-Add health check
+Expose a local health check endpoint and record smoke-test evidence before review.
 
 ## Current State
 

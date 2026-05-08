@@ -1,7 +1,7 @@
 command=go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 -show verbose ./...
 module=golang.org/x/vuln@v1.3.0
-go=go version go1.26.2 darwin/arm64
-generated_at=2026-05-07T05:13:25Z
+go=go version go1.26.3 darwin/arm64
+generated_at=2026-05-08T04:01:50Z
 
 Fetching vulnerabilities from the database...
 
@@ -26,7 +26,7 @@ The package pattern matched the following 18 root packages:
   github.com/myrrazor/atlas-tasker/internal/cli
   github.com/myrrazor/atlas-tasker/cmd/tracker
   github.com/myrrazor/atlas-tasker/internal/testutil
-Govulncheck scanned the following 51 modules and the go1.26.2 standard library:
+Govulncheck scanned the following 51 modules and the go1.26.3 standard library:
   github.com/myrrazor/atlas-tasker
   github.com/alecthomas/chroma/v2@v2.20.0
   github.com/atotto/clipboard@v0.1.4
@@ -67,12 +67,12 @@ Govulncheck scanned the following 51 modules and the go1.26.2 standard library:
   github.com/yosida95/uritemplate/v3@v3.0.2
   github.com/yuin/goldmark@v1.7.13
   github.com/yuin/goldmark-emoji@v1.0.6
-  golang.org/x/net@v0.45.0
+  golang.org/x/net@v0.53.0
   golang.org/x/oauth2@v0.35.0
-  golang.org/x/sync@v0.19.0
-  golang.org/x/sys@v0.42.0
-  golang.org/x/term@v0.41.0
-  golang.org/x/text@v0.30.0
+  golang.org/x/sync@v0.20.0
+  golang.org/x/sys@v0.43.0
+  golang.org/x/term@v0.42.0
+  golang.org/x/text@v0.36.0
   gopkg.in/yaml.v3@v3.0.1
   modernc.org/libc@v1.70.0
   modernc.org/mathutil@v1.7.1

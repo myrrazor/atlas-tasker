@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -77,8 +78,64 @@ func TestCommandOutputSanitizesTerminalControls(t *testing.T) {
 	if strings.Contains(out, "\x1b") {
 		t.Fatalf("expected CLI text output to sanitize terminal controls, got %q", out)
 	}
-	if !strings.Contains(out, "wipe?") {
+	if !strings.Contains(out, "wipe[2J") {
 		t.Fatalf("expected sanitized title to remain readable, got %q", out)
+	}
+}
+
+func TestCLIRejectsPathDerivedIdentifierTraversal(t *testing.T) {
+	parent := t.TempDir()
+	workspaceRoot := filepath.Join(parent, "workspace")
+	if err := os.Mkdir(workspaceRoot, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd failed: %v", err)
+	}
+	if err := os.Chdir(workspaceRoot); err != nil {
+		t.Fatalf("chdir workspace: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(oldWD)
+	})
+
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if out, err := runCLI(t, "project", "create", "../../etc", "Bad"); err == nil || !strings.Contains(err.Error()+out, "project key must match") {
+		t.Fatalf("expected invalid project key error, got err=%v out=%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(parent, "etc")); !os.IsNotExist(err) {
+		t.Fatalf("path traversal created outside project dir, stat err=%v", err)
+	}
+	if out, err := runCLI(t, "collaborator", "add", "../EVIL", "--name", "evil", "--actor", "human:owner", "--reason", "trav"); err == nil || !strings.Contains(err.Error()+out, "collaborator_id must match") {
+		t.Fatalf("expected invalid collaborator id error, got err=%v out=%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(workspaceRoot, ".tracker", "EVIL.md")); !os.IsNotExist(err) {
+		t.Fatalf("collaborator traversal escaped collaborators dir, stat err=%v", err)
+	}
+}
+
+func TestTicketTitleInputNormalizesLayoutControls(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Title\nFAKE\tLINE\u202e.exe.txt", "--type", "task", "--actor", "human:owner")
+	board := must("board")
+	if strings.ContainsAny(board, "\t") || strings.Contains(board, "\u202e") || strings.Contains(board, "Title\nFAKE") {
+		t.Fatalf("board output should normalize user-controlled layout controls:\n%q", board)
+	}
+	if !strings.Contains(board, "Title FAKE LINE.exe.txt") {
+		t.Fatalf("expected readable normalized title, got:\n%s", board)
 	}
 }
 

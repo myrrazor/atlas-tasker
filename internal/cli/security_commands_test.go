@@ -53,7 +53,7 @@ func TestV17BackupAndGoalCLI(t *testing.T) {
 	}
 	must("init")
 	must("project", "create", "APP", "App Project")
-	must("ticket", "create", "--project", "APP", "--title", "Backup goal", "--type", "task", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Backup goal", "--description", "Detailed agent objective.", "--type", "task", "--actor", "human:owner")
 	backupRaw := must("backup", "create", "--actor", "human:owner", "--reason", "release backup", "--json")
 	var backup struct {
 		Kind     string `json:"kind"`
@@ -72,7 +72,7 @@ func TestV17BackupAndGoalCLI(t *testing.T) {
 	if !strings.Contains(verifyRaw, `"kind": "backup_verify_result"`) || !strings.Contains(verifyRaw, `"verified": true`) {
 		t.Fatalf("backup verify should report integrity:\n%s", verifyRaw)
 	}
-	planRaw := must("backup", "restore-plan", backup.Snapshot.BackupID, "--json")
+	planRaw := must("backup", "restore-plan", backup.Snapshot.BackupID, "--actor", "human:owner", "--reason", "preview restore", "--json")
 	if !strings.Contains(planRaw, `"kind": "backup_restore_plan"`) {
 		t.Fatalf("restore plan should be concrete json:\n%s", planRaw)
 	}
@@ -139,15 +139,31 @@ func assertGoalMarkdownHeadings(t *testing.T, markdown string) {
 	if strings.Contains(markdown, "Current ticket/run") || strings.Contains(markdown, "Evidence needed") || strings.Contains(markdown, "Current blockers") || strings.Contains(markdown, "Context links") {
 		t.Fatalf("goal markdown contains old headings:\n%s", markdown)
 	}
+	if strings.Contains(markdown, "\n## Goal\n") {
+		t.Fatalf("goal markdown should use the H1 as the goal title instead of duplicating ## Goal:\n%s", markdown)
+	}
+	if !strings.Contains(markdown, "# Backup goal") || !strings.Contains(markdown, "Detailed agent objective.") {
+		t.Fatalf("goal markdown should use title as H1 and description as objective:\n%s", markdown)
+	}
 	headings := []string{}
 	for _, line := range strings.Split(markdown, "\n") {
 		if strings.HasPrefix(line, "## ") {
 			headings = append(headings, strings.TrimPrefix(line, "## "))
 		}
 	}
-	if strings.Join(headings, "\n") != strings.Join(contracts.GoalManifestSectionOrder, "\n") {
-		t.Fatalf("goal markdown headings mismatch:\ngot  %v\nwant %v\n%s", headings, contracts.GoalManifestSectionOrder, markdown)
+	if strings.Join(headings, "\n") != strings.Join(goalMarkdownSectionOrder(), "\n") {
+		t.Fatalf("goal markdown headings mismatch:\ngot  %v\nwant %v\n%s", headings, goalMarkdownSectionOrder(), markdown)
 	}
+}
+
+func goalMarkdownSectionOrder() []string {
+	out := make([]string, 0, len(contracts.GoalManifestSectionOrder)-1)
+	for _, heading := range contracts.GoalManifestSectionOrder {
+		if heading != "Goal" {
+			out = append(out, heading)
+		}
+	}
+	return out
 }
 
 func TestV17GovernanceCLIAndProtectedCompletion(t *testing.T) {
@@ -595,6 +611,25 @@ func TestV17KeyAndTrustCLI(t *testing.T) {
 	}
 	if generated.PublicKey.Status != "active" || generated.PublicKey.Source != "local" || !generated.PrivateKeyHealth.Present || !generated.PrivateKeyHealth.PermissionsOK || !generated.CanSign {
 		t.Fatalf("generated key should be active local signing material: %#v", generated)
+	}
+	keyListRaw := must("key", "list", "--json")
+	if strings.Contains(keyListRaw, `"public_key":`) {
+		t.Fatalf("key list json should expose public key fields at item top level, got:\n%s", keyListRaw)
+	}
+	var keyList struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Items         []struct {
+			PublicKeyID       string `json:"public_key_id"`
+			PublicKeyMaterial string `json:"public_key_material"`
+			CanSign           bool   `json:"can_sign"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(keyListRaw), &keyList); err != nil {
+		t.Fatalf("parse key list json: %v\n%s", err, keyListRaw)
+	}
+	if keyList.FormatVersion != jsonFormatVersion || keyList.Kind != "key_list" || len(keyList.Items) != 1 || keyList.Items[0].PublicKeyID != generated.PublicKey.PublicKeyID || keyList.Items[0].PublicKeyMaterial == "" || !keyList.Items[0].CanSign {
+		t.Fatalf("unexpected flattened key list: %#v", keyList)
 	}
 	publicExport := must("key", "export-public", generated.PublicKey.PublicKeyID)
 	if !strings.HasPrefix(publicExport, "---\n") || !strings.Contains(publicExport, "public_key_material:") {
