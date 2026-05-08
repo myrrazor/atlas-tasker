@@ -95,7 +95,7 @@ func TestRunEvidenceAndHandoffCommands(t *testing.T) {
 		"--next-actor", "agent:reviewer-1",
 		"--next-gate", "review",
 		"--next-status", "in_review",
-		"--actor", "human:owner",
+		"--actor", "agent:builder-1",
 		"--json",
 	)
 	var handoff struct {
@@ -146,6 +146,19 @@ func TestRunEvidenceAndHandoffCommands(t *testing.T) {
 	}
 	if evidenceList.Kind != "evidence_list" || len(evidenceList.Items) != 2 {
 		t.Fatalf("unexpected evidence list payload: %#v", evidenceList)
+	}
+	runEvidenceListOut := must("run", "evidence", "list", dispatch.Payload.RunID, "--json")
+	var runEvidenceList struct {
+		Kind  string `json:"kind"`
+		Items []struct {
+			EvidenceID string `json:"evidence_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(runEvidenceListOut), &runEvidenceList); err != nil {
+		t.Fatalf("parse run evidence list: %v\nraw=%s", err, runEvidenceListOut)
+	}
+	if runEvidenceList.Kind != "evidence_list" || len(runEvidenceList.Items) != len(evidenceList.Items) {
+		t.Fatalf("unexpected run evidence list payload: %#v", runEvidenceList)
 	}
 
 	evidenceViewOut := must("evidence", "view", evidence.Payload.EvidenceID, "--json")

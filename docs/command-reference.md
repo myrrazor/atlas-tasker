@@ -388,7 +388,8 @@ Rules:
 - governance TOML uses the same snake_case field names as JSON output, and `tracker governance validate` emits a structured report plus non-zero exit when any pack or policy is invalid
 - all protected write paths use one evaluator after legacy permission checks and before live side effects
 - gate rejection is not governed by `gate_approve`; PR-704 only protects gate approval and waiver
-- ticket-level `ticket approve` is a convenience path for the assigned reviewer or `human:owner`; reviewer quorum workflows should bind collaborators to a project reviewer membership and resolve review gates with `tracker gate approve <GATE-ID> --actor <ACTOR> --reason <TEXT>` so approvals are auditable
+- `ticket_approve` is a protected action, so governance separation-of-duties and override policies can guard reviewer approval before completion.
+- ticket-level `ticket approve` is a convenience path for the effective reviewer or `human:owner`; it rejects assignee/reviewer self-approval. Reviewer quorum workflows should bind collaborators to a project reviewer membership and resolve review gates with `tracker gate approve <GATE-ID> --actor <ACTOR> --reason <TEXT>` so approvals are auditable.
 - trusted-signature requirements are not bypassed by owner override
 - structured CSV/GitHub import apply uses `import_apply`; signed sync/bundle imports use `sync_import_apply` and `bundle_import_apply`
 - sync export/import governance runs before migration scaffolding writes, so denied operations do not stamp migration state
@@ -505,6 +506,7 @@ Rules:
 - `tracker evidence list <RUN-ID>`
 - `tracker evidence view <EVIDENCE-ID>`
 - `tracker run checkpoint <RUN-ID> [--title <TEXT>] [--body <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run evidence list <RUN-ID>`
 - `tracker run evidence add <RUN-ID> --type <note|test_result|file_diff_summary|log_excerpt|screenshot|artifact_ref|commit_ref|manual_assertion|unresolved_question|review_checklist> [--title <TEXT>] [--body <TEXT>] [--artifact <PATH>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run evidence add <RUN-ID> --type <TYPE> [--title <TEXT>] [--body <TEXT>] [--artifact <PATH>] [--supersedes <EVIDENCE-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 
@@ -569,15 +571,15 @@ Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Tick
 ## Ticket Mutation
 
 - `tracker ticket move <ID> <STATUS>`
-- `tracker ticket assign <ID> <ACTOR>`
+- `tracker ticket assign <ID> <ACTOR>` sets the assignee only
 - `tracker ticket priority <ID> <PRIORITY>`
 - `tracker ticket label add <ID> <LABEL>`
 - `tracker ticket label remove <ID> <LABEL>`
 - `tracker ticket claim <ID> [--actor <ACTOR>]`
 - `tracker ticket release <ID> [--actor <ACTOR>]`
 - `tracker ticket heartbeat <ID> [--actor <ACTOR>]`
-- `tracker ticket request-review <ID> [--actor <ACTOR>] [--reason <TEXT>]`
-- `ticket request-review` now opens or reuses a review gate for the ticket so `gate list`, `approvals`, and `inbox` show the review work explicitly
+- `tracker ticket request-review <ID> [--reviewer <ACTOR>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `ticket request-review` now opens or reuses a review gate for the ticket so `gate list`, `approvals`, and `inbox` show the review work explicitly. `--reviewer` sets the ticket reviewer in the same mutation; when omitted, Atlas uses the ticket reviewer or the effective project/epic/ticket `required_reviewer`.
 - `tracker ticket approve <ID> [--actor <ACTOR>]`
 - `tracker ticket reject <ID> --reason <TEXT> [--actor <ACTOR>]`
 - `tracker ticket complete <ID> [--actor <ACTOR>]`
@@ -590,6 +592,12 @@ Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Tick
 - `tracker ticket link <ID> --blocked-by <OTHER_ID>`
 - `tracker ticket link <ID> --parent <PARENT_ID>`
 - `tracker ticket unlink <ID> <OTHER_ID>`
+
+Dependency rules:
+
+- `blocked_by` is enforced for unsafe progress: `in_progress`, `in_review`, approval, and completion are rejected while any blocker is unresolved.
+- Only `done` counts as terminal-success for dependency unblocking. `canceled` does not unblock dependents.
+- Board, blocked list, ticket view, inspect, and reindex derive blocked buckets from current blocker status, not only the historical link.
 
 ## Comments and History
 
@@ -609,6 +617,20 @@ Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Tick
 - `tracker search <QUERY>`
 - `tracker search --view <NAME>`
 - `tracker render <ID>`
+
+Search query terms:
+
+- `status=<STATUS>`
+- `type=<TYPE>`
+- `project=<KEY>`
+- `assignee=<ACTOR>`
+- `label=<LABEL>`
+- `text~<TEXT>`
+
+Examples:
+
+- `tracker search 'status=in_progress'`
+- `tracker search 'project=AUTH text~logout'`
 
 ## Saved Views
 
@@ -647,6 +669,7 @@ Rules:
 
 - `--dry-run` previews the batch without mutating anything
 - live bulk mutations require `--yes`
+- dry-run result text uses "would ..." language; live apply output uses applied-state verbs such as "moved", "updated", "completed", or "failed"
 - `--ticket` may be repeated
 - `--view` expands any saved board/search/queue/next view into ticket IDs in the same order the view returns them
 - duplicate ticket IDs are deduplicated before the batch runs

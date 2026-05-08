@@ -510,9 +510,10 @@ func newTicketCommand() *cobra.Command {
 
 	move := &cobra.Command{Use: "move <ID> <STATUS>", Args: cobra.ExactArgs(2), Short: "Move ticket status", RunE: runTicketMove}
 	addMutationFlags(move, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(move, &outputFlags{})
 	cmd.AddCommand(move)
 
-	assign := &cobra.Command{Use: "assign <ID> <ACTOR>", Args: cobra.ExactArgs(2), Short: "Assign ticket actor", RunE: runTicketAssign}
+	assign := &cobra.Command{Use: "assign <ID> <ACTOR>", Args: cobra.ExactArgs(2), Short: "Set ticket assignee only", Long: "Set the ticket assignee only. Use `tracker ticket edit <ID> --reviewer <ACTOR>` or `tracker ticket request-review <ID> --reviewer <ACTOR>` to set review ownership.", RunE: runTicketAssign}
 	addMutationFlags(assign, &mutationFlags{Actor: "human:owner"})
 	cmd.AddCommand(assign)
 
@@ -562,21 +563,26 @@ func newTicketCommand() *cobra.Command {
 	addMutationFlags(heartbeat, &mutationFlags{})
 	cmd.AddCommand(heartbeat)
 
-	requestReview := &cobra.Command{Use: "request-review <ID>", Args: cobra.ExactArgs(1), Short: "Move ticket into review", RunE: runTicketRequestReview}
+	requestReview := &cobra.Command{Use: "request-review <ID>", Args: cobra.ExactArgs(1), Short: "Move ticket into review", Long: "Move a ticket into review. Pass --reviewer to set the assigned reviewer in the same mutation; omit it to use the ticket reviewer or effective project/epic/ticket policy reviewer.", RunE: runTicketRequestReview}
+	requestReview.Flags().String("reviewer", "", "Reviewer actor to assign before requesting review")
 	addMutationFlags(requestReview, &mutationFlags{})
+	addReadOutputFlags(requestReview, &outputFlags{})
 	cmd.AddCommand(requestReview)
 
 	approve := &cobra.Command{Use: "approve <ID>", Args: cobra.ExactArgs(1), Short: "Approve a ticket in review", RunE: runTicketApprove}
 	addMutationFlags(approve, &mutationFlags{})
+	addReadOutputFlags(approve, &outputFlags{})
 	cmd.AddCommand(approve)
 
 	reject := &cobra.Command{Use: "reject <ID>", Args: cobra.ExactArgs(1), Short: "Reject a ticket in review", RunE: runTicketReject}
 	addMutationFlags(reject, &mutationFlags{})
+	addReadOutputFlags(reject, &outputFlags{})
 	_ = reject.MarkFlagRequired("reason")
 	cmd.AddCommand(reject)
 
 	complete := &cobra.Command{Use: "complete <ID>", Args: cobra.ExactArgs(1), Short: "Complete an approved ticket", RunE: runTicketComplete}
 	addMutationFlags(complete, &mutationFlags{})
+	addReadOutputFlags(complete, &outputFlags{})
 	cmd.AddCommand(complete)
 
 	policy := &cobra.Command{Use: "policy", Short: "Read or update ticket policy"}
@@ -679,7 +685,27 @@ func newSweepCommand() *cobra.Command {
 }
 
 func newSearchCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "search [QUERY]", Args: cobra.MaximumNArgs(1), Short: "Search tickets", RunE: runSearch}
+	cmd := &cobra.Command{
+		Use:   "search [QUERY]",
+		Args:  cobra.MaximumNArgs(1),
+		Short: "Search tickets",
+		Long: strings.Join([]string{
+			"Search tickets with structured Atlas query terms.",
+			"",
+			"Supported terms:",
+			"  status=<STATUS>",
+			"  type=<TYPE>",
+			"  project=<KEY>",
+			"  assignee=<ACTOR>",
+			"  label=<LABEL>",
+			"  text~<TEXT>",
+			"",
+			"Examples:",
+			"  tracker search 'status=in_progress'",
+			"  tracker search 'project=AUTH text~logout'",
+		}, "\n"),
+		RunE: runSearch,
+	}
 	cmd.Flags().String("view", "", "Saved search view to run")
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
@@ -980,9 +1006,18 @@ func runTicketView(cmd *cobra.Command, args []string) error {
 			rawMD += fmt.Sprintf("- %s [%s/%s] %s\n", check.CheckID, check.Status, check.Conclusion, check.Name)
 		}
 	}
-	pretty := fmt.Sprintf("%s [%s] %s open_gates=%d change_ready=%s mentions=%d", render.SanitizeDisplayLine(detail.Ticket.ID), detail.Ticket.Status, render.SanitizeDisplayLine(detail.Ticket.Title), len(detail.Ticket.OpenGateIDs), detail.Ticket.ChangeReadyState, len(detail.Mentions))
-	payload := map[string]any{"ticket": detail.Ticket, "comments": detail.Comments, "mentions": detail.Mentions, "gates": detail.Gates, "changes": detail.Changes, "checks": detail.Checks, "effective_policy": detail.EffectivePolicy}
+	effectiveReviewer := detail.EffectiveReviewer
+	rawMD += fmt.Sprintf("\n## Review\n\n- Reviewer: %s\n- Effective Reviewer: %s\n- Board Status: %s\n", emptyActorLabel(detail.Ticket.Reviewer), emptyActorLabel(effectiveReviewer), detail.BoardStatus)
+	pretty := fmt.Sprintf("%s [%s/%s] %s reviewer=%s effective_reviewer=%s open_gates=%d change_ready=%s mentions=%d", render.SanitizeDisplayLine(detail.Ticket.ID), detail.Ticket.Status, detail.BoardStatus, render.SanitizeDisplayLine(detail.Ticket.Title), emptyActorLabel(detail.Ticket.Reviewer), emptyActorLabel(effectiveReviewer), len(detail.Ticket.OpenGateIDs), detail.Ticket.ChangeReadyState, len(detail.Mentions))
+	payload := map[string]any{"ticket": detail.Ticket, "board_status": detail.BoardStatus, "comments": detail.Comments, "mentions": detail.Mentions, "gates": detail.Gates, "changes": detail.Changes, "checks": detail.Checks, "effective_policy": detail.EffectivePolicy, "effective_reviewer": effectiveReviewer}
 	return writeCommandOutput(cmd, payload, rawMD, pretty)
+}
+
+func emptyActorLabel(actor contracts.Actor) string {
+	if actor == "" {
+		return "(none)"
+	}
+	return string(actor)
 }
 
 func runTicketEdit(cmd *cobra.Command, args []string) error {
@@ -1359,7 +1394,12 @@ func runTicketRequestReview(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	ticket, err := workspace.actions.RequestReview(ctx, args[0], actor, reason)
+	reviewerRaw, _ := cmd.Flags().GetString("reviewer")
+	var reviewer contracts.Actor
+	if strings.TrimSpace(reviewerRaw) != "" {
+		reviewer = normalizeActor(reviewerRaw)
+	}
+	ticket, err := workspace.actions.RequestReviewWithReviewer(ctx, args[0], reviewer, actor, reason)
 	if err != nil {
 		return err
 	}
@@ -1681,8 +1721,9 @@ func runInspect(cmd *cobra.Command, args []string) error {
 			blockedActions++
 		}
 	}
-	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Lease Active: %t\n- Completion: %s\n- Open Gates: %d\n- Change Ready: %s\n- Blocked Actions: %d\n- Mentions: %d\n", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState, blockedActions, len(view.Mentions))
-	pretty := fmt.Sprintf("inspect %s -> board=%s lease_active=%t completion=%s open_gates=%d change_ready=%s blocked_actions=%d mentions=%d", view.Ticket.ID, view.BoardStatus, view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState, blockedActions, len(view.Mentions))
+	effectiveReviewer := view.EffectiveReviewer
+	md := fmt.Sprintf("## Inspect %s\n\n- Board Status: %s\n- Reviewer: %s\n- Effective Reviewer: %s\n- Lease Active: %t\n- Completion: %s\n- Open Gates: %d\n- Change Ready: %s\n- Blocked Actions: %d\n- Mentions: %d\n", view.Ticket.ID, view.BoardStatus, emptyActorLabel(view.Ticket.Reviewer), emptyActorLabel(effectiveReviewer), view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState, blockedActions, len(view.Mentions))
+	pretty := fmt.Sprintf("inspect %s -> board=%s reviewer=%s effective_reviewer=%s lease_active=%t completion=%s open_gates=%d change_ready=%s blocked_actions=%d mentions=%d", view.Ticket.ID, view.BoardStatus, emptyActorLabel(view.Ticket.Reviewer), emptyActorLabel(effectiveReviewer), view.LeaseActive, view.EffectivePolicy.CompletionMode, len(view.Ticket.OpenGateIDs), view.Ticket.ChangeReadyState, blockedActions, len(view.Mentions))
 	return writeCommandOutput(cmd, view, md, pretty)
 }
 
@@ -2550,9 +2591,15 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	if len(args) != 1 {
 		return apperr.New(apperr.CodeInvalidInput, "search requires a query or --view")
 	}
-	query, err := contracts.ParseSearchQuery(args[0])
+	queryText := strings.TrimSpace(args[0])
+	query, err := contracts.ParseSearchQuery(queryText)
 	if err != nil {
-		return err
+		if !strings.ContainsAny(queryText, "=~") {
+			query, err = contracts.ParseSearchQuery("text~" + queryText)
+		}
+		if err != nil {
+			return fmt.Errorf("%w (try structured terms like status=in_progress or text~%s)", err, queryText)
+		}
 	}
 	tickets, err := workspace.queries.Search(ctx, query)
 	if err != nil {

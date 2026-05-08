@@ -23,6 +23,34 @@ func TestRootCommandIncludesRequiredTopLevelCommands(t *testing.T) {
 	}
 }
 
+func TestSearchAndReviewHelpDocumentWorkflowSyntax(t *testing.T) {
+	root := NewRootCommand()
+	search, _, err := root.Find([]string{"search"})
+	if err != nil {
+		t.Fatalf("find search command: %v", err)
+	}
+	searchHelp := search.Long
+	for _, expected := range []string{"status=<STATUS>", "type=<TYPE>", "project=<KEY>", "assignee=<ACTOR>", "label=<LABEL>", "text~<TEXT>", "tracker search 'status=in_progress'", "tracker search 'project=AUTH text~logout'"} {
+		if !strings.Contains(searchHelp, expected) {
+			t.Fatalf("search help missing %q:\n%s", expected, searchHelp)
+		}
+	}
+	assign, _, err := root.Find([]string{"ticket", "assign"})
+	if err != nil {
+		t.Fatalf("find ticket assign: %v", err)
+	}
+	if !strings.Contains(assign.Short+" "+assign.Long, "assignee only") || !strings.Contains(assign.Long, "request-review <ID> --reviewer") {
+		t.Fatalf("assign help should clarify reviewer commands:\nshort=%s\nlong=%s", assign.Short, assign.Long)
+	}
+	requestReview, _, err := root.Find([]string{"ticket", "request-review"})
+	if err != nil {
+		t.Fatalf("find ticket request-review: %v", err)
+	}
+	if requestReview.Flag("reviewer") == nil || !strings.Contains(requestReview.Long, "--reviewer") {
+		t.Fatalf("request-review help should document --reviewer")
+	}
+}
+
 func TestV17BaseMetadataExists(t *testing.T) {
 	raw, err := os.ReadFile("../../docs/v1.7-base.json")
 	if err != nil {

@@ -52,15 +52,17 @@ type BoardViewModel struct {
 }
 
 type TicketDetailView struct {
-	Ticket          contracts.TicketSnapshot `json:"ticket"`
-	Comments        []string                 `json:"comments"`
-	Mentions        []contracts.Mention      `json:"mentions,omitempty"`
-	History         []contracts.Event        `json:"history"`
-	Gates           []contracts.GateSnapshot `json:"gates,omitempty"`
-	Changes         []contracts.ChangeRef    `json:"changes,omitempty"`
-	Checks          []contracts.CheckResult  `json:"checks,omitempty"`
-	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
-	Git             GitContextView           `json:"git"`
+	Ticket            contracts.TicketSnapshot `json:"ticket"`
+	BoardStatus       contracts.Status         `json:"board_status"`
+	EffectiveReviewer contracts.Actor          `json:"effective_reviewer,omitempty"`
+	Comments          []string                 `json:"comments"`
+	Mentions          []contracts.Mention      `json:"mentions,omitempty"`
+	History           []contracts.Event        `json:"history"`
+	Gates             []contracts.GateSnapshot `json:"gates,omitempty"`
+	Changes           []contracts.ChangeRef    `json:"changes,omitempty"`
+	Checks            []contracts.CheckResult  `json:"checks,omitempty"`
+	EffectivePolicy   EffectivePolicyView      `json:"effective_policy"`
+	Git               GitContextView           `json:"git"`
 }
 
 type HistoryView struct {
@@ -154,19 +156,20 @@ type TimelineView struct {
 }
 
 type InspectView struct {
-	Ticket          contracts.TicketSnapshot `json:"ticket"`
-	BoardStatus     contracts.Status         `json:"board_status"`
-	LeaseActive     bool                     `json:"lease_active"`
-	Migration       MigrationStatusView      `json:"migration"`
-	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
-	Permissions     []PermissionDecisionView `json:"permissions,omitempty"`
-	History         []contracts.Event        `json:"history"`
-	Gates           []contracts.GateSnapshot `json:"gates,omitempty"`
-	Changes         []contracts.ChangeRef    `json:"changes,omitempty"`
-	Checks          []contracts.CheckResult  `json:"checks,omitempty"`
-	Git             GitContextView           `json:"git"`
-	Mentions        []contracts.Mention      `json:"mentions,omitempty"`
-	QueueCategories []QueueCategory          `json:"queue_categories,omitempty"`
+	Ticket            contracts.TicketSnapshot `json:"ticket"`
+	BoardStatus       contracts.Status         `json:"board_status"`
+	EffectiveReviewer contracts.Actor          `json:"effective_reviewer,omitempty"`
+	LeaseActive       bool                     `json:"lease_active"`
+	Migration         MigrationStatusView      `json:"migration"`
+	EffectivePolicy   EffectivePolicyView      `json:"effective_policy"`
+	Permissions       []PermissionDecisionView `json:"permissions,omitempty"`
+	History           []contracts.Event        `json:"history"`
+	Gates             []contracts.GateSnapshot `json:"gates,omitempty"`
+	Changes           []contracts.ChangeRef    `json:"changes,omitempty"`
+	Checks            []contracts.CheckResult  `json:"checks,omitempty"`
+	Git               GitContextView           `json:"git"`
+	Mentions          []contracts.Mention      `json:"mentions,omitempty"`
+	QueueCategories   []QueueCategory          `json:"queue_categories,omitempty"`
 }
 
 type ChangeDetailView struct {

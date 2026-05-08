@@ -69,6 +69,8 @@ func newRunCommand() *cobra.Command {
 	addReadOutputFlags(checkpoint, &outputFlags{})
 
 	evidence := &cobra.Command{Use: "evidence", Short: "Attach evidence to a run"}
+	evidenceList := &cobra.Command{Use: "list <RUN-ID>", Args: cobra.ExactArgs(1), Short: "List evidence for a run", RunE: runEvidenceList}
+	addReadOutputFlags(evidenceList, &outputFlags{})
 	evidenceAdd := &cobra.Command{Use: "add <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Add evidence to a run", RunE: runRunEvidenceAdd}
 	evidenceAdd.Flags().String("type", "", "Evidence type: "+strings.Join(contracts.ValidEvidenceTypeValues(), "|"))
 	evidenceAdd.Flags().String("title", "", "Evidence title")
@@ -78,7 +80,7 @@ func newRunCommand() *cobra.Command {
 	_ = evidenceAdd.MarkFlagRequired("type")
 	addMutationFlags(evidenceAdd, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(evidenceAdd, &outputFlags{})
-	evidence.AddCommand(evidenceAdd)
+	evidence.AddCommand(evidenceList, evidenceAdd)
 
 	handoff := &cobra.Command{Use: "handoff <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Generate a handoff packet for a run", RunE: runRunHandoff}
 	handoff.Flags().StringArray("open-question", nil, "Open question to include in the packet")

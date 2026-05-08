@@ -392,6 +392,10 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
+	boardStatus, err := s.BoardStatus(ctx, ticket)
+	if err != nil {
+		return TicketDetailView{}, err
+	}
 	changes, checks, err := s.ticketChangeContext(ctx, ticket)
 	if err != nil {
 		return TicketDetailView{}, err
@@ -405,7 +409,7 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
-	return TicketDetailView{Ticket: ticket, Comments: comments, Mentions: mentions, History: history.Events, Gates: gates, Changes: changes, Checks: checks, EffectivePolicy: policy, Git: gitView}, nil
+	return TicketDetailView{Ticket: ticket, BoardStatus: boardStatus, EffectiveReviewer: effectiveReviewer(ticket, policy), Comments: comments, Mentions: mentions, History: history.Events, Gates: gates, Changes: changes, Checks: checks, EffectivePolicy: policy, Git: gitView}, nil
 }
 
 func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor contracts.Actor) (InspectView, error) {
@@ -414,16 +418,17 @@ func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor
 		return InspectView{}, err
 	}
 	view := InspectView{
-		Ticket:          detail.Ticket,
-		BoardStatus:     contracts.BoardStatus(detail.Ticket),
-		LeaseActive:     detail.Ticket.Lease.Active(s.now()),
-		EffectivePolicy: detail.EffectivePolicy,
-		History:         detail.History,
-		Gates:           detail.Gates,
-		Changes:         detail.Changes,
-		Checks:          detail.Checks,
-		Git:             detail.Git,
-		Mentions:        detail.Mentions,
+		Ticket:            detail.Ticket,
+		BoardStatus:       detail.BoardStatus,
+		EffectiveReviewer: detail.EffectiveReviewer,
+		LeaseActive:       detail.Ticket.Lease.Active(s.now()),
+		EffectivePolicy:   detail.EffectivePolicy,
+		History:           detail.History,
+		Gates:             detail.Gates,
+		Changes:           detail.Changes,
+		Checks:            detail.Checks,
+		Git:               detail.Git,
+		Mentions:          detail.Mentions,
 	}
 	migration, err := s.MigrationStatus(ctx)
 	if err != nil {
@@ -521,17 +526,21 @@ func (s *QueryService) Queue(ctx context.Context, actor contracts.Actor) (QueueV
 			view.Categories[QueuePolicyViolations] = append(view.Categories[QueuePolicyViolations], QueueEntry{Ticket: ticket, Reason: "actor not allowed by effective policy"})
 		}
 		entryHint := queueGitHint(repo, ticket, SCMService{Root: s.Root}.SuggestedBranch(ticket))
+		boardStatus, err := s.BoardStatus(ctx, ticket)
+		if err != nil {
+			return QueueView{}, err
+		}
 		switch {
 		case ticket.Lease.Actor != "" && !ticket.Lease.ExpiresAt.IsZero() && !ticket.Lease.Active(now):
 			view.Categories[QueueStaleClaims] = append(view.Categories[QueueStaleClaims], QueueEntry{Ticket: ticket, Reason: "lease expired", GitHint: entryHint})
 		case ticket.Lease.Active(now) && ticket.Lease.Actor == actor:
 			view.Categories[QueueClaimedByMe] = append(view.Categories[QueueClaimedByMe], QueueEntry{Ticket: ticket, Reason: "active lease owned by actor", GitHint: entryHint})
+		case boardStatus == contracts.StatusBlocked && (ticket.Assignee == "" || ticket.Assignee == actor):
+			view.Categories[QueueBlockedForMe] = append(view.Categories[QueueBlockedForMe], QueueEntry{Ticket: ticket, Reason: "ticket is blocked", GitHint: entryHint})
 		case ticket.Status == contracts.StatusReady && (ticket.Assignee == "" || ticket.Assignee == actor):
 			view.Categories[QueueReadyForMe] = append(view.Categories[QueueReadyForMe], QueueEntry{Ticket: ticket, Reason: "ready and assignable", GitHint: entryHint})
-		case contracts.BoardStatus(ticket) == contracts.StatusBlocked && (ticket.Assignee == "" || ticket.Assignee == actor):
-			view.Categories[QueueBlockedForMe] = append(view.Categories[QueueBlockedForMe], QueueEntry{Ticket: ticket, Reason: "ticket is blocked", GitHint: entryHint})
 		}
-		if ticket.Status == contracts.StatusInReview && (ticket.Reviewer == actor || actor == contracts.Actor("human:owner")) {
+		if ticket.Status == contracts.StatusInReview && (effectiveReviewer(ticket, policy) == actor || actor == contracts.Actor("human:owner")) {
 			view.Categories[QueueNeedsReview] = append(view.Categories[QueueNeedsReview], QueueEntry{Ticket: ticket, Reason: "waiting for review", GitHint: entryHint})
 		}
 		if policy.CompletionMode == contracts.CompletionModeDualGate && ticket.ReviewState == contracts.ReviewStateApproved {
@@ -816,7 +825,11 @@ func (s *QueryService) withProgress(ctx context.Context, ticket contracts.Ticket
 		if contracts.IsTerminalStatus(child.Status) {
 			done++
 		}
-		if contracts.BoardStatus(child) == contracts.StatusBlocked {
+		boardStatus, err := s.BoardStatus(ctx, child)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if boardStatus == contracts.StatusBlocked {
 			blocked++
 		}
 	}

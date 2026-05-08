@@ -59,7 +59,22 @@ func TestBulkCommandsSupportDryRunViewTargetsAndBatchMetadata(t *testing.T) {
 		t.Fatalf("expected confirmation error, got err=%v out=%s", err, out)
 	}
 
-	must("bulk", "move", "in_progress", "--view", "ready-search", "--yes", "--json")
+	applyOut := must("bulk", "move", "in_progress", "--view", "ready-search", "--yes", "--json")
+	var applied struct {
+		Preview struct {
+			DryRun bool `json:"dry_run"`
+		} `json:"preview"`
+		Results []struct {
+			DryRun bool   `json:"dry_run"`
+			Reason string `json:"reason"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(applyOut), &applied); err != nil {
+		t.Fatalf("parse live bulk json: %v\nraw=%s", err, applyOut)
+	}
+	if applied.Preview.DryRun || len(applied.Results) == 0 || strings.Contains(applied.Results[0].Reason, "would ") || !strings.Contains(applied.Results[0].Reason, "moved") {
+		t.Fatalf("live bulk output should use applied wording: %#v", applied)
+	}
 	history := must("ticket", "history", "APP-1", "--json")
 	var payload struct {
 		FormatVersion string `json:"format_version"`
@@ -135,5 +150,68 @@ func TestBulkViewTargetsMatchSavedViewRunExactly(t *testing.T) {
 	}
 	if !reflect.DeepEqual(preview.Preview.TicketIDs, viewTicketIDs) {
 		t.Fatalf("expected bulk view expansion to match views run exactly, got bulk=%v view=%v", preview.Preview.TicketIDs, viewTicketIDs)
+	}
+}
+
+func TestBulkMoveRespectsDependencyBlocks(t *testing.T) {
+	withTempWorkspace(t)
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("config", "set", "actor.default", "human:owner")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Blocker", "--type", "task", "--status", "in_progress", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Dependent", "--type", "task", "--status", "ready", "--actor", "human:owner")
+	must("ticket", "link", "APP-2", "--blocked-by", "APP-1", "--actor", "human:owner", "--reason", "depends on blocker")
+
+	out := must("bulk", "move", "in_progress", "--ticket", "APP-2", "--dry-run", "--json")
+	var payload struct {
+		Preview struct {
+			DryRun bool `json:"dry_run"`
+		} `json:"preview"`
+		Summary struct {
+			Failed int `json:"failed"`
+		} `json:"summary"`
+		Results []struct {
+			DryRun bool   `json:"dry_run"`
+			Error  string `json:"error"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("parse bulk dependency output: %v\nraw=%s", err, out)
+	}
+	if !payload.Preview.DryRun || payload.Summary.Failed != 1 || len(payload.Results) != 1 || !payload.Results[0].DryRun || !strings.Contains(payload.Results[0].Error, "dependency_blocked") {
+		t.Fatalf("expected dry-run dependency failure, got %#v", payload)
+	}
+
+	apply := must("bulk", "move", "in_progress", "--ticket", "APP-2", "--yes", "--json")
+	var applied struct {
+		Preview struct {
+			DryRun bool `json:"dry_run"`
+		} `json:"preview"`
+		Summary struct {
+			Failed int `json:"failed"`
+		} `json:"summary"`
+		Results []struct {
+			Error string `json:"error"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(apply), &applied); err != nil {
+		t.Fatalf("parse live bulk dependency output: %v\nraw=%s", err, apply)
+	}
+	if applied.Preview.DryRun || applied.Summary.Failed != 1 || len(applied.Results) != 1 || !strings.Contains(applied.Results[0].Error, "dependency_blocked") {
+		t.Fatalf("expected live bulk dependency failure, got %#v", applied)
+	}
+	view := must("ticket", "view", "APP-2", "--json")
+	if !strings.Contains(view, `"status": "ready"`) || !strings.Contains(view, `"board_status": "blocked"`) {
+		t.Fatalf("bulk dependency failure should leave status ready and board_status blocked: %s", view)
 	}
 }

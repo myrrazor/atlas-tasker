@@ -23,11 +23,13 @@ Separation-of-duties can block actors who implemented, dispatched, created a cha
 
 ## Protected Actions
 
-Protected actions include sync/bundle/structured import apply, gate approve/waive, ticket/run complete, change merge, export create, archive apply/restore, backup restore, trust/revoke key, redaction override, and owner override.
+Protected actions include sync/bundle/structured import apply, gate approve/waive, ticket approve/complete, run complete, change merge, export create, archive apply/restore, backup restore, trust/revoke key, redaction override, and owner override.
 
 ## PR-704 Implementation Notes
 
 PR-704 makes governance executable for the first protected write paths. Governance packs are stored under `.tracker/governance/packs/`; applied policies are stored under `.tracker/governance/policies/`. TOML files use the same snake_case field names as JSON output, and `tracker governance validate` exits non-zero when any pack or policy is invalid.
+
+`ticket_approve` lets teams apply separation-of-duties at reviewer approval time instead of waiting until `ticket_complete`.
 
 Commands:
 

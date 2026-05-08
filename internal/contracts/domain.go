@@ -694,9 +694,6 @@ func BoardStatus(ticket TicketSnapshot) Status {
 	if IsTerminalStatus(ticket.Status) {
 		return StatusDone
 	}
-	if ticket.Status != StatusBlocked && len(ticket.BlockedBy) > 0 {
-		return StatusBlocked
-	}
 	return ticket.Status
 }
 

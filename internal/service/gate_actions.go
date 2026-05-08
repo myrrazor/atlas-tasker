@@ -194,16 +194,18 @@ func (s *ActionService) ensureGatesForHandoff(ctx context.Context, run contracts
 	}
 	opened := make([]contracts.GateSnapshot, 0, len(kinds))
 	for _, kind := range kinds {
-		if _, err := s.requirePermission(ctx, permissionEvalInput{
-			Action:            contracts.PermissionActionGateOpen,
-			Actor:             actor,
-			Ticket:            ticket,
-			Run:               &run,
-			ActorAgent:        relevantAgent,
-			Runbook:           permissionRunbook(ticket, &run),
-			ChangedFilesKnown: false,
-		}); err != nil {
-			return nil, ticket, run, err
+		if !canRunActorRequestHandoffGate(run, ticket, actor) {
+			if _, err := s.requirePermission(ctx, permissionEvalInput{
+				Action:            contracts.PermissionActionGateOpen,
+				Actor:             actor,
+				Ticket:            ticket,
+				Run:               &run,
+				ActorAgent:        relevantAgent,
+				Runbook:           permissionRunbook(ticket, &run),
+				ChangedFilesKnown: false,
+			}); err != nil {
+				return nil, ticket, run, err
+			}
 		}
 		gate, created, err := s.ensureGateOpenLocked(ticket, run, existing, stage, actor, kind, nextActor)
 		if err != nil {
@@ -223,6 +225,17 @@ func (s *ActionService) ensureGatesForHandoff(ctx context.Context, run contracts
 		run.Status = contracts.RunStatusHandoffReady
 	}
 	return opened, ticket, run, nil
+}
+
+func canRunActorRequestHandoffGate(run contracts.RunSnapshot, ticket contracts.TicketSnapshot, actor contracts.Actor) bool {
+	if actor == contracts.Actor("human:owner") || (ticket.Assignee != "" && actor == ticket.Assignee) {
+		return true
+	}
+	if strings.TrimSpace(run.AgentID) == "" {
+		return false
+	}
+	runActor := contracts.Actor("agent:" + strings.TrimSpace(run.AgentID))
+	return runActor.IsValid() && actor == runActor
 }
 
 func (s *ActionService) ensureGateOpenLocked(ticket contracts.TicketSnapshot, run contracts.RunSnapshot, existing []contracts.GateSnapshot, stage contracts.RunbookStage, actor contracts.Actor, kind contracts.GateKind, nextActor string) (contracts.GateSnapshot, bool, error) {

@@ -66,11 +66,34 @@ func (s *ActionService) RunBulk(ctx context.Context, op BulkOperation) (BulkOper
 			copy := *updated
 			entry.Ticket = &copy
 		}
+		entry.Reason = appliedBulkReason(normalized, ticketID, updated)
 		result.Summary.Succeeded++
 		result.Results = append(result.Results, entry)
 	}
 	result.Summary.Total = len(result.Results)
 	return result, nil
+}
+
+func appliedBulkReason(op BulkOperation, ticketID string, ticket *contracts.TicketSnapshot) string {
+	switch op.Kind {
+	case BulkOperationMove:
+		if ticket != nil {
+			return fmt.Sprintf("moved %s to %s", ticket.ID, ticket.Status)
+		}
+		return fmt.Sprintf("moved %s", ticketID)
+	case BulkOperationAssign:
+		return fmt.Sprintf("updated %s assignee to %s", ticketID, op.Assignee)
+	case BulkOperationRequestReview:
+		return fmt.Sprintf("updated %s to in_review", ticketID)
+	case BulkOperationComplete:
+		return fmt.Sprintf("completed %s", ticketID)
+	case BulkOperationClaim:
+		return fmt.Sprintf("updated %s lease", ticketID)
+	case BulkOperationRelease:
+		return fmt.Sprintf("updated %s lease", ticketID)
+	default:
+		return fmt.Sprintf("updated %s", ticketID)
+	}
 }
 
 func (s *ActionService) normalizeBulkOperation(op BulkOperation) (BulkOperation, error) {
@@ -132,6 +155,9 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 	switch op.Kind {
 	case BulkOperationMove:
 		if op.Status == contracts.StatusDone {
+			if err := s.requireNoUnresolvedDependencies(ctx, ticket); err != nil {
+				return "", nil, err
+			}
 			if ticket.Status != contracts.StatusInReview {
 				return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be in_review to complete", ticket.ID))
 			}
@@ -142,10 +168,15 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 			if ticket.ReviewState != contracts.ReviewStateApproved {
 				return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be approved before completion", ticket.ID))
 			}
-			if err := domain.CheckCompletionPermission(policy.CompletionMode, op.Actor, ticket.Reviewer); err != nil {
+			if err := domain.CheckCompletionPermission(policy.CompletionMode, op.Actor, effectiveReviewer(ticket, policy)); err != nil {
 				return "", nil, &apperr.Error{Code: apperr.CodePermissionDenied, Message: err.Error(), Cause: err}
 			}
 			return fmt.Sprintf("would complete %s", ticket.ID), &ticket, nil
+		}
+		if unsafeDependencyProgress(op.Status) {
+			if err := s.requireNoUnresolvedDependencies(ctx, ticket); err != nil {
+				return "", nil, err
+			}
 		}
 		if err := domain.ValidateTransition(ticket.Status, op.Status); err != nil {
 			return "", nil, &apperr.Error{Code: apperr.CodeInvalidInput, Message: err.Error(), Cause: err}
@@ -154,11 +185,17 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 	case BulkOperationAssign:
 		return fmt.Sprintf("would assign %s to %s", ticket.ID, op.Assignee), &ticket, nil
 	case BulkOperationRequestReview:
+		if err := s.requireNoUnresolvedDependencies(ctx, ticket); err != nil {
+			return "", nil, err
+		}
 		if err := domain.ValidateTransition(ticket.Status, contracts.StatusInReview); err != nil {
 			return "", nil, &apperr.Error{Code: apperr.CodeInvalidInput, Message: err.Error(), Cause: err}
 		}
 		return fmt.Sprintf("would request review for %s", ticket.ID), &ticket, nil
 	case BulkOperationComplete:
+		if err := s.requireNoUnresolvedDependencies(ctx, ticket); err != nil {
+			return "", nil, err
+		}
 		policy, err := resolveEffectivePolicy(ctx, s.Root, s.Projects, s.Tickets, ticket)
 		if err != nil {
 			return "", nil, err
@@ -169,7 +206,7 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 		if ticket.ReviewState != contracts.ReviewStateApproved {
 			return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be approved before completion", ticket.ID))
 		}
-		if err := domain.CheckCompletionPermission(policy.CompletionMode, op.Actor, ticket.Reviewer); err != nil {
+		if err := domain.CheckCompletionPermission(policy.CompletionMode, op.Actor, effectiveReviewer(ticket, policy)); err != nil {
 			return "", nil, &apperr.Error{Code: apperr.CodePermissionDenied, Message: err.Error(), Cause: err}
 		}
 		return fmt.Sprintf("would complete %s", ticket.ID), &ticket, nil
@@ -184,7 +221,7 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 		if len(policy.AllowedWorkers) > 0 && !actorInList(op.Actor, policy.AllowedWorkers) && op.Actor != contracts.Actor("human:owner") {
 			return "", nil, apperr.New(apperr.CodePermissionDenied, fmt.Sprintf("actor %s is not allowed by effective policy", op.Actor))
 		}
-		if ticket.Status == contracts.StatusInReview && op.Actor != ticket.Reviewer && op.Actor != contracts.Actor("human:owner") {
+		if ticket.Status == contracts.StatusInReview && op.Actor != effectiveReviewer(ticket, policy) && op.Actor != contracts.Actor("human:owner") {
 			return "", nil, apperr.New(apperr.CodePermissionDenied, "review claims must belong to the reviewer or owner")
 		}
 		return fmt.Sprintf("would claim %s", ticket.ID), &ticket, nil

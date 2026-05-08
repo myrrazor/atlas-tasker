@@ -649,20 +649,102 @@ func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions
 	}
 	defer rows.Close()
 
-	columns := map[contracts.Status][]contracts.TicketSnapshot{}
+	tickets := make([]contracts.TicketSnapshot, 0)
 	for rows.Next() {
 		ticket, err := scanTicket(rows)
 		if err != nil {
 			return contracts.BoardView{}, err
 		}
-		boardTicket := ticket
-		boardTicket.Status = contracts.BoardStatus(ticket)
-		columns[boardTicket.Status] = append(columns[boardTicket.Status], boardTicket)
+		tickets = append(tickets, ticket)
 	}
 	if err := rows.Err(); err != nil {
 		return contracts.BoardView{}, err
 	}
+	byID := make(map[string]contracts.Status, len(tickets))
+	for _, ticket := range tickets {
+		byID[ticket.ID] = ticket.Status
+	}
+	missingBlockers := make([]string, 0)
+	seenMissing := map[string]struct{}{}
+	for _, ticket := range tickets {
+		for _, blockerID := range ticket.BlockedBy {
+			blockerID = strings.TrimSpace(blockerID)
+			if blockerID == "" {
+				continue
+			}
+			if _, ok := byID[blockerID]; ok {
+				continue
+			}
+			if _, ok := seenMissing[blockerID]; ok {
+				continue
+			}
+			seenMissing[blockerID] = struct{}{}
+			missingBlockers = append(missingBlockers, blockerID)
+		}
+	}
+	if len(missingBlockers) > 0 {
+		statuses, err := s.queryTicketStatuses(ctx, missingBlockers)
+		if err != nil {
+			return contracts.BoardView{}, err
+		}
+		for ticketID, status := range statuses {
+			byID[ticketID] = status
+		}
+	}
+	columns := map[contracts.Status][]contracts.TicketSnapshot{}
+	for _, ticket := range tickets {
+		boardTicket := ticket
+		boardTicket.Status = projectedBoardStatus(ticket, byID)
+		columns[boardTicket.Status] = append(columns[boardTicket.Status], boardTicket)
+	}
 	return contracts.BoardView{Columns: columns}, nil
+}
+
+func (s *Store) queryTicketStatuses(ctx context.Context, ticketIDs []string) (map[string]contracts.Status, error) {
+	if len(ticketIDs) == 0 {
+		return map[string]contracts.Status{}, nil
+	}
+	placeholders := make([]string, len(ticketIDs))
+	args := make([]any, len(ticketIDs))
+	for i, ticketID := range ticketIDs {
+		placeholders[i] = "?"
+		args[i] = ticketID
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, status FROM tickets WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	statuses := map[string]contracts.Status{}
+	for rows.Next() {
+		var ticketID string
+		var status contracts.Status
+		if err := rows.Scan(&ticketID, &status); err != nil {
+			return nil, err
+		}
+		statuses[ticketID] = status
+	}
+	return statuses, rows.Err()
+}
+
+func projectedBoardStatus(ticket contracts.TicketSnapshot, statuses map[string]contracts.Status) contracts.Status {
+	if contracts.IsTerminalStatus(ticket.Status) {
+		return contracts.StatusDone
+	}
+	if ticket.Status == contracts.StatusBlocked {
+		return contracts.StatusBlocked
+	}
+	for _, blockerID := range ticket.BlockedBy {
+		blockerID = strings.TrimSpace(blockerID)
+		if blockerID == "" {
+			continue
+		}
+		status, ok := statuses[blockerID]
+		if !ok || status != contracts.StatusDone {
+			return contracts.StatusBlocked
+		}
+	}
+	return ticket.Status
 }
 
 func (s *Store) QueryTicket(ctx context.Context, ticketID string) (contracts.TicketSnapshot, error) {

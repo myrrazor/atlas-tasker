@@ -24,6 +24,13 @@ func TestApplyEventQueryHistoryBoardAndSearch(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create project: %v", err)
 	}
+	if err := projectStore.CreateProject(ctx, contracts.Project{
+		Key:       "OPS",
+		Name:      "Ops Project",
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create ops project: %v", err)
+	}
 
 	now := time.Date(2026, 3, 22, 16, 0, 0, 0, time.UTC)
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return now }}
@@ -143,6 +150,29 @@ func TestQueryBoardDerivesBlockedAndDoneColumns(t *testing.T) {
 			UpdatedAt:     now.Add(time.Minute),
 			SchemaVersion: contracts.CurrentSchemaVersion,
 		},
+		{
+			ID:            "OPS-1",
+			Project:       "OPS",
+			Title:         "Cross-project blocker is done",
+			Type:          contracts.TicketTypeTask,
+			Status:        contracts.StatusDone,
+			Priority:      contracts.PriorityMedium,
+			CreatedAt:     now,
+			UpdatedAt:     now.Add(2 * time.Minute),
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		},
+		{
+			ID:            "APP-3",
+			Project:       "APP",
+			Title:         "Depends on done external blocker",
+			Type:          contracts.TicketTypeTask,
+			Status:        contracts.StatusReady,
+			Priority:      contracts.PriorityMedium,
+			BlockedBy:     []string{"OPS-1"},
+			CreatedAt:     now,
+			UpdatedAt:     now.Add(3 * time.Minute),
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		},
 	}
 
 	for index, ticket := range tickets {
@@ -176,6 +206,9 @@ func TestQueryBoardDerivesBlockedAndDoneColumns(t *testing.T) {
 	}
 	if len(board.Columns[contracts.StatusDone]) != 1 || board.Columns[contracts.StatusDone][0].ID != "APP-2" {
 		t.Fatalf("expected canceled ticket in done column, got %#v", board.Columns[contracts.StatusDone])
+	}
+	if len(board.Columns[contracts.StatusReady]) != 1 || board.Columns[contracts.StatusReady][0].ID != "APP-3" {
+		t.Fatalf("expected cross-project done blocker to unblock APP-3, got %#v", board.Columns[contracts.StatusReady])
 	}
 	if len(board.Columns[contracts.StatusCanceled]) != 0 {
 		t.Fatalf("expected canceled column to stay empty in board view, got %#v", board.Columns[contracts.StatusCanceled])
@@ -236,12 +269,12 @@ func TestApplyLinkEventKeepsWrappedSnapshotsMaterialized(t *testing.T) {
 	}
 
 	event := contracts.Event{
-		EventID:       1,
-		Timestamp:     now.Add(time.Minute),
-		Actor:         contracts.Actor("human:owner"),
-		Type:          contracts.EventTicketLinked,
-		Project:       "APP",
-		TicketID:      blocked.ID,
+		EventID:   1,
+		Timestamp: now.Add(time.Minute),
+		Actor:     contracts.Actor("human:owner"),
+		Type:      contracts.EventTicketLinked,
+		Project:   "APP",
+		TicketID:  blocked.ID,
 		Payload: map[string]any{
 			"id":           blocked.ID,
 			"other_id":     blocker.ID,
