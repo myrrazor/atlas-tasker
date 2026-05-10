@@ -1,0 +1,24 @@
+name: Docs issue
+description: Report stale, confusing, or missing documentation.
+title: "docs: "
+labels: ["docs"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page or file
+      placeholder: README.md, docs/mcp.md, docs/release/public-release-gates.md
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is wrong?
+      description: Broken link, stale command, unclear wording, missing warning, or similar.
+    validations:
+      required: true
+  - type: textarea
+    id: suggested
+    attributes:
+      label: Suggested fix
+      description: Optional, but useful.

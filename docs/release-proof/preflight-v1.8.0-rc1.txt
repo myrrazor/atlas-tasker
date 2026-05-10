@@ -1,0 +1,11 @@
+preflight_status=ready
+mode=local
+version=v1.8.0-rc1
+commit=e6d76cbeeba3
+build_date=2026-05-07T05:18:24Z
+platform=darwin/arm64
+version_json=ok
+govulncheck_status=skipped
+sbom_status=skipped
+hosted_preflight=skipped
+message=run 'sh scripts/preflight-release.sh --hosted' when GitHub prerelease proof is available

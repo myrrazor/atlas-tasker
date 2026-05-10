@@ -1,0 +1,99 @@
+v1.8 base json: {
+  "version": "v1.8",
+  "theme": "Release Candidate Polish",
+  "public_candidate_version": "v1.8.0-rc1",
+  "base_branch": "codex/pr-709-v171-release-signoff",
+  "base_sha": "5a75aec336311abd1844c8578342e7da0af5388e",
+  "base_pr": 76,
+  "base_pr_title": "chore: close out v1.7.1 release proof",
+  "created_at": "2026-05-07T00:00:00Z",
+  "stacking_rule": "PR-801 starts from the unmerged v1.7.1 closeout tip and the v1.8 train stacks PR-801 through PR-809. Retarget or rebase to main after PRs 68-76 are merged.",
+  "release_rule": "v1.8 may polish the public release candidate from this base, but it must not claim ship readiness until hosted assets, checksums, attestations, install smoke, SBOM, vulnerability scan, and final release evidence pass."
+}
+127.0.0.1 - - [07/May/2026 01:13:09] "GET /checksums.txt HTTP/1.1" 200 -
+verified tracker_1.8.0-rc1_darwin_arm64.tar.gz for v1.8.0-rc1
+127.0.0.1 - - [07/May/2026 01:13:09] "GET /tracker_1.8.0-rc1_darwin_arm64.tar.gz HTTP/1.1" 200 -
+installed tracker v1.8.0-rc1 to <tmp>
+initialized
+created project APP
+created APP-1
+moved APP-1 to ready
+saved agent builder-1
+run=run_18ad30886c4b1398
+ticket=APP-1
+agent=builder-1
+runtime_dir=<tmp>
+brief=<tmp>
+context=<tmp>
+codex_launch=<tmp>
+claude_launch=<tmp>
+worktree=<tmp>
+evidence_dir=<tmp>
+
+created:
+- <tmp>
+- <tmp>
+- <tmp>
+- <tmp>
+started run_18ad30886c4b1398
+moved APP-1 to in_progress
+evidence evidence_5e34e2702564ed52
+run=run_18ad30886c4b1398 ticket=APP-1 type=note
+actor=human:owner created_at=2026-05-07T05:13:10Z
+title=Smoke checkpoint
+
+runtime + worktree ready
+evidence evidence_f98e81f776cfa88b
+run=run_18ad30886c4b1398 ticket=APP-1 type=note
+actor=human:owner created_at=2026-05-07T05:13:10Z
+title=Smoke evidence
+
+packaged rehearsal
+# Handoff handoff_f6ae26791242a64e
+
+- Ticket: APP-1
+- Run: run_18ad30886c4b1398
+- Actor: human:owner
+
+## Status
+
+Run `run_18ad30886c4b1398` for ticket `APP-1`.
+
+## Evidence
+
+- evidence_5e34e2702564ed52
+- evidence_f98e81f776cfa88b
+
+## Next
+
+- Actor: agent:reviewer-1
+- Gate: review
+# Gate gate_01478214373ef1b5
+
+- Ticket: APP-1
+- Kind: review
+- State: approved
+- Created By: human:owner
+- Run: run_18ad30886c4b1398
+- Required Agent: agent:reviewer-1
+- Required Role: reviewer
+
+## Decision
+
+- By: agent:reviewer-1
+- Reason: packaged rehearsal
+
+## Related Runs
+
+- run_18ad30886c4b1398
+completed run_18ad30886c4b1398
+[tracker] ticket.review_requested APP-1 
+requested review for APP-1
+[tracker] ticket.approved APP-1 
+approved APP-1
+completed APP-1
+cleaned up run_18ad30886c4b1398
+initialized
+initialized
+initialized
+release rehearsal ok: version=v1.8.0-rc1 commit=e6d76cbeeba3 archive=tracker_1.8.0-rc1_darwin_arm64.tar.gz install_dir=<tmp> work_dir=<tmp> git_remote=<tmp>

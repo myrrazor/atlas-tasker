@@ -549,6 +549,9 @@ func (m model) View() string {
 		body = body + "\n\n" + m.dialogView()
 	}
 	footer := fmt.Sprintf("actor: %s | collaborator: %s | %s", optionalActor(m.actor, "unset"), optionalString(strings.TrimSpace(m.collaboratorFilter), "all"), m.status)
+	if m.width > 0 {
+		footer = render.TruncateDisplay(footer, m.width)
+	}
 	if width := m.width; width > 0 && width < lipgloss.Width(body) {
 		body = lipgloss.NewStyle().Width(width).Render(body)
 	}
@@ -558,12 +561,12 @@ func (m model) View() string {
 func (m model) bodyView() string {
 	switch m.screen {
 	case screenBoard:
-		return ticketsListView("Board", m.itemsForScreen(), m.cursor)
+		return ticketsListView("Board", m.itemsForScreen(), m.cursor, m.width)
 	case screenQueues:
 		if m.actor == "" {
-			return render.EmptyState("Queues", "Set --actor, TRACKER_ACTOR, or actor.default to populate queue tabs.")
+			return render.EmptyState("Queues", "Set --actor, TRACKER_ACTOR, or actor.default to populate queues.")
 		}
-		return ticketsListView("Queues", m.itemsForScreen(), m.cursor)
+		return ticketsListView("Queues", m.itemsForScreen(), m.cursor, m.width)
 	case screenDetail:
 		if m.detail.Ticket.ID == "" {
 			return render.EmptyState("Detail", "No ticket selected yet.")
@@ -574,14 +577,14 @@ func (m model) bodyView() string {
 		if len(m.searchHits) == 0 {
 			return body + render.EmptyState("Search", "Type a query and press enter.")
 		}
-		return body + ticketsListView("Search Results", m.searchHits, m.cursor)
+		return body + ticketsListView("Search Results", m.searchHits, m.cursor, m.width)
 	case screenReview:
 		if m.actor == "" {
 			return render.EmptyState("Review", "Set an actor to see review work.")
 		}
-		return ticketsListView("Review Inbox", m.itemsForScreen(), m.cursor)
+		return ticketsListView("Review Inbox", m.itemsForScreen(), m.cursor, m.width)
 	case screenOwner:
-		return ticketsListView("Owner Attention", m.itemsForScreen(), m.cursor)
+		return ticketsListView("Owner Attention", m.itemsForScreen(), m.cursor, m.width)
 	case screenInbox:
 		return attentionView(m.approvals, m.operatorInbox, m.inbox, m.deadLetters)
 	case screenViews:
@@ -1139,6 +1142,12 @@ func newEditDialog(ticket contracts.TicketSnapshot) dialogState {
 func newFormField(keyName string, label string, required bool, placeholder string, value string) formField {
 	input := textinput.New()
 	input.Prompt = ""
+	placeholder = render.SanitizeDisplayLine(placeholder)
+	if keyName == "title" {
+		value = render.SanitizeDisplayLine(value)
+	} else {
+		value = render.SanitizeDisplay(value)
+	}
 	input.Placeholder = placeholder
 	input.SetValue(value)
 	input.Width = 72
@@ -1173,14 +1182,15 @@ func nextTickets(next service.NextView) []contracts.TicketSnapshot {
 
 func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.RunSnapshot, runDetail service.RunDetailView, launch service.RunLaunchManifestView, timeline service.TimelineView, collaboratorFilter string) string {
 	body := render.TicketPretty(detail.Ticket, detail.Comments)
+	safe := render.SanitizeDisplayLine
 	gitLines := []string{"Git Context:"}
 	if !detail.Git.Repo.Present {
 		gitLines = append(gitLines, "- repo: not detected")
 	} else {
 		gitLines = append(gitLines,
-			fmt.Sprintf("- branch: %s", optionalString(detail.Git.Repo.Branch, "detached")),
+			fmt.Sprintf("- branch: %s", optionalString(safe(detail.Git.Repo.Branch), "detached")),
 			fmt.Sprintf("- dirty: %t", detail.Git.Repo.Dirty),
-			fmt.Sprintf("- suggested: %s", optionalString(detail.Git.SuggestedBranch, "n/a")),
+			fmt.Sprintf("- suggested: %s", optionalString(safe(detail.Git.SuggestedBranch), "n/a")),
 			fmt.Sprintf("- current matches ticket: %t", detail.Git.CurrentBranchMatches),
 		)
 		if len(detail.Git.Refs) == 0 {
@@ -1188,7 +1198,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		} else {
 			gitLines = append(gitLines, "- refs:")
 			for _, ref := range detail.Git.Refs {
-				gitLines = append(gitLines, fmt.Sprintf("  - %s %s", shortHash(ref.Hash), ref.Subject))
+				gitLines = append(gitLines, fmt.Sprintf("  - %s %s", safe(shortHash(ref.Hash)), safe(ref.Subject)))
 			}
 		}
 	}
@@ -1198,7 +1208,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		runLines = append(runLines, "- none")
 	} else {
 		for _, run := range ticketRuns {
-			runLines = append(runLines, fmt.Sprintf("- %s [%s/%s] agent=%s", run.RunID, run.Status, run.Kind, optionalString(run.AgentID, "unassigned")))
+			runLines = append(runLines, fmt.Sprintf("- %s [%s/%s] agent=%s", safe(run.RunID), run.Status, run.Kind, optionalString(safe(run.AgentID), "unassigned")))
 		}
 	}
 	evidenceLines := []string{"Evidence:"}
@@ -1206,7 +1216,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		evidenceLines = append(evidenceLines, "- none")
 	} else {
 		for _, item := range runDetail.Evidence {
-			evidenceLines = append(evidenceLines, fmt.Sprintf("- %s [%s] %s", item.EvidenceID, item.Type, optionalString(item.Title, "(untitled)")))
+			evidenceLines = append(evidenceLines, fmt.Sprintf("- %s [%s] %s", safe(item.EvidenceID), item.Type, optionalString(safe(item.Title), "(untitled)")))
 		}
 	}
 	handoffLines := []string{"Handoffs:"}
@@ -1214,7 +1224,7 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		handoffLines = append(handoffLines, "- none")
 	} else {
 		for _, item := range runDetail.Handoffs {
-			handoffLines = append(handoffLines, fmt.Sprintf("- %s next=%s gate=%s", item.HandoffID, optionalString(item.SuggestedNextActor, "n/a"), optionalString(string(item.SuggestedNextGate), "n/a")))
+			handoffLines = append(handoffLines, fmt.Sprintf("- %s next=%s gate=%s", safe(item.HandoffID), optionalString(safe(item.SuggestedNextActor), "n/a"), optionalString(safe(string(item.SuggestedNextGate)), "n/a")))
 		}
 	}
 	runtimeLines := []string{"Runtime:"}
@@ -1222,30 +1232,34 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 		runtimeLines = append(runtimeLines, "- none")
 	} else {
 		runtimeLines = append(runtimeLines,
-			"- dir: "+launch.RuntimeDir,
-			"- brief: "+launch.BriefPath,
-			"- context: "+launch.ContextPath,
-			"- codex: "+launch.CodexLaunchPath,
-			"- claude: "+launch.ClaudeLaunchPath,
+			fmt.Sprintf("- needs_launch: %t", launch.NeedsLaunch),
+			"- dir: "+safe(launch.RuntimeDir),
+			"- brief: "+safe(launch.BriefPath),
+			"- context: "+safe(launch.ContextPath),
+			"- codex: "+safe(launch.CodexLaunchPath),
+			"- claude: "+safe(launch.ClaudeLaunchPath),
 		)
+		for _, path := range launch.Missing {
+			runtimeLines = append(runtimeLines, "- missing: "+safe(path))
+		}
 	}
 	timelineLines := []string{"Timeline:"}
 	if len(timeline.Entries) == 0 {
 		timelineLines = append(timelineLines, "- none")
 	} else {
 		if strings.TrimSpace(collaboratorFilter) != "" {
-			timelineLines = append(timelineLines, "- collaborator_filter: "+collaboratorFilter)
+			timelineLines = append(timelineLines, "- collaborator_filter: "+safe(collaboratorFilter))
 		}
 		timelineLines = append(timelineLines,
 			fmt.Sprintf("- change_ready: %s", timeline.ChangeReady),
-			fmt.Sprintf("- open_gates: %s", optionalString(strings.Join(timeline.OpenGateIDs, ","), "none")),
+			fmt.Sprintf("- open_gates: %s", optionalString(safe(strings.Join(timeline.OpenGateIDs, ",")), "none")),
 		)
 		start := len(timeline.Entries) - 5
 		if start < 0 {
 			start = 0
 		}
 		for _, entry := range timeline.Entries[start:] {
-			timelineLines = append(timelineLines, fmt.Sprintf("- %s %s %s", entry.Timestamp.Format(time.RFC3339), entry.Type, entry.Summary))
+			timelineLines = append(timelineLines, fmt.Sprintf("- %s %s %s", entry.Timestamp.Format(time.RFC3339), entry.Type, safe(entry.Summary)))
 		}
 	}
 	return body + "\n\n" + strings.Join(gitLines, "\n") + "\n\n" + strings.Join(runLines, "\n") + "\n\n" + strings.Join(evidenceLines, "\n") + "\n\n" + strings.Join(handoffLines, "\n") + "\n\n" + strings.Join(runtimeLines, "\n") + "\n\n" + strings.Join(timelineLines, "\n")
@@ -1257,7 +1271,7 @@ func attentionView(approvals []service.ApprovalItemView, items []service.InboxIt
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range approvals {
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.Gate.GateID, item.Gate.Kind, item.Summary))
+			lines = append(lines, fmt.Sprintf("- %s %s [%s] %s", render.SanitizeDisplayLine(item.Gate.GateID), render.GateBadge(item.Gate.State), item.Gate.Kind, render.SanitizeDisplayLine(item.Summary)))
 		}
 	}
 	lines = append(lines, "", "Human Inbox:")
@@ -1265,7 +1279,7 @@ func attentionView(approvals []service.ApprovalItemView, items []service.InboxIt
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range items {
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.ID, item.State, item.Summary))
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", render.SanitizeDisplayLine(item.ID), item.State, render.SanitizeDisplayLine(item.Summary)))
 		}
 	}
 	lines = append(lines, "", "Recent Deliveries:")
@@ -1273,7 +1287,7 @@ func attentionView(approvals []service.ApprovalItemView, items []service.InboxIt
 		lines = append(lines, "- none")
 	} else {
 		for _, record := range records {
-			lines = append(lines, fmt.Sprintf("- %s %s %s via %s", record.Timestamp.Format(time.RFC3339), record.Event.Type, optionalString(record.Event.TicketID, record.Event.Project), record.Sink))
+			lines = append(lines, fmt.Sprintf("- %s %s %s via %s", record.Timestamp.Format(time.RFC3339), record.Event.Type, optionalString(record.Event.TicketID, record.Event.Project), render.SanitizeDisplayLine(record.Sink)))
 		}
 	}
 	lines = append(lines, "", "Dead Letters:")
@@ -1281,7 +1295,7 @@ func attentionView(approvals []service.ApprovalItemView, items []service.InboxIt
 		lines = append(lines, "- none")
 	} else {
 		for _, record := range deadLetters {
-			lines = append(lines, fmt.Sprintf("- %s %s via %s (%s)", record.Timestamp.Format(time.RFC3339), record.Event.Type, record.Sink, record.Error))
+			lines = append(lines, fmt.Sprintf("- %s %s via %s (%s)", record.Timestamp.Format(time.RFC3339), record.Event.Type, render.SanitizeDisplayLine(record.Sink), render.SanitizeDisplayLine(record.Error)))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -1297,14 +1311,14 @@ func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) s
 		if idx == cursor {
 			prefix = "> "
 		}
-		title := view.Title
+		title := render.SanitizeDisplayLine(view.Title)
 		if strings.TrimSpace(title) == "" {
-			title = view.Name
+			title = render.SanitizeDisplayLine(view.Name)
 		}
-		lines = append(lines, fmt.Sprintf("%s%s [%s] %s", prefix, view.Name, view.Kind, title))
+		lines = append(lines, fmt.Sprintf("%s%s [%s] %s", prefix, render.SanitizeDisplayLine(view.Name), view.Kind, title))
 	}
 	if strings.TrimSpace(selected) != "" {
-		lines = append(lines, "", fmt.Sprintf("enter runs %s into the matching tab", selected))
+		lines = append(lines, "", fmt.Sprintf("enter runs %s into the matching tab", render.SanitizeDisplayLine(selected)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1332,7 +1346,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range dashboard.CollaboratorWorkload {
-			lines = append(lines, fmt.Sprintf("- %s approvals=%d inbox=%d mentions=%d handoffs=%d", item.CollaboratorID, item.Approvals, item.InboxItems, item.Mentions, item.Handoffs))
+			lines = append(lines, fmt.Sprintf("- %s approvals=%d inbox=%d mentions=%d handoffs=%d", render.SanitizeDisplayLine(item.CollaboratorID), item.Approvals, item.InboxItems, item.Mentions, item.Handoffs))
 		}
 	}
 	lines = append(lines, "", "Remote Health:")
@@ -1340,7 +1354,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range dashboard.RemoteHealth {
-			lines = append(lines, fmt.Sprintf("- %s [%s] publications=%d failed=%d", item.RemoteID, item.State, item.PublicationCount, item.FailedJobs))
+			lines = append(lines, fmt.Sprintf("- %s %s publications=%d failed=%d", render.SanitizeDisplayLine(item.RemoteID), render.SyncBadge(item.State), item.PublicationCount, item.FailedJobs))
 		}
 	}
 	lines = append(lines, "", "Conflict Queue:")
@@ -1348,7 +1362,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range dashboard.ConflictQueue {
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", item.ConflictID, item.EntityKind, item.ConflictType))
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", render.SanitizeDisplayLine(item.ConflictID), item.EntityKind, render.SanitizeDisplayLine(string(item.ConflictType))))
 		}
 	}
 	lines = append(lines, "", "Mention Queue:")
@@ -1356,7 +1370,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range dashboard.MentionQueue {
-			lines = append(lines, fmt.Sprintf("- %s @%s %s", item.MentionUID, item.CollaboratorID, item.Summary))
+			lines = append(lines, fmt.Sprintf("- %s @%s %s", render.SanitizeDisplayLine(item.MentionUID), render.SanitizeDisplayLine(item.CollaboratorID), render.SanitizeDisplayLine(item.Summary)))
 		}
 	}
 	lines = append(lines, "", "Provider Mapping Warnings:")
@@ -1364,7 +1378,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, warning := range dashboard.ProviderMappingWarnings {
-			lines = append(lines, "- "+warning)
+			lines = append(lines, "- "+render.SanitizeDisplayLine(warning))
 		}
 	}
 	lines = append(lines, "",
@@ -1378,7 +1392,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 			if agent.Profile.Enabled {
 				state = "enabled"
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s] active=%d", agent.Profile.AgentID, state, agent.ActiveRuns))
+			lines = append(lines, fmt.Sprintf("- %s [%s] active=%d", render.SanitizeDisplayLine(agent.Profile.AgentID), state, agent.ActiveRuns))
 		}
 	}
 	lines = append(lines, "", "Dispatch Queue:")
@@ -1387,7 +1401,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 	} else {
 		for _, entry := range dispatch.Entries {
 			auto := optionalString(entry.Suggestion.AutoRouteAgentID, "manual")
-			lines = append(lines, fmt.Sprintf("- %s auto=%s", entry.Ticket.ID, auto))
+			lines = append(lines, fmt.Sprintf("- %s auto=%s", render.SanitizeDisplayLine(entry.Ticket.ID), auto))
 		}
 	}
 	lines = append(lines, "", "Worktrees:")
@@ -1395,7 +1409,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		lines = append(lines, "- none")
 	} else {
 		for _, item := range worktrees {
-			lines = append(lines, fmt.Sprintf("- %s present=%t dirty=%t", item.RunID, item.Present, item.Dirty))
+			lines = append(lines, fmt.Sprintf("- %s present=%t dirty=%t", render.SanitizeDisplayLine(item.RunID), item.Present, item.Dirty))
 		}
 	}
 	lines = append(lines, "", "Automation Rules:")
@@ -1407,7 +1421,7 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 			if rule.Enabled {
 				state = "enabled"
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s]", rule.Name, state))
+			lines = append(lines, fmt.Sprintf("- %s [%s]", render.SanitizeDisplayLine(rule.Name), state))
 		}
 	}
 	lines = append(lines, "", "Automation Explain:")
@@ -1419,19 +1433,19 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 			if result.Matched {
 				state = "match"
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", result.Rule.Name, state, strings.Join(result.Actions, ", ")))
+			lines = append(lines, fmt.Sprintf("- %s [%s] %s", render.SanitizeDisplayLine(result.Rule.Name), state, render.SanitizeDisplayLine(strings.Join(result.Actions, ", "))))
 		}
 	}
 	lines = append(lines, "", "Bulk Preview:")
 	switch {
 	case lastBulk != nil:
 		lines = append(lines,
-			fmt.Sprintf("- last batch: %s", lastBulk.BatchID),
-			fmt.Sprintf("- kind: %s", lastBulk.Preview.Kind),
+			fmt.Sprintf("- last batch: %s", render.SanitizeDisplayLine(lastBulk.BatchID)),
+			fmt.Sprintf("- kind: %s", render.SanitizeDisplayLine(string(lastBulk.Preview.Kind))),
 			fmt.Sprintf("- total: %d ok=%d failed=%d skipped=%d", lastBulk.Summary.Total, lastBulk.Summary.Succeeded, lastBulk.Summary.Failed, lastBulk.Summary.Skipped),
 		)
 	case pendingBulk != nil:
-		lines = append(lines, fmt.Sprintf("- pending %s on %d tickets", pendingBulk.Kind, len(pendingBulk.TicketIDs)))
+		lines = append(lines, fmt.Sprintf("- pending %s on %d tickets", render.SanitizeDisplayLine(string(pendingBulk.Kind)), len(pendingBulk.TicketIDs)))
 	default:
 		lines = append(lines, "- press b to preview a bulk action for the current ticket list")
 	}
@@ -1439,22 +1453,27 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 	return strings.Join(lines, "\n")
 }
 
-func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor int) string {
+func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor int, widths ...int) string {
 	if len(tickets) == 0 {
 		return render.EmptyState(title, "No items in this view yet.")
 	}
-	lines := []string{title + ":"}
+	width := 88
+	if len(widths) > 0 && widths[0] > 0 {
+		width = widths[0]
+	}
+	lines := []string{render.SanitizeDisplayLine(title) + ":"}
 	for idx, ticket := range tickets {
 		prefix := "  "
 		if idx == cursor {
 			prefix = "> "
 		}
-		lines = append(lines, fmt.Sprintf("%s%s [%s/%s] %s", prefix, ticket.ID, ticket.Status, ticket.Priority, ticket.Title))
+		lines = append(lines, prefix+render.TicketSummary(ticket, width-lipgloss.Width(prefix)))
 	}
 	return strings.Join(lines, "\n")
 }
 
 func optionalString(value string, fallback string) string {
+	value = render.SanitizeDisplayLine(value)
 	if strings.TrimSpace(value) == "" {
 		return fallback
 	}
@@ -1477,7 +1496,7 @@ func optionalActor(actor contracts.Actor, fallback string) string {
 }
 
 func renderEnabled() bool {
-	return strings.TrimSpace(os.Getenv("NO_COLOR")) == ""
+	return render.ColorEnabled()
 }
 
 func firstBoardTicketID(board service.BoardViewModel) string {

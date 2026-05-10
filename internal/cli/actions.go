@@ -12,6 +12,7 @@ import (
 
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
@@ -111,10 +112,10 @@ func writeCommandOutput(cmd *cobra.Command, data any, markdown string, pretty st
 		return nil
 	}
 	if mdMode {
-		fmt.Fprintln(cmd.OutOrStdout(), markdown)
+		fmt.Fprintln(cmd.OutOrStdout(), render.SanitizeDisplay(markdown))
 		return nil
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), pretty)
+	fmt.Fprintln(cmd.OutOrStdout(), render.SanitizeDisplay(pretty))
 	return nil
 }
 

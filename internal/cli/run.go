@@ -56,7 +56,13 @@ func newRunCommand() *cobra.Command {
 	addMutationFlags(complete, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(complete, &outputFlags{})
 
-	checkpoint := &cobra.Command{Use: "checkpoint <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Record a checkpoint note for a run", RunE: runRunCheckpoint}
+	checkpoint := &cobra.Command{
+		Use:   "checkpoint <RUN-ID>",
+		Args:  cobra.ExactArgs(1),
+		Short: "Record a checkpoint note for a run",
+		Long:  "Record a checkpoint note for a run. This is shorthand for adding note evidence with event type run.checkpointed; use `tracker run evidence add` for typed artifacts, test results, screenshots, commits, and supersession.",
+		RunE:  runRunCheckpoint,
+	}
 	checkpoint.Flags().String("title", "", "Checkpoint title")
 	checkpoint.Flags().String("body", "", "Checkpoint body")
 	addMutationFlags(checkpoint, &mutationFlags{Actor: "human:owner"})
@@ -64,7 +70,7 @@ func newRunCommand() *cobra.Command {
 
 	evidence := &cobra.Command{Use: "evidence", Short: "Attach evidence to a run"}
 	evidenceAdd := &cobra.Command{Use: "add <RUN-ID>", Args: cobra.ExactArgs(1), Short: "Add evidence to a run", RunE: runRunEvidenceAdd}
-	evidenceAdd.Flags().String("type", "", "Evidence type")
+	evidenceAdd.Flags().String("type", "", "Evidence type: "+strings.Join(contracts.ValidEvidenceTypeValues(), "|"))
 	evidenceAdd.Flags().String("title", "", "Evidence title")
 	evidenceAdd.Flags().String("body", "", "Evidence body")
 	evidenceAdd.Flags().String("artifact", "", "Path to an artifact file to copy into the evidence bundle")
@@ -78,8 +84,8 @@ func newRunCommand() *cobra.Command {
 	handoff.Flags().StringArray("open-question", nil, "Open question to include in the packet")
 	handoff.Flags().StringArray("risk", nil, "Risk to include in the packet")
 	handoff.Flags().String("next-actor", "", "Suggested next actor")
-	handoff.Flags().String("next-gate", "", "Suggested next gate")
-	handoff.Flags().String("next-status", "", "Suggested next ticket status")
+	handoff.Flags().String("next-gate", "", "Suggested next gate: "+strings.Join(contracts.ValidGateKindValues(), "|"))
+	handoff.Flags().String("next-status", "", "Suggested next ticket status: "+strings.Join(contracts.ValidStatusValues(), "|"))
 	addMutationFlags(handoff, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(handoff, &outputFlags{})
 
@@ -574,6 +580,7 @@ func formatRunLaunchManifest(view service.RunLaunchManifestView) string {
 		fmt.Sprintf("run=%s", view.RunID),
 		fmt.Sprintf("ticket=%s", view.TicketID),
 		fmt.Sprintf("agent=%s", view.AgentID),
+		fmt.Sprintf("needs_launch=%t", view.NeedsLaunch),
 		fmt.Sprintf("runtime_dir=%s", view.RuntimeDir),
 		fmt.Sprintf("brief=%s", view.BriefPath),
 		fmt.Sprintf("context=%s", view.ContextPath),
@@ -585,6 +592,13 @@ func formatRunLaunchManifest(view service.RunLaunchManifestView) string {
 	}
 	if view.EvidenceDir != "" {
 		lines = append(lines, "evidence_dir="+view.EvidenceDir)
+	}
+	if len(view.Missing) > 0 {
+		lines = append(lines, "", "missing:")
+		for _, path := range view.Missing {
+			lines = append(lines, "- "+path)
+		}
+		lines = append(lines, "next=tracker run launch "+view.RunID+" --actor <actor> --reason \"prepare launch files\"")
 	}
 	if len(view.Created) > 0 {
 		lines = append(lines, "", "created:")
