@@ -2,6 +2,8 @@
 
 Atlas `v1.8.0-rc1` is planned, not shipped. This guide explains the release workflow and points to the current proof gates.
 
+Current evidence: [v1.8 release evidence](release/v1.8-release-evidence.md), [launch checklist](release/launch-checklist.md), and [v1.8.1 release owner closeout](release/v1.8.1-release-owner-closeout.md).
+
 ## Release States
 
 - Source build: proves the local checkout can compile.
@@ -26,11 +28,12 @@ Each archive contains a single `tracker` binary.
 
 ```bash
 VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh
+VERSION=v1.8.0-rc1 sh scripts/validate-rc.sh
 VERSION=v1.8.0-rc1 ./scripts/release-rehearsal.sh
 sh scripts/stability-smoke.sh
 ```
 
-The preflight checks release script syntax and verifies the stamped `tracker version --json` contract. The rehearsal builds the current binary, packages archives, generates checksums, verifies a local archive, serves local artifacts, installs through `scripts/install.sh`, checks the installed version metadata, and runs the packaged smoke flow.
+The preflight checks release script syntax and verifies the stamped `tracker version --json` contract. The RC validator checks public docs, examples, terminal output, CLI/slash-shell read parity, MCP read-profile tool presence, leakage, stale release strings, quickstart smoke, and local performance budgets without network access. The rehearsal builds the current binary, packages archives, generates checksums, verifies a local archive, serves local artifacts, installs through `scripts/install.sh`, checks the installed version metadata, and runs the packaged smoke flow.
 
 Local vulnerability and SBOM proof is generated explicitly:
 
@@ -47,7 +50,7 @@ Before public sign-off, a release actor must:
 3. let GitHub publish archives and `checksums.txt`
 4. download at least one published archive
 5. run `scripts/verify-release.sh` against that archive with attestation verification enabled
-6. install from published assets through `scripts/install.sh`
+6. install from published assets through `scripts/install.sh`; the installer verifies checksums and attestations before copying the binary
 7. run `tracker version --json` from the installed binary and compare it to the hosted tag, commit, build date, and platform
 8. run the packaged smoke flow from the installed binary
 9. record checksum, attestation, install, smoke, SBOM, vulnerability scan, and ship/no-ship evidence
@@ -56,7 +59,7 @@ Read [public release gates](release/public-release-gates.md) for the source of t
 
 ## Install
 
-The one-line installer is for published releases:
+The one-line installer is for published releases after hosted proof is green:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
@@ -76,6 +79,8 @@ gh attestation verify ./tracker_1.8.0-rc1_darwin_arm64.tar.gz --repo myrrazor/at
 ```
 
 Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.
+
+`RELEASE_BASE_URL` must use `https://`; loopback `http://` is accepted only for local rehearsals with `ALLOW_INSECURE_RELEASE_BASE_URL=1`.
 
 ## Packaged Smoke Coverage
 

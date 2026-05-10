@@ -58,6 +58,9 @@ func buildBriefMarkdown(input RunManifestInput) string {
 		"",
 		fmt.Sprintf("- Ticket: %s", input.Ticket.ID),
 		fmt.Sprintf("- Title: %s", input.Ticket.Title),
+		fmt.Sprintf("- Type: %s", input.Ticket.Type),
+		fmt.Sprintf("- Priority: %s", input.Ticket.Priority),
+		fmt.Sprintf("- Ticket Status: %s", input.Ticket.Status),
 		fmt.Sprintf("- Run Status: %s", input.Run.Status),
 		fmt.Sprintf("- Run Kind: %s", input.Run.Kind),
 		fmt.Sprintf("- Agent: %s", input.Run.AgentID),
@@ -74,8 +77,17 @@ func buildBriefMarkdown(input RunManifestInput) string {
 	if input.Run.Summary != "" {
 		lines = append(lines, "", "## Summary", "", input.Run.Summary)
 	}
+	if input.Ticket.Summary != "" {
+		lines = append(lines, "", "## Ticket Summary", "", input.Ticket.Summary)
+	}
 	if input.Ticket.Description != "" {
 		lines = append(lines, "", "## Ticket Description", "", input.Ticket.Description)
+	}
+	if len(input.Ticket.RequiredCapabilities) > 0 {
+		lines = append(lines, "", "## Required Capabilities", "")
+		for _, item := range input.Ticket.RequiredCapabilities {
+			lines = append(lines, "- "+item)
+		}
 	}
 	if len(input.Ticket.AcceptanceCriteria) > 0 {
 		lines = append(lines, "", "## Acceptance Criteria", "")
@@ -104,6 +116,15 @@ func buildBriefMarkdown(input RunManifestInput) string {
 			lines = append(lines, fmt.Sprintf("- %s", item.HandoffID))
 		}
 	}
+	lines = append(lines,
+		"",
+		"## Suggested Atlas Loop",
+		"",
+		fmt.Sprintf("1. `tracker run attach %s --provider %s --session-ref <session> --actor <actor> --reason \"attach session\"`", input.Run.RunID, input.Agent.Provider),
+		fmt.Sprintf("2. `tracker run checkpoint %s --title \"progress\" --body \"what changed\" --actor <actor> --reason \"record progress\"`", input.Run.RunID),
+		fmt.Sprintf("3. `tracker run evidence add %s --type test_result --title \"verification\" --body \"test output\" --actor <actor> --reason \"record verification\"`", input.Run.RunID),
+		fmt.Sprintf("4. `tracker run handoff %s --next-actor <reviewer> --next-gate review --actor <actor> --reason \"ready for review\"`", input.Run.RunID),
+	)
 	return strings.Join(lines, "\n") + "\n"
 }
 
@@ -118,19 +139,22 @@ func buildProviderLaunch(provider string, input RunManifestInput) string {
 	if provider == "codex" {
 		lines = append(lines,
 			"4. read AGENTS.md for project-level rules",
-			fmt.Sprintf("5. work in %s if you need isolated changes", input.Run.WorktreePath),
-			fmt.Sprintf("6. when attached, record it with: tracker run attach %s --provider codex --session-ref <session>", input.Run.RunID),
 		)
 	} else {
 		lines = append(lines,
 			"4. read CLAUDE.md for project-level rules",
-			fmt.Sprintf("5. work in %s if you need isolated changes", input.Run.WorktreePath),
-			fmt.Sprintf("6. when attached, record it with: tracker run attach %s --provider claude --session-ref <session>", input.Run.RunID),
 		)
 	}
+	step := 5
+	if strings.TrimSpace(input.Run.WorktreePath) != "" {
+		lines = append(lines, fmt.Sprintf("%d. work in %s if you need isolated changes", step, input.Run.WorktreePath))
+		step++
+	}
+	lines = append(lines, fmt.Sprintf("%d. when attached, record it with: tracker run attach %s --provider %s --session-ref <session> --actor <actor> --reason \"attach session\"", step, input.Run.RunID, provider))
+	step++
 	lines = append(lines,
-		fmt.Sprintf("7. evidence lives under %s", input.EvidenceDir),
-		"8. do not treat runtime files as source of truth; Atlas snapshots and events stay canonical",
+		fmt.Sprintf("%d. evidence lives under %s", step, input.EvidenceDir),
+		fmt.Sprintf("%d. do not treat runtime files as source of truth; Atlas snapshots and events stay canonical", step+1),
 	)
 	return strings.Join(lines, "\n") + "\n"
 }
