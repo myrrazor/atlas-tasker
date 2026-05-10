@@ -1,8 +1,8 @@
 # Goal Manifests
 
-Goal briefs and manifests are read-only derived outputs for agents. They can be pasted into Codex `/goal`, Claude Code, or another coding agent. Atlas v1.7 does not spawn Codex, control goals, pause/resume goals, or call Codex app-server APIs.
+Goal briefs and manifests are read-only derived outputs for agents. They can be pasted into Codex `/goal`, Claude Code, or another coding agent. Atlas does not spawn Codex, control goals, pause/resume goals, or call Codex app-server APIs.
 
-PR-707 implements:
+Atlas implements:
 
 - `tracker goal brief <TICKET-ID|RUN-ID>`
 - `tracker goal manifest <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
@@ -14,22 +14,23 @@ PR-707 implements:
 
 ## Markdown Sections
 
-Goal markdown uses this order:
+Goal markdown uses the ticket title as the H1, then these sections:
 
-1. Goal
-2. Objective
-3. Current ticket/run
-4. Acceptance criteria
+1. Objective
+2. Current State
+3. Ticket / Run
+4. Acceptance Criteria
 5. Constraints
-6. Required gates
-7. Evidence needed
-8. Allowed actions
-9. Do not do
-10. Current blockers
-11. Context links
-12. Done when
+6. Required Evidence
+7. Required Gates
+8. Allowed Actions
+9. Do Not Do
+10. Context
+11. Suggested Commands
+12. Done When
+13. Verification
 
-JSON output mirrors the same sections with stable fields. Goal manifests are redaction-aware and may be signed/verified as `goal_manifest` artifacts.
+JSON output keeps the stable `Goal` section for schema compatibility, but Markdown does not repeat it as `## Goal`. Goal manifests may be signed/verified as `goal_manifest` artifacts. Current goal output is not a redaction boundary: operators must avoid generating or sharing goal briefs from sensitive tickets unless the source ticket has already been redacted or classified for that audience.
 
 ## Output Contract
 

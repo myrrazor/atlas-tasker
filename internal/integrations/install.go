@@ -173,6 +173,7 @@ func codexBlock(guidePath string) string {
 	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (Codex)
 
 - Pull actionable work with `+"`tracker queue --actor <actor> --json`"+`.
+- Generate pasteable goals with `+"`tracker goal brief <TICKET-ID|RUN-ID> --md`"+`.
 - Claim before coding: `+"`tracker ticket claim <ID> --actor <actor>`"+`.
 - Update status and review explicitly: `+"`move`"+`, `+"`request-review`"+`, `+"`approve`"+`, `+"`complete`"+`.
 - Use `+"`tracker inspect <ID> --actor <actor> --json`"+` when the queue and the ticket detail disagree.
@@ -185,6 +186,7 @@ func claudeBlock(guidePath string) string {
 	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (Claude Code)
 
 - Start with `+"`tracker queue --actor <actor> --json`"+` or `+"`tracker review-queue --actor <actor> --json`"+`.
+- Use `+"`tracker goal brief <TICKET-ID|RUN-ID> --md`"+` when a session needs a compact handoff prompt.
 - Claim work before editing and release it when you stop.
 - Use explicit review commands instead of assuming `+"`move done`"+` is enough.
 - Use `+"`tracker inspect <ID> --actor <actor> --json`"+` to debug policy, lease, and queue state.
@@ -203,9 +205,11 @@ Use Atlas Tasker as the local source of truth for work state.
 1. `+"`tracker queue --actor agent:builder-1 --json`"+` to find the next actionable ticket.
 2. `+"`tracker ticket claim <ID> --actor agent:builder-1`"+` before you start.
 3. `+"`tracker ticket move <ID> in_progress --actor agent:builder-1`"+` when implementation starts.
-4. `+"`tracker ticket comment <ID> --body \"what changed\" --actor agent:builder-1`"+` for durable notes.
-5. `+"`tracker ticket request-review <ID> --actor agent:builder-1`"+` when the diff is ready.
-6. `+"`tracker ticket approve|reject|complete ...`"+` based on the active completion policy.
+4. `+"`tracker goal brief <ID> --md`"+` when Codex goal mode needs a clean objective.
+5. `+"`tracker ticket comment <ID> --body \"what changed\" --actor agent:builder-1`"+` for durable notes.
+6. `+"`tracker ticket request-review <ID> --actor agent:builder-1`"+` when the diff is ready.
+7. `+"`tracker run evidence add <RUN-ID> --type test_result --title \"verification\" --body \"test output\" --actor agent:builder-1 --reason \"record verification\"`"+` when you have run-scoped proof.
+8. `+"`tracker ticket approve|reject|complete ...`"+` based on the active completion policy.
 
 ## Run-scoped launch flow
 
@@ -218,6 +222,7 @@ Use Atlas Tasker as the local source of truth for work state.
 - `+"`tracker queue --actor <actor> --json`"+`
 - `+"`tracker inspect <ID> --actor <actor> --json`"+`
 - `+"`tracker ticket history <ID> --json`"+`
+- `+"`tracker goal brief <ID> --json`"+`
 
 ## Notes
 
@@ -236,8 +241,9 @@ Use Atlas Tasker as the durable workflow layer for Claude Code sessions.
 1. `+"`tracker queue --actor agent:builder-1 --json`"+` for implementation work.
 2. `+"`tracker review-queue --actor agent:reviewer-1 --json`"+` for review work.
 3. `+"`tracker ticket claim <ID> --actor <actor>`"+` before you touch the task.
-4. `+"`tracker ticket comment <ID> --body \"decision or risk\" --actor <actor>`"+` when context should survive the session.
-5. `+"`tracker ticket request-review|approve|reject|complete ...`"+` instead of relying on status changes alone.
+4. `+"`tracker goal brief <ID> --md`"+` when a compact Claude Code session prompt is useful.
+5. `+"`tracker ticket comment <ID> --body \"decision or risk\" --actor <actor>`"+` when context should survive the session.
+6. `+"`tracker ticket request-review|approve|reject|complete ...`"+` instead of relying on status changes alone.
 
 ## Run-scoped launch flow
 

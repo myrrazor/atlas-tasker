@@ -17,7 +17,7 @@ Backlog (0)
   - (empty)
 
 Ready (1)
-  - APP-1 Ship first feature
+  - APP-1 [task] [ready] [medium] Ship first feature
 
 In Progress (0)
   - (empty)

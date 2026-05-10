@@ -53,6 +53,29 @@ func TestTicketSnapshotValidateForCreate(t *testing.T) {
 	}
 }
 
+func TestPathDerivedIdentifiersRejectTraversal(t *testing.T) {
+	for _, key := range []string{"APP", "API_2", "OPS-TOOLS"} {
+		if !IsValidProjectKey(key) {
+			t.Fatalf("expected project key %q to be valid", key)
+		}
+	}
+	for _, key := range []string{"", "../../etc", "../EVIL", "app", "APP SPACE", "APP/WEB", "~APP"} {
+		if IsValidProjectKey(key) {
+			t.Fatalf("expected project key %q to be invalid", key)
+		}
+	}
+	for _, id := range []string{"APP-1", "API_2-42", "OPS-TOOLS-7", "APP_secret"} {
+		if !IsValidTicketID(id) {
+			t.Fatalf("expected ticket id %q to be valid", id)
+		}
+	}
+	for _, id := range []string{"", "../APP-1", "APP/1", "APP.1", "1-APP", "APP-1\nBAD"} {
+		if IsValidTicketID(id) {
+			t.Fatalf("expected ticket id %q to be invalid", id)
+		}
+	}
+}
+
 func TestTrackerConfigValidate(t *testing.T) {
 	cfg := TrackerConfig{
 		Workflow: WorkflowConfig{

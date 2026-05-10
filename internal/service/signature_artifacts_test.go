@@ -89,6 +89,12 @@ func TestSignAndVerifyExportBundle(t *testing.T) {
 	if copied.Signature.State != contracts.VerificationTrustedValid {
 		t.Fatalf("copied export signature should verify trusted, got %#v", copied.Signature)
 	}
+	if err := os.Remove(strings.TrimSuffix(copiedArtifact, ".tar.gz") + ".manifest.json"); err != nil {
+		t.Fatalf("remove copied manifest sidecar: %v", err)
+	}
+	if _, err := targetActions.VerifyExportBundleSignature(ctx, copiedArtifact); err == nil || !strings.Contains(err.Error(), "sidecar_manifest_missing") {
+		t.Fatalf("expected missing manifest sidecar reason, got %v", err)
+	}
 	secondKey, err := actions.GenerateKey(ctx, KeyGenerateOptions{Scope: contracts.KeyScopeWorkspace}, contracts.Actor("human:owner"), "create second signing key")
 	if err != nil {
 		t.Fatalf("generate second key: %v", err)
