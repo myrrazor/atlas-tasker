@@ -116,7 +116,22 @@ func (s *ActionService) VerifyExportBundleSignature(ctx context.Context, bundleR
 	if err != nil {
 		return ArtifactSignatureVerifyView{}, err
 	}
+	if exportBundleRefIsPath(bundleRef) && len(bundle.SignatureEnvelopes) == 0 {
+		result.ReasonCodes = appendReasonCode(result.ReasonCodes, "missing_export_signature_sidecar:"+exportSignatureSidecarPath(bundle.ArtifactPath))
+	}
 	return ArtifactSignatureVerifyView{Kind: "signature_verify_result", Integrity: integrity, Signature: result, GeneratedAt: s.now()}, nil
+}
+
+func (s *ActionService) trustedExportBundleSignatureCount(ctx context.Context, bundleRef string) (int, error) {
+	bundle, err := s.resolveExportBundle(ctx, bundleRef)
+	if err != nil {
+		return 0, err
+	}
+	payload, _, err := s.exportBundleSignaturePayloadWithIntegrity(bundle)
+	if err != nil {
+		return 0, err
+	}
+	return s.trustedPayloadSignatureCount(ctx, payload, bundle.SignatureEnvelopes, contracts.ArtifactKindBundle, bundle.BundleID)
 }
 
 func (s *ActionService) SignSyncPublication(ctx context.Context, bundleRef string, publicKeyID string, actor contracts.Actor, reason string) (SignatureDetailView, error) {
@@ -184,6 +199,50 @@ func (s *ActionService) VerifySyncPublicationSignature(ctx context.Context, bund
 		return ArtifactSignatureVerifyView{}, err
 	}
 	return ArtifactSignatureVerifyView{Kind: "signature_verify_result", Integrity: integrity, Signature: result, GeneratedAt: s.now()}, nil
+}
+
+func (s *ActionService) trustedSyncPublicationSignatureCount(ctx context.Context, bundleRef string) (int, error) {
+	artifactPath := resolveSyncBundlePath(s.Root, bundleRef)
+	publication, err := inspectSyncBundle(artifactPath)
+	if err != nil {
+		return 0, err
+	}
+	payload, publication, err := currentSyncPublicationSignaturePayload(artifactPath, publication)
+	if err != nil {
+		return 0, err
+	}
+	return s.trustedPayloadSignatureCount(ctx, payload, publication.SignatureEnvelopes, contracts.ArtifactKindSyncPublication, publication.BundleID)
+}
+
+func (s *ActionService) trustedPayloadSignatureCount(ctx context.Context, payload any, envelopes []contracts.SignatureEnvelope, kind contracts.ArtifactKind, uid string) (int, error) {
+	trustedSigners := map[string]struct{}{}
+	for idx := range envelopes {
+		envelope := envelopes[idx]
+		if envelope.ArtifactKind != kind || envelope.ArtifactUID != uid {
+			return 0, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("signature envelope does not match %s %s", kind, uid))
+		}
+		result, err := s.VerifyPayloadSignature(ctx, payload, &envelope)
+		if err != nil {
+			return 0, err
+		}
+		if result.State == contracts.VerificationTrustedValid {
+			key := trustedSignatureIdentity(result)
+			if key != "" {
+				trustedSigners[key] = struct{}{}
+			}
+		}
+	}
+	return len(trustedSigners), nil
+}
+
+func trustedSignatureIdentity(result contracts.SignatureVerificationResult) string {
+	if strings.TrimSpace(result.TrustedOwnerID) != "" && result.TrustedOwnerKind != "" {
+		return string(result.TrustedOwnerKind) + ":" + strings.TrimSpace(result.TrustedOwnerID)
+	}
+	if result.Signature != nil {
+		return "key:" + strings.TrimSpace(result.Signature.PublicKeyID)
+	}
+	return ""
 }
 
 func (s *ActionService) exportBundleSignaturePayload(bundle contracts.ExportBundle) (signedBundlePayload, error) {

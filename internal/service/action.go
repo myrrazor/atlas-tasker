@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/domain"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
 type ActionService struct {
@@ -38,6 +40,16 @@ type ActionService struct {
 	SecurityKeys       SecurityKeyStore
 	TrustBindings      SecurityTrustStore
 	Signatures         SecuritySignatureStore
+	GovernancePolicies GovernancePolicyStore
+	GovernancePacks    GovernancePackStore
+	Classifications    ClassificationLabelStore
+	RedactionRules     RedactionRuleStore
+	RedactionPreviews  RedactionPreviewStore
+	AuditReports       AuditReportStore
+	AuditPackets       AuditPacketStore
+	Backups            BackupSnapshotStore
+	RestorePlans       RestorePlanStore
+	GoalManifests      GoalManifestStore
 	Events             contracts.EventLog
 	Projection         contracts.ProjectionStore
 	Clock              func() time.Time
@@ -55,7 +67,7 @@ func NewActionService(root string, projects contracts.ProjectStore, tickets cont
 		fm.Root = canonicalRoot
 		locks = fm
 	}
-	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Collaborators: CollaboratorStore{Root: canonicalRoot}, Memberships: MembershipStore{Root: canonicalRoot}, Mentions: MentionStore{Root: canonicalRoot}, SyncRemotes: SyncRemoteStore{Root: canonicalRoot}, SyncJobs: SyncJobStore{Root: canonicalRoot}, Conflicts: ConflictStore{Root: canonicalRoot}, Agents: AgentStore{Root: canonicalRoot}, PermissionProfiles: PermissionProfileStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Gates: GateStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Changes: ChangeStore{Root: canonicalRoot}, Checks: CheckStore{Root: canonicalRoot}, ImportJobs: ImportJobStore{Root: canonicalRoot}, ExportBundles: ExportBundleStore{Root: canonicalRoot}, RetentionPolicies: RetentionPolicyStore{Root: canonicalRoot}, Archives: ArchiveRecordStore{Root: canonicalRoot}, SecurityKeys: SecurityKeyStore{Root: canonicalRoot}, TrustBindings: SecurityTrustStore{Root: canonicalRoot}, Signatures: SecuritySignatureStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
+	return &ActionService{Root: canonicalRoot, Projects: projects, Tickets: tickets, Collaborators: CollaboratorStore{Root: canonicalRoot}, Memberships: MembershipStore{Root: canonicalRoot}, Mentions: MentionStore{Root: canonicalRoot}, SyncRemotes: SyncRemoteStore{Root: canonicalRoot}, SyncJobs: SyncJobStore{Root: canonicalRoot}, Conflicts: ConflictStore{Root: canonicalRoot}, Agents: AgentStore{Root: canonicalRoot}, PermissionProfiles: PermissionProfileStore{Root: canonicalRoot}, Runs: RunStore{Root: canonicalRoot}, Runbooks: RunbookStore{Root: canonicalRoot}, Gates: GateStore{Root: canonicalRoot}, Evidence: EvidenceStore{Root: canonicalRoot}, Handoffs: HandoffStore{Root: canonicalRoot}, Changes: ChangeStore{Root: canonicalRoot}, Checks: CheckStore{Root: canonicalRoot}, ImportJobs: ImportJobStore{Root: canonicalRoot}, ExportBundles: ExportBundleStore{Root: canonicalRoot}, RetentionPolicies: RetentionPolicyStore{Root: canonicalRoot}, Archives: ArchiveRecordStore{Root: canonicalRoot}, SecurityKeys: SecurityKeyStore{Root: canonicalRoot}, TrustBindings: SecurityTrustStore{Root: canonicalRoot}, Signatures: SecuritySignatureStore{Root: canonicalRoot}, GovernancePolicies: GovernancePolicyStore{Root: canonicalRoot}, GovernancePacks: GovernancePackStore{Root: canonicalRoot}, Classifications: ClassificationLabelStore{Root: canonicalRoot}, RedactionRules: RedactionRuleStore{Root: canonicalRoot}, RedactionPreviews: RedactionPreviewStore{Root: canonicalRoot}, AuditReports: AuditReportStore{Root: canonicalRoot}, AuditPackets: AuditPacketStore{Root: canonicalRoot}, Backups: BackupSnapshotStore{Root: canonicalRoot}, RestorePlans: RestorePlanStore{Root: canonicalRoot}, GoalManifests: GoalManifestStore{Root: canonicalRoot}, Events: events, Projection: projection, Clock: clock, LockManager: locks, Notifier: notifier, Automation: automation}
 }
 
 func (s *ActionService) now() time.Time {
@@ -792,11 +804,79 @@ func (s *ActionService) RequestReview(ctx context.Context, ticketID string, acto
 			ticket.Lease = contracts.LeaseState{}
 		}
 		ticket.UpdatedAt = now
-		if err := s.commitTicketSnapshotEvent(ctx, "request review", ticket, actor, reason, contracts.EventTicketReviewRequested, ticket); err != nil {
+		gate, gateCreated, err := s.ensureTicketReviewGateOpenLocked(ctx, ticket, actor)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if gateCreated {
+			ticket.OpenGateIDs = appendStringUnique(ticket.OpenGateIDs, gate.GateID)
+		}
+		payload := map[string]any{"ticket": ticket}
+		if gate.GateID != "" {
+			payload["gate"] = gate
+		}
+		event, err := s.newEvent(ctx, ticket.Project, now, actor, reason, contracts.EventTicketReviewRequested, ticket.ID, payload)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if err := s.commitMutation(ctx, "request review", "ticket_snapshot", event, func(ctx context.Context) error {
+			if gateCreated {
+				if err := s.Gates.SaveGate(ctx, gate); err != nil {
+					return err
+				}
+			}
+			if err := s.UpdateTicket(ctx, ticket); err != nil {
+				if gateCreated {
+					_ = os.Remove(storage.GateFile(s.Root, gate.GateID))
+				}
+				return err
+			}
+			return nil
+		}); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
 	})
+}
+
+func (s *ActionService) ensureTicketReviewGateOpenLocked(ctx context.Context, ticket contracts.TicketSnapshot, actor contracts.Actor) (contracts.GateSnapshot, bool, error) {
+	existing, err := s.Gates.ListGates(ctx, ticket.ID)
+	if err != nil {
+		return contracts.GateSnapshot{}, false, err
+	}
+	runID := strings.TrimSpace(ticket.LatestRunID)
+	for _, gate := range existing {
+		if gate.Kind == contracts.GateKindReview && gate.State == contracts.GateStateOpen {
+			return gate, false, nil
+		}
+	}
+	replacesGateID := ""
+	for i := len(existing) - 1; i >= 0; i-- {
+		gate := existing[i]
+		if gate.Kind == contracts.GateKindReview && gate.State != contracts.GateStateOpen {
+			replacesGateID = gate.GateID
+			break
+		}
+	}
+	relatedRuns := []string{}
+	if runID != "" {
+		relatedRuns = []string{runID}
+	}
+	gate := contracts.GateSnapshot{
+		GateID:          "gate_" + NewOpaqueID(),
+		TicketID:        ticket.ID,
+		RunID:           runID,
+		Kind:            contracts.GateKindReview,
+		State:           contracts.GateStateOpen,
+		RequiredRole:    contracts.AgentRoleReviewer,
+		RequiredAgentID: strings.TrimSpace(string(ticket.Reviewer)),
+		CreatedBy:       actor,
+		RelatedRunIDs:   relatedRuns,
+		ReplacesGateID:  replacesGateID,
+		CreatedAt:       s.now(),
+		SchemaVersion:   contracts.CurrentSchemaVersion,
+	}
+	return gate, true, gate.Validate()
 }
 
 func (s *ActionService) ApproveTicket(ctx context.Context, ticketID string, actor contracts.Actor, reason string) (contracts.TicketSnapshot, error) {
@@ -825,7 +905,26 @@ func (s *ActionService) ApproveTicket(ctx context.Context, ticketID string, acto
 			ticket.Status = contracts.StatusDone
 			ticket.Lease = contracts.LeaseState{}
 		}
-		if err := s.commitTicketSnapshotEvent(ctx, "approve ticket", ticket, actor, reason, contracts.EventTicketApproved, ticket); err != nil {
+		gate, hasGate, err := s.decideOpenTicketReviewGateLocked(ctx, &ticket, actor, reason, contracts.GateStateApproved)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		payload := map[string]any{"ticket": ticket}
+		if hasGate {
+			payload["gate"] = gate
+		}
+		event, err := s.newEvent(ctx, ticket.Project, now, actor, reason, contracts.EventTicketApproved, ticket.ID, payload)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if err := s.commitMutation(ctx, "approve ticket", "ticket_snapshot", event, func(ctx context.Context) error {
+			if hasGate {
+				if err := s.Gates.SaveGate(ctx, gate); err != nil {
+					return err
+				}
+			}
+			return s.UpdateTicket(ctx, ticket)
+		}); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -857,11 +956,49 @@ func (s *ActionService) RejectTicket(ctx context.Context, ticketID string, actor
 			ticket.Lease = contracts.LeaseState{}
 		}
 		ticket.UpdatedAt = now
-		if err := s.commitTicketSnapshotEvent(ctx, "reject ticket", ticket, actor, reason, contracts.EventTicketRejected, ticket); err != nil {
+		gate, hasGate, err := s.decideOpenTicketReviewGateLocked(ctx, &ticket, actor, reason, contracts.GateStateRejected)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		payload := map[string]any{"ticket": ticket}
+		if hasGate {
+			payload["gate"] = gate
+		}
+		event, err := s.newEvent(ctx, ticket.Project, now, actor, reason, contracts.EventTicketRejected, ticket.ID, payload)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if err := s.commitMutation(ctx, "reject ticket", "ticket_snapshot", event, func(ctx context.Context) error {
+			if hasGate {
+				if err := s.Gates.SaveGate(ctx, gate); err != nil {
+					return err
+				}
+			}
+			return s.UpdateTicket(ctx, ticket)
+		}); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
 	})
+}
+
+func (s *ActionService) decideOpenTicketReviewGateLocked(ctx context.Context, ticket *contracts.TicketSnapshot, actor contracts.Actor, reason string, next contracts.GateState) (contracts.GateSnapshot, bool, error) {
+	gates, err := s.Gates.ListGates(ctx, ticket.ID)
+	if err != nil {
+		return contracts.GateSnapshot{}, false, err
+	}
+	for _, gate := range gates {
+		if gate.Kind != contracts.GateKindReview || gate.State != contracts.GateStateOpen {
+			continue
+		}
+		gate.State = next
+		gate.DecidedBy = actor
+		gate.DecisionReason = strings.TrimSpace(reason)
+		gate.DecidedAt = s.now()
+		ticket.OpenGateIDs = removeString(ticket.OpenGateIDs, gate.GateID)
+		return gate, true, gate.Validate()
+	}
+	return contracts.GateSnapshot{}, false, nil
 }
 
 func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, actor contracts.Actor, reason string) (contracts.TicketSnapshot, error) {
@@ -902,6 +1039,17 @@ func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, act
 		if err := domain.CheckCompletionPermission(policy.CompletionMode, actor, ticket.Reviewer); err != nil {
 			return contracts.TicketSnapshot{}, &apperr.Error{Code: apperr.CodePermissionDenied, Message: err.Error(), Cause: err}
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action:   contracts.ProtectedActionTicketComplete,
+			Target:   "ticket:" + ticket.ID,
+			Actor:    actor,
+			Reason:   reason,
+			TicketID: ticket.ID,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
 		now := s.now()
 		from := ticket.Status
 		ticket.Status = contracts.StatusDone
@@ -909,6 +1057,9 @@ func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, act
 		ticket.UpdatedAt = now
 		payload := map[string]any{"from": from, "to": contracts.StatusDone, "ticket": ticket}
 		if err := s.commitTicketSnapshotEvent(ctx, "complete ticket", ticket, actor, reason, contracts.EventTicketMoved, payload); err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil

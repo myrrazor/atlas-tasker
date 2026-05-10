@@ -1,0 +1,3 @@
+preflight_status=blocked
+reason_code=workflow_permissions_unreadable
+message=GitHub Actions workflow permissions API is not readable with the current token; raw={"message":"You must have repository read permissions or have the repository Actions policies fine-grained permission.","documentation_url":"https://docs.github.com/rest/actions/permissions#get-default-workflow-permissions-for-a-repository","status":"403"}gh: You must have repository read permissions or have the repository Actions policies fine-grained permission. (HTTP 403)

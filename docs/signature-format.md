@@ -41,3 +41,12 @@ PR-703 enables explicit signatures for export bundles and sync publications:
 Export bundle signatures are persisted in the local security signature store and in an adjacent `<bundle>.signatures.json` sidecar. Path-based verification loads that sidecar and derives the signed bundle identity from the manifest, so a copied artifact set can verify without the source workspace's export metadata. Sync publication signatures live in the matching publication metadata; Atlas ignores a directory-level `publication.json` when it does not name the requested archive.
 
 Unsigned artifacts remain readable and verify as `missing_signature` at the signature layer. Governance in PR-704 decides when that state is acceptable.
+
+PR-706 extends the same envelope and trust-state machinery to approval gates, handoffs, evidence packets, audit reports, and audit packets:
+
+- `approval`, `handoff`, and `evidence_packet` signatures are standalone records under `.tracker/security/signatures/`; the source gate/handoff/evidence document is not rewritten.
+- `audit_report` signatures are embedded in the stored report and also persisted in the signature store.
+- `audit_packet` signatures are embedded in the stored packet and also persisted in the signature store. Packets do not embed the source report's own signature envelopes.
+- audit packet verification recomputes `packet_hash` from the canonical report payload before reporting signature state.
+
+Approval/handoff/evidence signatures make those artifacts authenticatable, but PR-706 does not require every workflow to be signed by default. Governance policy remains the authority layer.

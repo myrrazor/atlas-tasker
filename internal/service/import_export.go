@@ -79,11 +79,12 @@ type ImportJobDetailView struct {
 }
 
 type bundleManifest struct {
-	FormatVersion string             `json:"format_version"`
-	BundleID      string             `json:"bundle_id"`
-	Scope         string             `json:"scope"`
-	CreatedAt     time.Time          `json:"created_at"`
-	Files         []bundleFileRecord `json:"files"`
+	FormatVersion      string             `json:"format_version"`
+	BundleID           string             `json:"bundle_id"`
+	Scope              string             `json:"scope"`
+	RedactionPreviewID string             `json:"redaction_preview_id,omitempty"`
+	CreatedAt          time.Time          `json:"created_at"`
+	Files              []bundleFileRecord `json:"files"`
 }
 
 type bundleFileRecord struct {
@@ -116,6 +117,16 @@ func (s *ActionService) CreateExportBundle(ctx context.Context, scope string, ac
 		}
 		if scope != "workspace" {
 			return ExportBundleDetailView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unsupported export scope: %s", scope))
+		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionExportCreate,
+			Target: "workspace",
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return ExportBundleDetailView{}, err
 		}
 		bundleID := "bundle_" + NewOpaqueID()
 		manifestPath := filepath.Join(storage.ExportsDir(s.Root), bundleID+".manifest.json")
@@ -169,6 +180,9 @@ func (s *ActionService) CreateExportBundle(ctx context.Context, scope string, ac
 			return s.ExportBundles.SaveExportBundle(ctx, bundle)
 		}); err != nil {
 			cleanupExportSidecars(manifestPath, artifactPath, checksumPath)
+			return ExportBundleDetailView{}, err
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
 			return ExportBundleDetailView{}, err
 		}
 		return ExportBundleDetailView{Bundle: bundle, FileCount: len(manifest.Files), GeneratedAt: s.now()}, nil
@@ -260,6 +274,26 @@ func (s *ActionService) ApplyImport(ctx context.Context, jobID string, actor con
 			}
 			return ImportJobDetailView{Job: job, Plan: plan, GeneratedAt: s.now()}, apperr.New(apperr.CodeConflict, "import preview has conflicts or errors")
 		}
+		trustedSignatures := 0
+		protectedAction := contracts.ProtectedActionImportApply
+		if plan.SourceType == contracts.ImportSourceAtlasBundle {
+			protectedAction = contracts.ProtectedActionBundleImportApply
+			count, signatureErr := s.trustedExportBundleSignatureCount(ctx, plan.SourcePath)
+			if signatureErr == nil {
+				trustedSignatures = count
+			}
+		}
+		governanceInput := GovernanceEvaluationInput{
+			Action:                protectedAction,
+			Target:                "workspace",
+			Actor:                 actor,
+			Reason:                reason,
+			TrustedSignatureCount: trustedSignatures,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return ImportJobDetailView{}, err
+		}
 		job.Status = contracts.ImportJobValidated
 		if err := s.saveImportJobStage(ctx, "validate import", actor, reason, contracts.EventImportValidated, job, false); err != nil {
 			return ImportJobDetailView{}, err
@@ -298,6 +332,9 @@ func (s *ActionService) ApplyImport(ctx context.Context, jobID string, actor con
 		}
 		if applyErr != nil {
 			return ImportJobDetailView{Job: job, Plan: plan, GeneratedAt: s.now()}, applyErr
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+			return ImportJobDetailView{}, err
 		}
 		return ImportJobDetailView{Job: job, Plan: plan, GeneratedAt: s.now()}, nil
 	})
@@ -347,16 +384,21 @@ func (s *ActionService) resolveExportBundle(ctx context.Context, bundleRef strin
 		checksumPath := sidecarBase + ".sha256"
 		bundleID := base
 		scope := ""
+		redactionPreviewID := ""
 		if manifest, err := loadBundleManifest(manifestPath); err == nil {
 			if strings.TrimSpace(manifest.BundleID) != "" {
 				bundleID = manifest.BundleID
 			}
 			scope = manifest.Scope
+			redactionPreviewID = manifest.RedactionPreviewID
 		}
 		if stored, err := s.ExportBundles.LoadExportBundle(ctx, base); err == nil {
 			stored.ArtifactPath = ref
 			stored.ManifestPath = manifestPath
 			stored.ChecksumPath = checksumPath
+			if stored.RedactionPreviewID == "" {
+				stored.RedactionPreviewID = redactionPreviewID
+			}
 			if signatures, err := readExportSignatureSidecar(ref, stored.BundleID); err != nil {
 				return contracts.ExportBundle{}, err
 			} else {
@@ -365,13 +407,14 @@ func (s *ActionService) resolveExportBundle(ctx context.Context, bundleRef strin
 			return stored, nil
 		}
 		bundle := contracts.ExportBundle{
-			BundleID:     bundleID,
-			Format:       exportBundleFormatV1,
-			Scope:        scope,
-			ArtifactPath: ref,
-			ManifestPath: manifestPath,
-			ChecksumPath: checksumPath,
-			Status:       contracts.ExportBundleCreated,
+			BundleID:           bundleID,
+			Format:             exportBundleFormatV1,
+			Scope:              scope,
+			ArtifactPath:       ref,
+			ManifestPath:       manifestPath,
+			ChecksumPath:       checksumPath,
+			RedactionPreviewID: redactionPreviewID,
+			Status:             contracts.ExportBundleCreated,
 		}
 		if signatures, err := readExportSignatureSidecar(ref, bundle.BundleID); err != nil {
 			return contracts.ExportBundle{}, err
@@ -414,6 +457,13 @@ func collectExportFiles(root string) ([]string, error) {
 		filepath.ToSlash(filepath.Join(".tracker", "security", "keys", "public")),
 		filepath.ToSlash(filepath.Join(".tracker", "security", "revocations")),
 		filepath.ToSlash(filepath.Join(".tracker", "security", "signatures")),
+		filepath.ToSlash(filepath.Join(".tracker", "governance", "policies")),
+		filepath.ToSlash(filepath.Join(".tracker", "governance", "packs")),
+		filepath.ToSlash(filepath.Join(".tracker", "classification", "labels")),
+		filepath.ToSlash(filepath.Join(".tracker", "classification", "policies")),
+		filepath.ToSlash(filepath.Join(".tracker", "redaction", "rules")),
+		filepath.ToSlash(filepath.Join(".tracker", "audit", "reports")),
+		filepath.ToSlash(filepath.Join(".tracker", "audit", "packets")),
 	}
 	files := make([]string, 0)
 	seen := map[string]struct{}{}
@@ -974,6 +1024,9 @@ func loadBundleManifest(path string) (bundleManifest, error) {
 func loadBundleManifestRaw(path string) (bundleManifest, []byte, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return bundleManifest{}, nil, apperr.New(apperr.CodeNotFound, "sidecar_manifest_missing:"+path)
+		}
 		return bundleManifest{}, nil, err
 	}
 	var manifest bundleManifest
@@ -1008,6 +1061,9 @@ func loadManifestFromArchive(path string) (bundleManifest, []byte, error) {
 func readBundleArchive(path string) (map[string][]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, apperr.New(apperr.CodeNotFound, "bundle_archive_missing:"+path)
+		}
 		return nil, err
 	}
 	defer file.Close()
@@ -1089,6 +1145,9 @@ func fileSHA256(path string) (string, error) {
 func readChecksumFile(path string) (string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return "", apperr.New(apperr.CodeNotFound, "sidecar_checksum_missing:"+path)
+		}
 		return "", err
 	}
 	parts := strings.Fields(string(raw))

@@ -428,6 +428,19 @@ func (s *ActionService) MergeChange(ctx context.Context, changeID string, actor 
 		}); err != nil {
 			return ChangeStatusView{}, err
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action:   contracts.ProtectedActionChangeMerge,
+			Target:   "change:" + change.ChangeID,
+			Actor:    actor,
+			Reason:   reason,
+			TicketID: ticket.ID,
+			RunID:    change.RunID,
+			ChangeID: change.ChangeID,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return ChangeStatusView{}, err
+		}
 		candidateTicket := ticket
 		candidateChange := change
 		candidateChange.Status = observed.ObservedStatus
@@ -439,7 +452,14 @@ func (s *ActionService) MergeChange(ctx context.Context, changeID string, actor 
 			return ChangeStatusView{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("change merge blocked: %s", candidateTicket.ChangeReadyState))
 		}
 		if observed.ObservedStatus == contracts.ChangeStatusMerged {
-			return s.persistObservedChangeAfterProviderWrite(ctx, change, ticket, actor, reason, contracts.EventChangeMerged, "record merged change", "already_merged")
+			view, err := s.persistObservedChangeAfterProviderWrite(ctx, change, ticket, actor, reason, contracts.EventChangeMerged, "record merged change", "already_merged")
+			if err != nil {
+				return ChangeStatusView{}, err
+			}
+			if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+				return ChangeStatusView{}, err
+			}
+			return view, nil
 		}
 
 		defaults, err := resolveSCMDefaults(ctx, s.Root, s.Projects, ticket.Project)
@@ -460,7 +480,14 @@ func (s *ActionService) MergeChange(ctx context.Context, changeID string, actor 
 			}
 			return ChangeStatusView{}, err
 		}
-		return s.persistObservedChangeAfterProviderWrite(ctx, change, ticket, actor, reason, contracts.EventChangeMerged, "merge change", "merged")
+		view, err := s.persistObservedChangeAfterProviderWrite(ctx, change, ticket, actor, reason, contracts.EventChangeMerged, "merge change", "merged")
+		if err != nil {
+			return ChangeStatusView{}, err
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+			return ChangeStatusView{}, err
+		}
+		return view, nil
 	})
 }
 

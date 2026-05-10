@@ -118,6 +118,10 @@ func (s ProjectStore) ListProjects(_ context.Context) ([]contracts.Project, erro
 }
 
 func (s ProjectStore) GetProject(_ context.Context, key string) (contracts.Project, error) {
+	key = strings.TrimSpace(key)
+	if !contracts.IsValidProjectKey(key) {
+		return contracts.Project{}, fmt.Errorf("%s", contracts.ProjectKeyValidationMessage())
+	}
 	raw, err := os.ReadFile(storage.ProjectFile(s.RootDir, key))
 	if err != nil {
 		return contracts.Project{}, fmt.Errorf("read project %s: %w", key, err)

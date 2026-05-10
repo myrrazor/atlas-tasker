@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -55,6 +56,10 @@ func runTimeline(cmd *cobra.Command, args []string) error {
 }
 
 func formatDashboard(view service.DashboardSummaryView) string {
+	return formatDashboardWithWidth(view, render.TerminalWidth(100))
+}
+
+func formatDashboardWithWidth(view service.DashboardSummaryView, width int) string {
 	lines := []string{
 		fmt.Sprintf("dashboard active_runs=%d", view.ActiveRuns),
 		fmt.Sprintf("awaiting_review=%d", view.AwaitingReview.Count),
@@ -98,12 +103,21 @@ func formatDashboard(view service.DashboardSummaryView) string {
 	if len(view.ProviderMappingWarnings) > 0 {
 		lines = append(lines, "", "provider_mapping_warnings="+strings.Join(view.ProviderMappingWarnings, ","))
 	}
+	for i, line := range lines {
+		if line != "" {
+			lines[i] = render.TruncateDisplay(line, width)
+		}
+	}
 	return strings.Join(lines, "\n")
 }
 
 func formatTimeline(view service.TimelineView) string {
+	return formatTimelineWithWidth(view, render.TerminalWidth(100))
+}
+
+func formatTimelineWithWidth(view service.TimelineView, width int) string {
 	if len(view.Entries) == 0 {
-		return fmt.Sprintf("timeline %s entries=0", view.TicketID)
+		return render.TruncateDisplay(fmt.Sprintf("timeline %s entries=0", view.TicketID), width)
 	}
 	lines := []string{fmt.Sprintf("timeline %s entries=%d change_ready=%s", view.TicketID, len(view.Entries), view.ChangeReady)}
 	if strings.TrimSpace(view.CollaboratorFilter) != "" {
@@ -115,6 +129,11 @@ func formatTimeline(view service.TimelineView) string {
 			label = entry.Kind + ":" + label
 		}
 		lines = append(lines, fmt.Sprintf("- %s %s %s", entry.Timestamp.Format(timeRFC3339), label, entry.Summary))
+	}
+	for i, line := range lines {
+		if line != "" {
+			lines[i] = render.TruncateDisplay(line, width)
+		}
 	}
 	return strings.Join(lines, "\n")
 }

@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: '1.26.3'
       - name: Build archive
         env:
           GOOS: ${{ matrix.goos }}
@@ -37,8 +37,23 @@ jobs:
         run: |
           set -eu
           version="${GITHUB_REF_NAME#v}"
+          json_version="${GITHUB_REF_NAME}"
+          buildinfo_pkg="github.com/myrrazor/atlas-tasker/internal/buildinfo"
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ldflags="-s -w -X ${buildinfo_pkg}.Version=${json_version} -X ${buildinfo_pkg}.Commit=${GITHUB_SHA} -X ${buildinfo_pkg}.BuildDate=${build_date}"
+          runner_goos="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          runner_goarch="$(uname -m)"
+          case "${runner_goarch}" in
+            x86_64|amd64) runner_goarch="amd64" ;;
+            arm64|aarch64) runner_goarch="arm64" ;;
+          esac
           mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o dist/tracker ./cmd/tracker
+          go build -trimpath -ldflags="${ldflags}" -o dist/tracker ./cmd/tracker
+          if [ "${GOOS}/${GOARCH}" = "${runner_goos}/${runner_goarch}" ]; then
+            ./dist/tracker version --json
+          else
+            echo "skipping version smoke for cross-compiled target ${GOOS}/${GOARCH} on ${runner_goos}/${runner_goarch}"
+          fi
           archive="tracker_${version}_${GOOS}_${GOARCH}.tar.gz"
           tar -czf "dist/${archive}" -C dist tracker
           shasum -a 256 "dist/${archive}" > "dist/${archive}.sha256"
@@ -56,25 +71,36 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.3'
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      - name: Generate release SBOM
+        run: |
+          set -eu
+          go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0 app -json -output "dist/sbom-${GITHUB_REF_NAME}.cdx.json" -main cmd/tracker .
+          test -s "dist/sbom-${GITHUB_REF_NAME}.cdx.json"
       - name: Build checksums file
         run: |
           set -eu
           cat dist/*.sha256 > dist/checksums.txt
+          shasum -a 256 "dist/sbom-${GITHUB_REF_NAME}.cdx.json" >> dist/checksums.txt
       - name: Attest release archives
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
             dist/*.tar.gz
+            dist/sbom-*.cdx.json
             dist/checksums.txt
       - name: Publish release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           prerelease: ${{ contains(github.ref_name, '-rc') }}
           files: |
             dist/*.tar.gz
+            dist/sbom-*.cdx.json
             dist/checksums.txt
             scripts/install.sh

@@ -20,16 +20,18 @@ func (k GoalTargetKind) IsValid() bool {
 var GoalManifestSectionOrder = []string{
 	"Goal",
 	"Objective",
-	"Current ticket/run",
-	"Acceptance criteria",
+	"Current State",
+	"Ticket / Run",
+	"Acceptance Criteria",
 	"Constraints",
-	"Required gates",
-	"Evidence needed",
-	"Allowed actions",
-	"Do not do",
-	"Current blockers",
-	"Context links",
-	"Done when",
+	"Required Evidence",
+	"Required Gates",
+	"Allowed Actions",
+	"Do Not Do",
+	"Context",
+	"Suggested Commands",
+	"Done When",
+	"Verification",
 }
 
 type GoalBrief struct {
@@ -67,9 +69,12 @@ type GoalManifest struct {
 	Sections           []GoalSection       `json:"sections" yaml:"sections"`
 	PolicySnapshotHash string              `json:"policy_snapshot_hash,omitempty" yaml:"policy_snapshot_hash,omitempty"`
 	TrustSnapshotHash  string              `json:"trust_snapshot_hash,omitempty" yaml:"trust_snapshot_hash,omitempty"`
+	SourceHash         string              `json:"source_hash" yaml:"source_hash"`
 	RedactionPreviewID string              `json:"redaction_preview_id,omitempty" yaml:"redaction_preview_id,omitempty"`
 	SignatureEnvelopes []SignatureEnvelope `json:"signature_envelopes,omitempty" yaml:"signature_envelopes,omitempty" atlasc14n:"-"`
 	GeneratedAt        time.Time           `json:"generated_at" yaml:"generated_at"`
+	GeneratedBy        Actor               `json:"generated_by" yaml:"generated_by"`
+	Reason             string              `json:"reason" yaml:"reason"`
 	SchemaVersion      int                 `json:"schema_version" yaml:"schema_version"`
 }
 
@@ -83,8 +88,17 @@ func (m GoalManifest) Validate() error {
 	if strings.TrimSpace(m.Objective) == "" {
 		return fmt.Errorf("objective is required")
 	}
+	if strings.TrimSpace(m.SourceHash) == "" {
+		return fmt.Errorf("source_hash is required")
+	}
 	if m.GeneratedAt.IsZero() {
 		return fmt.Errorf("generated_at is required")
+	}
+	if !m.GeneratedBy.IsValid() {
+		return fmt.Errorf("invalid generated_by actor: %s", m.GeneratedBy)
+	}
+	if strings.TrimSpace(m.Reason) == "" {
+		return fmt.Errorf("reason is required")
 	}
 	if len(m.Sections) != len(GoalManifestSectionOrder) {
 		return fmt.Errorf("goal manifest must include %d sections", len(GoalManifestSectionOrder))
