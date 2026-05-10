@@ -9,6 +9,8 @@ The Queues tab now uses the shared agent-work view. It shows:
 - Available tickets the current actor can start, continue, review, or complete now
 - Pending tickets that matter to that actor but are blocked by dependency, review, owner, claim, capacity, or policy reason codes
 
+The Ops tab includes recent agent wake-ups for the current actor. Command-runner configuration stays CLI-first through `tracker agent auto ...` because it can launch local processes.
+
 Display rules:
 
 - `NO_COLOR=1` disables color

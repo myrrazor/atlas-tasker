@@ -20,6 +20,12 @@ Install the Claude guidance and slash-command templates with:
 tracker integrations install claude
 ```
 
+If a dependency completion wakes Claude work, inspect the local inbox first:
+
+```bash
+tracker agent wakeups list builder-1 --json
+```
+
 ## Record Progress
 
 ```bash

@@ -284,6 +284,7 @@ func shouldNotify(kind contracts.EventType) bool {
 		contracts.EventTicketRejected,
 		contracts.EventTicketPolicyUpdated,
 		contracts.EventProjectPolicyUpdated,
+		contracts.EventAgentWorkAvailable,
 		contracts.EventOwnerAttentionRaised,
 		contracts.EventOwnerAttentionCleared:
 		return true

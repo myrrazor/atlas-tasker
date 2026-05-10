@@ -161,6 +161,12 @@
 - `tracker agent eligible <TICKET-ID>`
 - `tracker agent available [AGENT-ID] [--actor <ACTOR>]`
 - `tracker agent pending [AGENT-ID] [--actor <ACTOR>]`
+- `tracker agent wakeups list [AGENT-ID]`
+- `tracker agent wakeups view <WAKEUP-ID>`
+- `tracker agent wakeups ack <WAKEUP-ID> --actor <ACTOR> --reason <TEXT>`
+- `tracker agent auto status <AGENT-ID>`
+- `tracker agent auto set <AGENT-ID> --mode notify|command [--argv <ARG> ...] --actor human:owner --reason <TEXT>`
+- `tracker agent auto off <AGENT-ID> --actor human:owner --reason <TEXT>`
 
 Behavior:
 - agent profiles live under `.tracker/agents/`
@@ -168,6 +174,8 @@ Behavior:
 - disabled agents and capability mismatches are reported explicitly in JSON mode
 - `available` lists tickets an agent can start, continue, review, or complete now
 - `pending` lists relevant tickets that are blocked by dependencies, review, owner gates, claims, capacity, or policy
+- wake-ups are event-driven records created when a `done` ticket unblocks assigned agent work
+- auto mode defaults to `notify`; command mode stores argv items and refuses shell interpreters
 
 ## Runs
 

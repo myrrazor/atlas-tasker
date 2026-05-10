@@ -20,6 +20,12 @@ Install the project skill pack with:
 tracker integrations install codex
 ```
 
+If Atlas creates a wake-up after a blocker reaches `done`, read it with:
+
+```bash
+tracker agent wakeups list builder-1 --json
+```
+
 ## Goal Prompts
 
 ```bash

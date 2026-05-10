@@ -42,3 +42,25 @@ tracker goal brief <TICKET-ID> --json
 ```
 
 Agents that use MCP should start with `--tool-profile read`. Workflow writes require actor, reason, permissions, and Atlas write locks. High-impact writes also require an external operation approval.
+
+## Wake-Ups
+
+When a blocker reaches `done`, Atlas creates a wake-up record for newly unblocked work that is already assigned to an agent:
+
+```bash
+tracker agent wakeups list <agent-id> --json
+tracker agent wakeups ack <WAKEUP-ID> --actor agent:<agent-id> --reason "picked up"
+```
+
+By default wake-ups only notify and record state. Owners can opt an agent into local command mode with argv items:
+
+```bash
+tracker agent auto set <agent-id> \
+  --mode command \
+  --argv /absolute/path/to/agent-runner \
+  --argv "{ticket_id}" \
+  --actor human:owner \
+  --reason "enable local wake-up runner"
+```
+
+Atlas never stores shell strings for command mode, and direct shell interpreters such as `sh`, `bash`, and `zsh` are rejected.

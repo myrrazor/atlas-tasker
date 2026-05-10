@@ -149,6 +149,7 @@ type model struct {
 	approvals          []service.ApprovalItemView
 	operatorInbox      []service.InboxItemView
 	dispatchQueue      service.DispatchQueueView
+	agentWakeups       []service.AgentWakeup
 	worktrees          []service.WorktreeStatusView
 	dashboard          service.DashboardSummaryView
 	timeline           service.TimelineView
@@ -183,6 +184,7 @@ type loadedMsg struct {
 	approvals         []service.ApprovalItemView
 	operatorInbox     []service.InboxItemView
 	dispatchQueue     service.DispatchQueueView
+	agentWakeups      []service.AgentWakeup
 	worktrees         []service.WorktreeStatusView
 	dashboard         service.DashboardSummaryView
 	timeline          service.TimelineView
@@ -343,6 +345,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.dispatchQueue.GeneratedAt != (time.Time{}) || msg.dispatchQueue.Entries != nil {
 			m.dispatchQueue = msg.dispatchQueue
+		}
+		if msg.agentWakeups != nil {
+			m.agentWakeups = msg.agentWakeups
 		}
 		if msg.worktrees != nil {
 			m.worktrees = msg.worktrees
@@ -595,7 +600,7 @@ func (m model) bodyView() string {
 	case screenViews:
 		return savedViewsPanel(m.savedViews, m.selectedViewName(), m.cursor)
 	case screenOps:
-		return opsView(m.dashboard, m.agents, m.dispatchQueue, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk, m.collaboratorFilter)
+		return opsView(m.dashboard, m.agents, m.dispatchQueue, m.agentWakeups, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk, m.collaboratorFilter)
 	default:
 		return ""
 	}
@@ -632,6 +637,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		approvals := []service.ApprovalItemView{}
 		operatorInbox := []service.InboxItemView{}
 		dispatchQueue := service.DispatchQueueView{}
+		agentWakeups := []service.AgentWakeup{}
 		worktrees := []service.WorktreeStatusView{}
 		dashboard := service.DashboardSummaryView{GeneratedAt: m.now()}
 		timeline := service.TimelineView{GeneratedAt: m.now()}
@@ -683,6 +689,12 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		dispatchQueue, err = m.queries.DispatchQueue(ctx)
 		if err != nil {
 			return loadedMsg{err: err}
+		}
+		if actor != "" {
+			agentWakeups, err = m.queries.AgentWakeups(ctx, tuiAgentIDFromActor(actor))
+			if err != nil {
+				return loadedMsg{err: err}
+			}
 		}
 		worktrees, err = m.queries.WorktreeList(ctx)
 		if err != nil {
@@ -755,6 +767,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			approvals:         approvals,
 			operatorInbox:     operatorInbox,
 			dispatchQueue:     dispatchQueue,
+			agentWakeups:      agentWakeups,
 			worktrees:         worktrees,
 			dashboard:         dashboard,
 			timeline:          timeline,
@@ -1386,7 +1399,7 @@ func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) s
 	return strings.Join(lines, "\n")
 }
 
-func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetailView, dispatch service.DispatchQueueView, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation, collaboratorFilter string) string {
+func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetailView, dispatch service.DispatchQueueView, wakeups []service.AgentWakeup, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation, collaboratorFilter string) string {
 	lines := []string{
 		"Dashboard:",
 		fmt.Sprintf("- collaborator_filter: %s", optionalString(strings.TrimSpace(collaboratorFilter), "all")),
@@ -1465,6 +1478,14 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		for _, entry := range dispatch.Entries {
 			auto := optionalString(entry.Suggestion.AutoRouteAgentID, "manual")
 			lines = append(lines, fmt.Sprintf("- %s auto=%s", render.SanitizeDisplayLine(entry.Ticket.ID), auto))
+		}
+	}
+	lines = append(lines, "", "Agent Wakeups:")
+	if len(wakeups) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range wakeups {
+			lines = append(lines, fmt.Sprintf("- %s ticket=%s blocker=%s state=%s", render.SanitizeDisplayLine(item.WakeupID), render.SanitizeDisplayLine(item.TicketID), render.SanitizeDisplayLine(item.BlockerTicketID), item.State))
 		}
 	}
 	lines = append(lines, "", "Worktrees:")
@@ -1556,6 +1577,14 @@ func optionalActor(actor contracts.Actor, fallback string) string {
 		return fallback
 	}
 	return string(actor)
+}
+
+func tuiAgentIDFromActor(actor contracts.Actor) string {
+	raw := strings.TrimSpace(string(actor))
+	if strings.HasPrefix(raw, "agent:") {
+		return strings.TrimPrefix(raw, "agent:")
+	}
+	return ""
 }
 
 func renderEnabled() bool {
