@@ -97,6 +97,20 @@ func TestCreateAndVerifyExportBundleRoundTrip(t *testing.T) {
 func TestExportBundleIncludesGovernanceStores(t *testing.T) {
 	_, actions, _, _, _, _ := newImportExportHarness(t)
 	ctx := context.Background()
+	if _, err := actions.SetClassification(ctx, "workspace", contracts.ClassificationConfidential, contracts.Actor("human:owner"), "label workspace"); err != nil {
+		t.Fatalf("set workspace classification: %v", err)
+	}
+	if err := actions.RedactionRules.SaveRedactionRule(ctx, contracts.RedactionRule{
+		RuleID:        "custom-redaction",
+		Target:        contracts.RedactionTargetExport,
+		FieldPath:     "*",
+		MinLevel:      contracts.ClassificationRestricted,
+		Action:        contracts.RedactionOmit,
+		Reason:        "test redaction rule",
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save redaction rule: %v", err)
+	}
 	if _, err := actions.CreateGovernancePack(ctx, GovernancePackCreateOptions{
 		Name:             "Release quorum",
 		ProtectedActions: []contracts.ProtectedAction{contracts.ProtectedActionTicketComplete},
@@ -115,6 +129,8 @@ func TestExportBundleIncludesGovernanceStores(t *testing.T) {
 	for _, want := range []string{
 		filepath.ToSlash(filepath.Join(".tracker", "governance", "packs", "release-quorum.toml")),
 		filepath.ToSlash(filepath.Join(".tracker", "governance", "policies", "release-quorum.toml")),
+		filepath.ToSlash(filepath.Join(".tracker", "classification", "labels", classificationLabelID(contracts.ClassifiedEntityWorkspace, "workspace")+".md")),
+		filepath.ToSlash(filepath.Join(".tracker", "redaction", "rules", "custom-redaction.toml")),
 	} {
 		if !names[want] {
 			t.Fatalf("expected export bundle to include %s; names=%#v", want, names)

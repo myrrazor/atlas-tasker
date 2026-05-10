@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	"gopkg.in/yaml.v3"
 )
+
+var templateNamePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
 
 type templateFrontmatter struct {
 	Type             contracts.TicketType     `yaml:"type,omitempty"`
@@ -51,13 +54,17 @@ func (s *QueryService) ListTemplates(_ context.Context) ([]TemplateView, error) 
 }
 
 func (s *QueryService) Template(_ context.Context, name string) (TemplateView, error) {
-	path := filepath.Join(storage.TrackerDir(s.Root), "templates", strings.TrimSpace(name)+".md")
+	name = strings.TrimSpace(name)
+	if !templateNamePattern.MatchString(name) {
+		return TemplateView{}, fmt.Errorf("template name must match ^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+	}
+	path := filepath.Join(storage.TrackerDir(s.Root), "templates", name+".md")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return TemplateView{}, err
 	}
 	view := TemplateView{
-		Name:         strings.TrimSpace(name),
+		Name:         name,
 		Path:         path,
 		TemplateBody: string(raw),
 	}

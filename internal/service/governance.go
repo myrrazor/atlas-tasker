@@ -504,6 +504,11 @@ func (s *ActionService) resolveGovernanceTarget(ctx context.Context, input Gover
 	out := governanceTargetContext{Target: target, ScopeIDs: map[string]string{}}
 	if target == "workspace" {
 		out.Project = workspaceEventProject
+		level, _, _, err := s.effectiveClassification(ctx, contracts.ClassifiedEntityWorkspace, "workspace")
+		if err != nil {
+			return out, err
+		}
+		out.ScopeIDs["classification"] = string(level)
 		return out, nil
 	}
 	if strings.HasPrefix(target, "project:") {
@@ -513,6 +518,11 @@ func (s *ActionService) resolveGovernanceTarget(ctx context.Context, input Gover
 		}
 		out.Project = projectID
 		out.ScopeIDs["project"] = projectID
+		level, _, _, err := s.effectiveClassification(ctx, contracts.ClassifiedEntityProject, projectID)
+		if err != nil {
+			return out, err
+		}
+		out.ScopeIDs["classification"] = string(level)
 		return out, nil
 	}
 	queries := NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock)
@@ -524,6 +534,18 @@ func (s *ActionService) resolveGovernanceTarget(ctx context.Context, input Gover
 	out.Project = ticket.Project
 	out.Runbook = permissionRunbook(ticket, run)
 	out.ScopeIDs["ticket"] = ticket.ID
+	classificationKind := contracts.ClassifiedEntityTicket
+	classificationID := ticket.ID
+	targetKind, _, _ := strings.Cut(target, ":")
+	if run != nil && (targetKind == "run" || targetKind == "change" || targetKind == "gate") {
+		classificationKind = contracts.ClassifiedEntityRun
+		classificationID = run.RunID
+	}
+	level, _, _, err := s.effectiveClassification(ctx, classificationKind, classificationID)
+	if err != nil {
+		return out, err
+	}
+	out.ScopeIDs["classification"] = string(level)
 	if run != nil {
 		out.Run = run
 		out.ScopeIDs["run"] = run.RunID
@@ -553,8 +575,7 @@ func governancePolicyMatches(policy contracts.GovernancePolicy, action contracts
 	case contracts.PolicyScopeTicketType:
 		return target.Ticket != nil && string(target.Ticket.Type) == policy.ScopeID
 	case contracts.PolicyScopeClassification:
-		// PR-705 adds inherited labels. For PR-704, legacy protected/sensitive flags only satisfy classification:restricted.
-		return target.Ticket != nil && policy.ScopeID == string(contracts.ClassificationRestricted) && (target.Ticket.Protected || target.Ticket.Sensitive)
+		return contracts.ClassificationLevel(target.ScopeIDs["classification"]) == contracts.ClassificationLevel(policy.ScopeID)
 	default:
 		return false
 	}

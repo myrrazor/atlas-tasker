@@ -51,6 +51,18 @@ func TestExecuteUsesStructuredJSONErrorsAndExitCodes(t *testing.T) {
 	}
 }
 
+func TestExecuteAcceptsPlainFlag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exit := Execute([]string{"version", "--plain"}, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("expected version --plain to succeed, exit=%d stderr=%s", exit, stderr.String())
+	}
+	if stdout.String() == "" {
+		t.Fatal("expected plain version output")
+	}
+}
+
 func TestDoctorJSONReportsStructuredSuccess(t *testing.T) {
 	withTempWorkspace(t)
 
