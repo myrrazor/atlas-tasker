@@ -160,6 +160,14 @@ func TestRunEvidenceAndHandoffCommands(t *testing.T) {
 	if runEvidenceList.Kind != "evidence_list" || len(runEvidenceList.Items) != len(evidenceList.Items) {
 		t.Fatalf("unexpected run evidence list payload: %#v", runEvidenceList)
 	}
+	runEvidenceMD := must("run", "evidence", "list", dispatch.Payload.RunID, "--md")
+	runEvidencePretty := must("run", "evidence", "list", dispatch.Payload.RunID, "--pretty")
+	if !strings.Contains(runEvidenceMD, "evidence") || !strings.Contains(runEvidenceMD, checkpoint.Payload.EvidenceID) {
+		t.Fatalf("run evidence markdown list missing entries: %s", runEvidenceMD)
+	}
+	if !strings.Contains(runEvidencePretty, checkpoint.Payload.EvidenceID) || !strings.Contains(runEvidencePretty, evidence.Payload.EvidenceID) {
+		t.Fatalf("run evidence pretty list missing entries: %s", runEvidencePretty)
+	}
 
 	evidenceViewOut := must("evidence", "view", evidence.Payload.EvidenceID, "--json")
 	var evidenceView struct {

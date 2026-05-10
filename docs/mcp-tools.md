@@ -75,4 +75,4 @@ Columns:
 | `atlas.compact` | high_impact | no | yes | yes | yes | yes |
 | `atlas.worktree.cleanup` | high_impact | no | yes | yes | yes | yes |
 
-`atlas.ticket.move`, `atlas.ticket.request_review`, and `atlas.ticket.complete` accept `override_deps` for owner-only dependency override. It requires `actor: "human:owner"` and a non-empty reason, and Atlas records the unresolved blockers in the resulting mutation payload.
+`atlas.ticket.request_review` accepts `reviewer` for parity with `tracker ticket request-review --reviewer`. `atlas.ticket.move`, `atlas.ticket.request_review`, and `atlas.ticket.complete` accept `override_deps` for owner-only dependency override. It requires `actor: "human:owner"` and a non-empty reason, and Atlas records the unresolved blockers in the resulting mutation payload.
