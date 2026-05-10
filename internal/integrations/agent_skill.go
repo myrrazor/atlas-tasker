@@ -81,7 +81,7 @@ func atlasWorkerReference() string {
 - `+"`agent_at_capacity`"+`
 - `+"`missing_capability`"+`
 
-Only `+"`done`"+` unblocks dependencies. `+"`canceled`"+` does not.
+Only `+"`done`"+` unblocks dependencies. `+"`canceled`"+` does not. `+"`--override-deps`"+` is for `+"`human:owner`"+` only and must include a reason.
 
 ## Worker Loop
 

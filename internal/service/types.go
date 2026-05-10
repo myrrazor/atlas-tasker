@@ -266,25 +266,27 @@ const (
 )
 
 type BulkOperation struct {
-	Kind      BulkOperationKind `json:"kind"`
-	Actor     contracts.Actor   `json:"actor"`
-	Assignee  contracts.Actor   `json:"assignee,omitempty"`
-	Status    contracts.Status  `json:"status,omitempty"`
-	Reason    string            `json:"reason,omitempty"`
-	TicketIDs []string          `json:"ticket_ids"`
-	DryRun    bool              `json:"dry_run"`
-	Confirm   bool              `json:"confirm"`
-	BatchID   string            `json:"batch_id,omitempty"`
+	Kind         BulkOperationKind `json:"kind"`
+	Actor        contracts.Actor   `json:"actor"`
+	Assignee     contracts.Actor   `json:"assignee,omitempty"`
+	Status       contracts.Status  `json:"status,omitempty"`
+	Reason       string            `json:"reason,omitempty"`
+	TicketIDs    []string          `json:"ticket_ids"`
+	DryRun       bool              `json:"dry_run"`
+	Confirm      bool              `json:"confirm"`
+	BatchID      string            `json:"batch_id,omitempty"`
+	OverrideDeps bool              `json:"override_deps,omitempty"`
 }
 
 type BulkPreview struct {
-	Kind        BulkOperationKind `json:"kind"`
-	Actor       contracts.Actor   `json:"actor"`
-	Assignee    contracts.Actor   `json:"assignee,omitempty"`
-	Status      contracts.Status  `json:"status,omitempty"`
-	TicketIDs   []string          `json:"ticket_ids"`
-	TicketCount int               `json:"ticket_count"`
-	DryRun      bool              `json:"dry_run"`
+	Kind         BulkOperationKind `json:"kind"`
+	Actor        contracts.Actor   `json:"actor"`
+	Assignee     contracts.Actor   `json:"assignee,omitempty"`
+	Status       contracts.Status  `json:"status,omitempty"`
+	TicketIDs    []string          `json:"ticket_ids"`
+	TicketCount  int               `json:"ticket_count"`
+	DryRun       bool              `json:"dry_run"`
+	OverrideDeps bool              `json:"override_deps,omitempty"`
 }
 
 type BulkTicketResult struct {

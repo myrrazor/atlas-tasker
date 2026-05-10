@@ -28,6 +28,7 @@ The brief is designed to be pasted into any agent prompt. It includes allowed ac
 - Include `--reason` whenever the command exposes that flag.
 - Prefer JSON for reads and Markdown for human/agent handoff text.
 - Attach test output or artifacts with run-scoped evidence.
+- Treat `dependency_blocked` as a hard stop unless `human:owner` explicitly uses `--override-deps --reason <TEXT>`.
 - Request review instead of marking work complete directly unless the active policy allows it.
 - Treat `dependency_blocked` as a stop sign. Only `done` unblocks a dependency.
 

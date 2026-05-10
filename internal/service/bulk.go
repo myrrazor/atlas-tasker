@@ -16,16 +16,20 @@ func (s *ActionService) RunBulk(ctx context.Context, op BulkOperation) (BulkOper
 		return BulkOperationResult{}, err
 	}
 	ctx = WithEventMetadata(ctx, EventMetaContext{BatchID: normalized.BatchID})
+	if normalized.OverrideDeps {
+		ctx = WithDependencyOverride(ctx, normalized.Actor, normalized.Reason)
+	}
 	result := BulkOperationResult{
 		BatchID: normalized.BatchID,
 		Preview: BulkPreview{
-			Kind:        normalized.Kind,
-			Actor:       normalized.Actor,
-			Assignee:    normalized.Assignee,
-			Status:      normalized.Status,
-			TicketIDs:   append([]string{}, normalized.TicketIDs...),
-			TicketCount: len(normalized.TicketIDs),
-			DryRun:      normalized.DryRun,
+			Kind:         normalized.Kind,
+			Actor:        normalized.Actor,
+			Assignee:     normalized.Assignee,
+			Status:       normalized.Status,
+			TicketIDs:    append([]string{}, normalized.TicketIDs...),
+			TicketCount:  len(normalized.TicketIDs),
+			DryRun:       normalized.DryRun,
+			OverrideDeps: normalized.OverrideDeps,
 		},
 		Results: make([]BulkTicketResult, 0, len(normalized.TicketIDs)),
 	}
@@ -124,10 +128,32 @@ func (s *ActionService) normalizeBulkOperation(op BulkOperation) (BulkOperation,
 	if !op.DryRun && !op.Confirm {
 		return BulkOperation{}, apperr.New(apperr.CodeInvalidInput, "bulk mutations require --yes or --dry-run")
 	}
+	if op.OverrideDeps {
+		if !bulkOperationCanOverrideDependencies(op) {
+			return BulkOperation{}, apperr.New(apperr.CodeInvalidInput, "--override-deps only applies to unsafe bulk move, request-review, and complete operations")
+		}
+		if op.Actor != contracts.Actor("human:owner") {
+			return BulkOperation{}, apperr.New(apperr.CodePermissionDenied, "dependency_override_requires_owner")
+		}
+		if strings.TrimSpace(op.Reason) == "" {
+			return BulkOperation{}, apperr.New(apperr.CodeInvalidInput, "dependency_override_requires_reason")
+		}
+	}
 	if strings.TrimSpace(op.BatchID) == "" {
 		op.BatchID = NewOpaqueID()
 	}
 	return op, nil
+}
+
+func bulkOperationCanOverrideDependencies(op BulkOperation) bool {
+	switch op.Kind {
+	case BulkOperationRequestReview, BulkOperationComplete:
+		return true
+	case BulkOperationMove:
+		return unsafeDependencyProgress(op.Status)
+	default:
+		return false
+	}
 }
 
 func uniqueTicketIDs(ticketIDs []string) []string {

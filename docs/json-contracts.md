@@ -136,6 +136,7 @@ Success payload includes:
   - `ticket_ids`
   - `ticket_count`
   - `dry_run`
+  - `override_deps` when owner dependency override was requested
 - `summary`
   - `succeeded`
   - `failed`

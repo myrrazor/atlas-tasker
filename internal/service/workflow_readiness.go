@@ -12,6 +12,17 @@ import (
 
 const dependencyBlockedReason = "dependency_blocked"
 
+type dependencyOverrideKey struct{}
+
+type DependencyOverrideContext struct {
+	Actor  contracts.Actor
+	Reason string
+}
+
+func WithDependencyOverride(ctx context.Context, actor contracts.Actor, reason string) context.Context {
+	return context.WithValue(ctx, dependencyOverrideKey{}, DependencyOverrideContext{Actor: actor, Reason: strings.TrimSpace(reason)})
+}
+
 func effectiveReviewer(ticket contracts.TicketSnapshot, policy EffectivePolicyView) contracts.Actor {
 	if ticket.Reviewer != "" {
 		return ticket.Reviewer
@@ -94,9 +105,39 @@ func (s *ActionService) requireNoUnresolvedDependencies(ctx context.Context, tic
 		return err
 	}
 	if len(blockers) > 0 {
+		override, ok := ctx.Value(dependencyOverrideKey{}).(DependencyOverrideContext)
+		if ok {
+			if override.Actor != contracts.Actor("human:owner") {
+				return apperr.New(apperr.CodePermissionDenied, "dependency_override_requires_owner")
+			}
+			if strings.TrimSpace(override.Reason) == "" {
+				return apperr.New(apperr.CodeInvalidInput, "dependency_override_requires_reason")
+			}
+			return nil
+		}
 		return dependencyBlockedError(ticket, blockers)
 	}
 	return nil
+}
+
+func (s *ActionService) dependencyOverridePayload(ctx context.Context, ticket contracts.TicketSnapshot) (map[string]any, error) {
+	override, ok := ctx.Value(dependencyOverrideKey{}).(DependencyOverrideContext)
+	if !ok {
+		return nil, nil
+	}
+	blockers, err := unresolvedBlockersFromStore(ctx, s.Tickets, ticket)
+	if err != nil {
+		return nil, err
+	}
+	if len(blockers) == 0 {
+		return nil, nil
+	}
+	return map[string]any{
+		"applied":             true,
+		"actor":               override.Actor,
+		"reason":              strings.TrimSpace(override.Reason),
+		"unresolved_blockers": blockers,
+	}, nil
 }
 
 func (s *QueryService) BoardStatus(ctx context.Context, ticket contracts.TicketSnapshot) (contracts.Status, error) {

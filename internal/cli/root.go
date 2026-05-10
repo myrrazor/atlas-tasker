@@ -538,6 +538,7 @@ func newTicketCommand() *cobra.Command {
 	move := &cobra.Command{Use: "move <ID> <STATUS>", Args: cobra.ExactArgs(2), Short: "Move ticket status", RunE: runTicketMove}
 	addMutationFlags(move, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(move, &outputFlags{})
+	addDependencyOverrideFlag(move)
 	cmd.AddCommand(move)
 
 	assign := &cobra.Command{Use: "assign <ID> <ACTOR>", Args: cobra.ExactArgs(2), Short: "Set ticket assignee only", Long: "Set the ticket assignee only. Use `tracker ticket edit <ID> --reviewer <ACTOR>` or `tracker ticket request-review <ID> --reviewer <ACTOR>` to set review ownership.", RunE: runTicketAssign}
@@ -594,11 +595,13 @@ func newTicketCommand() *cobra.Command {
 	requestReview.Flags().String("reviewer", "", "Reviewer actor to assign before requesting review")
 	addMutationFlags(requestReview, &mutationFlags{})
 	addReadOutputFlags(requestReview, &outputFlags{})
+	addDependencyOverrideFlag(requestReview)
 	cmd.AddCommand(requestReview)
 
 	approve := &cobra.Command{Use: "approve <ID>", Args: cobra.ExactArgs(1), Short: "Approve a ticket in review", RunE: runTicketApprove}
 	addMutationFlags(approve, &mutationFlags{})
 	addReadOutputFlags(approve, &outputFlags{})
+	addDependencyOverrideFlag(approve)
 	cmd.AddCommand(approve)
 
 	reject := &cobra.Command{Use: "reject <ID>", Args: cobra.ExactArgs(1), Short: "Reject a ticket in review", RunE: runTicketReject}
@@ -610,6 +613,7 @@ func newTicketCommand() *cobra.Command {
 	complete := &cobra.Command{Use: "complete <ID>", Args: cobra.ExactArgs(1), Short: "Complete an approved ticket", RunE: runTicketComplete}
 	addMutationFlags(complete, &mutationFlags{})
 	addReadOutputFlags(complete, &outputFlags{})
+	addDependencyOverrideFlag(complete)
 	cmd.AddCommand(complete)
 
 	policy := &cobra.Command{Use: "policy", Short: "Read or update ticket policy"}
@@ -829,6 +833,11 @@ func addBulkTargetFlags(cmd *cobra.Command) {
 	cmd.Flags().String("view", "", "Saved view used to resolve ticket IDs")
 	cmd.Flags().Bool("dry-run", false, "Preview the batch without mutating")
 	cmd.Flags().Bool("yes", false, "Apply the batch without prompting")
+	addDependencyOverrideFlag(cmd)
+}
+
+func addDependencyOverrideFlag(cmd *cobra.Command) {
+	cmd.Flags().Bool("override-deps", false, "Allow human:owner to override unresolved blocked_by dependencies with an audited reason")
 }
 
 func newRenderCommand() *cobra.Command {
@@ -1189,6 +1198,10 @@ func runTicketMove(cmd *cobra.Command, args []string) error {
 	if !to.IsValid() {
 		return fmt.Errorf("invalid status: %s", to)
 	}
+	ctx, err = commandContextWithDependencyOverride(cmd, ctx, actor, reason)
+	if err != nil {
+		return err
+	}
 	ticket, err := workspace.actions.MoveTicket(ctx, args[0], to, actor, reason)
 	if err != nil {
 		return err
@@ -1408,6 +1421,24 @@ func runTicketHeartbeat(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\nlease extended", ticket.ID), pretty)
 }
 
+func commandContextWithDependencyOverride(cmd *cobra.Command, ctx context.Context, actor contracts.Actor, reason string) (context.Context, error) {
+	flag := cmd.Flags().Lookup("override-deps")
+	if flag == nil {
+		return ctx, nil
+	}
+	overrideDeps, _ := cmd.Flags().GetBool("override-deps")
+	if !overrideDeps {
+		return ctx, nil
+	}
+	if actor != contracts.Actor("human:owner") {
+		return nil, apperr.New(apperr.CodePermissionDenied, "dependency_override_requires_owner")
+	}
+	if strings.TrimSpace(reason) == "" {
+		return nil, apperr.New(apperr.CodeInvalidInput, "dependency_override_requires_reason")
+	}
+	return service.WithDependencyOverride(ctx, actor, reason), nil
+}
+
 func runTicketRequestReview(cmd *cobra.Command, args []string) error {
 	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
@@ -1418,6 +1449,10 @@ func runTicketRequestReview(cmd *cobra.Command, args []string) error {
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ctx, err = commandContextWithDependencyOverride(cmd, ctx, actor, reason)
 	if err != nil {
 		return err
 	}
@@ -1443,6 +1478,10 @@ func runTicketApprove(cmd *cobra.Command, args []string) error {
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ctx, err = commandContextWithDependencyOverride(cmd, ctx, actor, reason)
 	if err != nil {
 		return err
 	}
@@ -1483,6 +1522,10 @@ func runTicketComplete(cmd *cobra.Command, args []string) error {
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ctx, err = commandContextWithDependencyOverride(cmd, ctx, actor, reason)
 	if err != nil {
 		return err
 	}
@@ -2918,6 +2961,7 @@ func runBulkOperation(cmd *cobra.Command, base service.BulkOperation) error {
 	reason, _ := cmd.Flags().GetString("reason")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	confirm, _ := cmd.Flags().GetBool("yes")
+	overrideDeps, _ := cmd.Flags().GetBool("override-deps")
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
 	if err != nil {
 		return err
@@ -2931,6 +2975,7 @@ func runBulkOperation(cmd *cobra.Command, base service.BulkOperation) error {
 	base.TicketIDs = ticketIDs
 	base.DryRun = dryRun
 	base.Confirm = confirm
+	base.OverrideDeps = overrideDeps
 	result, err := workspace.actions.RunBulk(ctx, base)
 	if err != nil {
 		return err
