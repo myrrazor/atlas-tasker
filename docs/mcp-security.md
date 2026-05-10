@@ -51,9 +51,9 @@ Denied high-impact attempts are written to `.tracker/runtime/mcp/security-audit.
 
 ## v1.7 Governance Alignment
 
-The v1.7 trust/governance train does not make Atlas MCP-first. MCP may expose safe read-only trust and governance status in a later adapter update, but it must not expose private-key operations and must not mutate trust by default.
+The v1.7 trust/governance train does not make Atlas MCP-first. MCP may expose safe read-only trust and governance status in a later adapter update, but it does not expose private-key operations and does not mutate trust by default.
 
-Once v1.7 protected-action governance lands, high-impact MCP tools must evaluate the same governance policy as CLI, shell, and TUI paths. MCP approval tokens remain a transport safety gate, not proof that the actor has Atlas authority.
+High-impact MCP tools evaluate the same service-layer permission and governance checks as CLI, shell, and TUI paths. MCP approval tokens remain a transport safety gate, not proof that the actor has Atlas authority.
 
 ## References
 

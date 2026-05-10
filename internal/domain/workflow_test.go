@@ -13,6 +13,7 @@ func TestAllowedTransitions(t *testing.T) {
 		ok   bool
 	}{
 		{contracts.StatusBacklog, contracts.StatusReady, true},
+		{contracts.StatusBacklog, contracts.StatusBlocked, true},
 		{contracts.StatusBacklog, contracts.StatusInProgress, false},
 		{contracts.StatusInProgress, contracts.StatusInReview, true},
 		{contracts.StatusInReview, contracts.StatusDone, true},

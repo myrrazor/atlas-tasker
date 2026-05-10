@@ -2,6 +2,8 @@ package markdown
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -67,6 +69,51 @@ func TestTicketStoreCreateGetUpdateListSoftDelete(t *testing.T) {
 	}
 	if deleted.Notes == "" {
 		t.Fatal("soft delete should add audit note")
+	}
+}
+
+func TestTicketStoreRejectsPathTraversalIDs(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "workspace")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	projectStore := ProjectStore{RootDir: root}
+	now := time.Now().UTC()
+	if err := projectStore.CreateProject(context.Background(), contracts.Project{Key: "APP", Name: "App Project", CreatedAt: now}); err != nil {
+		t.Fatalf("create project failed: %v", err)
+	}
+	store := TicketStore{RootDir: root, Clock: func() time.Time { return now }}
+	err := store.CreateTicket(context.Background(), contracts.TicketSnapshot{
+		ID:            "../PWNED",
+		Project:       "APP",
+		Title:         "Bad",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusBacklog,
+		Priority:      contracts.PriorityMedium,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	})
+	if err == nil {
+		t.Fatal("expected ticket id traversal to be rejected")
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "projects", "APP", "PWNED.md")); !os.IsNotExist(statErr) {
+		t.Fatalf("ticket traversal wrote outside tickets dir, stat err=%v", statErr)
+	}
+	err = store.CreateTicket(context.Background(), contracts.TicketSnapshot{
+		ID:            "APP-3",
+		Project:       "../BAD",
+		Title:         "Bad project",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusBacklog,
+		Priority:      contracts.PriorityMedium,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	})
+	if err == nil {
+		t.Fatal("expected ticket project traversal to be rejected")
 	}
 }
 

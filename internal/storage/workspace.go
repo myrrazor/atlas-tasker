@@ -195,20 +195,40 @@ func PublicKeysDir(root string) string {
 	return filepath.Join(SecurityDir(root), "keys", "public")
 }
 
+func PublicKeyFile(root string, publicKeyID string) string {
+	return filepath.Join(PublicKeysDir(root), publicKeyID+".md")
+}
+
 func PrivateKeysDir(root string) string {
 	return filepath.Join(SecurityDir(root), "keys", "private")
+}
+
+func PrivateKeyFile(root string, publicKeyID string) string {
+	return filepath.Join(PrivateKeysDir(root), publicKeyID+".json")
 }
 
 func TrustBindingsDir(root string) string {
 	return filepath.Join(SecurityDir(root), "trust")
 }
 
+func TrustBindingFile(root string, trustBindingID string) string {
+	return filepath.Join(TrustBindingsDir(root), trustBindingID+".json")
+}
+
 func RevocationsDir(root string) string {
 	return filepath.Join(SecurityDir(root), "revocations")
 }
 
+func RevocationFile(root string, revocationID string) string {
+	return filepath.Join(RevocationsDir(root), revocationID+".md")
+}
+
 func SignaturesDir(root string) string {
 	return filepath.Join(SecurityDir(root), "signatures")
+}
+
+func SignatureFile(root string, signatureID string) string {
+	return filepath.Join(SignaturesDir(root), signatureID+".json")
 }
 
 func GovernancePoliciesDir(root string) string {

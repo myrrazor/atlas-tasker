@@ -14,7 +14,7 @@ func TestRootCommandIncludesRequiredTopLevelCommands(t *testing.T) {
 		"init", "doctor", "reindex", "config", "project", "agent", "run", "worktree", "dispatch", "approvals", "gate", "inbox", "change", "checks", "evidence", "handoff", "ticket",
 		"permission-profile", "permissions", "import", "export", "archive", "compact", "dashboard", "timeline",
 		"board", "backlog", "next", "blocked", "queue", "review-queue", "owner-queue",
-		"who", "sweep", "inspect", "automation", "notify", "git", "views", "watch", "unwatch", "bulk", "templates", "integrations", "search", "render", "shell", "mcp", "tui",
+		"who", "sweep", "inspect", "automation", "notify", "git", "views", "watch", "unwatch", "bulk", "templates", "integrations", "search", "render", "version", "shell", "mcp", "tui",
 	}
 	for _, name := range required {
 		if _, _, err := root.Find([]string{name}); err != nil {
@@ -270,7 +270,7 @@ func TestRootCommandIncludesRequiredV17ContractCommandsAndFlags(t *testing.T) {
 		{path: []string{"classify", "list"}, hasOutputMode: true, extraFlags: []string{"project"}},
 		{path: []string{"classify", "explain"}, hasOutputMode: true},
 		{path: []string{"redact", "preview"}, mutating: true, hasOutputMode: true, extraFlags: []string{"scope", "target"}},
-		{path: []string{"redact", "export"}, mutating: true, hasOutputMode: true, extraFlags: []string{"scope"}},
+		{path: []string{"redact", "export"}, mutating: true, hasOutputMode: true, extraFlags: []string{"scope", "preview-id"}},
 		{path: []string{"redact", "verify"}, hasOutputMode: true},
 		{path: []string{"audit", "report"}, mutating: true, hasOutputMode: true, extraFlags: []string{"scope"}},
 		{path: []string{"audit", "list"}, hasOutputMode: true},

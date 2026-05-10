@@ -325,6 +325,32 @@ func (s *ActionService) finishRun(ctx context.Context, runID string, actor contr
 			}); err != nil {
 				return contracts.RunSnapshot{}, err
 			}
+			governanceInput := GovernanceEvaluationInput{
+				Action:   contracts.ProtectedActionRunComplete,
+				Target:   "run:" + run.RunID,
+				Actor:    actor,
+				Reason:   reason,
+				TicketID: ticket.ID,
+				RunID:    run.RunID,
+			}
+			governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+			if err != nil {
+				return contracts.RunSnapshot{}, err
+			}
+			completed, err := s.transitionRun(ctx, runID, actor, reason, eventType, next, func(run *contracts.RunSnapshot) {
+				run.CompletedAt = s.now()
+				run.Result = result
+				if strings.TrimSpace(summary) != "" {
+					run.Summary = strings.TrimSpace(summary)
+				}
+			})
+			if err != nil {
+				return contracts.RunSnapshot{}, err
+			}
+			if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+				return contracts.RunSnapshot{}, err
+			}
+			return completed, nil
 		}
 		return s.transitionRun(ctx, runID, actor, reason, eventType, next, func(run *contracts.RunSnapshot) {
 			run.CompletedAt = s.now()

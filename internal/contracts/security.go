@@ -88,10 +88,11 @@ const (
 	PublicKeyOwnerWorkspace    PublicKeyOwnerKind = "workspace"
 	PublicKeyOwnerCollaborator PublicKeyOwnerKind = "collaborator"
 	PublicKeyOwnerRelease      PublicKeyOwnerKind = "release"
+	PublicKeyOwnerAdmin        PublicKeyOwnerKind = "admin"
 )
 
 var validPublicKeyOwnerKinds = map[PublicKeyOwnerKind]struct{}{
-	PublicKeyOwnerWorkspace: {}, PublicKeyOwnerCollaborator: {}, PublicKeyOwnerRelease: {},
+	PublicKeyOwnerWorkspace: {}, PublicKeyOwnerCollaborator: {}, PublicKeyOwnerRelease: {}, PublicKeyOwnerAdmin: {},
 }
 
 func (k PublicKeyOwnerKind) IsValid() bool {

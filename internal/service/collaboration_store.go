@@ -60,7 +60,11 @@ func (s CollaboratorStore) SaveCollaborator(_ context.Context, collaborator cont
 }
 
 func (s CollaboratorStore) LoadCollaborator(_ context.Context, collaboratorID string) (contracts.CollaboratorProfile, error) {
-	raw, err := os.ReadFile(storage.CollaboratorFile(s.Root, strings.TrimSpace(collaboratorID)))
+	collaboratorID = strings.TrimSpace(collaboratorID)
+	if !contracts.IsValidCollaboratorID(collaboratorID) {
+		return contracts.CollaboratorProfile{}, fmt.Errorf("%s", contracts.CollaboratorIDValidationMessage())
+	}
+	raw, err := os.ReadFile(storage.CollaboratorFile(s.Root, collaboratorID))
 	if err != nil {
 		return contracts.CollaboratorProfile{}, fmt.Errorf("read collaborator %s: %w", collaboratorID, err)
 	}
