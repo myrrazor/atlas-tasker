@@ -266,8 +266,13 @@ func newAgentCommand() *cobra.Command {
 	enable := &cobra.Command{Use: "enable <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Enable an agent profile", RunE: runAgentEnable}
 	disable := &cobra.Command{Use: "disable <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Disable an agent profile", RunE: runAgentDisable}
 	eligible := &cobra.Command{Use: "eligible <TICKET-ID>", Args: cobra.ExactArgs(1), Short: "Show eligibility for one ticket across enabled agents", RunE: runAgentEligible}
-	for _, sub := range []*cobra.Command{list, view, create, edit, enable, disable, eligible} {
+	available := &cobra.Command{Use: "available [AGENT-ID]", Args: cobra.MaximumNArgs(1), Short: "Show work this agent can act on now", RunE: runAgentAvailable}
+	pending := &cobra.Command{Use: "pending [AGENT-ID]", Args: cobra.MaximumNArgs(1), Short: "Show work this agent is waiting on", RunE: runAgentPending}
+	for _, sub := range []*cobra.Command{list, view, create, edit, enable, disable, eligible, available, pending} {
 		addReadOutputFlags(sub, &outputFlags{})
+	}
+	for _, sub := range []*cobra.Command{available, pending} {
+		sub.Flags().String("actor", "", "Actor to resolve when AGENT-ID is omitted (defaults through TRACKER_ACTOR or actor.default)")
 	}
 	for _, sub := range []*cobra.Command{create, edit} {
 		sub.Flags().String("name", "", "Display name")
@@ -290,7 +295,7 @@ func newAgentCommand() *cobra.Command {
 	}
 	_ = create.MarkFlagRequired("name")
 	_ = create.MarkFlagRequired("provider")
-	cmd.AddCommand(list, view, create, edit, enable, disable, eligible)
+	cmd.AddCommand(list, view, create, edit, enable, disable, eligible, available, pending)
 	return cmd
 }
 
@@ -3306,6 +3311,93 @@ func runAgentEligible(cmd *cobra.Command, args []string) error {
 		"payload":      report,
 	}
 	return writeCommandOutput(cmd, payload, md, pretty)
+}
+
+func runAgentAvailable(cmd *cobra.Command, args []string) error {
+	return runAgentWork(cmd, args, service.AgentWorkAvailable)
+}
+
+func runAgentPending(cmd *cobra.Command, args []string) error {
+	return runAgentWork(cmd, args, service.AgentWorkPending)
+}
+
+func runAgentWork(cmd *cobra.Command, args []string, state service.AgentWorkState) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actor := agentWorkActorFromArgs(cmd, args)
+	var view service.AgentWorkView
+	switch state {
+	case service.AgentWorkAvailable:
+		view, err = workspace.queries.AgentAvailable(commandContext(cmd), actor)
+	case service.AgentWorkPending:
+		view, err = workspace.queries.AgentPending(commandContext(cmd), actor)
+	default:
+		view, err = workspace.queries.AgentWork(commandContext(cmd), actor)
+	}
+	if err != nil {
+		return err
+	}
+	md, pretty := formatAgentWork(view, state)
+	payload := map[string]any{
+		"kind":         "agent_work",
+		"generated_at": view.GeneratedAt,
+		"payload":      view,
+	}
+	return writeCommandOutput(cmd, payload, md, pretty)
+}
+
+func agentWorkActorFromArgs(cmd *cobra.Command, args []string) contracts.Actor {
+	if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
+		raw := strings.TrimSpace(args[0])
+		if strings.Contains(raw, ":") {
+			return contracts.Actor(raw)
+		}
+		return contracts.Actor("agent:" + raw)
+	}
+	actor, _ := cmd.Flags().GetString("actor")
+	return contracts.Actor(strings.TrimSpace(actor))
+}
+
+func formatAgentWork(view service.AgentWorkView, state service.AgentWorkState) (string, string) {
+	title := "Agent Available"
+	entries := view.Available
+	if state == service.AgentWorkPending {
+		title = "Agent Pending"
+		entries = view.Pending
+	}
+	md := fmt.Sprintf("## %s\n\nActor: `%s`\n", title, view.Actor)
+	pretty := fmt.Sprintf("%s for %s", strings.ToLower(title), view.Actor)
+	if len(entries) == 0 {
+		md += "\nNo tickets.\n"
+		pretty += "\n(no tickets)"
+		return md, pretty
+	}
+	for _, entry := range entries {
+		reason := entry.Reason
+		if reason == "" && len(entry.ReasonCodes) > 0 {
+			reason = strings.Join(entry.ReasonCodes, ",")
+		}
+		md += fmt.Sprintf("\n- `%s` %s — %s", entry.Ticket.ID, entry.Ticket.Title, reason)
+		if len(entry.UnresolvedDeps) > 0 {
+			md += fmt.Sprintf(" (blocked by %s)", strings.Join(entry.UnresolvedDeps, ", "))
+		}
+		if len(entry.Suggested) > 0 {
+			md += "\n"
+			for _, command := range entry.Suggested {
+				md += fmt.Sprintf("  - `%s`\n", command)
+			}
+		} else {
+			md += "\n"
+		}
+		pretty += fmt.Sprintf("\n- %s [%s] %s", entry.Ticket.ID, entry.Action, entry.Ticket.Title)
+		if reason != "" {
+			pretty += " (" + reason + ")"
+		}
+	}
+	return md, pretty
 }
 
 func saveAgentProfile(cmd *cobra.Command, agentID string, create bool) error {

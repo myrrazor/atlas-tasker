@@ -17,6 +17,8 @@ Columns:
 |---|---:|---:|---:|---:|---:|---:|
 | `atlas.queue` | read | yes | no | no | no | no |
 | `atlas.next` | read | yes | no | no | no | no |
+| `atlas.agent.available` | read | yes | no | no | no | no |
+| `atlas.agent.pending` | read | yes | no | no | no | no |
 | `atlas.search` | read | yes | no | no | no | no |
 | `atlas.board` | read | yes | no | no | no | no |
 | `atlas.ticket.view` | read | yes | no | no | no | no |

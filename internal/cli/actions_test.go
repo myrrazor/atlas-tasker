@@ -83,6 +83,34 @@ func TestCommandOutputSanitizesTerminalControls(t *testing.T) {
 	}
 }
 
+func TestAgentAvailablePendingCommands(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("agent", "create", "builder-1", "--name", "Builder", "--provider", "codex", "--actor", "human:owner", "--reason", "test")
+	must("ticket", "create", "--project", "APP", "--title", "Blocker", "--type", "task", "--status", "in_progress", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Ready work", "--type", "task", "--status", "ready", "--assignee", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Blocked work", "--type", "task", "--status", "ready", "--assignee", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "link", "APP-3", "--blocked-by", "APP-1", "--actor", "human:owner", "--reason", "test dependency")
+
+	available := must("agent", "available", "builder-1")
+	if !strings.Contains(available, "APP-2") || strings.Contains(available, "APP-3") {
+		t.Fatalf("available should show only unblocked work, got:\n%s", available)
+	}
+	pending := must("agent", "pending", "builder-1", "--json")
+	if !strings.Contains(pending, `"dependency_blocked"`) || !strings.Contains(pending, `"APP-3"`) {
+		t.Fatalf("pending json should include dependency_blocked APP-3, got:\n%s", pending)
+	}
+}
+
 func TestCLIRejectsPathDerivedIdentifierTraversal(t *testing.T) {
 	parent := t.TempDir()
 	workspaceRoot := filepath.Join(parent, "workspace")
