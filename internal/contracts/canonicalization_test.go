@@ -200,7 +200,10 @@ func TestCanonicalizeAtlasV1SignedArtifactsIgnoreEmbeddedSignatures(t *testing.T
 		TargetID:      "APP-1",
 		Objective:     "Fix the thing",
 		Sections:      completeGoalSections(),
+		SourceHash:    "abc123",
 		GeneratedAt:   now,
+		GeneratedBy:   Actor("human:owner"),
+		Reason:        "prepare agent goal",
 		SchemaVersion: CurrentSchemaVersion,
 	}
 	baseGoal, err := CanonicalizeAtlasV1(goal)
