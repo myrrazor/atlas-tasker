@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/service"
@@ -117,6 +118,39 @@ func TestCursorClampsAcrossScreenSizes(t *testing.T) {
 	m = m.moveCursor(1)
 	if m.cursor != 1 {
 		t.Fatalf("expected cursor to clamp to last valid index, got %d", m.cursor)
+	}
+}
+
+func TestTicketsListViewUsesNarrowWidth(t *testing.T) {
+	out := ticketsListView("Board", []contracts.TicketSnapshot{{
+		ID:       "APP-1",
+		Status:   contracts.StatusReady,
+		Priority: contracts.PriorityHigh,
+		Title:    "A very long title for a narrow terminal",
+	}}, 0, 36)
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "> ") && lipgloss.Width(line) > 36 {
+			t.Fatalf("expected selected line to fit narrow width, got width=%d line=%q", lipgloss.Width(line), line)
+		}
+	}
+	if !strings.Contains(out, "...") {
+		t.Fatalf("expected narrow list view to truncate long title, got %s", out)
+	}
+}
+
+func TestModelViewTruncatesFooterAtWidth(t *testing.T) {
+	m := model{
+		screen:             screenBoard,
+		width:              32,
+		actor:              contracts.Actor("human:owner"),
+		collaboratorFilter: "all",
+		status:             "a very long status message that should not push the footer past the terminal",
+	}
+	view := m.View()
+	for _, line := range strings.Split(view, "\n") {
+		if strings.HasPrefix(line, "actor: ") && lipgloss.Width(line) > m.width {
+			t.Fatalf("expected footer to fit width=%d, got width=%d line=%q", m.width, lipgloss.Width(line), line)
+		}
 	}
 }
 

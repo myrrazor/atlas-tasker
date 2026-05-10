@@ -8,7 +8,7 @@ import (
 
 var allowedTransitions = map[contracts.Status]map[contracts.Status]struct{}{
 	contracts.StatusBacklog: {
-		contracts.StatusReady: {}, contracts.StatusCanceled: {},
+		contracts.StatusReady: {}, contracts.StatusBlocked: {}, contracts.StatusCanceled: {},
 	},
 	contracts.StatusReady: {
 		contracts.StatusInProgress: {}, contracts.StatusBlocked: {}, contracts.StatusCanceled: {},

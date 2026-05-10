@@ -7,6 +7,7 @@ import (
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -234,6 +235,8 @@ func newBackupCommand() *cobra.Command {
 	create := &cobra.Command{Use: "create", Short: "Create a backup snapshot", Args: cobra.NoArgs, RunE: runBackupCreate}
 	create.Flags().String("scope", "workspace", "Backup scope: workspace|project:<KEY>")
 	restorePlan := &cobra.Command{Use: "restore-plan <BACKUP-ID|PATH>", Short: "Preview a backup restore", Args: cobra.ExactArgs(1), RunE: runBackupRestorePlan}
+	restorePlan.Flags().String("actor", "human:owner", "Optional actor context accepted for copy-paste parity; restore-plan is read-only")
+	restorePlan.Flags().String("reason", "", "Optional reason accepted for copy-paste parity; restore-plan is read-only")
 	restoreApply := &cobra.Command{Use: "restore-apply <BACKUP-ID|PATH>", Short: "Apply a backup restore plan", Args: cobra.ExactArgs(1), RunE: runBackupRestoreApply}
 	restoreApply.Flags().Bool("yes", false, "Apply restore without prompting")
 	drill := &cobra.Command{Use: "drill", Short: "Run a read-only recovery drill", Args: cobra.NoArgs, RunE: runBackupDrill}
@@ -271,6 +274,8 @@ func newGoalCommand() *cobra.Command {
 	brief := &cobra.Command{Use: "brief <TICKET-ID|RUN-ID>", Short: "Render a goal-ready brief", Args: cobra.ExactArgs(1), RunE: runGoalBrief}
 	manifest := &cobra.Command{Use: "manifest <TICKET-ID|RUN-ID>", Short: "Write a goal-ready manifest", Args: cobra.ExactArgs(1), RunE: runGoalManifest}
 	verify := &cobra.Command{Use: "verify <MANIFEST-ID|PATH>", Short: "Verify a signed goal manifest", Args: cobra.ExactArgs(1), RunE: runVerifyGoal}
+	brief.Flags().String("actor", "", "Optional actor context accepted for copy-paste parity; goal brief is read-only")
+	brief.Flags().String("reason", "", "Optional reason context accepted for copy-paste parity; goal brief is read-only")
 	addReadOutputFlags(brief, &outputFlags{})
 	addMutationFlags(manifest, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(manifest, &outputFlags{})
@@ -311,6 +316,9 @@ func runKeyList(cmd *cobra.Command, _ []string) error {
 	view, err := w.actions.ListKeys(cmd.Context())
 	if err != nil {
 		return err
+	}
+	if jsonMode, _ := cmd.Flags().GetBool("json"); jsonMode {
+		return writeCommandOutput(cmd, flattenKeyListView(view), keyListMarkdown(view), keyListPretty(view))
 	}
 	return writeCommandOutput(cmd, view, keyListMarkdown(view), keyListPretty(view))
 }
@@ -785,7 +793,8 @@ func runBackupRestorePlan(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	defer w.close()
-	view, err := w.actions.CreateRestorePlan(cmd.Context(), args[0], contracts.Actor("human:owner"))
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	view, err := w.actions.CreateRestorePlan(cmd.Context(), args[0], normalizeActor(actorRaw))
 	if err != nil {
 		return err
 	}
@@ -1419,12 +1428,28 @@ func goalManifestMarkdown(view service.GoalManifestDetailView) string {
 }
 
 func goalSectionsMarkdown(objective string, sections []contracts.GoalSection) string {
-	lines := []string{"# Goal", "", strings.TrimSpace(objective), ""}
+	title := "Agent Goal"
+	filtered := make([]contracts.GoalSection, 0, len(sections))
 	for _, section := range sections {
+		if section.Heading == "Goal" {
+			if body := render.SanitizeDisplayLine(section.Body); body != "" {
+				title = body
+			}
+			continue
+		}
+		filtered = append(filtered, section)
+	}
+	if title == "Agent Goal" {
+		if fallback := render.SanitizeDisplayLine(objective); fallback != "" {
+			title = fallback
+		}
+	}
+	lines := []string{"# " + title, ""}
+	for _, section := range filtered {
 		lines = append(lines, "## "+section.Heading, "")
 		if len(section.Items) > 0 {
 			for _, item := range section.Items {
-				lines = append(lines, "- "+item)
+				lines = append(lines, markdownListItem(item, 78)...)
 			}
 		} else {
 			lines = append(lines, strings.TrimSpace(section.Body))
@@ -1432,6 +1457,41 @@ func goalSectionsMarkdown(objective string, sections []contracts.GoalSection) st
 		lines = append(lines, "")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func markdownListItem(item string, width int) []string {
+	item = strings.TrimSpace(item)
+	if item == "" {
+		return []string{"- None"}
+	}
+	if width < 12 {
+		width = 78
+	}
+	firstPrefix := "- "
+	nextPrefix := "  "
+	words := strings.Fields(item)
+	if len(words) == 0 {
+		return []string{"- None"}
+	}
+	lines := []string{}
+	current := firstPrefix
+	prefix := firstPrefix
+	for _, word := range words {
+		candidate := current
+		if strings.TrimSpace(candidate) != "" && candidate != prefix {
+			candidate += " "
+		}
+		candidate += word
+		if len(candidate) <= width || current == prefix {
+			current = candidate
+			continue
+		}
+		lines = append(lines, current)
+		prefix = nextPrefix
+		current = prefix + word
+	}
+	lines = append(lines, current)
+	return lines
 }
 
 func governancePackCreateOptionsFromFlags(cmd *cobra.Command, name string) (service.GovernancePackCreateOptions, error) {
@@ -1698,6 +1758,57 @@ func keyListPretty(view service.KeyListView) string {
 		lines = append(lines, keyDetailPretty(item))
 	}
 	return strings.Join(lines, "\n")
+}
+
+type keyListJSONView struct {
+	Kind        string            `json:"kind"`
+	GeneratedAt time.Time         `json:"generated_at"`
+	Items       []keyListJSONItem `json:"items"`
+}
+
+type keyListJSONItem struct {
+	Kind              string                       `json:"kind"`
+	GeneratedAt       time.Time                    `json:"generated_at"`
+	PublicKeyID       string                       `json:"public_key_id"`
+	Fingerprint       string                       `json:"fingerprint"`
+	Algorithm         contracts.KeyAlgorithm       `json:"algorithm"`
+	PublicKeyMaterial string                       `json:"public_key_material"`
+	OwnerKind         contracts.PublicKeyOwnerKind `json:"owner_kind"`
+	OwnerID           string                       `json:"owner_id"`
+	CreatedAt         time.Time                    `json:"created_at"`
+	ExpiresAt         time.Time                    `json:"expires_at,omitempty"`
+	Status            contracts.KeyState           `json:"status"`
+	Source            contracts.PublicKeySource    `json:"source"`
+	SchemaVersion     int                          `json:"schema_version"`
+	PrivateKeyHealth  any                          `json:"private_key_health,omitempty"`
+	CanSign           bool                         `json:"can_sign"`
+	ReasonCodes       []string                     `json:"reason_codes,omitempty"`
+}
+
+func flattenKeyListView(view service.KeyListView) keyListJSONView {
+	items := make([]keyListJSONItem, 0, len(view.Items))
+	for _, item := range view.Items {
+		key := item.PublicKey
+		items = append(items, keyListJSONItem{
+			Kind:              item.Kind,
+			GeneratedAt:       item.GeneratedAt,
+			PublicKeyID:       key.PublicKeyID,
+			Fingerprint:       key.Fingerprint,
+			Algorithm:         key.Algorithm,
+			PublicKeyMaterial: key.PublicKeyMaterial,
+			OwnerKind:         key.OwnerKind,
+			OwnerID:           key.OwnerID,
+			CreatedAt:         key.CreatedAt,
+			ExpiresAt:         key.ExpiresAt,
+			Status:            key.Status,
+			Source:            key.Source,
+			SchemaVersion:     key.SchemaVersion,
+			PrivateKeyHealth:  item.PrivateKeyHealth,
+			CanSign:           item.CanSign,
+			ReasonCodes:       item.ReasonCodes,
+		})
+	}
+	return keyListJSONView{Kind: view.Kind, GeneratedAt: view.GeneratedAt, Items: items}
 }
 
 func keyListMarkdown(view service.KeyListView) string {

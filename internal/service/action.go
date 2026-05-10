@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/domain"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
 type ActionService struct {
@@ -802,11 +804,79 @@ func (s *ActionService) RequestReview(ctx context.Context, ticketID string, acto
 			ticket.Lease = contracts.LeaseState{}
 		}
 		ticket.UpdatedAt = now
-		if err := s.commitTicketSnapshotEvent(ctx, "request review", ticket, actor, reason, contracts.EventTicketReviewRequested, ticket); err != nil {
+		gate, gateCreated, err := s.ensureTicketReviewGateOpenLocked(ctx, ticket, actor)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if gateCreated {
+			ticket.OpenGateIDs = appendStringUnique(ticket.OpenGateIDs, gate.GateID)
+		}
+		payload := map[string]any{"ticket": ticket}
+		if gate.GateID != "" {
+			payload["gate"] = gate
+		}
+		event, err := s.newEvent(ctx, ticket.Project, now, actor, reason, contracts.EventTicketReviewRequested, ticket.ID, payload)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if err := s.commitMutation(ctx, "request review", "ticket_snapshot", event, func(ctx context.Context) error {
+			if gateCreated {
+				if err := s.Gates.SaveGate(ctx, gate); err != nil {
+					return err
+				}
+			}
+			if err := s.UpdateTicket(ctx, ticket); err != nil {
+				if gateCreated {
+					_ = os.Remove(storage.GateFile(s.Root, gate.GateID))
+				}
+				return err
+			}
+			return nil
+		}); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
 	})
+}
+
+func (s *ActionService) ensureTicketReviewGateOpenLocked(ctx context.Context, ticket contracts.TicketSnapshot, actor contracts.Actor) (contracts.GateSnapshot, bool, error) {
+	existing, err := s.Gates.ListGates(ctx, ticket.ID)
+	if err != nil {
+		return contracts.GateSnapshot{}, false, err
+	}
+	runID := strings.TrimSpace(ticket.LatestRunID)
+	for _, gate := range existing {
+		if gate.Kind == contracts.GateKindReview && gate.State == contracts.GateStateOpen {
+			return gate, false, nil
+		}
+	}
+	replacesGateID := ""
+	for i := len(existing) - 1; i >= 0; i-- {
+		gate := existing[i]
+		if gate.Kind == contracts.GateKindReview && gate.State != contracts.GateStateOpen {
+			replacesGateID = gate.GateID
+			break
+		}
+	}
+	relatedRuns := []string{}
+	if runID != "" {
+		relatedRuns = []string{runID}
+	}
+	gate := contracts.GateSnapshot{
+		GateID:          "gate_" + NewOpaqueID(),
+		TicketID:        ticket.ID,
+		RunID:           runID,
+		Kind:            contracts.GateKindReview,
+		State:           contracts.GateStateOpen,
+		RequiredRole:    contracts.AgentRoleReviewer,
+		RequiredAgentID: strings.TrimSpace(string(ticket.Reviewer)),
+		CreatedBy:       actor,
+		RelatedRunIDs:   relatedRuns,
+		ReplacesGateID:  replacesGateID,
+		CreatedAt:       s.now(),
+		SchemaVersion:   contracts.CurrentSchemaVersion,
+	}
+	return gate, true, gate.Validate()
 }
 
 func (s *ActionService) ApproveTicket(ctx context.Context, ticketID string, actor contracts.Actor, reason string) (contracts.TicketSnapshot, error) {
@@ -835,7 +905,26 @@ func (s *ActionService) ApproveTicket(ctx context.Context, ticketID string, acto
 			ticket.Status = contracts.StatusDone
 			ticket.Lease = contracts.LeaseState{}
 		}
-		if err := s.commitTicketSnapshotEvent(ctx, "approve ticket", ticket, actor, reason, contracts.EventTicketApproved, ticket); err != nil {
+		gate, hasGate, err := s.decideOpenTicketReviewGateLocked(ctx, &ticket, actor, reason, contracts.GateStateApproved)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		payload := map[string]any{"ticket": ticket}
+		if hasGate {
+			payload["gate"] = gate
+		}
+		event, err := s.newEvent(ctx, ticket.Project, now, actor, reason, contracts.EventTicketApproved, ticket.ID, payload)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if err := s.commitMutation(ctx, "approve ticket", "ticket_snapshot", event, func(ctx context.Context) error {
+			if hasGate {
+				if err := s.Gates.SaveGate(ctx, gate); err != nil {
+					return err
+				}
+			}
+			return s.UpdateTicket(ctx, ticket)
+		}); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
@@ -867,11 +956,49 @@ func (s *ActionService) RejectTicket(ctx context.Context, ticketID string, actor
 			ticket.Lease = contracts.LeaseState{}
 		}
 		ticket.UpdatedAt = now
-		if err := s.commitTicketSnapshotEvent(ctx, "reject ticket", ticket, actor, reason, contracts.EventTicketRejected, ticket); err != nil {
+		gate, hasGate, err := s.decideOpenTicketReviewGateLocked(ctx, &ticket, actor, reason, contracts.GateStateRejected)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		payload := map[string]any{"ticket": ticket}
+		if hasGate {
+			payload["gate"] = gate
+		}
+		event, err := s.newEvent(ctx, ticket.Project, now, actor, reason, contracts.EventTicketRejected, ticket.ID, payload)
+		if err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if err := s.commitMutation(ctx, "reject ticket", "ticket_snapshot", event, func(ctx context.Context) error {
+			if hasGate {
+				if err := s.Gates.SaveGate(ctx, gate); err != nil {
+					return err
+				}
+			}
+			return s.UpdateTicket(ctx, ticket)
+		}); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
 		return ticket, nil
 	})
+}
+
+func (s *ActionService) decideOpenTicketReviewGateLocked(ctx context.Context, ticket *contracts.TicketSnapshot, actor contracts.Actor, reason string, next contracts.GateState) (contracts.GateSnapshot, bool, error) {
+	gates, err := s.Gates.ListGates(ctx, ticket.ID)
+	if err != nil {
+		return contracts.GateSnapshot{}, false, err
+	}
+	for _, gate := range gates {
+		if gate.Kind != contracts.GateKindReview || gate.State != contracts.GateStateOpen {
+			continue
+		}
+		gate.State = next
+		gate.DecidedBy = actor
+		gate.DecisionReason = strings.TrimSpace(reason)
+		gate.DecidedAt = s.now()
+		ticket.OpenGateIDs = removeString(ticket.OpenGateIDs, gate.GateID)
+		return gate, true, gate.Validate()
+	}
+	return contracts.GateSnapshot{}, false, nil
 }
 
 func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, actor contracts.Actor, reason string) (contracts.TicketSnapshot, error) {
