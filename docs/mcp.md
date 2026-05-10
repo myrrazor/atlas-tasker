@@ -84,4 +84,5 @@ Paged list tools accept `limit` and `cursor`. Grouped tools keep independent cur
 - [MCP tool table](mcp-tools.md)
 - [Codex setup](mcp-codex.md)
 - [Claude Code setup](mcp-claude-code.md)
+- [MCP for agents](guides/mcp-for-agents.md)
 - [MCP JSON contracts](mcp-json-contracts.md)

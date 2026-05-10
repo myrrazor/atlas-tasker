@@ -3,6 +3,7 @@ package contracts
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -107,14 +108,27 @@ var validLeaseKinds = map[LeaseKind]struct{}{
 	LeaseKindNone: {}, LeaseKindWork: {}, LeaseKindReview: {},
 }
 
+var (
+	projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_-]{0,31}$`)
+	ticketIDPattern   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
+)
+
 func (t TicketType) IsValid() bool {
 	_, ok := validTicketTypes[t]
 	return ok
 }
 
+func ValidTicketTypeValues() []string {
+	return []string{string(TicketTypeEpic), string(TicketTypeTask), string(TicketTypeBug), string(TicketTypeSubtask)}
+}
+
 func (s Status) IsValid() bool {
 	_, ok := validStatuses[s]
 	return ok
+}
+
+func ValidStatusValues() []string {
+	return []string{string(StatusBacklog), string(StatusReady), string(StatusInProgress), string(StatusInReview), string(StatusBlocked), string(StatusDone), string(StatusCanceled)}
 }
 
 func (p Priority) IsValid() bool {
@@ -151,6 +165,24 @@ func (a Actor) IsValid() bool {
 	return strings.TrimSpace(parts[1]) != ""
 }
 
+func IsValidProjectKey(key string) bool {
+	key = strings.TrimSpace(key)
+	return projectKeyPattern.MatchString(key)
+}
+
+func ProjectKeyValidationMessage() string {
+	return "project key must match ^[A-Z][A-Z0-9_-]{0,31}$"
+}
+
+func IsValidTicketID(id string) bool {
+	id = strings.TrimSpace(id)
+	return ticketIDPattern.MatchString(id)
+}
+
+func TicketIDValidationMessage() string {
+	return "ticket id must match ^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+}
+
 // Project represents a tracked project namespace.
 type Project struct {
 	Key           string          `json:"key"`
@@ -163,6 +195,9 @@ type Project struct {
 func (p Project) Validate() error {
 	if strings.TrimSpace(p.Key) == "" {
 		return fmt.Errorf("project key is required")
+	}
+	if !IsValidProjectKey(p.Key) {
+		return fmt.Errorf("%s", ProjectKeyValidationMessage())
 	}
 	if strings.TrimSpace(p.Name) == "" {
 		return fmt.Errorf("project name is required")
@@ -588,8 +623,14 @@ func (t TicketSnapshot) ValidateForCreate() error {
 	if strings.TrimSpace(t.ID) == "" {
 		return fmt.Errorf("ticket id is required")
 	}
+	if !IsValidTicketID(t.ID) {
+		return fmt.Errorf("%s", TicketIDValidationMessage())
+	}
 	if strings.TrimSpace(t.Project) == "" {
 		return fmt.Errorf("project is required")
+	}
+	if !IsValidProjectKey(t.Project) {
+		return fmt.Errorf("%s", ProjectKeyValidationMessage())
 	}
 	if strings.TrimSpace(t.Title) == "" {
 		return fmt.Errorf("title is required")
@@ -660,6 +701,8 @@ func BoardStatus(ticket TicketSnapshot) Status {
 }
 
 func NormalizeProject(project Project) Project {
+	project.Key = strings.TrimSpace(project.Key)
+	project.Name = strings.TrimSpace(project.Name)
 	originalSchema := project.SchemaVersion
 	if originalSchema == 0 {
 		project.Defaults.CompletionMode = firstCompletionMode(project.Defaults.CompletionMode, CompletionModeOpen)
@@ -681,6 +724,9 @@ func NormalizeProject(project Project) Project {
 }
 
 func NormalizeTicketSnapshot(ticket TicketSnapshot) TicketSnapshot {
+	ticket.ID = strings.TrimSpace(ticket.ID)
+	ticket.Project = strings.TrimSpace(ticket.Project)
+	ticket.Title = strings.TrimSpace(ticket.Title)
 	if ticket.SchemaVersion == 0 {
 		ticket.SchemaVersion = SchemaVersionV1
 	}

@@ -22,4 +22,6 @@ Check status in Claude Code:
 
 Do not configure Atlas MCP through `sh -c`, `npx`, or snippets from untrusted workspaces. Keep high-impact tools out of normal Claude Code sessions; use `tracker mcp approve-operation` only when a human explicitly authorizes a specific operation and target.
 
+For the CLI-first Claude Code workflow, read [Claude Code guide](guides/claude-code.md).
+
 See Claude Code’s MCP docs: <https://docs.claude.com/en/docs/claude-code/mcp>.
