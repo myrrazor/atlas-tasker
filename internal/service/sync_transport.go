@@ -1496,6 +1496,8 @@ func collectSyncableFiles(root string) ([]string, error) {
 		storage.ClassificationLabelsDir(root),
 		storage.ClassificationPoliciesDir(root),
 		storage.RedactionRulesDir(root),
+		storage.AuditReportsDir(root),
+		storage.AuditPacketsDir(root),
 		storage.EventsDir(root),
 	}
 	for _, base := range walks {
@@ -1587,6 +1589,10 @@ func isSyncableRelativePath(rel string) bool {
 	case strings.HasPrefix(rel, ".tracker/classification/policies/") && strings.HasSuffix(rel, ".toml"):
 		return true
 	case strings.HasPrefix(rel, ".tracker/redaction/rules/") && strings.HasSuffix(rel, ".toml"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/audit/reports/") && strings.HasSuffix(rel, ".json"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/audit/packets/") && strings.HasSuffix(rel, ".json"):
 		return true
 	case strings.HasPrefix(rel, ".tracker/events/") && strings.HasSuffix(rel, ".jsonl"):
 		return true

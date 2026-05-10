@@ -57,6 +57,18 @@ func (k ClassifiedEntityKind) IsValid() bool {
 	return ok
 }
 
+func ValidClassifiedEntityKindValues() []string {
+	return []string{
+		string(ClassifiedEntityProject),
+		string(ClassifiedEntityTicket),
+		string(ClassifiedEntityRun),
+		string(ClassifiedEntityEvidence),
+		string(ClassifiedEntityHandoff),
+		string(ClassifiedEntityAudit),
+		string(ClassifiedEntityBackup),
+	}
+}
+
 type ClassificationLabel struct {
 	ClassificationID string               `json:"classification_id" yaml:"classification_id" toml:"classification_id"`
 	EntityKind       ClassifiedEntityKind `json:"entity_kind" yaml:"entity_kind" toml:"entity_kind"`

@@ -1,0 +1,31 @@
+ok  	github.com/myrrazor/atlas-tasker/internal/service	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	53.850s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	3.983s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/169 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 169/169 completed, now fuzzing with 10 workers
+fuzz: elapsed: 2s, execs: 1373440 (657997/sec), new interesting: 0 (total: 169)
+PASS
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	2.256s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/145 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 145/145 completed, now fuzzing with 10 workers
+fuzz: elapsed: 2s, execs: 593086 (268184/sec), new interesting: 0 (total: 145)
+PASS
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	2.380s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/403 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 403/403 completed, now fuzzing with 10 workers
+fuzz: elapsed: 3s, execs: 348612 (116182/sec), new interesting: 4 (total: 407)
+fuzz: elapsed: 3s, execs: 348612 (0/sec), new interesting: 4 (total: 407)
+PASS
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	3.228s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/202 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 202/202 completed, now fuzzing with 10 workers
+fuzz: elapsed: 3s, execs: 1589 (530/sec), new interesting: 1 (total: 203)
+fuzz: elapsed: 3s, execs: 1589 (0/sec), new interesting: 1 (total: 203)
+PASS
+ok  	github.com/myrrazor/atlas-tasker/internal/service	3.304s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/209 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 209/209 completed, now fuzzing with 10 workers
+fuzz: elapsed: 3s, execs: 3844 (1281/sec), new interesting: 2 (total: 211)
+fuzz: elapsed: 3s, execs: 3844 (0/sec), new interesting: 2 (total: 211)
+PASS
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	3.162s
