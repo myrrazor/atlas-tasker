@@ -799,6 +799,11 @@ func (s *ActionService) MoveTicket(ctx context.Context, ticketID string, to cont
 		}
 		ticket.UpdatedAt = now
 		payload := map[string]any{"from": from, "to": to, "ticket": ticket}
+		if overridePayload, err := s.dependencyOverridePayload(ctx, ticket); err != nil {
+			return contracts.TicketSnapshot{}, err
+		} else if overridePayload != nil {
+			payload["dependency_override"] = overridePayload
+		}
 		if err := s.commitTicketSnapshotEvent(ctx, "move ticket", ticket, actor, reason, contracts.EventTicketMoved, payload); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
@@ -854,6 +859,11 @@ func (s *ActionService) RequestReviewWithReviewer(ctx context.Context, ticketID 
 			ticket.OpenGateIDs = appendStringUnique(ticket.OpenGateIDs, gate.GateID)
 		}
 		payload := map[string]any{"ticket": ticket}
+		if overridePayload, err := s.dependencyOverridePayload(ctx, ticket); err != nil {
+			return contracts.TicketSnapshot{}, err
+		} else if overridePayload != nil {
+			payload["dependency_override"] = overridePayload
+		}
 		if gate.GateID != "" {
 			payload["gate"] = gate
 		}
@@ -978,6 +988,11 @@ func (s *ActionService) ApproveTicket(ctx context.Context, ticketID string, acto
 			return contracts.TicketSnapshot{}, err
 		}
 		payload := map[string]any{"ticket": ticket}
+		if overridePayload, err := s.dependencyOverridePayload(ctx, ticket); err != nil {
+			return contracts.TicketSnapshot{}, err
+		} else if overridePayload != nil {
+			payload["dependency_override"] = overridePayload
+		}
 		if hasGate {
 			payload["gate"] = gate
 		}
@@ -1134,6 +1149,11 @@ func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, act
 		ticket.Lease = contracts.LeaseState{}
 		ticket.UpdatedAt = now
 		payload := map[string]any{"from": from, "to": contracts.StatusDone, "ticket": ticket}
+		if overridePayload, err := s.dependencyOverridePayload(ctx, ticket); err != nil {
+			return contracts.TicketSnapshot{}, err
+		} else if overridePayload != nil {
+			payload["dependency_override"] = overridePayload
+		}
 		if err := s.commitTicketSnapshotEvent(ctx, "complete ticket", ticket, actor, reason, contracts.EventTicketMoved, payload); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}

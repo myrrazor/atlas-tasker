@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -78,6 +79,72 @@ func TestActionServiceDependenciesBlockUnsafeWorkflowTransitions(t *testing.T) {
 	}
 	if _, err := actions.RequestReviewWithReviewer(ctx, requestReview.ID, "", contracts.Actor("agent:builder-1"), "ready after unblock"); err != nil {
 		t.Fatalf("request-review should pass after blocker is done: %v", err)
+	}
+}
+
+func TestActionServiceDependencyOverrideRequiresOwnerAndAudits(t *testing.T) {
+	ctx, actions := newWorkflowReadinessActions(t)
+	blocker := createWorkflowTicket(t, ctx, actions, contracts.TicketSnapshot{
+		Project:  "APP",
+		Title:    "Blocker",
+		Type:     contracts.TicketTypeTask,
+		Status:   contracts.StatusInProgress,
+		Priority: contracts.PriorityMedium,
+	})
+	dependent := createWorkflowTicket(t, ctx, actions, contracts.TicketSnapshot{
+		Project:  "APP",
+		Title:    "Dependent",
+		Type:     contracts.TicketTypeTask,
+		Status:   contracts.StatusInProgress,
+		Priority: contracts.PriorityMedium,
+	})
+	if _, err := actions.LinkTickets(ctx, dependent.ID, blocker.ID, domain.LinkBlockedBy, contracts.Actor("human:owner"), "depends on blocker"); err != nil {
+		t.Fatalf("link blocker: %v", err)
+	}
+	if _, err := actions.RequestReviewWithReviewer(WithDependencyOverride(ctx, contracts.Actor("agent:builder-1"), "override"), dependent.ID, "", contracts.Actor("agent:builder-1"), "override"); err == nil || !strings.Contains(err.Error(), "dependency_override_requires_owner") {
+		t.Fatalf("expected owner-only override error, got %v", err)
+	}
+	if _, err := actions.RequestReviewWithReviewer(WithDependencyOverride(ctx, contracts.Actor("human:owner"), ""), dependent.ID, "", contracts.Actor("human:owner"), ""); err == nil || !strings.Contains(err.Error(), "dependency_override_requires_reason") {
+		t.Fatalf("expected reason-required override error, got %v", err)
+	}
+	updated, err := actions.RequestReviewWithReviewer(WithDependencyOverride(ctx, contracts.Actor("human:owner"), "owner accepts dependency risk"), dependent.ID, "", contracts.Actor("human:owner"), "owner accepts dependency risk")
+	if err != nil {
+		t.Fatalf("owner dependency override should allow request review: %v", err)
+	}
+	if updated.Status != contracts.StatusInReview {
+		t.Fatalf("unexpected override result: %#v", updated)
+	}
+	history, err := actions.Projection.QueryHistory(ctx, dependent.ID)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	raw := fmt.Sprint(history[len(history)-1].Payload)
+	if !strings.Contains(raw, "dependency_override") || !strings.Contains(raw, blocker.ID) {
+		t.Fatalf("expected dependency override payload in latest event, got %#v", history[len(history)-1].Payload)
+	}
+}
+
+func TestActionServiceCanceledBlockerDoesNotUnblock(t *testing.T) {
+	ctx, actions := newWorkflowReadinessActions(t)
+	blocker := createWorkflowTicket(t, ctx, actions, contracts.TicketSnapshot{
+		Project:  "APP",
+		Title:    "Canceled blocker",
+		Type:     contracts.TicketTypeTask,
+		Status:   contracts.StatusCanceled,
+		Priority: contracts.PriorityMedium,
+	})
+	dependent := createWorkflowTicket(t, ctx, actions, contracts.TicketSnapshot{
+		Project:  "APP",
+		Title:    "Dependent",
+		Type:     contracts.TicketTypeTask,
+		Status:   contracts.StatusReady,
+		Priority: contracts.PriorityMedium,
+	})
+	if _, err := actions.LinkTickets(ctx, dependent.ID, blocker.ID, domain.LinkBlockedBy, contracts.Actor("human:owner"), "depends on blocker"); err != nil {
+		t.Fatalf("link blocker: %v", err)
+	}
+	if _, err := actions.MoveTicket(ctx, dependent.ID, contracts.StatusInProgress, contracts.Actor("agent:builder-1"), "start"); err == nil || !strings.Contains(err.Error(), "dependency_blocked") {
+		t.Fatalf("expected canceled blocker to remain blocking, got %v", err)
 	}
 }
 

@@ -60,6 +60,8 @@ The approval target is exact. Tools with side-effecting modifiers bind those mod
 
 MCP calls are validated against their JSON schema before they reach Atlas services. Unknown arguments and wrong JSON types are rejected at the adapter boundary.
 
+Workflow tools that can advance blocked tickets accept `override_deps` only for `human:owner` with a non-empty reason. The call still goes through the same service-layer dependency checks and records the unresolved blockers in the mutation payload.
+
 The adapter validator is intentionally small in this RC. It enforces required fields, rejects unknown arguments, checks primitive JSON types, and checks string-array items. It does not implement every JSON Schema keyword such as `enum`, `pattern`, numeric bounds beyond the simple `limit` shape, or semantic existence checks. Domain validation, permission checks, and policy gates still run in the Atlas service layer.
 
 Approval consumption is single-use and happens after MCP argument/profile/actor/reason validation but before the service action starts. If the provider or service action later fails, the approval remains used; run the plan/dry-run tool again and create a new approval for a retry. This avoids letting an approval be replayed after execution has begun.

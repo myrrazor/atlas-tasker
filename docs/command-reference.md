@@ -33,10 +33,10 @@
 - `tracker unwatch ticket <ID> [--actor <ACTOR>]`
 - `tracker unwatch project <KEY> [--actor <ACTOR>]`
 - `tracker unwatch view <NAME> [--actor <ACTOR>]`
-- `tracker bulk move <STATUS> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk move <STATUS> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--override-deps] [--actor <ACTOR>]`
 - `tracker bulk assign <ACTOR> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
-- `tracker bulk request-review [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
-- `tracker bulk complete [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
+- `tracker bulk request-review [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--override-deps] [--actor <ACTOR>]`
+- `tracker bulk complete [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--override-deps] [--actor <ACTOR>]`
 - `tracker bulk claim [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
 - `tracker bulk release [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
 - `tracker templates list`
@@ -583,7 +583,7 @@ Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Tick
 
 ## Ticket Mutation
 
-- `tracker ticket move <ID> <STATUS>`
+- `tracker ticket move <ID> <STATUS> [--override-deps]`
 - `tracker ticket assign <ID> <ACTOR>` sets the assignee only
 - `tracker ticket priority <ID> <PRIORITY>`
 - `tracker ticket label add <ID> <LABEL>`
@@ -591,11 +591,11 @@ Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Tick
 - `tracker ticket claim <ID> [--actor <ACTOR>]`
 - `tracker ticket release <ID> [--actor <ACTOR>]`
 - `tracker ticket heartbeat <ID> [--actor <ACTOR>]`
-- `tracker ticket request-review <ID> [--reviewer <ACTOR>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker ticket request-review <ID> [--reviewer <ACTOR>] [--override-deps] [--actor <ACTOR>] [--reason <TEXT>]`
 - `ticket request-review` now opens or reuses a review gate for the ticket so `gate list`, `approvals`, and `inbox` show the review work explicitly. `--reviewer` sets the ticket reviewer in the same mutation; when omitted, Atlas uses the ticket reviewer or the effective project/epic/ticket `required_reviewer`.
-- `tracker ticket approve <ID> [--actor <ACTOR>]`
+- `tracker ticket approve <ID> [--override-deps] [--actor <ACTOR>]`
 - `tracker ticket reject <ID> --reason <TEXT> [--actor <ACTOR>]`
-- `tracker ticket complete <ID> [--actor <ACTOR>]`
+- `tracker ticket complete <ID> [--override-deps] [--actor <ACTOR>]`
 - `tracker ticket policy get <ID>`
 - `tracker ticket policy set <ID> [flags]`
 
@@ -610,6 +610,7 @@ Dependency rules:
 
 - `blocked_by` is enforced for unsafe progress: `in_progress`, `in_review`, approval, and completion are rejected while any blocker is unresolved.
 - Only `done` counts as terminal-success for dependency unblocking. `canceled` does not unblock dependents.
+- `human:owner` can override unresolved dependencies with `--override-deps --reason <TEXT>`; the mutation event includes a `dependency_override` payload with the unresolved blockers.
 - Board, blocked list, ticket view, inspect, and reindex derive blocked buckets from current blocker status, not only the historical link.
 
 ## Comments and History
@@ -671,10 +672,10 @@ Rules:
 
 ## Bulk Operations
 
-- `tracker bulk move <STATUS> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk move <STATUS> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--override-deps] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker bulk assign <ACTOR> [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
-- `tracker bulk request-review [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
-- `tracker bulk complete [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk request-review [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--override-deps] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker bulk complete [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--override-deps] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker bulk claim [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker bulk release [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>] [--reason <TEXT>]`
 
@@ -686,6 +687,7 @@ Rules:
 - `--ticket` may be repeated
 - `--view` expands any saved board/search/queue/next view into ticket IDs in the same order the view returns them
 - duplicate ticket IDs are deduplicated before the batch runs
+- `--override-deps` is owner-only and only applies to unsafe `move`, `request-review`, and `complete` batches
 - every committed per-ticket event carries the same `metadata.batch_id`
 
 ## Maintenance

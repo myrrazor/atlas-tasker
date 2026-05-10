@@ -81,6 +81,34 @@ func TestProjectRequiredReviewerAndDependenciesAuthFlow(t *testing.T) {
 	}
 }
 
+func TestTicketDependencyOverrideIsOwnerOnlyAndAudited(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App")
+	must("ticket", "create", "--project", "APP", "--title", "Blocker", "--type", "task", "--status", "in_progress", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Dependent", "--type", "task", "--status", "ready", "--actor", "human:owner")
+	must("ticket", "link", "APP-2", "--blocked-by", "APP-1", "--actor", "human:owner", "--reason", "depends on blocker")
+	if out, err := runCLI(t, "ticket", "move", "APP-2", "in_progress", "--actor", "agent:builder-1", "--reason", "start anyway", "--override-deps"); err == nil || !strings.Contains(out+err.Error(), "dependency_override_requires_owner") {
+		t.Fatalf("expected non-owner override denial, err=%v out=%s", err, out)
+	}
+	if out, err := runCLI(t, "ticket", "move", "APP-2", "in_progress", "--actor", "human:owner", "--override-deps"); err == nil || !strings.Contains(out+err.Error(), "dependency_override_requires_reason") {
+		t.Fatalf("expected override reason requirement, err=%v out=%s", err, out)
+	}
+	must("ticket", "move", "APP-2", "in_progress", "--actor", "human:owner", "--reason", "accept dependency risk", "--override-deps")
+	history := must("ticket", "history", "APP-2", "--json")
+	if !strings.Contains(history, `"dependency_override"`) || !strings.Contains(history, `"APP-1"`) {
+		t.Fatalf("expected dependency override audit payload in history: %s", history)
+	}
+}
+
 func TestTicketApproveAllowsAutonomousSelfApproval(t *testing.T) {
 	withTempWorkspace(t)
 	must := func(args ...string) string {
