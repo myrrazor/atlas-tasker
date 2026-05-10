@@ -139,6 +139,7 @@ type model struct {
 	height             int
 	board              service.BoardViewModel
 	queue              service.QueueView
+	agentWork          service.AgentWorkView
 	review             service.QueueView
 	owner              service.QueueView
 	runs               []contracts.RunSnapshot
@@ -172,6 +173,7 @@ type model struct {
 type loadedMsg struct {
 	board             service.BoardViewModel
 	queue             service.QueueView
+	agentWork         service.AgentWorkView
 	review            service.QueueView
 	owner             service.QueueView
 	runs              []contracts.RunSnapshot
@@ -311,6 +313,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.queue.Categories != nil {
 			m.queue = msg.queue
+		}
+		if msg.agentWork.GeneratedAt != (time.Time{}) {
+			m.agentWork = msg.agentWork
 		}
 		if msg.review.Categories != nil {
 			m.review = msg.review
@@ -566,7 +571,7 @@ func (m model) bodyView() string {
 		if m.actor == "" {
 			return render.EmptyState("Queues", "Set --actor, TRACKER_ACTOR, or actor.default to populate queues.")
 		}
-		return ticketsListView("Queues", m.itemsForScreen(), m.cursor, m.width)
+		return agentWorkView(m.agentWork, m.cursor, m.width)
 	case screenDetail:
 		if m.detail.Ticket.ID == "" {
 			return render.EmptyState("Detail", "No ticket selected yet.")
@@ -618,6 +623,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			return loadedMsg{err: err}
 		}
 		queue := service.QueueView{}
+		agentWork := service.AgentWorkView{GeneratedAt: m.now()}
 		review := service.QueueView{}
 		runs := []contracts.RunSnapshot{}
 		runDetail := service.RunDetailView{GeneratedAt: m.now()}
@@ -635,6 +641,10 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		}
 		if actor != "" {
 			queue, err = m.queries.Queue(ctx, actor)
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+			agentWork, err = m.queries.AgentWork(ctx, actor)
 			if err != nil {
 				return loadedMsg{err: err}
 			}
@@ -735,6 +745,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		return loadedMsg{
 			board:             board,
 			queue:             queue,
+			agentWork:         agentWork,
 			review:            review,
 			owner:             owner,
 			runs:              runs,
@@ -840,7 +851,7 @@ func (m model) itemsForScreen() []contracts.TicketSnapshot {
 		}
 		return items
 	case screenQueues:
-		return queueItems(m.queue)
+		return agentWorkItems(m.agentWork)
 	case screenReview:
 		return queueItems(m.review)
 	case screenOwner:
@@ -1170,6 +1181,58 @@ func queueItems(queue service.QueueView) []contracts.TicketSnapshot {
 		}
 	}
 	return items
+}
+
+func agentWorkItems(work service.AgentWorkView) []contracts.TicketSnapshot {
+	items := make([]contracts.TicketSnapshot, 0, len(work.Available)+len(work.Pending))
+	for _, entry := range work.Available {
+		items = append(items, entry.Ticket)
+	}
+	for _, entry := range work.Pending {
+		items = append(items, entry.Ticket)
+	}
+	return items
+}
+
+func agentWorkView(work service.AgentWorkView, cursor int, width int) string {
+	if work.GeneratedAt.IsZero() {
+		return render.EmptyState("Agent Work", "No agent queue loaded yet.")
+	}
+	if len(work.Available) == 0 && len(work.Pending) == 0 {
+		return render.EmptyState("Agent Work", "No available or pending work for this actor.")
+	}
+	lines := []string{fmt.Sprintf("Agent Work for %s", optionalActor(work.Actor, "unset"))}
+	index := 0
+	appendEntry := func(label string, entries []service.AgentWorkEntry) {
+		lines = append(lines, "", label+":")
+		if len(entries) == 0 {
+			lines = append(lines, "  (none)")
+			return
+		}
+		for _, entry := range entries {
+			prefix := "  "
+			if index == cursor {
+				prefix = "> "
+			}
+			reason := entry.Reason
+			if reason == "" && len(entry.ReasonCodes) > 0 {
+				reason = strings.Join(entry.ReasonCodes, ",")
+			}
+			summaryWidth := width - lipgloss.Width(prefix)
+			if summaryWidth <= 0 {
+				summaryWidth = 88
+			}
+			summary := render.TicketSummary(entry.Ticket, summaryWidth)
+			if reason != "" {
+				summary += " [" + render.SanitizeDisplayLine(reason) + "]"
+			}
+			lines = append(lines, prefix+summary)
+			index++
+		}
+	}
+	appendEntry("Available", work.Available)
+	appendEntry("Pending", work.Pending)
+	return strings.Join(lines, "\n")
 }
 
 func nextTickets(next service.NextView) []contracts.TicketSnapshot {

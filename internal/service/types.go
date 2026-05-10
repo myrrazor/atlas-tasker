@@ -47,6 +47,33 @@ type QueueView struct {
 	Categories  map[QueueCategory][]QueueEntry `json:"categories"`
 }
 
+type AgentWorkState string
+
+const (
+	AgentWorkAvailable AgentWorkState = "available"
+	AgentWorkPending   AgentWorkState = "pending"
+)
+
+type AgentWorkEntry struct {
+	Ticket         contracts.TicketSnapshot `json:"ticket"`
+	State          AgentWorkState           `json:"state"`
+	Action         string                   `json:"action"`
+	ReasonCodes    []string                 `json:"reason_codes,omitempty"`
+	Reason         string                   `json:"reason,omitempty"`
+	Suggested      []string                 `json:"suggested_commands,omitempty"`
+	UnresolvedDeps []string                 `json:"unresolved_dependencies,omitempty"`
+	RunID          string                   `json:"run_id,omitempty"`
+	GitHint        string                   `json:"git_hint,omitempty"`
+}
+
+type AgentWorkView struct {
+	Actor       contracts.Actor  `json:"actor"`
+	AgentID     string           `json:"agent_id,omitempty"`
+	GeneratedAt time.Time        `json:"generated_at"`
+	Available   []AgentWorkEntry `json:"available"`
+	Pending     []AgentWorkEntry `json:"pending"`
+}
+
 type BoardViewModel struct {
 	Board contracts.BoardView `json:"board"`
 }

@@ -19,6 +19,8 @@ func ToolSpecs() []ToolSpec {
 	return []ToolSpec{
 		readTool("atlas.queue", "Read the actor queue.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor filter.")})), "QueryService.Queue", queueTool),
 		readTool("atlas.next", "Read the next recommended ticket for an actor.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor filter.")})), "QueryService.Next", nextTool),
+		readTool("atlas.agent.available", "Read tickets the selected agent can act on now.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor such as agent:builder-1."), "agent_id": stringProp("Optional agent ID; maps to actor agent:<id>.")})), "QueryService.AgentAvailable", agentAvailableTool),
+		readTool("atlas.agent.pending", "Read tickets the selected agent is waiting on.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor such as agent:builder-1."), "agent_id": stringProp("Optional agent ID; maps to actor agent:<id>.")})), "QueryService.AgentPending", agentPendingTool),
 		readTool("atlas.search", "Search tickets with Atlas query syntax.", readProfiles, objectSchema([]string{"query"}, mergeProps(commonReadProps(), map[string]any{"query": stringProp("Atlas ticket search query.")})), "QueryService.Search", searchTool),
 		readTool("atlas.board", "Read the board grouped by status.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_status", "Optional per-status cursors keyed by Atlas status."), map[string]any{"project": stringProp("Optional project key."), "assignee": stringProp("Optional assignee actor."), "type": stringProp("Optional ticket type.")})), "QueryService.Board", boardTool),
 		readTool("atlas.ticket.view", "Read one ticket detail view.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID.")}), "QueryService.TicketDetail", ticketViewTool),
@@ -128,6 +130,39 @@ func queueTool(tc ToolContext, args map[string]any) (any, error) {
 func nextTool(tc ToolContext, args map[string]any) (any, error) {
 	actor := contracts.Actor(stringArg(args, "actor"))
 	return tc.Server.Workspace.Queries.Next(tc.Context, actor)
+}
+
+func agentAvailableTool(tc ToolContext, args map[string]any) (any, error) {
+	view, err := tc.Server.Workspace.Queries.AgentAvailable(tc.Context, agentActorArg(args))
+	if err != nil {
+		return nil, err
+	}
+	page := paginateSlice(view.Available, args, tc.Server.Options.MaxItems, tc.Server.Options.MaxItems)
+	view.Available = page.Items.([]service.AgentWorkEntry)
+	return map[string]any{"agent_work": view, "total": page.Total, "next_cursor": page.NextCursor}, nil
+}
+
+func agentPendingTool(tc ToolContext, args map[string]any) (any, error) {
+	view, err := tc.Server.Workspace.Queries.AgentPending(tc.Context, agentActorArg(args))
+	if err != nil {
+		return nil, err
+	}
+	page := paginateSlice(view.Pending, args, tc.Server.Options.MaxItems, tc.Server.Options.MaxItems)
+	view.Pending = page.Items.([]service.AgentWorkEntry)
+	return map[string]any{"agent_work": view, "total": page.Total, "next_cursor": page.NextCursor}, nil
+}
+
+func agentActorArg(args map[string]any) contracts.Actor {
+	if actor := strings.TrimSpace(stringArg(args, "actor")); actor != "" {
+		return contracts.Actor(actor)
+	}
+	if agentID := strings.TrimSpace(stringArg(args, "agent_id")); agentID != "" {
+		if strings.Contains(agentID, ":") {
+			return contracts.Actor(agentID)
+		}
+		return contracts.Actor("agent:" + agentID)
+	}
+	return ""
 }
 
 func searchTool(tc ToolContext, args map[string]any) (any, error) {

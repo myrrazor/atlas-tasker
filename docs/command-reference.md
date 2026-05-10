@@ -158,11 +158,15 @@
 - `tracker agent enable <AGENT-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker agent disable <AGENT-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker agent eligible <TICKET-ID>`
+- `tracker agent available [AGENT-ID] [--actor <ACTOR>]`
+- `tracker agent pending [AGENT-ID] [--actor <ACTOR>]`
 
 Behavior:
 - agent profiles live under `.tracker/agents/`
 - eligibility is deterministic and returns the same ranking order used later by dispatch
 - disabled agents and capability mismatches are reported explicitly in JSON mode
+- `available` lists tickets an agent can start, continue, review, or complete now
+- `pending` lists relevant tickets that are blocked by dependencies, review, owner gates, claims, capacity, or policy
 
 ## Runs
 
