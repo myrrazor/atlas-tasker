@@ -79,7 +79,11 @@ SECRET_PATTERNS = [
     re.compile(r"\bghp_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}\b"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
+    re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9/_-]+"),
+    re.compile(r'"type"\s*:\s*"service_account"'),
+    re.compile(r"\bsv=[^ \n]+&sig=[^ \n]+"),
     re.compile(r"\bsk-[A-Za-z0-9]{24,}\b"),
+    re.compile(r"(?i)\b(secret|token|password)\b\s*[:=]\s*['\"][^'\"]{8,}['\"]"),
     re.compile(r"/Users/masterhit\b"),
     re.compile(r"/private/var/folders\b"),
     re.compile(r"/var/folders\b"),
@@ -145,9 +149,6 @@ def public_markdown_files(repo: Path) -> list[Path]:
 
 
 def should_scan_public_doc(repo: Path, path: Path) -> bool:
-    rel = path.relative_to(repo).as_posix()
-    if rel.startswith("docs/release-proof/"):
-        return False
     return True
 
 
@@ -351,11 +352,11 @@ def check_leakage(repo: Path) -> None:
     for root in scan_roots:
         paths = [root] if root.is_file() else sorted(root.rglob("*"))
         for path in paths:
-            if not path.is_file() or path.suffix not in {".md", ".py", ".sh", ".txt", ".json", ".toml", ".yml", ".yaml"}:
+            if not path.is_file():
+                continue
+            if path.suffix not in {".md", ".py", ".sh", ".txt", ".json", ".toml", ".yml", ".yaml"} and path.name not in {"Makefile", "Dockerfile"}:
                 continue
             rel = path.relative_to(repo).as_posix()
-            if rel.startswith("docs/release-proof/"):
-                continue
             lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
             for lineno, line in enumerate(lines, start=1):
                 for pattern in SECRET_PATTERNS:

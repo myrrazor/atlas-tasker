@@ -9,6 +9,7 @@ import (
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
+	"github.com/myrrazor/atlas-tasker/internal/buildinfo"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 )
@@ -29,7 +30,7 @@ func NewServer(workspace *Workspace, options Options) *Server {
 }
 
 func (s *Server) SDKServer() *mcpsdk.Server {
-	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "atlas-tasker", Version: "v1.6.1"}, nil)
+	server := mcpsdk.NewServer(serverImplementation(), nil)
 	for _, spec := range ToolSpecs() {
 		enabled, _ := spec.Enabled(s.Options)
 		if !enabled {
@@ -70,6 +71,10 @@ func (s *Server) SDKServer() *mcpsdk.Server {
 		})
 	}
 	return server
+}
+
+func serverImplementation() *mcpsdk.Implementation {
+	return &mcpsdk.Implementation{Name: "atlas-tasker", Version: buildinfo.Current().Version}
 }
 
 func (s *Server) Serve(ctx context.Context) error {

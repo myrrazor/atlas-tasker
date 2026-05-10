@@ -29,10 +29,21 @@ Use this checklist before calling `v1.8.0-rc1` public-release ready. Local proof
 - [ ] run packaged smoke from the hosted binary
 - [ ] update `docs/release/v1.8-release-evidence.md` with hosted proof
 
+## GitHub Metadata
+
+- [ ] repository description names Atlas as a local-first task orchestrator for AI coding agents
+- [ ] topics include `cli`, `local-first`, `issue-tracker`, `ai-agents`, `codex`, and `mcp`
+- [ ] social preview image or screenshot/transcript is selected
+- [ ] Discussions enabled/disabled decision is recorded
+- [ ] GitHub private vulnerability reporting is enabled or an alternate private contact is published
+- [ ] first announcement draft links README, quickstart, release notes, and security limitations
+
 ## Stable Release
 
 - [ ] hosted RC gate is green
+- [ ] owner-selected `LICENSE` is committed
 - [ ] owner signs off in release evidence
+- [ ] human README/docs/aesthetic review is complete
 - [ ] README status changes from planned/blocked to released
 - [ ] changelog moves `v1.8.0-rc1` from candidate status to released status
 - [ ] installer docs point to verified hosted assets

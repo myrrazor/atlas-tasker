@@ -18,6 +18,22 @@ go vet ./...
 
 If your change affects release scripts, docs snippets, terminal output, MCP, signing, governance, redaction, audit, or backup behavior, add the relevant targeted proof in the PR body.
 
+## Local Setup
+
+Atlas is a Go CLI. Use the Go version from CI when possible.
+
+```bash
+git clone https://github.com/myrrazor/atlas-tasker.git
+cd atlas-tasker
+go version
+go build -o tracker ./cmd/tracker
+./tracker version --json
+go test ./...
+go vet ./...
+```
+
+Most examples in the docs use `./tracker` so they work immediately after a source build.
+
 ## Commit Style
 
 Use conventional commits:

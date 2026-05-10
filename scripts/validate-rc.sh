@@ -20,6 +20,12 @@ need_cmd go
 need_cmd git
 need_cmd "$PYTHON"
 
+case "$VERSION" in
+  ""|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._+-]*)
+    fail "unsafe_version"
+    ;;
+esac
+
 if [ -z "$WORK_PARENT" ]; then
   WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/atlas-rc-validation.XXXXXX")
 else
