@@ -17,6 +17,10 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 - [Review and approve work](tutorials/04-review-and-approve-work.md)
 - [Use the TUI](tutorials/05-use-the-tui.md)
 
+## Examples
+
+- [Demo outputs, prompt packs, and transcripts](examples/README.md)
+
 ## Concepts
 
 - [Tickets and projects](concepts/tickets-and-projects.md)
@@ -28,16 +32,29 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 
 ## Guides
 
+- [Codex](guides/codex.md)
+- [Codex `/goal`](guides/codex-goals.md)
+- [Claude Code](guides/claude-code.md)
+- [Generic agents](guides/generic-agent.md)
+- [MCP for agents](guides/mcp-for-agents.md)
 - [Doctor and repair](guides/doctor-and-repair.md)
 - [Release verification](guides/release-verification.md)
 - [Operations](guides/operations.md)
-- Codex, Claude Code, generic agent, and MCP workflow guides land in PR-805.
 
 ## Reference
 
 - [Commands](reference/commands.md)
+- [CLI behavior](reference/cli.md)
+- [Slash shell](reference/shell.md)
+- [TUI](reference/tui.md)
 - [JSON contracts](reference/json-contracts.md)
+- [JSON output](reference/json-output.md)
+- [Markdown format](reference/markdown-format.md)
+- [Config](reference/config.md)
+- [Events](reference/events.md)
 - [File layout](reference/file-layout.md)
+- [Storage layout](reference/storage-layout.md)
+- [Security model](reference/security-model.md)
 - [Release scripts](reference/release-scripts.md)
 - [Troubleshooting index](reference/troubleshooting.md)
 

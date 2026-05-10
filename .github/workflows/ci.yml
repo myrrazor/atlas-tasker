@@ -20,7 +20,7 @@ jobs:
           test -f docs/v1.6-base-marker.txt && cat docs/v1.6-base-marker.txt || true
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.2'
+          go-version: '1.26.3'
       - name: Run vet
         run: go vet ./...
       - name: Check install script syntax
@@ -40,6 +40,25 @@ jobs:
           test -f docs/v1.6-base-marker.txt && cat docs/v1.6-base-marker.txt || true
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.2'
+          go-version: '1.26.3'
       - name: Run stabilization smoke lane
         run: sh scripts/stability-smoke.sh
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.3'
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
+      - name: Run full-history secret scan
+        run: go run github.com/zricethezav/gitleaks/v8@v8.28.0 git . --redact --no-banner
+      - name: Generate SBOM
+        run: |
+          set -eu
+          go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0 app -json -output "$RUNNER_TEMP/atlas-tasker.cdx.json" -main cmd/tracker .
+          test -s "$RUNNER_TEMP/atlas-tasker.cdx.json"
