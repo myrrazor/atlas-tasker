@@ -5,13 +5,14 @@ Any coding agent can use Atlas if it follows a small contract: read before writi
 ## Minimum Contract
 
 ```bash
-tracker queue --actor <actor> --json
+tracker agent available <agent-id> --json
+tracker agent pending <agent-id> --json
 tracker inspect <TICKET-ID> --actor <actor> --json
 tracker ticket claim <TICKET-ID> --actor <actor>
 tracker ticket move <TICKET-ID> in_progress --actor <actor> --reason "start work"
 ```
 
-Agents should treat `tracker inspect` as the truth for policy, lease, gate, and review state.
+Agents should use `available` for work they can do now and `pending` to explain why they are waiting. Treat `tracker inspect` as the truth for policy, lease, gate, and review state.
 
 ## Prompt Contract
 
@@ -28,6 +29,7 @@ The brief is designed to be pasted into any agent prompt. It includes allowed ac
 - Prefer JSON for reads and Markdown for human/agent handoff text.
 - Attach test output or artifacts with run-scoped evidence.
 - Request review instead of marking work complete directly unless the active policy allows it.
+- Treat `dependency_blocked` as a stop sign. Only `done` unblocks a dependency.
 
 ## Safe Reads
 

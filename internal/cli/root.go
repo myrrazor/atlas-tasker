@@ -226,7 +226,7 @@ func newConfigCommand() *cobra.Command {
 func newIntegrationsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "integrations", Short: "Install agent guidance for Atlas Tasker"}
 	install := &cobra.Command{Use: "install", Short: "Install Atlas Tasker guidance into agent files"}
-	for _, target := range []string{"codex", "claude"} {
+	for _, target := range []string{"codex", "claude", "generic"} {
 		target := target
 		targetCmd := &cobra.Command{
 			Use:   target,
@@ -246,6 +246,12 @@ func newIntegrationsCommand() *cobra.Command {
 				}
 				pretty := fmt.Sprintf("installed %s guidance into %s", target, result.InstructionFile)
 				md := fmt.Sprintf("# %s integration\n\n- Instructions: %s\n- Guide: %s", target, result.InstructionFile, result.GuideFile)
+				for _, path := range result.SkillFiles {
+					md += fmt.Sprintf("\n- Skill: %s", path)
+				}
+				for _, path := range result.CommandFiles {
+					md += fmt.Sprintf("\n- Command template: %s", path)
+				}
 				return writeCommandOutput(command, result, md, pretty)
 			},
 		}
