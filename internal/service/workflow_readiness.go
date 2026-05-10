@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -16,6 +17,20 @@ func effectiveReviewer(ticket contracts.TicketSnapshot, policy EffectivePolicyVi
 		return ticket.Reviewer
 	}
 	return policy.RequiredReviewer
+}
+
+func approvalReviewerForActor(ticket contracts.TicketSnapshot, policy EffectivePolicyView, actor contracts.Actor, now time.Time) (contracts.Actor, bool) {
+	reviewer := effectiveReviewer(ticket, policy)
+	if reviewer != "" {
+		return reviewer, actor == reviewer
+	}
+	if ticket.Assignee != "" && actor == ticket.Assignee {
+		return actor, true
+	}
+	if ticket.Lease.Kind == contracts.LeaseKindWork && ticket.Lease.Active(now) && ticket.Lease.Actor == actor {
+		return actor, true
+	}
+	return "", false
 }
 
 func validateRequestedReviewer(ticket contracts.TicketSnapshot, policy EffectivePolicyView, reviewer contracts.Actor) error {

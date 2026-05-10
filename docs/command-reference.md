@@ -401,8 +401,8 @@ Rules:
 - governance TOML uses the same snake_case field names as JSON output, and `tracker governance validate` emits a structured report plus non-zero exit when any pack or policy is invalid
 - all protected write paths use one evaluator after legacy permission checks and before live side effects
 - gate rejection is not governed by `gate_approve`; PR-704 only protects gate approval and waiver
-- `ticket_approve` is a protected action, so governance separation-of-duties and override policies can guard reviewer approval before completion.
-- ticket-level `ticket approve` is a convenience path for the effective reviewer or `human:owner`; it rejects assignee/reviewer self-approval. Reviewer quorum workflows should bind collaborators to a project reviewer membership and resolve review gates with `tracker gate approve <GATE-ID> --actor <ACTOR> --reason <TEXT>` so approvals are auditable.
+- `ticket_approve` is a protected action, so opt-in governance separation-of-duties and override policies can guard reviewer approval before completion.
+- ticket-level `ticket approve` is a convenience path for the effective reviewer or `human:owner`; when no reviewer is configured, the assignee or active worker may approve their own work by default. Reviewer quorum workflows should bind collaborators to a project reviewer membership and resolve review gates with `tracker gate approve <GATE-ID> --actor <ACTOR> --reason <TEXT>` so approvals are auditable.
 - trusted-signature requirements are not bypassed by owner override
 - structured CSV/GitHub import apply uses `import_apply`; signed sync/bundle imports use `sync_import_apply` and `bundle_import_apply`
 - sync export/import governance runs before migration scaffolding writes, so denied operations do not stamp migration state
