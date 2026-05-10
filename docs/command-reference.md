@@ -139,13 +139,13 @@
 - `tracker backup list`
 - `tracker backup view <BACKUP-ID>`
 - `tracker backup verify <BACKUP-ID|PATH>`
-- `tracker backup restore-plan <BACKUP-ID|PATH>`
+- `tracker backup restore-plan <BACKUP-ID|PATH> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup restore-apply <BACKUP-ID|PATH> --yes [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup drill`
 - `tracker admin security-status`
 - `tracker admin trust-store`
 - `tracker admin recovery-status`
-- `tracker goal brief <TICKET-ID|RUN-ID>`
+- `tracker goal brief <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal manifest <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal verify <MANIFEST-ID|PATH>`
 
@@ -186,7 +186,7 @@ Rules:
 - dispatch creates a run snapshot first, then the managed worktree and runtime directory
 - one active run per ticket is the default; parallel dispatch requires `allow_parallel_runs=true`
 - `run attach` is idempotent for the same provider/session pair
-- `run open` is read-only and only reports the canonical runtime, evidence, and worktree paths
+- `run open` is read-only and reports the canonical runtime, evidence, and worktree paths; if `needs_launch=true`, run `tracker run launch <RUN-ID> --actor <ACTOR> --reason "prepare launch files"` before handing the files to an agent
 - `run launch` writes `brief.md`, `context.json`, `launch.codex.txt`, and `launch.claude.txt` under `.tracker/runtime/<run-id>/`
 - `run launch` is idempotent by default; `--refresh` rewrites stale runtime artifacts
 - cleanup is explicit and only allowed after `completed`, `failed`, or `aborted`
@@ -342,7 +342,7 @@ Rules:
 - `tracker backup list`
 - `tracker backup view <BACKUP-ID>`
 - `tracker backup verify <BACKUP-ID|PATH>`
-- `tracker backup restore-plan <BACKUP-ID|PATH>`
+- `tracker backup restore-plan <BACKUP-ID|PATH> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup restore-apply <BACKUP-ID|PATH> --yes [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup drill`
 - `tracker admin security-status`
@@ -360,15 +360,15 @@ Rules:
 
 ## Goal Manifests
 
-- `tracker goal brief <TICKET-ID|RUN-ID>`
+- `tracker goal brief <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal manifest <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal verify <MANIFEST-ID|PATH>`
 
 Rules:
 
-- goal briefs are pure derived output for agent handoff
+- goal briefs are pure derived output for agent handoff; optional actor/reason flags are accepted for copy-paste parity and do not create an event
 - goal manifests write local derived artifacts under `.tracker/goal/manifests/` and require actor/reason because Atlas records the manifest creation event
-- goal markdown uses the stable section order from `docs/goal-manifests.md`
+- goal markdown uses the ticket title as the H1, puts ticket/run context in `Ticket / Run`, and uses the stable section order from `docs/goal-manifests.md`
 - manifests bind `policy_snapshot_hash`, `trust_snapshot_hash`, and `source_hash`
 - verification checks the stored manifest snapshot and signatures, not current live policy meaning
 
@@ -388,6 +388,7 @@ Rules:
 - governance TOML uses the same snake_case field names as JSON output, and `tracker governance validate` emits a structured report plus non-zero exit when any pack or policy is invalid
 - all protected write paths use one evaluator after legacy permission checks and before live side effects
 - gate rejection is not governed by `gate_approve`; PR-704 only protects gate approval and waiver
+- ticket-level `ticket approve` is a convenience path for the assigned reviewer or `human:owner`; reviewer quorum workflows should bind collaborators to a project reviewer membership and resolve review gates with `tracker gate approve <GATE-ID> --actor <ACTOR> --reason <TEXT>` so approvals are auditable
 - trusted-signature requirements are not bypassed by owner override
 - structured CSV/GitHub import apply uses `import_apply`; signed sync/bundle imports use `sync_import_apply` and `bundle_import_apply`
 - sync export/import governance runs before migration scaffolding writes, so denied operations do not stamp migration state
@@ -493,6 +494,7 @@ Rules:
 - Atlas bundle export writes three sidecars under `.tracker/exports/`: the `.tar.gz` archive, `.manifest.json`, and `.sha256`
 - Atlas bundle export includes active governance packs and applied policies under `.tracker/governance/`
 - `export verify` works by bundle id or direct archive path and validates manifest membership plus per-file checksums
+- direct-path verification reports missing sidecars with structured reason strings such as `sidecar_manifest_missing:<path>` or `sidecar_checksum_missing:<path>` instead of raw filesystem errors
 - Atlas bundle import is snapshot-first: it restores canonical markdown snapshots into the target workspace, but it does not copy the source workspace's `.tracker/events/` files into the live target workspace
 - structured Jira CSV and GitHub JSON imports are create-only in v1.5; existing ticket ids are reported as conflicts during preview and block apply
 - GitHub JSON import is metadata-link import only; it creates Atlas tickets and preserves the external source URL as import provenance
@@ -503,6 +505,7 @@ Rules:
 - `tracker evidence list <RUN-ID>`
 - `tracker evidence view <EVIDENCE-ID>`
 - `tracker run checkpoint <RUN-ID> [--title <TEXT>] [--body <TEXT>] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker run evidence add <RUN-ID> --type <note|test_result|file_diff_summary|log_excerpt|screenshot|artifact_ref|commit_ref|manual_assertion|unresolved_question|review_checklist> [--title <TEXT>] [--body <TEXT>] [--artifact <PATH>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker run evidence add <RUN-ID> --type <TYPE> [--title <TEXT>] [--body <TEXT>] [--artifact <PATH>] [--supersedes <EVIDENCE-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 
 Rules:
@@ -549,13 +552,19 @@ Palette shortcuts:
 - `tracker project policy get <KEY>`
 - `tracker project policy set <KEY> [flags]`
 
+Project keys are path-derived identifiers and must match `^[A-Z][A-Z0-9_-]{0,31}$`. Atlas rejects slashes, dots, whitespace, shell home markers, control characters, and lowercase project keys instead of normalizing them into paths.
+
+Template names are path-derived identifiers under `.tracker/templates/` and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`.
+
 ## Ticket CRUD
 
 - `tracker ticket create --project <KEY> --title <TEXT> [--type <epic|task|bug|subtask>] [--template <NAME>] [flags]`
 - `tracker ticket view <ID>`
 - `tracker ticket edit <ID> [flags]`
-- `tracker ticket delete <ID>`
+- `tracker ticket archive <ID>` (`ticket delete` is kept as a compatibility alias)
 - `tracker ticket list [--project <KEY>] [--status <STATUS>] [--assignee <ACTOR>] [--type <TYPE>]`
+
+Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Ticket titles are normalized for terminal display: layout controls, C0/C1 controls, and bidirectional override codepoints are removed or flattened before they can affect board, queue, TUI, or Markdown rendering.
 
 ## Ticket Mutation
 
@@ -567,7 +576,8 @@ Palette shortcuts:
 - `tracker ticket claim <ID> [--actor <ACTOR>]`
 - `tracker ticket release <ID> [--actor <ACTOR>]`
 - `tracker ticket heartbeat <ID> [--actor <ACTOR>]`
-- `tracker ticket request-review <ID> [--actor <ACTOR>]`
+- `tracker ticket request-review <ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `ticket request-review` now opens or reuses a review gate for the ticket so `gate list`, `approvals`, and `inbox` show the review work explicitly
 - `tracker ticket approve <ID> [--actor <ACTOR>]`
 - `tracker ticket reject <ID> --reason <TEXT> [--actor <ACTOR>]`
 - `tracker ticket complete <ID> [--actor <ACTOR>]`
@@ -796,7 +806,7 @@ Useful config keys:
 tracker v1.8.0-rc1
 commit: abc123
 build date: 2026-05-07T04:00:00Z
-go: go1.26.2
+go: go1.26.3
 platform: darwin/arm64
 ```
 
@@ -809,7 +819,7 @@ platform: darwin/arm64
   "version": "v1.8.0-rc1",
   "commit": "abc123",
   "build_date": "2026-05-07T04:00:00Z",
-  "go_version": "go1.26.2",
+  "go_version": "go1.26.3",
   "platform": "darwin/arm64"
 }
 ```

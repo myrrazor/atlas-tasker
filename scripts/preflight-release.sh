@@ -26,6 +26,14 @@ fail() {
   exit 1
 }
 
+validate_release_version() {
+  case "$VERSION" in
+    ""|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._+-]*)
+      fail "unsafe_version" "VERSION may only contain letters, numbers, dot, underscore, plus, and hyphen"
+      ;;
+  esac
+}
+
 detect_os() {
   case "$(uname -s)" in
     Darwin) printf 'darwin' ;;
@@ -46,6 +54,8 @@ if [ "${1:-}" = "--hosted" ] || [ "${HOSTED_RELEASE_PROOF:-0}" = "1" ]; then
   exec sh "$ROOT_DIR/scripts/preflight-release-proof.sh"
 fi
 
+validate_release_version
+
 need_cmd go
 need_cmd git
 need_cmd grep
@@ -59,7 +69,8 @@ for script in \
   scripts/verify-release.sh \
   scripts/release-rehearsal.sh \
   scripts/preflight-release-proof.sh \
-  scripts/preflight-release.sh
+  scripts/preflight-release.sh \
+  scripts/validate-rc.sh
 do
   sh -n "$ROOT_DIR/$script" || fail "script_syntax_failed" "shell syntax check failed for $script"
 done

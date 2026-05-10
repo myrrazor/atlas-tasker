@@ -16,14 +16,14 @@ You can keep the binary local to the repo or move it onto your `PATH`. Unstamped
 
 ## Install From A Published Release
 
-The installer expects a real GitHub release with archives and `checksums.txt`. It is not proof by itself.
+The installer expects a real GitHub release with archives, `checksums.txt`, and GitHub artifact attestations. It verifies checksums before installing and verifies attestations by default.
 
 ```bash
 VERSION=v1.8.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 "$HOME/.local/bin/tracker" version --json
 ```
 
-The one-line form is convenient once a release is trusted:
+The one-line form is convenient once a release is trusted and hosted proof is green:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
@@ -47,5 +47,6 @@ VERSION=v1.8.0-rc1 ./scripts/verify-release.sh ./tracker_1.8.0-rc1_darwin_arm64.
 - `gh` is not authenticated: attestation verification may fail even when checksums are correct.
 - The token cannot read release or Actions settings: hosted proof remains blocked.
 - Local rehearsal archives are not hosted assets: they can prove packaging shape, not public provenance.
+- `RELEASE_BASE_URL must use https://`: local rehearsals must set `ALLOW_INSECURE_RELEASE_BASE_URL=1` and use loopback only.
 
 Read [public release gates](release/public-release-gates.md) for the current release-readiness rules.

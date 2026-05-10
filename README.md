@@ -55,24 +55,31 @@ For a longer end-to-end example, read the [demo workspace transcript](docs/examp
 
 Atlas works best when humans and agents share the same ticket flow:
 
+The capture examples below use `jq`; without it, copy the `run_id` and `gate_id` from the JSON output.
+
 ```bash
-tracker agent create builder-1 --name "Builder One" --provider codex --capability go --actor human:owner --reason "register builder"
-tracker run dispatch APP-1 --agent builder-1 --actor human:owner --reason "start implementation"
-tracker run checkpoint <RUN-ID> --title "Implemented first pass" --body "Tests are green locally." --actor agent:builder-1 --reason "status update"
-tracker run evidence add <RUN-ID> --type note --title "Test proof" --body "go test ./... passed" --actor agent:builder-1 --reason "attach proof"
-tracker run handoff <RUN-ID> --next-actor agent:reviewer-1 --next-gate review --actor agent:builder-1 --reason "ready for review"
+./tracker agent create builder-1 --name "Builder One" --provider codex --capability go --actor human:owner --reason "register builder"
+RUN_ID=$(./tracker run dispatch APP-1 --agent builder-1 --actor human:owner --reason "start implementation" --json | jq -r '.payload.run_id')
+./tracker run launch "$RUN_ID" --actor human:owner --reason "prepare launch files"
+./tracker run open "$RUN_ID" --json
+./tracker run checkpoint "$RUN_ID" --title "Implemented first pass" --body "Tests are green locally." --actor agent:builder-1 --reason "status update"
+./tracker run evidence add "$RUN_ID" --type note --title "Test proof" --body "go test ./... passed" --actor agent:builder-1 --reason "attach proof"
+./tracker run handoff "$RUN_ID" --next-actor agent:reviewer-1 --next-gate review --actor agent:builder-1 --reason "ready for review"
+GATE_ID=$(./tracker gate list --run "$RUN_ID" --json | jq -r '.items[0].gate_id')
+./tracker gate approve "$GATE_ID" --actor agent:reviewer-1 --reason "reviewed evidence"
+./tracker ticket complete APP-1 --actor human:owner --reason "done"
 ```
 
 Goal manifests help coding agents start with the right context:
 
 ```bash
-tracker goal brief APP-1 --md
-tracker goal manifest APP-1 --actor human:owner --reason "prepare Codex goal" --md
+./tracker goal brief APP-1 --md
+./tracker goal manifest APP-1 --actor human:owner --reason "prepare Codex goal" --md
 ```
 
 ## Install And Verify
 
-The one-line installer is intended for published releases:
+The one-line installer is intended for published releases. Do not use it for `v1.8.0-rc1` until GitHub release assets exist and the hosted proof in `docs/release/public-release-gates.md` is green.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
@@ -86,7 +93,7 @@ VERSION=v1.8.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 "$HOME/.local/bin/tracker" version --json
 ```
 
-`scripts/verify-release.sh` verifies release checksums and, by default, GitHub artifact attestations. Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.
+`scripts/install.sh` now verifies release checksums before installing and verifies GitHub artifact attestations by default. `scripts/verify-release.sh` performs the same archive verification directly. Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.
 
 ## Docs
 
