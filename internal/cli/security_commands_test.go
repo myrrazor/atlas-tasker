@@ -9,25 +9,29 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
-func TestV17ReadStubJSONEnvelope(t *testing.T) {
+func TestV17AdminSecurityStatusJSONEnvelope(t *testing.T) {
+	withTempWorkspace(t)
+	if out, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v\n%s", err, out)
+	}
 	cmd := NewRootCommand()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
 	cmd.SetArgs([]string{"admin", "security-status", "--json"})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("admin security status stub should succeed: %v\n%s", err, out.String())
+		t.Fatalf("admin security status should succeed: %v\n%s", err, out.String())
 	}
 	var got struct {
 		FormatVersion string `json:"format_version"`
 		Kind          string `json:"kind"`
 		GeneratedAt   string `json:"generated_at"`
-		Warnings      []struct {
-			Code string `json:"code"`
-		} `json:"warnings"`
+		PublicKeys    int    `json:"public_keys"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatalf("decode json: %v\n%s", err, out.String())
@@ -35,34 +39,457 @@ func TestV17ReadStubJSONEnvelope(t *testing.T) {
 	if got.FormatVersion != jsonFormatVersion || got.Kind != "admin_security_status" || got.GeneratedAt == "" {
 		t.Fatalf("unexpected v1.7 read envelope: %+v", got)
 	}
-	if len(got.Warnings) != 1 || got.Warnings[0].Code != "v1_7_contract_only" {
-		t.Fatalf("expected v1.7 contract-only warning: %+v", got.Warnings)
+}
+
+func TestV17BackupAndGoalCLI(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Backup goal", "--description", "Detailed agent objective.", "--type", "task", "--actor", "human:owner")
+	backupRaw := must("backup", "create", "--actor", "human:owner", "--reason", "release backup", "--json")
+	var backup struct {
+		Kind     string `json:"kind"`
+		Snapshot struct {
+			BackupID     string `json:"backup_id"`
+			ManifestHash string `json:"manifest_hash"`
+		} `json:"snapshot"`
+	}
+	if err := json.Unmarshal([]byte(backupRaw), &backup); err != nil {
+		t.Fatalf("parse backup create: %v\n%s", err, backupRaw)
+	}
+	if backup.Kind != "backup_detail" || backup.Snapshot.BackupID == "" || backup.Snapshot.ManifestHash == "" {
+		t.Fatalf("unexpected backup create: %#v", backup)
+	}
+	verifyRaw := must("backup", "verify", backup.Snapshot.BackupID, "--json")
+	if !strings.Contains(verifyRaw, `"kind": "backup_verify_result"`) || !strings.Contains(verifyRaw, `"verified": true`) {
+		t.Fatalf("backup verify should report integrity:\n%s", verifyRaw)
+	}
+	planRaw := must("backup", "restore-plan", backup.Snapshot.BackupID, "--actor", "human:owner", "--reason", "preview restore", "--json")
+	if !strings.Contains(planRaw, `"kind": "backup_restore_plan"`) {
+		t.Fatalf("restore plan should be concrete json:\n%s", planRaw)
+	}
+	drillRaw := must("backup", "drill", "--json")
+	if !strings.Contains(drillRaw, `"side_effect_free": true`) {
+		t.Fatalf("recovery drill should be side-effect free:\n%s", drillRaw)
+	}
+	briefRaw := must("goal", "brief", "APP-1", "--json")
+	var brief struct {
+		Kind  string `json:"kind"`
+		Brief struct {
+			Sections []struct {
+				Heading string `json:"heading"`
+			} `json:"sections"`
+		} `json:"brief"`
+	}
+	if err := json.Unmarshal([]byte(briefRaw), &brief); err != nil {
+		t.Fatalf("parse goal brief: %v\n%s", err, briefRaw)
+	}
+	if brief.Kind != "goal_brief" || strings.Join(goalJSONHeadings(brief.Brief.Sections), "\n") != strings.Join(contracts.GoalManifestSectionOrder, "\n") {
+		t.Fatalf("goal brief headings mismatch: %#v", brief)
+	}
+	briefMD := must("goal", "brief", "APP-1", "--md")
+	assertGoalMarkdownHeadings(t, briefMD)
+	goalRaw := must("goal", "manifest", "APP-1", "--actor", "human:owner", "--reason", "prepare goal", "--json")
+	var goal struct {
+		Kind     string `json:"kind"`
+		Manifest struct {
+			ManifestID string `json:"manifest_id"`
+			Sections   []struct {
+				Heading string `json:"heading"`
+			} `json:"sections"`
+		} `json:"manifest"`
+	}
+	if err := json.Unmarshal([]byte(goalRaw), &goal); err != nil {
+		t.Fatalf("parse goal manifest: %v\n%s", err, goalRaw)
+	}
+	if goal.Kind != "goal_manifest" || goal.Manifest.ManifestID == "" || len(goal.Manifest.Sections) != len(contracts.GoalManifestSectionOrder) {
+		t.Fatalf("unexpected goal manifest: %#v", goal)
+	}
+	if strings.Join(goalJSONHeadings(goal.Manifest.Sections), "\n") != strings.Join(contracts.GoalManifestSectionOrder, "\n") {
+		t.Fatalf("goal manifest headings mismatch: %#v", goal.Manifest.Sections)
+	}
+	manifestMD := must("goal", "manifest", "APP-1", "--actor", "human:owner", "--reason", "prepare markdown goal", "--md")
+	assertGoalMarkdownHeadings(t, manifestMD)
+	goalVerify := must("goal", "verify", goal.Manifest.ManifestID, "--json")
+	if !strings.Contains(goalVerify, `"kind": "goal_manifest_verify_result"`) || !strings.Contains(goalVerify, "missing_signature") {
+		t.Fatalf("unsigned goal should verify as missing signature:\n%s", goalVerify)
 	}
 }
 
-func TestV17PendingVerificationReadsFailClosed(t *testing.T) {
-	for _, args := range [][]string{
-		{"verify", "backup", "no-such-file"},
-		{"governance", "validate"},
-		{"backup", "verify", "backup_1"},
-		{"backup", "drill"},
-	} {
-		cmd := NewRootCommand()
-		var out bytes.Buffer
-		cmd.SetOut(&out)
-		cmd.SetErr(&out)
-		cmd.SetArgs(args)
-		err := cmd.Execute()
-		if err == nil || !strings.Contains(err.Error(), "frozen for v1.7 follow-up implementation") {
-			t.Fatalf("%v should fail closed while pending, got %v\n%s", args, err, out.String())
+func goalJSONHeadings(sections []struct {
+	Heading string `json:"heading"`
+}) []string {
+	out := make([]string, 0, len(sections))
+	for _, section := range sections {
+		out = append(out, section.Heading)
+	}
+	return out
+}
+
+func assertGoalMarkdownHeadings(t *testing.T, markdown string) {
+	t.Helper()
+	if strings.Contains(markdown, "Current ticket/run") || strings.Contains(markdown, "Evidence needed") || strings.Contains(markdown, "Current blockers") || strings.Contains(markdown, "Context links") {
+		t.Fatalf("goal markdown contains old headings:\n%s", markdown)
+	}
+	if strings.Contains(markdown, "\n## Goal\n") {
+		t.Fatalf("goal markdown should use the H1 as the goal title instead of duplicating ## Goal:\n%s", markdown)
+	}
+	if !strings.Contains(markdown, "# Backup goal") || !strings.Contains(markdown, "Detailed agent objective.") {
+		t.Fatalf("goal markdown should use title as H1 and description as objective:\n%s", markdown)
+	}
+	headings := []string{}
+	for _, line := range strings.Split(markdown, "\n") {
+		if strings.HasPrefix(line, "## ") {
+			headings = append(headings, strings.TrimPrefix(line, "## "))
 		}
-		if strings.TrimSpace(out.String()) != "" {
-			t.Fatalf("%v should not write success-shaped output while failing closed:\n%s", args, out.String())
+	}
+	if strings.Join(headings, "\n") != strings.Join(goalMarkdownSectionOrder(), "\n") {
+		t.Fatalf("goal markdown headings mismatch:\ngot  %v\nwant %v\n%s", headings, goalMarkdownSectionOrder(), markdown)
+	}
+}
+
+func goalMarkdownSectionOrder() []string {
+	out := make([]string, 0, len(contracts.GoalManifestSectionOrder)-1)
+	for _, heading := range contracts.GoalManifestSectionOrder {
+		if heading != "Goal" {
+			out = append(out, heading)
 		}
+	}
+	return out
+}
+
+func TestV17GovernanceCLIAndProtectedCompletion(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Governed", "--type", "task", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_review", "--actor", "human:owner")
+	must("ticket", "approve", "APP-1", "--actor", "human:owner")
+
+	createdRaw := must(
+		"governance", "pack", "create", "Release quorum",
+		"--scope", "project:APP",
+		"--protected-action", "ticket_complete",
+		"--quorum-count", "1",
+		"--actor", "human:owner",
+		"--reason", "protect release completion",
+		"--json",
+	)
+	var created struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Pack          struct {
+			PackID   string `json:"pack_id"`
+			Policies []struct {
+				ScopeKind          string   `json:"scope_kind"`
+				ScopeID            string   `json:"scope_id"`
+				ProtectedActions   []string `json:"protected_actions"`
+				RequiredSignatures int      `json:"required_signatures"`
+				QuorumRules        []struct {
+					RequiredCount int `json:"required_count"`
+				} `json:"quorum_rules"`
+			} `json:"policies"`
+		} `json:"pack"`
+	}
+	if err := json.Unmarshal([]byte(createdRaw), &created); err != nil {
+		t.Fatalf("parse governance pack create: %v\n%s", err, createdRaw)
+	}
+	if created.FormatVersion != jsonFormatVersion || created.Kind != "governance_pack_detail" || created.Pack.PackID != "release-quorum" || len(created.Pack.Policies) != 1 {
+		t.Fatalf("unexpected governance pack create payload: %#v", created)
+	}
+	if created.Pack.Policies[0].ScopeKind != "project" || created.Pack.Policies[0].ScopeID != "APP" || len(created.Pack.Policies[0].QuorumRules) != 1 || created.Pack.Policies[0].QuorumRules[0].RequiredCount != 1 {
+		t.Fatalf("unexpected governance policy payload: %#v", created.Pack.Policies[0])
+	}
+	must("governance", "pack", "apply", created.Pack.PackID, "--scope", "project:APP", "--actor", "human:owner", "--reason", "enable release policy")
+
+	validateRaw := must("governance", "validate", "--json")
+	var validation struct {
+		Kind     string `json:"kind"`
+		Valid    bool   `json:"valid"`
+		Policies int    `json:"policies"`
+		Packs    int    `json:"packs"`
+	}
+	if err := json.Unmarshal([]byte(validateRaw), &validation); err != nil {
+		t.Fatalf("parse governance validate: %v\n%s", err, validateRaw)
+	}
+	if validation.Kind != "governance_validation_result" || !validation.Valid || validation.Policies != 1 || validation.Packs != 1 {
+		t.Fatalf("unexpected governance validation: %#v", validation)
+	}
+
+	blockedRaw := must("governance", "simulate", "ticket_complete", "--ticket", "APP-1", "--actor", "human:owner", "--json")
+	var blocked struct {
+		Explanation struct {
+			Allowed     bool     `json:"allowed"`
+			ReasonCodes []string `json:"reason_codes"`
+		} `json:"explanation"`
+	}
+	if err := json.Unmarshal([]byte(blockedRaw), &blocked); err != nil {
+		t.Fatalf("parse governance simulate: %v\n%s", err, blockedRaw)
+	}
+	if blocked.Explanation.Allowed || !strings.Contains(strings.Join(blocked.Explanation.ReasonCodes, ","), "quorum_unsatisfied") {
+		t.Fatalf("missing approval should block simulated completion: %#v", blocked.Explanation)
+	}
+	allowedRaw := must("governance", "simulate", "ticket_complete", "--ticket", "APP-1", "--actor", "human:owner", "--approval-actor", "human:owner", "--json")
+	if !strings.Contains(allowedRaw, `"allowed": true`) && !strings.Contains(allowedRaw, `"allowed":true`) {
+		t.Fatalf("approval actor should allow simulation:\n%s", allowedRaw)
+	}
+	if out, err := runCLI(t, "ticket", "complete", "APP-1", "--actor", "human:owner", "--reason", "ship"); err == nil || !strings.Contains(out+err.Error(), "quorum_unsatisfied") {
+		t.Fatalf("protected ticket complete should enforce governance, err=%v out=%s", err, out)
+	}
+}
+
+func TestV17GovernanceOwnerOverrideIsEvented(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Override", "--type", "task", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner")
+	must("ticket", "move", "APP-1", "in_review", "--actor", "human:owner")
+	must("ticket", "approve", "APP-1", "--actor", "human:owner")
+	packRaw := must(
+		"governance", "pack", "create", "Release quorum",
+		"--scope", "project:APP",
+		"--protected-action", "ticket_complete",
+		"--quorum-count", "2",
+		"--allow-owner-override",
+		"--actor", "human:owner",
+		"--reason", "protect owner override",
+		"--json",
+	)
+	var pack struct {
+		Pack struct {
+			PackID string `json:"pack_id"`
+		} `json:"pack"`
+	}
+	if err := json.Unmarshal([]byte(packRaw), &pack); err != nil {
+		t.Fatalf("parse override pack: %v\n%s", err, packRaw)
+	}
+	must("governance", "pack", "apply", pack.Pack.PackID, "--scope", "project:APP", "--actor", "human:owner", "--reason", "enable override policy")
+	overrideRaw := must("governance", "simulate", "ticket_complete", "--ticket", "APP-1", "--actor", "human:owner", "--reason", "emergency release override", "--json")
+	if !strings.Contains(overrideRaw, `"allowed": true`) && !strings.Contains(overrideRaw, `"allowed":true`) {
+		t.Fatalf("governance simulate should model reason-backed owner override:\n%s", overrideRaw)
+	}
+	if !strings.Contains(overrideRaw, "owner_override_applied") {
+		t.Fatalf("governance simulate should report owner override:\n%s", overrideRaw)
+	}
+	must("ticket", "complete", "APP-1", "--actor", "human:owner", "--reason", "emergency release override")
+	history := must("ticket", "history", "APP-1", "--json")
+	if !strings.Contains(history, "governance.override.recorded") {
+		t.Fatalf("owner override should be evented in ticket history:\n%s", history)
+	}
+}
+
+func TestV17GovernanceValidateFailsForInvalidPolicy(t *testing.T) {
+	withTempWorkspace(t)
+	if out, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v\n%s", err, out)
+	}
+	if err := os.MkdirAll(storage.GovernancePoliciesDir("."), 0o755); err != nil {
+		t.Fatalf("mkdir governance policies: %v", err)
+	}
+	raw := []byte(`
+policy_id = "invalid-ticket-signature"
+name = "Invalid ticket signature"
+scope_kind = "workspace"
+protected_actions = ["ticket_complete"]
+required_signatures = 1
+schema_version = 1
+`)
+	if err := os.WriteFile(filepath.Join(storage.GovernancePoliciesDir("."), "invalid-ticket-signature.toml"), raw, 0o644); err != nil {
+		t.Fatalf("write invalid governance policy: %v", err)
+	}
+	out, err := runCLI(t, "governance", "validate", "--json")
+	if err == nil {
+		t.Fatalf("invalid governance should fail validation:\n%s", out)
+	}
+	if !strings.Contains(out, `"valid": false`) && !strings.Contains(out, `"valid":false`) {
+		t.Fatalf("invalid governance output should include valid=false:\n%s", out)
+	}
+	if !strings.Contains(out+err.Error(), "required_signatures is not supported") {
+		t.Fatalf("validation output should explain the invalid policy, err=%v out=%s", err, out)
+	}
+}
+
+func TestV17ClassifyAndRedactCLI(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Public", "--type", "task", "--description", "PUBLIC-CLI-CONTENT", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Restricted", "--type", "task", "--description", "SECRET-CLI-REDACT", "--actor", "human:owner")
+
+	classifiedRaw := must("classify", "set", "ticket:APP-2", "restricted", "--actor", "human:owner", "--reason", "cli restricted label", "--json")
+	var classified struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Level         string `json:"level"`
+		EntityKind    string `json:"entity_kind"`
+		EntityID      string `json:"entity_id"`
+	}
+	if err := json.Unmarshal([]byte(classifiedRaw), &classified); err != nil {
+		t.Fatalf("parse classify set: %v\n%s", err, classifiedRaw)
+	}
+	if classified.FormatVersion != jsonFormatVersion || classified.Kind != "classification_detail" || classified.Level != "restricted" || classified.EntityID != "APP-2" {
+		t.Fatalf("unexpected classification detail: %#v", classified)
+	}
+	listRaw := must("classify", "list", "--project", "APP", "--json")
+	if !strings.Contains(listRaw, `"entity_id": "APP-2"`) && !strings.Contains(listRaw, `"entity_id":"APP-2"`) {
+		t.Fatalf("classification list should include APP-2 label:\n%s", listRaw)
+	}
+
+	previewRaw := must("redact", "preview", "--scope", "workspace", "--target", "export", "--actor", "human:owner", "--reason", "preview cli redaction", "--json")
+	var preview struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Preview       struct {
+			PreviewID string `json:"preview_id"`
+			Items     []struct {
+				EntityID  string `json:"entity_id"`
+				FieldPath string `json:"field_path"`
+				Action    string `json:"action"`
+			} `json:"items"`
+		} `json:"preview"`
+	}
+	if err := json.Unmarshal([]byte(previewRaw), &preview); err != nil {
+		t.Fatalf("parse redaction preview: %v\n%s", err, previewRaw)
+	}
+	if preview.FormatVersion != jsonFormatVersion || preview.Kind != "redaction_preview" || preview.Preview.PreviewID == "" || len(preview.Preview.Items) == 0 {
+		t.Fatalf("unexpected redaction preview: %#v", preview)
+	}
+
+	exportRaw := must("redact", "export", "--scope", "workspace", "--preview-id", preview.Preview.PreviewID, "--actor", "human:owner", "--reason", "create cli redacted export", "--json")
+	var redacted struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Bundle        struct {
+			BundleID           string `json:"bundle_id"`
+			RedactionPreviewID string `json:"redaction_preview_id"`
+		} `json:"bundle"`
+		Omitted int `json:"omitted"`
+	}
+	if err := json.Unmarshal([]byte(exportRaw), &redacted); err != nil {
+		t.Fatalf("parse redacted export: %v\n%s", err, exportRaw)
+	}
+	if redacted.FormatVersion != jsonFormatVersion || redacted.Kind != "redaction_export_result" || redacted.Bundle.BundleID == "" || redacted.Bundle.RedactionPreviewID != preview.Preview.PreviewID || redacted.Omitted == 0 {
+		t.Fatalf("unexpected redacted export: %#v", redacted)
+	}
+	verifyRaw := must("redact", "verify", redacted.Bundle.BundleID, "--json")
+	if !strings.Contains(verifyRaw, `"verified": true`) && !strings.Contains(verifyRaw, `"verified":true`) {
+		t.Fatalf("redacted export should verify:\n%s", verifyRaw)
+	}
+}
+
+func TestV17AuditCLIReportSignExportAndVerify(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Audited", "--type", "task", "--actor", "human:owner")
+	keyRaw := must("key", "generate", "--scope", "collaborator", "--owner-id", "owner", "--actor", "human:owner", "--reason", "audit signing key", "--json")
+	var key struct {
+		PublicKey struct {
+			PublicKeyID string `json:"public_key_id"`
+		} `json:"public_key"`
+	}
+	if err := json.Unmarshal([]byte(keyRaw), &key); err != nil {
+		t.Fatalf("parse key: %v\n%s", err, keyRaw)
+	}
+	must("trust", "bind-key", "owner", key.PublicKey.PublicKeyID, "--actor", "human:owner", "--reason", "trust audit signer")
+
+	reportRaw := must("audit", "report", "--scope", "ticket:APP-1", "--actor", "human:owner", "--reason", "release audit", "--json")
+	var report struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Report        struct {
+			AuditReportID string `json:"audit_report_id"`
+			ScopeKind     string `json:"scope_kind"`
+			ScopeID       string `json:"scope_id"`
+		} `json:"report"`
+	}
+	if err := json.Unmarshal([]byte(reportRaw), &report); err != nil {
+		t.Fatalf("parse audit report: %v\n%s", err, reportRaw)
+	}
+	if report.FormatVersion != jsonFormatVersion || report.Kind != "audit_report_detail" || report.Report.AuditReportID == "" || report.Report.ScopeKind != "ticket" || report.Report.ScopeID != "APP-1" {
+		t.Fatalf("unexpected audit report output: %#v", report)
+	}
+	must("sign", "audit", report.Report.AuditReportID, "--signing-key", key.PublicKey.PublicKeyID, "--actor", "human:owner", "--reason", "sign audit report")
+	reportVerify := must("audit", "verify", report.Report.AuditReportID, "--json")
+	if !strings.Contains(reportVerify, `"state": "trusted_valid"`) && !strings.Contains(reportVerify, `"state":"trusted_valid"`) {
+		t.Fatalf("signed audit report should verify trusted:\n%s", reportVerify)
+	}
+	if out, err := runCLI(t, "verify", "audit-packet", report.Report.AuditReportID, "--json"); err == nil || !strings.Contains(out+err.Error(), "expected audit packet") {
+		t.Fatalf("verify audit-packet should reject report ids, err=%v out=%s", err, out)
+	}
+
+	packetRaw := must("audit", "export", report.Report.AuditReportID, "--actor", "human:owner", "--reason", "export packet", "--json")
+	var packet struct {
+		Kind   string `json:"kind"`
+		Packet struct {
+			PacketID string `json:"packet_id"`
+		} `json:"packet"`
+	}
+	if err := json.Unmarshal([]byte(packetRaw), &packet); err != nil {
+		t.Fatalf("parse audit packet: %v\n%s", err, packetRaw)
+	}
+	if packet.Kind != "audit_report_export_result" || packet.Packet.PacketID == "" {
+		t.Fatalf("unexpected audit packet output: %#v", packet)
+	}
+	if out, err := runCLI(t, "verify", "audit", packet.Packet.PacketID, "--json"); err == nil || !strings.Contains(out+err.Error(), "expected audit report") {
+		t.Fatalf("verify audit should reject packet ids, err=%v out=%s", err, out)
+	}
+	must("sign", "audit-packet", packet.Packet.PacketID, "--signing-key", key.PublicKey.PublicKeyID, "--actor", "human:owner", "--reason", "sign audit packet")
+	packetVerify := must("verify", "audit-packet", packet.Packet.PacketID, "--json")
+	if !strings.Contains(packetVerify, `"integrity": true`) && !strings.Contains(packetVerify, `"integrity=true"`) && !strings.Contains(packetVerify, `"state": "trusted_valid"`) {
+		t.Fatalf("signed audit packet should verify:\n%s", packetVerify)
+	}
+	if !strings.Contains(packetVerify, `"kind": "audit_packet_verify_result"`) && !strings.Contains(packetVerify, `"kind":"audit_packet_verify_result"`) {
+		t.Fatalf("audit packet verify should use packet-specific kind:\n%s", packetVerify)
 	}
 }
 
 func TestV17FailClosedExecuteWritesOnlyErrorEnvelope(t *testing.T) {
+	withTempWorkspace(t)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	exit := Execute([]string{"verify", "backup", "no-such-file", "--json"}, &stdout, &stderr)
@@ -83,19 +510,20 @@ func TestV17FailClosedExecuteWritesOnlyErrorEnvelope(t *testing.T) {
 	if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode error envelope: %v\n%s", err, stderr.String())
 	}
-	if envelope.FormatVersion != jsonFormatVersion || envelope.OK || envelope.Error.Code != "internal" || envelope.Error.Exit != exit {
+	if envelope.FormatVersion != jsonFormatVersion || envelope.OK || envelope.Error.Code != "not_found" || envelope.Error.Exit != exit {
 		t.Fatalf("unexpected fail-closed envelope: %+v", envelope)
 	}
 }
 
-func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
+func TestV17BackupCreateRequiresActorAndReason(t *testing.T) {
+	withTempWorkspace(t)
 	cmd := NewRootCommand()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"classify", "set", "ticket:APP-1", "internal", "--actor", "human:owner"})
+	cmd.SetArgs([]string{"backup", "create", "--actor", "human:owner"})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "non-empty --reason") {
+	if err == nil || !strings.Contains(err.Error(), "reason is required") {
 		t.Fatalf("expected missing reason error, got %v", err)
 	}
 
@@ -103,9 +531,9 @@ func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
 	out.Reset()
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"classify", "set", "ticket:APP-1", "internal", "--actor", "human:owner", "--reason", "   "})
+	cmd.SetArgs([]string{"backup", "create", "--actor", "human:owner", "--reason", "   "})
 	err = cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "non-empty --reason") {
+	if err == nil || !strings.Contains(err.Error(), "reason is required") {
 		t.Fatalf("expected blank reason error, got %v", err)
 	}
 
@@ -113,20 +541,34 @@ func TestV17MutationStubRequiresReasonAndFailsNonZero(t *testing.T) {
 	out.Reset()
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"classify", "set", "ticket:APP-1", "internal", "--actor", "robot:mallory", "--reason", "contract smoke"})
+	cmd.SetArgs([]string{"backup", "create", "--actor", "robot:mallory", "--reason", "contract smoke"})
 	err = cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "valid --actor") {
+	if err == nil || !strings.Contains(err.Error(), "invalid actor") {
 		t.Fatalf("expected invalid actor error, got %v", err)
 	}
+}
 
-	cmd = NewRootCommand()
-	out.Reset()
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"classify", "set", "ticket:APP-1", "internal", "--actor", "human:owner", "--reason", "contract smoke"})
-	err = cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "frozen for v1.7 follow-up implementation") {
-		t.Fatalf("expected non-zero implementation-pending error, got %v", err)
+func TestSignatureVerifyOutputIncludesIntegrityFailures(t *testing.T) {
+	view := service.ArtifactSignatureVerifyView{
+		Kind: "signature_verify_result",
+		Integrity: service.ExportVerifyView{
+			Verified: false,
+			Errors:   []string{"archive_checksum_mismatch"},
+		},
+		Signature: contracts.SignatureVerificationResult{
+			State:        contracts.VerificationTrustedValid,
+			ArtifactKind: contracts.ArtifactKindBundle,
+			ArtifactUID:  "bundle_1",
+		},
+	}
+
+	pretty := signatureVerifyPretty(view)
+	if !strings.Contains(pretty, "trusted_valid") || !strings.Contains(pretty, "integrity=false") || !strings.Contains(pretty, "archive_checksum_mismatch") {
+		t.Fatalf("pretty verify output should expose integrity failure, got %q", pretty)
+	}
+	md := signatureVerifyMarkdown(view)
+	if !strings.Contains(md, "Integrity verified: `false`") || !strings.Contains(md, "Integrity error: `archive_checksum_mismatch`") {
+		t.Fatalf("markdown verify output should expose integrity failure:\n%s", md)
 	}
 }
 
@@ -169,6 +611,25 @@ func TestV17KeyAndTrustCLI(t *testing.T) {
 	}
 	if generated.PublicKey.Status != "active" || generated.PublicKey.Source != "local" || !generated.PrivateKeyHealth.Present || !generated.PrivateKeyHealth.PermissionsOK || !generated.CanSign {
 		t.Fatalf("generated key should be active local signing material: %#v", generated)
+	}
+	keyListRaw := must("key", "list", "--json")
+	if strings.Contains(keyListRaw, `"public_key":`) {
+		t.Fatalf("key list json should expose public key fields at item top level, got:\n%s", keyListRaw)
+	}
+	var keyList struct {
+		FormatVersion string `json:"format_version"`
+		Kind          string `json:"kind"`
+		Items         []struct {
+			PublicKeyID       string `json:"public_key_id"`
+			PublicKeyMaterial string `json:"public_key_material"`
+			CanSign           bool   `json:"can_sign"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(keyListRaw), &keyList); err != nil {
+		t.Fatalf("parse key list json: %v\n%s", err, keyListRaw)
+	}
+	if keyList.FormatVersion != jsonFormatVersion || keyList.Kind != "key_list" || len(keyList.Items) != 1 || keyList.Items[0].PublicKeyID != generated.PublicKey.PublicKeyID || keyList.Items[0].PublicKeyMaterial == "" || !keyList.Items[0].CanSign {
+		t.Fatalf("unexpected flattened key list: %#v", keyList)
 	}
 	publicExport := must("key", "export-public", generated.PublicKey.PublicKeyID)
 	if !strings.HasPrefix(publicExport, "---\n") || !strings.Contains(publicExport, "public_key_material:") {

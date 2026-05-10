@@ -57,16 +57,28 @@ func (k ClassifiedEntityKind) IsValid() bool {
 	return ok
 }
 
+func ValidClassifiedEntityKindValues() []string {
+	return []string{
+		string(ClassifiedEntityProject),
+		string(ClassifiedEntityTicket),
+		string(ClassifiedEntityRun),
+		string(ClassifiedEntityEvidence),
+		string(ClassifiedEntityHandoff),
+		string(ClassifiedEntityAudit),
+		string(ClassifiedEntityBackup),
+	}
+}
+
 type ClassificationLabel struct {
-	ClassificationID string               `json:"classification_id" yaml:"classification_id"`
-	EntityKind       ClassifiedEntityKind `json:"entity_kind" yaml:"entity_kind"`
-	EntityID         string               `json:"entity_id" yaml:"entity_id"`
-	Level            ClassificationLevel  `json:"level" yaml:"level"`
-	AppliedBy        Actor                `json:"applied_by" yaml:"applied_by"`
-	Reason           string               `json:"reason" yaml:"reason"`
-	CreatedAt        time.Time            `json:"created_at" yaml:"created_at"`
-	UpdatedAt        time.Time            `json:"updated_at" yaml:"updated_at"`
-	SchemaVersion    int                  `json:"schema_version" yaml:"schema_version"`
+	ClassificationID string               `json:"classification_id" yaml:"classification_id" toml:"classification_id"`
+	EntityKind       ClassifiedEntityKind `json:"entity_kind" yaml:"entity_kind" toml:"entity_kind"`
+	EntityID         string               `json:"entity_id" yaml:"entity_id" toml:"entity_id"`
+	Level            ClassificationLevel  `json:"level" yaml:"level" toml:"level"`
+	AppliedBy        Actor                `json:"applied_by" yaml:"applied_by" toml:"applied_by"`
+	Reason           string               `json:"reason" yaml:"reason" toml:"reason"`
+	CreatedAt        time.Time            `json:"created_at" yaml:"created_at" toml:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at" yaml:"updated_at" toml:"updated_at"`
+	SchemaVersion    int                  `json:"schema_version" yaml:"schema_version" toml:"schema_version"`
 }
 
 func (l ClassificationLabel) Validate() error {
@@ -127,15 +139,15 @@ func (t RedactionTarget) IsValid() bool {
 }
 
 type RedactionRule struct {
-	RuleID        string               `json:"rule_id" yaml:"rule_id"`
-	Target        RedactionTarget      `json:"target" yaml:"target"`
-	EntityKind    ClassifiedEntityKind `json:"entity_kind,omitempty" yaml:"entity_kind,omitempty"`
-	FieldPath     string               `json:"field_path" yaml:"field_path"`
-	MinLevel      ClassificationLevel  `json:"min_level" yaml:"min_level"`
-	Action        RedactionAction      `json:"action" yaml:"action"`
-	Marker        string               `json:"marker,omitempty" yaml:"marker,omitempty"`
-	Reason        string               `json:"reason" yaml:"reason"`
-	SchemaVersion int                  `json:"schema_version" yaml:"schema_version"`
+	RuleID        string               `json:"rule_id" yaml:"rule_id" toml:"rule_id"`
+	Target        RedactionTarget      `json:"target" yaml:"target" toml:"target"`
+	EntityKind    ClassifiedEntityKind `json:"entity_kind,omitempty" yaml:"entity_kind,omitempty" toml:"entity_kind,omitempty"`
+	FieldPath     string               `json:"field_path" yaml:"field_path" toml:"field_path"`
+	MinLevel      ClassificationLevel  `json:"min_level" yaml:"min_level" toml:"min_level"`
+	Action        RedactionAction      `json:"action" yaml:"action" toml:"action"`
+	Marker        string               `json:"marker,omitempty" yaml:"marker,omitempty" toml:"marker,omitempty"`
+	Reason        string               `json:"reason" yaml:"reason" toml:"reason"`
+	SchemaVersion int                  `json:"schema_version" yaml:"schema_version" toml:"schema_version"`
 }
 
 func (r RedactionRule) Validate() error {
@@ -164,18 +176,18 @@ func (r RedactionRule) Validate() error {
 }
 
 type RedactionPreview struct {
-	PreviewID          string            `json:"preview_id" yaml:"preview_id"`
-	Scope              string            `json:"scope" yaml:"scope"`
-	Target             RedactionTarget   `json:"target" yaml:"target"`
-	Actor              Actor             `json:"actor" yaml:"actor"`
-	PolicyVersionHash  string            `json:"policy_version_hash" yaml:"policy_version_hash"`
-	ClassificationHash string            `json:"classification_hash" yaml:"classification_hash"`
-	SourceStateHash    string            `json:"source_state_hash" yaml:"source_state_hash"`
-	CommandTarget      string            `json:"command_target" yaml:"command_target"`
-	CreatedAt          time.Time         `json:"created_at" yaml:"created_at"`
-	ExpiresAt          time.Time         `json:"expires_at" yaml:"expires_at"`
-	Items              []RedactionResult `json:"items,omitempty" yaml:"items,omitempty"`
-	SchemaVersion      int               `json:"schema_version" yaml:"schema_version"`
+	PreviewID          string            `json:"preview_id" yaml:"preview_id" toml:"preview_id"`
+	Scope              string            `json:"scope" yaml:"scope" toml:"scope"`
+	Target             RedactionTarget   `json:"target" yaml:"target" toml:"target"`
+	Actor              Actor             `json:"actor" yaml:"actor" toml:"actor"`
+	PolicyVersionHash  string            `json:"policy_version_hash" yaml:"policy_version_hash" toml:"policy_version_hash"`
+	ClassificationHash string            `json:"classification_hash" yaml:"classification_hash" toml:"classification_hash"`
+	SourceStateHash    string            `json:"source_state_hash" yaml:"source_state_hash" toml:"source_state_hash"`
+	CommandTarget      string            `json:"command_target" yaml:"command_target" toml:"command_target"`
+	CreatedAt          time.Time         `json:"created_at" yaml:"created_at" toml:"created_at"`
+	ExpiresAt          time.Time         `json:"expires_at" yaml:"expires_at" toml:"expires_at"`
+	Items              []RedactionResult `json:"items,omitempty" yaml:"items,omitempty" toml:"items,omitempty"`
+	SchemaVersion      int               `json:"schema_version" yaml:"schema_version" toml:"schema_version"`
 }
 
 func (p RedactionPreview) Validate() error {
@@ -209,12 +221,12 @@ func (p RedactionPreview) Validate() error {
 }
 
 type RedactionResult struct {
-	EntityKind  ClassifiedEntityKind `json:"entity_kind" yaml:"entity_kind"`
-	EntityID    string               `json:"entity_id" yaml:"entity_id"`
-	FieldPath   string               `json:"field_path" yaml:"field_path"`
-	Level       ClassificationLevel  `json:"level" yaml:"level"`
-	Action      RedactionAction      `json:"action" yaml:"action"`
-	ReasonCodes []string             `json:"reason_codes,omitempty" yaml:"reason_codes,omitempty"`
+	EntityKind  ClassifiedEntityKind `json:"entity_kind" yaml:"entity_kind" toml:"entity_kind"`
+	EntityID    string               `json:"entity_id" yaml:"entity_id" toml:"entity_id"`
+	FieldPath   string               `json:"field_path" yaml:"field_path" toml:"field_path"`
+	Level       ClassificationLevel  `json:"level" yaml:"level" toml:"level"`
+	Action      RedactionAction      `json:"action" yaml:"action" toml:"action"`
+	ReasonCodes []string             `json:"reason_codes,omitempty" yaml:"reason_codes,omitempty" toml:"reason_codes,omitempty"`
 }
 
 func (r RedactionResult) Validate() error {

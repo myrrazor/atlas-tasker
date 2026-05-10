@@ -185,6 +185,16 @@ func (s *ActionService) RevokeKey(ctx context.Context, publicKeyID string, actor
 		if !contracts.CanTransitionKeyState(record.Status, contracts.KeyStateRevoked) {
 			return KeyDetailView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("cannot revoke key in state %s", record.Status))
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionRevokeKey,
+			Target: "workspace",
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return KeyDetailView{}, err
+		}
 		now := s.now()
 		record.Status = contracts.KeyStateRevoked
 		revocation := contracts.RevocationRecord{
@@ -206,6 +216,9 @@ func (s *ActionService) RevokeKey(ctx context.Context, publicKeyID string, actor
 			}
 			return s.SecurityKeys.SaveRevocation(ctx, revocation)
 		}); err != nil {
+			return KeyDetailView{}, err
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
 			return KeyDetailView{}, err
 		}
 		return s.KeyDetail(ctx, publicKeyID)
@@ -296,6 +309,16 @@ func (s *ActionService) BindTrust(ctx context.Context, collaboratorID string, pu
 		if record.OwnerKind != contracts.PublicKeyOwnerCollaborator || record.OwnerID != collaboratorID {
 			return contracts.TrustBinding{}, apperr.New(apperr.CodeInvalidInput, "public key owner does not match collaborator")
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionTrustKey,
+			Target: "workspace",
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return contracts.TrustBinding{}, err
+		}
 		now := s.now()
 		binding := contracts.TrustBinding{
 			TrustBindingID:   "trust-" + sanitizeSecurityID(collaboratorID) + "-" + fingerprintShort(record.Fingerprint),
@@ -313,6 +336,9 @@ func (s *ActionService) BindTrust(ctx context.Context, collaboratorID string, pu
 			SchemaVersion:    contracts.CurrentSchemaVersion,
 		}
 		if err := s.TrustBindings.SaveTrustBinding(ctx, binding); err != nil {
+			return contracts.TrustBinding{}, err
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
 			return contracts.TrustBinding{}, err
 		}
 		return binding, nil
@@ -334,6 +360,16 @@ func (s *ActionService) RevokeTrustForKey(ctx context.Context, publicKeyID strin
 		if len(bindings) == 0 {
 			return TrustListView{}, apperr.New(apperr.CodeNotFound, "no trust bindings for public key")
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionRevokeKey,
+			Target: "workspace",
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return TrustListView{}, err
+		}
 		now := s.now()
 		updated := make([]contracts.TrustBinding, 0, len(bindings))
 		for _, binding := range bindings {
@@ -347,6 +383,9 @@ func (s *ActionService) RevokeTrustForKey(ctx context.Context, publicKeyID strin
 			if err := s.TrustBindings.SaveTrustBinding(ctx, binding); err != nil {
 				return TrustListView{}, err
 			}
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+			return TrustListView{}, err
 		}
 		return TrustListView{Kind: "trust_list", GeneratedAt: s.now(), Items: updated}, nil
 	})
@@ -475,7 +514,7 @@ func (s *ActionService) SignPayload(ctx context.Context, req SignatureRequest) (
 	}
 	sig := ed25519.Sign(privateKey, signingBytes)
 	envelope := contracts.SignatureEnvelope{
-		SignatureID:             "sig-" + artifactUID + "-" + fingerprintShort(hex.EncodeToString(hash[:])),
+		SignatureID:             "sig-" + artifactUID + "-" + fingerprintShort(hex.EncodeToString(hash[:])) + "-" + fingerprintShort(key.PublicKeyID),
 		ArtifactKind:            req.ArtifactKind,
 		ArtifactUID:             artifactUID,
 		CanonicalizationVersion: contracts.CanonicalizationAtlasV1,

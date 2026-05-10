@@ -25,6 +25,10 @@ type SecurityTrustStore struct {
 	Root string
 }
 
+type SecuritySignatureStore struct {
+	Root string
+}
+
 type privateKeyFile struct {
 	PublicKeyID        string                 `json:"public_key_id"`
 	Fingerprint        string                 `json:"fingerprint"`
@@ -335,6 +339,63 @@ func (s SecurityTrustStore) ListTrustBindingsForKey(ctx context.Context, publicK
 			items = append(items, item)
 		}
 	}
+	return items, nil
+}
+
+func (s SecuritySignatureStore) SaveSignature(_ context.Context, envelope contracts.SignatureEnvelope) error {
+	if err := envelope.Validate(); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(storage.SignaturesDir(s.Root), 0o755); err != nil {
+		return fmt.Errorf("create signatures dir: %w", err)
+	}
+	raw, err := json.MarshalIndent(envelope, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode signature %s: %w", envelope.SignatureID, err)
+	}
+	if err := os.WriteFile(storage.SignatureFile(s.Root, sanitizeSecurityID(envelope.SignatureID)), append(raw, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write signature %s: %w", envelope.SignatureID, err)
+	}
+	return nil
+}
+
+func (s SecuritySignatureStore) LoadSignature(_ context.Context, signatureID string) (contracts.SignatureEnvelope, error) {
+	raw, err := os.ReadFile(storage.SignatureFile(s.Root, sanitizeSecurityID(signatureID)))
+	if err != nil {
+		return contracts.SignatureEnvelope{}, fmt.Errorf("read signature %s: %w", signatureID, err)
+	}
+	var envelope contracts.SignatureEnvelope
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return contracts.SignatureEnvelope{}, fmt.Errorf("decode signature %s: %w", signatureID, err)
+	}
+	return envelope, envelope.Validate()
+}
+
+func (s SecuritySignatureStore) ListSignatures(_ context.Context) ([]contracts.SignatureEnvelope, error) {
+	entries, err := os.ReadDir(storage.SignaturesDir(s.Root))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []contracts.SignatureEnvelope{}, nil
+		}
+		return nil, fmt.Errorf("read signatures dir: %w", err)
+	}
+	items := make([]contracts.SignatureEnvelope, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		envelope, err := s.LoadSignature(context.Background(), strings.TrimSuffix(entry.Name(), ".json"))
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, envelope)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].SignedAt.Equal(items[j].SignedAt) {
+			return items[i].SignatureID < items[j].SignatureID
+		}
+		return items[i].SignedAt.Before(items[j].SignedAt)
+	})
 	return items, nil
 }
 

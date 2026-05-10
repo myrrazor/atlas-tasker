@@ -28,3 +28,25 @@ Verification states are frozen:
 Verification is side-effect free by default. `tracker verify ...`, status, replay, reindex, repair, and doctor checks must not append events. A future recorded verification workflow must be explicit and non-default.
 
 Signatures prove authenticity relative to a key. They do not prove that the signer had authority.
+
+## PR-703 Signed Artifacts
+
+PR-703 enables explicit signatures for export bundles and sync publications:
+
+- `tracker sign bundle <BUNDLE-ID> [--signing-key <KEY-ID>]` signs the export bundle manifest/checksum payload after archive integrity passes.
+- `tracker verify bundle <BUNDLE-ID|PATH>` verifies export bundle integrity and reports the signature state without appending events.
+- `tracker sign sync-publication <BUNDLE-ID|PATH> [--signing-key <KEY-ID>]` signs the sync publication metadata after sync bundle integrity passes.
+- `tracker verify sync-publication <BUNDLE-ID|PATH>` verifies sync bundle integrity and reports the publication signature state without appending events.
+
+Export bundle signatures are persisted in the local security signature store and in an adjacent `<bundle>.signatures.json` sidecar. Path-based verification loads that sidecar and derives the signed bundle identity from the manifest, so a copied artifact set can verify without the source workspace's export metadata. Sync publication signatures live in the matching publication metadata; Atlas ignores a directory-level `publication.json` when it does not name the requested archive.
+
+Unsigned artifacts remain readable and verify as `missing_signature` at the signature layer. Governance in PR-704 decides when that state is acceptable.
+
+PR-706 extends the same envelope and trust-state machinery to approval gates, handoffs, evidence packets, audit reports, and audit packets:
+
+- `approval`, `handoff`, and `evidence_packet` signatures are standalone records under `.tracker/security/signatures/`; the source gate/handoff/evidence document is not rewritten.
+- `audit_report` signatures are embedded in the stored report and also persisted in the signature store.
+- `audit_packet` signatures are embedded in the stored packet and also persisted in the signature store. Packets do not embed the source report's own signature envelopes.
+- audit packet verification recomputes `packet_hash` from the canonical report payload before reporting signature state.
+
+Approval/handoff/evidence signatures make those artifacts authenticatable, but PR-706 does not require every workflow to be signed by default. Governance policy remains the authority layer.

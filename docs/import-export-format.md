@@ -14,12 +14,15 @@
 - export bundles are `tar.gz` archives with:
   - `manifest.json`
   - canonical workspace markdown snapshots from `projects/`
-  - selected Atlas state under `.tracker/` including agents, runbooks, runs, gates, handoffs, evidence markdown, changes, checks, permission profiles, imports, and retention config
+  - selected Atlas state under `.tracker/` including agents, runbooks, runs, gates, handoffs, evidence markdown, changes, checks, permission profiles, imports, retention config, public key records, revocations, and signature envelopes
+- signed export bundles also write an adjacent `<bundle>.signatures.json` sidecar for path-based verification after the archive sidecars are copied
 - derived runtime state is excluded from the archive:
   - `.tracker/runtime/`
   - `.tracker/archives/`
   - `.tracker/exports/`
   - `.tracker/mutations/`
+  - `.tracker/security/keys/private/`
+  - `.tracker/security/trust/`
   - `index.sqlite`
   - copied evidence artifacts that are not markdown
 - Atlas bundle import is snapshot-first. It restores canonical markdown snapshots into the target workspace, but it deliberately does not copy source `.tracker/events/` files or source `.tracker/imports/` job logs into the live target workspace. That avoids event-log collisions with the target workspace's own audit trail and keeps preview/apply deterministic.

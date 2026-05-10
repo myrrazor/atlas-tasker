@@ -20,6 +20,8 @@ func TestV17SyncBoundarySecurityPaths(t *testing.T) {
 		".tracker/classification/labels/APP.md",
 		".tracker/classification/policies/default.toml",
 		".tracker/redaction/rules/default.toml",
+		".tracker/audit/reports/audit_1.json",
+		".tracker/audit/packets/packet_1.json",
 	}
 	for _, path := range syncable {
 		if !isSyncableRelativePath(path) {
@@ -36,6 +38,31 @@ func TestV17SyncBoundarySecurityPaths(t *testing.T) {
 	for _, path := range localOnly {
 		if isSyncableRelativePath(path) {
 			t.Fatalf("expected %s to stay local-only", path)
+		}
+	}
+}
+
+func TestCollectExportFilesIncludesAuditArtifacts(t *testing.T) {
+	root := t.TempDir()
+	for _, path := range []string{
+		filepath.Join(storage.AuditReportsDir(root), "audit_1.json"),
+		filepath.Join(storage.AuditPacketsDir(root), "packet_1.json"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("create audit dir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("{}\n"), 0o644); err != nil {
+			t.Fatalf("write audit artifact: %v", err)
+		}
+	}
+	files, err := collectExportFiles(root)
+	if err != nil {
+		t.Fatalf("collect export files: %v", err)
+	}
+	got := strings.Join(files, "\n")
+	for _, want := range []string{".tracker/audit/reports/audit_1.json", ".tracker/audit/packets/packet_1.json"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected export to include %s, got:\n%s", want, got)
 		}
 	}
 }
