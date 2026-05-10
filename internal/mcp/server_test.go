@@ -12,6 +12,7 @@ import (
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/myrrazor/atlas-tasker/internal/buildinfo"
+	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
@@ -53,6 +54,53 @@ func TestInventoryProfilesGateHighImpactTools(t *testing.T) {
 	}
 	if !toolProviderSideEffect(danger, "atlas.import.preview") {
 		t.Fatalf("import preview writes an import job and must be marked as a live side effect")
+	}
+}
+
+func TestTicketRequestReviewToolAcceptsReviewer(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 10, 9, 0, 0, 0, time.UTC)
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	workspace, err := OpenWorkspace(root, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("open workspace: %v", err)
+	}
+	defer workspace.Close()
+	ctx := context.Background()
+	if err := workspace.Actions.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket, err := workspace.Actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project:       "APP",
+		Title:         "Review over MCP",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusInProgress,
+		Priority:      contracts.PriorityMedium,
+		Assignee:      contracts.Actor("agent:builder-1"),
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}, contracts.Actor("human:owner"), "seed")
+	if err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	server := NewServer(workspace, Options{Profile: ProfileWorkflow, Now: func() time.Time { return now }}.Normalized())
+	if _, err := server.CallTool(ctx, "atlas.ticket.request_review", map[string]any{
+		"ticket_id": ticket.ID,
+		"actor":     "agent:builder-1",
+		"reason":    "ready for review",
+		"reviewer":  "agent:reviewer-1",
+	}); err != nil {
+		t.Fatalf("mcp request_review with reviewer: %v", err)
+	}
+	updated, err := workspace.Actions.Tickets.GetTicket(ctx, ticket.ID)
+	if err != nil {
+		t.Fatalf("load updated ticket: %v", err)
+	}
+	if updated.Status != contracts.StatusInReview || updated.Reviewer != contracts.Actor("agent:reviewer-1") {
+		t.Fatalf("MCP request_review should set reviewer and status, got %#v", updated)
 	}
 }
 

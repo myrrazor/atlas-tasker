@@ -113,6 +113,17 @@ func TestRemoteSyncAndBundleCommands(t *testing.T) {
 	if verified.Kind != "bundle_verify_result" || !verified.Payload.Verified {
 		t.Fatalf("unexpected bundle verify payload: %#v", verified)
 	}
+	brokenPath := filepath.Join(t.TempDir(), filepath.Base(created.Payload.Job.BundleRef))
+	rawBundle, err := os.ReadFile(created.Payload.Job.BundleRef)
+	if err != nil {
+		t.Fatalf("read created bundle for direct verify regression: %v", err)
+	}
+	if err := os.WriteFile(brokenPath, rawBundle, 0o644); err != nil {
+		t.Fatalf("write broken direct bundle: %v", err)
+	}
+	if out, err := runCLI(t, "bundle", "verify", brokenPath, "--actor", "human:owner"); err == nil || !strings.Contains(out+err.Error(), "sidecar_manifest_missing") {
+		t.Fatalf("expected direct bundle verify to report sidecar_manifest_missing, err=%v out=%s", err, out)
+	}
 
 	syncPushOut := must("sync", "push", "--remote", "origin", "--actor", "human:owner", "--json")
 	var pushed struct {
