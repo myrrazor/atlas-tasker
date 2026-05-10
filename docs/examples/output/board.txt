@@ -1,0 +1,18 @@
+$ tracker board
+Backlog (0)
+  - (empty)
+
+Ready (0)
+  - (empty)
+
+In Progress (1)
+  - APP-1 [in_progress] [medium] Add health check
+
+In Review (0)
+  - (empty)
+
+Blocked (0)
+  - (empty)
+
+Done (0)
+  - (empty)

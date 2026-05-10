@@ -171,6 +171,10 @@ func (k GateKind) IsValid() bool {
 	return ok
 }
 
+func ValidGateKindValues() []string {
+	return []string{string(GateKindReview), string(GateKindOwner), string(GateKindQA), string(GateKindRelease), string(GateKindDesign)}
+}
+
 type GateState string
 
 const (
@@ -223,6 +227,21 @@ var validEvidenceTypes = map[EvidenceType]struct{}{
 func (t EvidenceType) IsValid() bool {
 	_, ok := validEvidenceTypes[t]
 	return ok
+}
+
+func ValidEvidenceTypeValues() []string {
+	return []string{
+		string(EvidenceTypeNote),
+		string(EvidenceTypeTestResult),
+		string(EvidenceTypeFileDiffSummary),
+		string(EvidenceTypeLogExcerpt),
+		string(EvidenceTypeScreenshot),
+		string(EvidenceTypeArtifactRef),
+		string(EvidenceTypeCommitRef),
+		string(EvidenceTypeManualAssertion),
+		string(EvidenceTypeUnresolvedQuestion),
+		string(EvidenceTypeReviewChecklist),
+	}
 }
 
 type WorktreeMode string

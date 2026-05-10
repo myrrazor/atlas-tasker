@@ -35,3 +35,19 @@ Handoff packets include:
 - suggested next ticket status
 - generated timestamp
 - schema version
+
+Valid `--next-gate` values:
+- `review`
+- `owner`
+- `qa`
+- `release`
+- `design`
+
+Valid `--next-status` values:
+- `backlog`
+- `ready`
+- `in_progress`
+- `in_review`
+- `blocked`
+- `done`
+- `canceled`

@@ -26,7 +26,7 @@ func (s *ActionService) AddEvidence(ctx context.Context, runID string, evidenceT
 			return contracts.EvidenceItem{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
 		}
 		if !evidenceType.IsValid() {
-			return contracts.EvidenceItem{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid evidence type: %s", evidenceType))
+			return contracts.EvidenceItem{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid evidence type: %s (valid: %s)", evidenceType, strings.Join(contracts.ValidEvidenceTypeValues(), ", ")))
 		}
 		run, err := s.Runs.LoadRun(ctx, runID)
 		if err != nil {
@@ -125,6 +125,12 @@ func (s *ActionService) CreateHandoff(ctx context.Context, runID string, actor c
 	return withWriteLock(ctx, s.LockManager, "create handoff", func(ctx context.Context) (contracts.HandoffPacket, error) {
 		if !actor.IsValid() {
 			return contracts.HandoffPacket{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+		}
+		if nextGate != "" && !nextGate.IsValid() {
+			return contracts.HandoffPacket{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid next gate: %s (valid: %s)", nextGate, strings.Join(contracts.ValidGateKindValues(), ", ")))
+		}
+		if nextStatus != "" && !nextStatus.IsValid() {
+			return contracts.HandoffPacket{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid next status: %s (valid: %s)", nextStatus, strings.Join(contracts.ValidStatusValues(), ", ")))
 		}
 		run, err := s.Runs.LoadRun(ctx, runID)
 		if err != nil {

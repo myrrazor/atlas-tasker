@@ -1,9 +1,29 @@
-# Examples
+# Atlas Examples
 
-PR-806 adds deterministic demo workspace scripts, prompt packs, transcripts, and screenshot-friendly fixtures.
+These examples are deterministic release-candidate demo material. Regenerate them with:
 
-Until then, use the public tutorials:
+```bash
+sh examples/generate-demo-assets.sh --update
+```
 
-- [Quickstart](../quickstart.md)
-- [First agent workflow](../first-agent-workflow.md)
-- [Tutorials](../README.md#tutorials)
+Use `--check` in review to prove the checked-in assets are fresh.
+
+## Outputs
+
+- [Board](output/board.txt)
+- [Ticket inspect](output/ticket-inspect.md)
+- [Dashboard](output/dashboard.txt)
+- [Goal brief](output/goal-brief.md)
+- [Goal manifest](output/goal-manifest.md)
+
+## Agent Prompt Packs
+
+- [Codex](prompt-packs/codex.md)
+- [Claude Code](prompt-packs/claude-code.md)
+- [Generic agent](prompt-packs/generic-agent.md)
+
+## Demo And Screenshot Fixtures
+
+- [Terminal transcript](transcripts/demo-workspace.md)
+- [Screenshot fixtures](screenshot-fixtures.md)
+- [Workspace fixture notes](fixtures/demo-workspace.md)
