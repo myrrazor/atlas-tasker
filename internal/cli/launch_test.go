@@ -51,6 +51,8 @@ func TestRunOpenAndLaunchManageRuntimeArtifacts(t *testing.T) {
 			ContextPath      string   `json:"context_path"`
 			CodexLaunchPath  string   `json:"codex_launch_path"`
 			ClaudeLaunchPath string   `json:"claude_launch_path"`
+			NeedsLaunch      bool     `json:"needs_launch"`
+			Missing          []string `json:"missing"`
 			Created          []string `json:"created"`
 			Updated          []string `json:"updated"`
 		} `json:"payload"`
@@ -66,6 +68,9 @@ func TestRunOpenAndLaunchManageRuntimeArtifacts(t *testing.T) {
 	}
 	if len(openView.Payload.Created) != 0 || len(openView.Payload.Updated) != 0 {
 		t.Fatalf("run open should not claim file mutations: %#v", openView.Payload)
+	}
+	if !openView.Payload.NeedsLaunch || len(openView.Payload.Missing) != 4 {
+		t.Fatalf("run open should report missing launch artifacts, got %#v", openView.Payload)
 	}
 	if _, err := os.Stat(openView.Payload.RuntimeDir); err != nil {
 		t.Fatalf("expected runtime dir placeholder to exist after dispatch: %v", err)
@@ -91,6 +96,7 @@ func TestRunOpenAndLaunchManageRuntimeArtifacts(t *testing.T) {
 			ContextPath      string   `json:"context_path"`
 			CodexLaunchPath  string   `json:"codex_launch_path"`
 			ClaudeLaunchPath string   `json:"claude_launch_path"`
+			NeedsLaunch      bool     `json:"needs_launch"`
 			Created          []string `json:"created"`
 			Updated          []string `json:"updated"`
 		} `json:"payload"`
@@ -100,6 +106,9 @@ func TestRunOpenAndLaunchManageRuntimeArtifacts(t *testing.T) {
 	}
 	if launchView.Kind != "run_launch_manifest" || len(launchView.Payload.Created) != 4 || len(launchView.Payload.Updated) != 0 {
 		t.Fatalf("unexpected launch payload: %#v", launchView)
+	}
+	if launchView.Payload.NeedsLaunch {
+		t.Fatalf("launch output should not require launch after writing files: %#v", launchView.Payload)
 	}
 	for _, path := range []string{
 		launchView.Payload.BriefPath,
@@ -122,6 +131,7 @@ func TestRunOpenAndLaunchManageRuntimeArtifacts(t *testing.T) {
 			ContextPath      string   `json:"context_path"`
 			CodexLaunchPath  string   `json:"codex_launch_path"`
 			ClaudeLaunchPath string   `json:"claude_launch_path"`
+			NeedsLaunch      bool     `json:"needs_launch"`
 			Created          []string `json:"created"`
 			Updated          []string `json:"updated"`
 		} `json:"payload"`
@@ -146,6 +156,7 @@ func TestRunOpenAndLaunchManageRuntimeArtifacts(t *testing.T) {
 			ContextPath      string   `json:"context_path"`
 			CodexLaunchPath  string   `json:"codex_launch_path"`
 			ClaudeLaunchPath string   `json:"claude_launch_path"`
+			NeedsLaunch      bool     `json:"needs_launch"`
 			Created          []string `json:"created"`
 			Updated          []string `json:"updated"`
 		} `json:"payload"`

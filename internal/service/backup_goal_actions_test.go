@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
@@ -122,12 +123,28 @@ func TestGoalManifestSignVerifyAndAdminStatus(t *testing.T) {
 	if brief.Brief.TargetID != ticket.ID || len(brief.Brief.Sections) != len(contracts.GoalManifestSectionOrder) {
 		t.Fatalf("brief should use stable goal sections: %#v", brief.Brief)
 	}
+	if got := goalHeadings(brief.Brief.Sections); strings.Join(got, "\n") != strings.Join(contracts.GoalManifestSectionOrder, "\n") {
+		t.Fatalf("brief headings mismatch:\ngot  %v\nwant %v", got, contracts.GoalManifestSectionOrder)
+	}
+	if goalSectionContains(brief.Brief.Sections, "Current State", "None") {
+		t.Fatalf("current state should not mix status lines with a None blocker fallback: %#v", brief.Brief.Sections)
+	}
+	if !goalSectionContains(brief.Brief.Sections, "Suggested Commands", "tracker goal brief "+ticket.ID+" --md") {
+		t.Fatalf("suggested commands should include a paste-ready markdown brief command: %#v", brief.Brief.Sections)
+	}
 	manifest, err := actions.CreateGoalManifest(ctx, ticket.ID, contracts.Actor("human:owner"), "create goal manifest")
 	if err != nil {
 		t.Fatalf("goal manifest: %v", err)
 	}
 	if manifest.Manifest.PolicySnapshotHash == "" || manifest.Manifest.TrustSnapshotHash == "" || manifest.Manifest.SourceHash == "" || manifest.Manifest.GeneratedBy != contracts.Actor("human:owner") || manifest.Manifest.Reason == "" {
 		t.Fatalf("goal manifest should bind source, policy, trust, and creation metadata: %#v", manifest.Manifest)
+	}
+	reloaded, err := actions.GoalManifestDetail(ctx, manifest.Manifest.ManifestID)
+	if err != nil {
+		t.Fatalf("reload goal manifest: %v", err)
+	}
+	if got := goalHeadings(reloaded.Manifest.Sections); strings.Join(got, "\n") != strings.Join(contracts.GoalManifestSectionOrder, "\n") {
+		t.Fatalf("reloaded manifest headings mismatch:\ngot  %v\nwant %v", got, contracts.GoalManifestSectionOrder)
 	}
 	if _, err := actions.SignGoalManifest(ctx, manifest.Manifest.ManifestID, key.PublicKey.PublicKeyID, contracts.Actor("human:owner"), "sign goal"); err != nil {
 		t.Fatalf("sign goal: %v", err)
@@ -145,6 +162,53 @@ func TestGoalManifestSignVerifyAndAdminStatus(t *testing.T) {
 	}
 	if admin.PublicKeys == 0 || admin.TrustBindings == 0 || admin.GoalManifests == 0 {
 		t.Fatalf("admin security status should count v1.7 artifacts: %#v", admin)
+	}
+}
+
+func TestGoalBriefAndManifestSupportRunTargets(t *testing.T) {
+	ctx, actions, ticket := newGovernanceHarness(t)
+	run := contracts.RunSnapshot{
+		RunID:         "RUN-42",
+		TicketID:      ticket.ID,
+		Project:       ticket.Project,
+		AgentID:       "builder-1",
+		Provider:      contracts.AgentProviderCodex,
+		Status:        contracts.RunStatusActive,
+		Summary:       "finish the run target work",
+		CreatedAt:     defaultTestTime(),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := actions.Runs.SaveRun(ctx, run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	brief, err := actions.GoalBrief(ctx, run.RunID)
+	if err != nil {
+		t.Fatalf("run goal brief: %v", err)
+	}
+	if brief.Brief.TargetKind != contracts.GoalTargetRun || brief.Brief.TargetID != run.RunID {
+		t.Fatalf("brief should target run: %#v", brief.Brief)
+	}
+	if got := goalHeadings(brief.Brief.Sections); strings.Join(got, "\n") != strings.Join(contracts.GoalManifestSectionOrder, "\n") {
+		t.Fatalf("run brief headings mismatch:\ngot  %v\nwant %v", got, contracts.GoalManifestSectionOrder)
+	}
+	if !goalSectionContains(brief.Brief.Sections, "Ticket / Run", run.RunID+" for "+ticket.ID) {
+		t.Fatalf("run brief should include run/ticket line: %#v", brief.Brief.Sections)
+	}
+	if !goalSectionContains(brief.Brief.Sections, "Current State", "run status: "+string(run.Status)) {
+		t.Fatalf("run brief should include run status: %#v", brief.Brief.Sections)
+	}
+	if !goalSectionContains(brief.Brief.Sections, "Suggested Commands", "tracker goal brief "+run.RunID+" --md") {
+		t.Fatalf("run suggested commands should include a paste-ready markdown brief command: %#v", brief.Brief.Sections)
+	}
+	if !goalSectionContains(brief.Brief.Sections, "Suggested Commands", "tracker run evidence add "+run.RunID+" --type test_result") {
+		t.Fatalf("run suggested commands should use a valid evidence type: %#v", brief.Brief.Sections)
+	}
+	manifest, err := actions.CreateGoalManifest(ctx, run.RunID, contracts.Actor("human:owner"), "create run goal")
+	if err != nil {
+		t.Fatalf("run goal manifest: %v", err)
+	}
+	if manifest.Manifest.TargetKind != contracts.GoalTargetRun || manifest.Manifest.TargetID != run.RunID {
+		t.Fatalf("manifest should target run: %#v", manifest.Manifest)
 	}
 }
 
@@ -188,4 +252,33 @@ func TestRecoveryDrillIsSideEffectFree(t *testing.T) {
 	if !drill.SideEffectFree || strings.Join(before, "\n") != strings.Join(after, "\n") {
 		t.Fatalf("recovery drill should be side-effect free: %#v", drill)
 	}
+}
+
+func goalHeadings(sections []contracts.GoalSection) []string {
+	out := make([]string, 0, len(sections))
+	for _, section := range sections {
+		out = append(out, section.Heading)
+	}
+	return out
+}
+
+func goalSectionContains(sections []contracts.GoalSection, heading string, text string) bool {
+	for _, section := range sections {
+		if section.Heading != heading {
+			continue
+		}
+		if strings.Contains(section.Body, text) {
+			return true
+		}
+		for _, item := range section.Items {
+			if strings.Contains(item, text) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func defaultTestTime() time.Time {
+	return time.Date(2026, 5, 6, 18, 30, 0, 0, time.UTC)
 }

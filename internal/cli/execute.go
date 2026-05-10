@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,17 @@ func executeWithSurface(args []string, stdout io.Writer, stderr io.Writer, surfa
 	root.SetErr(stderr)
 	root.SetArgs(args)
 	root.SetContext(service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: surface}))
+	if wantsPlain(args) {
+		previous, hadPrevious := os.LookupEnv("NO_COLOR")
+		_ = os.Setenv("NO_COLOR", "1")
+		defer func() {
+			if hadPrevious {
+				_ = os.Setenv("NO_COLOR", previous)
+				return
+			}
+			_ = os.Unsetenv("NO_COLOR")
+		}()
+	}
 	if err := root.Execute(); err != nil {
 		if wantsJSON(args) {
 			payload, payloadErr := versionedJSONPayload(apperr.Envelope(err))
@@ -40,6 +52,28 @@ func executeWithSurface(args []string, stdout io.Writer, stderr io.Writer, surfa
 		return apperr.ExitCode(err)
 	}
 	return 0
+}
+
+func wantsPlain(args []string) bool {
+	for _, arg := range args {
+		arg = strings.TrimSpace(arg)
+		if arg == "--plain" {
+			return true
+		}
+		if !strings.HasPrefix(arg, "--plain=") {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(arg, "--plain="))
+		if value == "" {
+			return true
+		}
+		parsed, err := strconv.ParseBool(value)
+		if err != nil {
+			return true
+		}
+		return parsed
+	}
+	return false
 }
 
 func wantsJSON(args []string) bool {

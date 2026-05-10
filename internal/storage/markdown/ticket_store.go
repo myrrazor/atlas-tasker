@@ -50,6 +50,10 @@ func (s TicketStore) CreateTicket(_ context.Context, ticket contracts.TicketSnap
 }
 
 func (s TicketStore) GetTicket(_ context.Context, id string) (contracts.TicketSnapshot, error) {
+	id = strings.TrimSpace(id)
+	if !contracts.IsValidTicketID(id) {
+		return contracts.TicketSnapshot{}, fmt.Errorf("%s", contracts.TicketIDValidationMessage())
+	}
 	matches, err := filepath.Glob(filepath.Join(storage.ProjectsDir(s.RootDir), "*", "tickets", id+".md"))
 	if err != nil {
 		return contracts.TicketSnapshot{}, fmt.Errorf("glob ticket: %w", err)
@@ -73,8 +77,14 @@ func (s TicketStore) UpdateTicket(_ context.Context, ticket contracts.TicketSnap
 	if strings.TrimSpace(ticket.ID) == "" {
 		return fmt.Errorf("ticket id is required")
 	}
+	if !contracts.IsValidTicketID(ticket.ID) {
+		return fmt.Errorf("%s", contracts.TicketIDValidationMessage())
+	}
 	if strings.TrimSpace(ticket.Project) == "" {
 		return fmt.Errorf("ticket project is required")
+	}
+	if !contracts.IsValidProjectKey(ticket.Project) {
+		return fmt.Errorf("%s", contracts.ProjectKeyValidationMessage())
 	}
 	path := storage.TicketFile(s.RootDir, ticket.Project, ticket.ID)
 	if _, err := os.Stat(path); err != nil {
@@ -139,6 +149,10 @@ func (s TicketStore) ListTickets(_ context.Context, opts contracts.TicketListOpt
 }
 
 func (s TicketStore) SoftDeleteTicket(ctx context.Context, id string, actor contracts.Actor, reason string) error {
+	id = strings.TrimSpace(id)
+	if !contracts.IsValidTicketID(id) {
+		return fmt.Errorf("%s", contracts.TicketIDValidationMessage())
+	}
 	if !actor.IsValid() {
 		return fmt.Errorf("invalid actor: %s", actor)
 	}
@@ -164,6 +178,9 @@ func (s TicketStore) SoftDeleteTicket(ctx context.Context, id string, actor cont
 
 func (s TicketStore) ticketGlob(project string) string {
 	if project != "" {
+		if !contracts.IsValidProjectKey(project) {
+			return filepath.Join(storage.ProjectsDir(s.RootDir), "__invalid_project_key__", "tickets", "*.md")
+		}
 		return filepath.Join(storage.TicketsDir(s.RootDir, project), "*.md")
 	}
 	return filepath.Join(storage.ProjectsDir(s.RootDir), "*", "tickets", "*.md")

@@ -69,3 +69,28 @@ func TestBuildRunManifestIncludesVersionedContextAndProviderHints(t *testing.T) 
 		t.Fatalf("unexpected context envelope: %#v", envelope)
 	}
 }
+
+func TestBuildRunManifestSkipsEmptyWorktreeHint(t *testing.T) {
+	manifest, err := BuildRunManifest(RunManifestInput{
+		WorkspaceRoot: "/tmp/atlas",
+		Run: contracts.RunSnapshot{
+			RunID:    "run_124",
+			TicketID: "APP-2",
+			AgentID:  "builder-1",
+			Status:   contracts.RunStatusDispatched,
+			Kind:     contracts.RunKindWork,
+		},
+		Ticket:           contracts.TicketSnapshot{ID: "APP-2", Title: "No worktree yet", Type: contracts.TicketTypeTask, Priority: contracts.PriorityMedium},
+		BriefPath:        "/tmp/atlas/.tracker/runtime/run_124/brief.md",
+		ContextPath:      "/tmp/atlas/.tracker/runtime/run_124/context.json",
+		CodexLaunchPath:  "/tmp/atlas/.tracker/runtime/run_124/launch.codex.txt",
+		ClaudeLaunchPath: "/tmp/atlas/.tracker/runtime/run_124/launch.claude.txt",
+		EvidenceDir:      "/tmp/atlas/.tracker/evidence/run_124",
+	})
+	if err != nil {
+		t.Fatalf("build manifest: %v", err)
+	}
+	if strings.Contains(manifest.ClaudeLaunch, "work in  if") || strings.Contains(manifest.CodexLaunch, "work in  if") {
+		t.Fatalf("launch text should not include empty worktree hint:\n%s\n%s", manifest.CodexLaunch, manifest.ClaudeLaunch)
+	}
+}

@@ -1,34 +1,60 @@
 # Contributing
 
-Thanks for wanting to contribute! Here's how to get going.
+Atlas Tasker is still in release-candidate polish. Contributions are welcome, but expect maintainers to be conservative until the first public release is signed off.
 
-## Getting started
+## Before Opening A PR
 
-1. **Fork** this repo
-2. **Clone** your fork locally
-3. Create a branch off `main`:
-   ```bash
-   git checkout -b feat/your-thing
-   ```
-4. Make your changes
-5. Push to your fork and **open a PR** targeting `main` on this repo
+- Open or reference an issue when the change is user-visible.
+- Keep changes scoped. Unrelated refactors make review harder.
+- Update docs with any new command, JSON shape, script, policy, or public behavior.
+- Do not include private keys, tokens, webhook URLs, full `.tracker` archives, or unredacted logs.
+- Run the local gates:
 
-## Commit style
+```bash
+git diff --check
+go test ./...
+go vet ./...
+```
 
-We use [conventional commits](https://www.conventionalcommits.org/):
+If your change affects release scripts, docs snippets, terminal output, MCP, signing, governance, redaction, audit, or backup behavior, add the relevant targeted proof in the PR body.
 
-- `feat: add dark mode toggle`
-- `fix: handle empty search results`
-- `docs: update API examples`
-- `chore: bump deps`
+## Local Setup
 
-## PR expectations
+Atlas is a Go CLI. Use the Go version from CI when possible.
 
-- Keep PRs focused — one feature or fix per PR
-- Fill out the PR template
-- Make sure tests pass before requesting review
-- Be patient — maintainers review when they can
+```bash
+git clone https://github.com/myrrazor/atlas-tasker.git
+cd atlas-tasker
+go version
+go build -o tracker ./cmd/tracker
+./tracker version --json
+go test ./...
+go vet ./...
+```
 
-## Code of conduct
+Most examples in the docs use `./tracker` so they work immediately after a source build.
 
-Be kind, be constructive. That's it.
+## Commit Style
+
+Use conventional commits:
+
+- `feat: ...`
+- `fix: ...`
+- `docs: ...`
+- `test: ...`
+- `security: ...`
+- `chore: ...`
+
+Reference the issue or PR track when one exists, for example:
+
+```text
+docs: add public install guide (#803)
+```
+
+## Review Expectations
+
+Maintainers review for correctness, storage compatibility, security wording, docs drift, and local proof. Public docs should not claim Atlas provides OS sandboxing, hosted identity, encrypted-at-rest storage, DLP, malicious-local-user protection, full provider-rule enforcement, or full MCP client safety.
+
+## Release-Candidate Rule
+
+Do not describe a change as shipped or stable unless the release evidence says so. For v1.8, `docs/release/public-release-gates.md` is the source of truth.

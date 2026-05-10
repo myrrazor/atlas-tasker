@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest a focused Atlas improvement.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is hard or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should Atlas do differently?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - TUI
+        - Docs
+        - Agent workflow
+        - MCP
+        - Governance/security
+        - Release tooling
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This request does not require a hosted server, SaaS identity, CRDT rewrite, encrypted workspace storage, or full MCP client safety.
+          required: true
