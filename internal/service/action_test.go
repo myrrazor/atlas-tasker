@@ -182,6 +182,16 @@ func TestActionServiceReviewAndPolicyFlow(t *testing.T) {
 	if requested.Status != contracts.StatusInReview || requested.ReviewState != contracts.ReviewStatePending {
 		t.Fatalf("unexpected request review state: %#v", requested)
 	}
+	if len(requested.OpenGateIDs) != 1 {
+		t.Fatalf("request review should open a review gate, got %#v", requested.OpenGateIDs)
+	}
+	gates, err := actions.Gates.ListGates(ctx, ticket.ID)
+	if err != nil {
+		t.Fatalf("list gates after request review: %v", err)
+	}
+	if len(gates) != 1 || gates[0].Kind != contracts.GateKindReview || gates[0].State != contracts.GateStateOpen {
+		t.Fatalf("expected one open review gate, got %#v", gates)
+	}
 
 	clock = clock.Add(time.Minute)
 	rejected, err := actions.RejectTicket(ctx, ticket.ID, contracts.Actor("agent:reviewer-1"), "needs changes")
@@ -190,6 +200,9 @@ func TestActionServiceReviewAndPolicyFlow(t *testing.T) {
 	}
 	if rejected.Status != contracts.StatusInProgress || rejected.ReviewState != contracts.ReviewStateChangesRequested {
 		t.Fatalf("unexpected rejected ticket: %#v", rejected)
+	}
+	if len(rejected.OpenGateIDs) != 0 {
+		t.Fatalf("reject should close review gate, got %#v", rejected.OpenGateIDs)
 	}
 
 	clock = clock.Add(time.Minute)
@@ -203,6 +216,9 @@ func TestActionServiceReviewAndPolicyFlow(t *testing.T) {
 	}
 	if approved.ReviewState != contracts.ReviewStateApproved || approved.Status != contracts.StatusInReview {
 		t.Fatalf("unexpected approved ticket: %#v", approved)
+	}
+	if len(approved.OpenGateIDs) != 0 {
+		t.Fatalf("approve should close review gate, got %#v", approved.OpenGateIDs)
 	}
 	clock = clock.Add(time.Minute)
 	returned, err := actions.MoveTicket(ctx, ticket.ID, contracts.StatusInProgress, contracts.Actor("agent:builder-1"), "follow-up work")

@@ -25,7 +25,7 @@ Example version payload:
   "version": "v1.8.0-rc1",
   "commit": "abc123",
   "build_date": "2026-05-07T00:00:00Z",
-  "go_version": "go1.26.2",
+  "go_version": "go1.26.3",
   "platform": "darwin/arm64"
 }
 ```
