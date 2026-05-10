@@ -66,6 +66,29 @@ func (s *ActionService) decideGate(ctx context.Context, gateID string, actor con
 		if err := s.authorizeGateDecision(ctx, actor, ticket, gate); err != nil {
 			return contracts.GateSnapshot{}, err
 		}
+		protectedAction := contracts.ProtectedAction("")
+		switch eventType {
+		case contracts.EventGateApproved:
+			protectedAction = contracts.ProtectedActionGateApprove
+		case contracts.EventGateWaived:
+			protectedAction = contracts.ProtectedActionGateWaive
+		}
+		governanceInput := GovernanceEvaluationInput{
+			Action:   protectedAction,
+			Target:   "gate:" + gate.GateID,
+			Actor:    actor,
+			Reason:   reason,
+			TicketID: ticket.ID,
+			RunID:    gate.RunID,
+			GateID:   gate.GateID,
+		}
+		governanceExplanation := contracts.GovernanceExplanation{}
+		if governanceInput.Action != "" {
+			governanceExplanation, err = s.requireGovernance(ctx, governanceInput)
+			if err != nil {
+				return contracts.GateSnapshot{}, err
+			}
+		}
 		gate.State = nextState
 		gate.DecidedBy = actor
 		gate.DecisionReason = strings.TrimSpace(reason)
@@ -138,6 +161,11 @@ func (s *ActionService) decideGate(ctx context.Context, gateID string, actor con
 		}
 		if err := s.recordMentionEvents(ctx, ticket.Project, actor, reason, mentions.Mentions); err != nil {
 			return contracts.GateSnapshot{}, err
+		}
+		if governanceInput.Action != "" {
+			if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+				return contracts.GateSnapshot{}, err
+			}
 		}
 		return gate, nil
 	})

@@ -1,0 +1,8 @@
+$ tracker dashboard
+dashboard active_runs=1
+awaiting_review=1
+awaiting_owner=0
+merge_ready=0
+blocked_by_checks=0
+
+provider_mapping_warnings=APP:no project collaborators with github handles found for CODEOWNERS

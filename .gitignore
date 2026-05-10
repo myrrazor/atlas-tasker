@@ -5,6 +5,8 @@ TEST_STDOUT.log
 # local review notes
 CLAUDE_REVIEW_*.md
 CLAW_REVIEW_*.md
+.claude/
+.gstack/
 
 # editor/system
 .DS_Store
@@ -20,6 +22,11 @@ CLAW_REVIEW_*.md
 !/.tracker/archives/*.md
 /.tracker/exports/*
 !/.tracker/exports/*.md
+/.tracker/security/keys/private/
+/.tracker/security/trust/
+/.tracker/redaction/previews/
+/.tracker/backups/snapshots/
+/.tracker/goal/
 /.tracker/evidence/**
 !/.tracker/evidence/
 !/.tracker/evidence/*/

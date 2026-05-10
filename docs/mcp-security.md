@@ -49,6 +49,12 @@ High-impact execution requires:
 
 Denied high-impact attempts are written to `.tracker/runtime/mcp/security-audit.jsonl`. Denial records do not include raw approval IDs; they only record whether an approval ID was supplied. Successful high-impact execution records keep the approval ID so an executed mutation can be tied back to the human approval. If a handler fails after consuming an approval, Atlas records an `execution_failed` row with the approval ID because the approval is already single-use at that point.
 
+## v1.7 Governance Alignment
+
+The v1.7 trust/governance train does not make Atlas MCP-first. MCP may expose safe read-only trust and governance status in a later adapter update, but it does not expose private-key operations and does not mutate trust by default.
+
+High-impact MCP tools evaluate the same service-layer permission and governance checks as CLI, shell, and TUI paths. MCP approval tokens remain a transport safety gate, not proof that the actor has Atlas authority.
+
 ## References
 
 - [MCP tools specification](https://mcp.mintlify.app/specification/2025-11-25/server/tools)

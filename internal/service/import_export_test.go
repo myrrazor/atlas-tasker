@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -90,6 +91,50 @@ func TestCreateAndVerifyExportBundleRoundTrip(t *testing.T) {
 	}
 	if !slices.Contains(types, contracts.EventExportCreated) || !slices.Contains(types, contracts.EventExportVerified) {
 		t.Fatalf("expected export create/verify events, got %#v", types)
+	}
+}
+
+func TestExportBundleIncludesGovernanceStores(t *testing.T) {
+	_, actions, _, _, _, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	if _, err := actions.SetClassification(ctx, "workspace", contracts.ClassificationConfidential, contracts.Actor("human:owner"), "label workspace"); err != nil {
+		t.Fatalf("set workspace classification: %v", err)
+	}
+	if err := actions.RedactionRules.SaveRedactionRule(ctx, contracts.RedactionRule{
+		RuleID:        "custom-redaction",
+		Target:        contracts.RedactionTargetExport,
+		FieldPath:     "*",
+		MinLevel:      contracts.ClassificationRestricted,
+		Action:        contracts.RedactionOmit,
+		Reason:        "test redaction rule",
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatalf("save redaction rule: %v", err)
+	}
+	if _, err := actions.CreateGovernancePack(ctx, GovernancePackCreateOptions{
+		Name:             "Release quorum",
+		ProtectedActions: []contracts.ProtectedAction{contracts.ProtectedActionTicketComplete},
+		QuorumCount:      1,
+	}, contracts.Actor("human:owner"), "create governance pack"); err != nil {
+		t.Fatalf("create governance pack: %v", err)
+	}
+	if _, err := actions.ApplyGovernancePack(ctx, "release-quorum", "", contracts.Actor("human:owner"), "apply governance pack"); err != nil {
+		t.Fatalf("apply governance pack: %v", err)
+	}
+	created, err := actions.CreateExportBundle(ctx, "workspace", contracts.Actor("human:owner"), "export workspace")
+	if err != nil {
+		t.Fatalf("create export bundle: %v", err)
+	}
+	names := exportBundleEntryNames(t, created.Bundle.ArtifactPath)
+	for _, want := range []string{
+		filepath.ToSlash(filepath.Join(".tracker", "governance", "packs", "release-quorum.toml")),
+		filepath.ToSlash(filepath.Join(".tracker", "governance", "policies", "release-quorum.toml")),
+		filepath.ToSlash(filepath.Join(".tracker", "classification", "labels", classificationLabelID(contracts.ClassifiedEntityWorkspace, "workspace")+".md")),
+		filepath.ToSlash(filepath.Join(".tracker", "redaction", "rules", "custom-redaction.toml")),
+	} {
+		if !names[want] {
+			t.Fatalf("expected export bundle to include %s; names=%#v", want, names)
+		}
 	}
 }
 
@@ -470,6 +515,33 @@ func writeTestBundleEntries(path string, entries []testTarEntry) error {
 		}
 	}
 	return nil
+}
+
+func exportBundleEntryNames(t *testing.T, path string) map[string]bool {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open export bundle: %v", err)
+	}
+	defer file.Close()
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatalf("read export gzip: %v", err)
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	names := map[string]bool{}
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("read export tar: %v", err)
+		}
+		names[filepath.ToSlash(header.Name)] = true
+	}
+	return names
 }
 
 func mustJSON(t *testing.T, value any) []byte {

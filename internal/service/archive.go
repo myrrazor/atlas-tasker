@@ -114,6 +114,16 @@ func (s *ActionService) ApplyArchive(ctx context.Context, target contracts.Reten
 		if plan.Policy.RequiresConfirmation && !confirmed {
 			return ArchiveApplyResult{}, apperr.New(apperr.CodeConflict, "archive apply requires --yes")
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionArchiveApply,
+			Target: governanceArchiveTarget(projectKey),
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return ArchiveApplyResult{}, err
+		}
 		if len(plan.Items) == 0 {
 			record := contracts.ArchiveRecord{
 				ArchiveID:     "archive_" + NewOpaqueID(),
@@ -169,6 +179,9 @@ func (s *ActionService) ApplyArchive(ctx context.Context, target contracts.Reten
 			rollbackMovedPaths(moved)
 			return ArchiveApplyResult{}, err
 		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+			return ArchiveApplyResult{}, err
+		}
 		return ArchiveApplyResult{Record: record, Warnings: record.Warnings, GeneratedAt: s.now()}, nil
 	})
 }
@@ -179,6 +192,16 @@ func (s *ActionService) RestoreArchive(ctx context.Context, archiveID string, ac
 			return ArchiveRestoreResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
 		}
 		record, err := s.Archives.LoadArchiveRecord(ctx, archiveID)
+		if err != nil {
+			return ArchiveRestoreResult{}, err
+		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionArchiveRestore,
+			Target: governanceArchiveTarget(record.ProjectKey),
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
 		if err != nil {
 			return ArchiveRestoreResult{}, err
 		}
@@ -222,6 +245,9 @@ func (s *ActionService) RestoreArchive(ctx context.Context, archiveID string, ac
 		}); err != nil {
 			_ = s.applyArchiveMetadata(ctx, record.Target, archivePlanItemsFromRecord(record), true)
 			cleanupCreatedPaths(created)
+			return ArchiveRestoreResult{}, err
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
 			return ArchiveRestoreResult{}, err
 		}
 		return ArchiveRestoreResult{Record: record, Warnings: record.Warnings, GeneratedAt: s.now()}, nil
@@ -617,6 +643,14 @@ func maxTime(a time.Time, b time.Time) time.Time {
 		return a.UTC()
 	}
 	return b.UTC()
+}
+
+func governanceArchiveTarget(projectKey string) string {
+	projectKey = strings.TrimSpace(projectKey)
+	if projectKey == "" {
+		return "workspace"
+	}
+	return "project:" + projectKey
 }
 
 func archivePlanItemsFromRecord(record contracts.ArchiveRecord) []ArchivePlanItem {

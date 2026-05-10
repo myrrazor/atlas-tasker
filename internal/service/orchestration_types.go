@@ -88,6 +88,8 @@ type RunLaunchManifestView struct {
 	ContextPath      string    `json:"context_path"`
 	CodexLaunchPath  string    `json:"codex_launch_path"`
 	ClaudeLaunchPath string    `json:"claude_launch_path"`
+	NeedsLaunch      bool      `json:"needs_launch"`
+	Missing          []string  `json:"missing,omitempty"`
 	Created          []string  `json:"created,omitempty"`
 	Updated          []string  `json:"updated,omitempty"`
 	GeneratedAt      time.Time `json:"generated_at"`

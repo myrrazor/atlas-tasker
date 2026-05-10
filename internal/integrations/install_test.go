@@ -27,7 +27,7 @@ func TestInstallCodexCreatesManagedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read guide: %v", err)
 	}
-	if !strings.Contains(string(guide), "tracker ticket claim <ID>") || !strings.Contains(string(guide), "tracker run launch <RUN-ID>") {
+	if !strings.Contains(string(guide), "tracker ticket claim <ID>") || !strings.Contains(string(guide), "tracker run launch <RUN-ID>") || !strings.Contains(string(guide), "tracker goal brief <ID> --md") || !strings.Contains(string(guide), "--type test_result") {
 		t.Fatalf("unexpected guide content: %s", string(guide))
 	}
 }
@@ -60,7 +60,7 @@ func TestInstallClaudeReplacesOnlyManagedBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read guide: %v", err)
 	}
-	if !strings.Contains(string(guide), "tracker run attach <RUN-ID> --provider claude --session-ref <session>") {
+	if !strings.Contains(string(guide), "tracker run attach <RUN-ID> --provider claude --session-ref <session>") || !strings.Contains(string(guide), "tracker goal brief <ID> --md") {
 		t.Fatalf("expected launch flow guidance, got: %s", string(guide))
 	}
 }

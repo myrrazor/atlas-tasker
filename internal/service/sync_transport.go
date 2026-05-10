@@ -243,6 +243,16 @@ func (s *ActionService) CreateSyncBundle(ctx context.Context, actor contracts.Ac
 		if !actor.IsValid() {
 			return SyncJobDetailView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionExportCreate,
+			Target: "workspace",
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return SyncJobDetailView{}, err
+		}
 		workspaceID, err := ensureWorkspaceIdentity(s.Root)
 		if err != nil {
 			return SyncJobDetailView{}, err
@@ -322,6 +332,9 @@ func (s *ActionService) CreateSyncBundle(ctx context.Context, actor contracts.Ac
 		}); err != nil {
 			return SyncJobDetailView{}, err
 		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+			return SyncJobDetailView{}, err
+		}
 		return SyncJobDetailView{Job: job, Publication: publication, GeneratedAt: s.now()}, nil
 	})
 }
@@ -363,74 +376,104 @@ func (s *ActionService) VerifySyncBundle(ctx context.Context, bundleRef string, 
 
 func (s *ActionService) ImportSyncBundle(ctx context.Context, bundleRef string, actor contracts.Actor, reason string) (SyncJobDetailView, error) {
 	return withWriteLock(ctx, s.LockManager, "import sync bundle", func(ctx context.Context) (SyncJobDetailView, error) {
-		if !actor.IsValid() {
-			return SyncJobDetailView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
-		}
-		if err := s.ensureSyncMigrationStamp(ctx); err != nil {
-			return SyncJobDetailView{}, err
-		}
-		if err := s.ensureSyncMigrationReady(ctx); err != nil {
-			return SyncJobDetailView{}, err
-		}
-		artifactPath := resolveSyncBundlePath(s.Root, bundleRef)
-		jobID := "import_" + NewOpaqueID()
-		verifyView, err := verifySyncBundle(artifactPath)
-		if err != nil {
-			return SyncJobDetailView{}, err
-		}
-		if !verifyView.Verified {
-			return SyncJobDetailView{}, apperr.New(apperr.CodeConflict, "sync bundle verification failed")
-		}
-		files, err := readBundleArchive(artifactPath)
-		if err != nil {
-			return SyncJobDetailView{}, err
-		}
-		applyResult, err := s.applyImportedSyncFiles(ctx, jobID, files, actor, reason)
-		if err != nil {
-			return SyncJobDetailView{}, err
-		}
-		workspaceID, err := ensureWorkspaceIdentity(s.Root)
-		if err != nil {
-			return SyncJobDetailView{}, err
-		}
-		if err := writeSyncMigrationState(syncMigrationPath(s.Root), syncMigrationState{Complete: true, WorkspaceID: workspaceID, State: string(MigrationStateStamped), StampedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
-			return SyncJobDetailView{}, err
-		}
-		if s.Projection != nil {
-			if err := s.Projection.Rebuild(ctx, ""); err != nil {
-				return SyncJobDetailView{}, err
-			}
-		}
-		job := normalizeSyncJob(contracts.SyncJob{
-			JobID:         jobID,
-			BundleRef:     artifactPath,
-			Mode:          contracts.SyncJobModeBundleImport,
-			State:         contracts.SyncJobStateCompleted,
-			StartedAt:     s.now(),
-			FinishedAt:    s.now(),
-			Counts:        map[string]int{"files": verifyView.Publication.FileCount, "applied_files": applyResult.AppliedFiles},
-			ConflictIDs:   append([]string{}, applyResult.ConflictIDs...),
-			SchemaVersion: contracts.CurrentSchemaVersion,
-		})
-		if len(applyResult.ConflictIDs) > 0 {
-			job.State = contracts.SyncJobStateFailed
-			job.ReasonCodes = []string{"sync_conflicts_detected"}
-			if err := saveSyncJobOnly(ctx, s.SyncJobs, job); err != nil {
-				return SyncJobDetailView{}, err
-			}
-			return SyncJobDetailView{}, buildSyncConflictError(applyResult.ConflictIDs)
-		}
-		event, err := s.newEvent(ctx, workspaceEventProject, s.now(), actor, reason, contracts.EventBundleImported, "", verifyView.Publication)
-		if err != nil {
-			return SyncJobDetailView{}, err
-		}
-		if err := s.commitMutation(ctx, "import sync bundle", "sync_job", event, func(ctx context.Context) error {
-			return s.SyncJobs.SaveSyncJob(ctx, job)
-		}); err != nil {
-			return SyncJobDetailView{}, err
-		}
-		return SyncJobDetailView{Job: job, Publication: verifyView.Publication, GeneratedAt: s.now()}, nil
+		return s.importSyncBundleLocked(ctx, bundleRef, actor, reason, contracts.ProtectedActionBundleImportApply)
 	})
+}
+
+func (s *ActionService) importSyncBundleLocked(ctx context.Context, bundleRef string, actor contracts.Actor, reason string, governanceAction contracts.ProtectedAction) (SyncJobDetailView, error) {
+	if !actor.IsValid() {
+		return SyncJobDetailView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+	}
+	artifactPath := resolveSyncBundlePath(s.Root, bundleRef)
+	count, signatureErr := s.trustedSyncPublicationSignatureCount(ctx, artifactPath)
+	trustedSignatures := 0
+	if signatureErr == nil {
+		trustedSignatures = count
+	}
+	var governanceInput GovernanceEvaluationInput
+	var governanceExplanation contracts.GovernanceExplanation
+	if governanceAction != "" {
+		governanceInput = GovernanceEvaluationInput{
+			Action:                governanceAction,
+			Target:                "workspace",
+			Actor:                 actor,
+			Reason:                reason,
+			TrustedSignatureCount: trustedSignatures,
+		}
+		var err error
+		governanceExplanation, err = s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return SyncJobDetailView{}, err
+		}
+	}
+	if err := s.ensureSyncMigrationStamp(ctx); err != nil {
+		return SyncJobDetailView{}, err
+	}
+	if err := s.ensureSyncMigrationReady(ctx); err != nil {
+		return SyncJobDetailView{}, err
+	}
+	jobID := "import_" + NewOpaqueID()
+	verifyView, err := verifySyncBundle(artifactPath)
+	if err != nil {
+		return SyncJobDetailView{}, err
+	}
+	if !verifyView.Verified {
+		return SyncJobDetailView{}, apperr.New(apperr.CodeConflict, "sync bundle verification failed")
+	}
+	files, err := readBundleArchive(artifactPath)
+	if err != nil {
+		return SyncJobDetailView{}, err
+	}
+	applyResult, err := s.applyImportedSyncFiles(ctx, jobID, files, actor, reason)
+	if err != nil {
+		return SyncJobDetailView{}, err
+	}
+	workspaceID, err := ensureWorkspaceIdentity(s.Root)
+	if err != nil {
+		return SyncJobDetailView{}, err
+	}
+	if err := writeSyncMigrationState(syncMigrationPath(s.Root), syncMigrationState{Complete: true, WorkspaceID: workspaceID, State: string(MigrationStateStamped), StampedAt: s.now(), SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		return SyncJobDetailView{}, err
+	}
+	if s.Projection != nil {
+		if err := s.Projection.Rebuild(ctx, ""); err != nil {
+			return SyncJobDetailView{}, err
+		}
+	}
+	job := normalizeSyncJob(contracts.SyncJob{
+		JobID:         jobID,
+		BundleRef:     artifactPath,
+		Mode:          contracts.SyncJobModeBundleImport,
+		State:         contracts.SyncJobStateCompleted,
+		StartedAt:     s.now(),
+		FinishedAt:    s.now(),
+		Counts:        map[string]int{"files": verifyView.Publication.FileCount, "applied_files": applyResult.AppliedFiles},
+		ConflictIDs:   append([]string{}, applyResult.ConflictIDs...),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	})
+	if len(applyResult.ConflictIDs) > 0 {
+		job.State = contracts.SyncJobStateFailed
+		job.ReasonCodes = []string{"sync_conflicts_detected"}
+		if err := saveSyncJobOnly(ctx, s.SyncJobs, job); err != nil {
+			return SyncJobDetailView{}, err
+		}
+		return SyncJobDetailView{}, buildSyncConflictError(applyResult.ConflictIDs)
+	}
+	event, err := s.newEvent(ctx, workspaceEventProject, s.now(), actor, reason, contracts.EventBundleImported, "", verifyView.Publication)
+	if err != nil {
+		return SyncJobDetailView{}, err
+	}
+	if err := s.commitMutation(ctx, "import sync bundle", "sync_job", event, func(ctx context.Context) error {
+		return s.SyncJobs.SaveSyncJob(ctx, job)
+	}); err != nil {
+		return SyncJobDetailView{}, err
+	}
+	if governanceAction != "" {
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+			return SyncJobDetailView{}, err
+		}
+	}
+	return SyncJobDetailView{Job: job, Publication: verifyView.Publication, GeneratedAt: s.now()}, nil
 }
 
 func (s *ActionService) SyncFetch(ctx context.Context, remoteID string, actor contracts.Actor, reason string) (SyncJobDetailView, error) {
@@ -517,15 +560,37 @@ func (s *ActionService) SyncPull(ctx context.Context, remoteID string, sourceWor
 		if !remote.Enabled {
 			return SyncJobDetailView{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("sync remote %s is disabled", remoteID))
 		}
-		publications, err := fetchRemotePublications(s.Root, remote)
+		stagingMirror := filepath.Join(storage.SyncStagingDir(s.Root), "pull-"+sanitizeSecurityID(remote.RemoteID)+"-"+NewOpaqueID())
+		defer func() { _ = os.RemoveAll(stagingMirror) }()
+		publications, err := fetchRemotePublicationsToMirror(s.Root, remote, stagingMirror)
 		if err != nil {
 			return SyncJobDetailView{}, err
 		}
-		publication, artifactPath, err := selectFetchedPublication(s.Root, remote.RemoteID, sourceWorkspaceID, publications)
+		publication, artifactPath, err := selectFetchedPublicationFromMirror(stagingMirror, sourceWorkspaceID, publications)
 		if err != nil {
 			return SyncJobDetailView{}, err
 		}
-		imported, err := s.ImportSyncBundle(ctx, artifactPath, actor, reason)
+		count, signatureErr := s.trustedSyncPublicationSignatureCount(ctx, artifactPath)
+		trustedSignatures := 0
+		if signatureErr == nil {
+			trustedSignatures = count
+		}
+		governanceInput := GovernanceEvaluationInput{
+			Action:                contracts.ProtectedActionSyncImportApply,
+			Target:                "workspace",
+			Actor:                 actor,
+			Reason:                reason,
+			TrustedSignatureCount: trustedSignatures,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return SyncJobDetailView{}, err
+		}
+		if err := promoteFetchedPublication(storage.SyncMirrorRemoteDir(s.Root, remote.RemoteID), stagingMirror, publication); err != nil {
+			return SyncJobDetailView{}, err
+		}
+		artifactPath = filepath.Join(storage.SyncMirrorRemoteDir(s.Root, remote.RemoteID), publication.WorkspaceID, publication.ArtifactName)
+		imported, err := s.importSyncBundleLocked(ctx, artifactPath, actor, reason, "")
 		if err != nil {
 			if conflictIDs, ok := conflictIDsFromError(err); ok {
 				job := normalizeSyncJob(contracts.SyncJob{
@@ -566,6 +631,9 @@ func (s *ActionService) SyncPull(ctx context.Context, remoteID string, sourceWor
 		imported.Remote = view.Remote
 		imported.Publication = view.Publication
 		imported.GeneratedAt = view.GeneratedAt
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
+			return SyncJobDetailView{}, err
+		}
 		return imported, nil
 	})
 }
@@ -807,7 +875,7 @@ func inspectSyncBundle(artifactPath string) (SyncPublication, error) {
 		return SyncPublication{}, apperr.New(apperr.CodeInvalidInput, "bundle ref is required")
 	}
 	manifestPath := strings.TrimSuffix(artifactPath, ".tar.gz") + ".manifest.json"
-	publicationPath := strings.TrimSuffix(artifactPath, ".tar.gz") + ".publication.json"
+	publicationPath := syncPublicationPathForArtifact(artifactPath)
 	publication, err := readSyncPublication(publicationPath)
 	if err == nil {
 		return publication, nil
@@ -836,6 +904,34 @@ func inspectSyncBundle(artifactPath string) (SyncPublication, error) {
 		ArchiveSHA256:  archiveSHA,
 		ManifestSHA256: hex.EncodeToString(manifestHash[:]),
 	}, nil
+}
+
+func syncPublicationPathForArtifact(artifactPath string) string {
+	defaultPath := strings.TrimSuffix(artifactPath, ".tar.gz") + ".publication.json"
+	if _, err := os.Stat(defaultPath); err == nil {
+		return defaultPath
+	}
+	remotePath := filepath.Join(filepath.Dir(artifactPath), "publication.json")
+	if publication, err := readSyncPublication(remotePath); err == nil && syncPublicationMatchesArtifact(publication, artifactPath) {
+		return remotePath
+	}
+	return defaultPath
+}
+
+func syncPublicationMatchesArtifact(publication SyncPublication, artifactPath string) bool {
+	artifactName := filepath.Base(artifactPath)
+	manifestName := filepath.Base(strings.TrimSuffix(artifactPath, ".tar.gz") + ".manifest.json")
+	checksumName := filepath.Base(strings.TrimSuffix(artifactPath, ".tar.gz") + ".sha256")
+	if filepath.Base(publication.ArtifactName) != artifactName {
+		return false
+	}
+	if strings.TrimSpace(publication.ManifestName) != "" && filepath.Base(publication.ManifestName) != manifestName {
+		return false
+	}
+	if strings.TrimSpace(publication.ChecksumName) != "" && filepath.Base(publication.ChecksumName) != checksumName {
+		return false
+	}
+	return true
 }
 
 func verifySyncBundle(artifactPath string) (SyncBundleVerifyView, error) {
@@ -905,11 +1001,15 @@ func verifySyncBundle(artifactPath string) (SyncBundleVerifyView, error) {
 }
 
 func fetchRemotePublications(root string, remote contracts.SyncRemote) ([]SyncPublication, error) {
+	return fetchRemotePublicationsToMirror(root, remote, storage.SyncMirrorRemoteDir(root, remote.RemoteID))
+}
+
+func fetchRemotePublicationsToMirror(root string, remote contracts.SyncRemote, mirrorBase string) ([]SyncPublication, error) {
 	switch remote.Kind {
 	case contracts.SyncRemoteKindPath:
-		return fetchPathRemotePublications(root, remote)
+		return fetchPathRemotePublicationsToMirror(root, remote, mirrorBase)
 	case contracts.SyncRemoteKindGit:
-		return fetchGitRemotePublications(root, remote)
+		return fetchGitRemotePublicationsToMirror(root, remote, mirrorBase)
 	default:
 		return nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("sync remote kind %s is not implemented yet", remote.Kind))
 	}
@@ -927,6 +1027,10 @@ func publishRemoteBundle(root string, remote contracts.SyncRemote, publication S
 }
 
 func fetchPathRemotePublications(root string, remote contracts.SyncRemote) ([]SyncPublication, error) {
+	return fetchPathRemotePublicationsToMirror(root, remote, storage.SyncMirrorRemoteDir(root, remote.RemoteID))
+}
+
+func fetchPathRemotePublicationsToMirror(_ string, remote contracts.SyncRemote, mirrorBase string) ([]SyncPublication, error) {
 	entries, err := os.ReadDir(remote.Location)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -947,7 +1051,7 @@ func fetchPathRemotePublications(root string, remote contracts.SyncRemote) ([]Sy
 		}
 		publication.SourceRemoteID = remote.RemoteID
 		publication.FetchedAt = timeNowUTC()
-		mirrorDir := filepath.Join(storage.SyncMirrorRemoteDir(root, remote.RemoteID), workspaceID)
+		mirrorDir := filepath.Join(mirrorBase, workspaceID)
 		if err := os.MkdirAll(mirrorDir, 0o755); err != nil {
 			return nil, fmt.Errorf("create sync mirror dir: %w", err)
 		}
@@ -996,7 +1100,11 @@ func publishPathRemoteBundle(root string, remote contracts.SyncRemote, publicati
 }
 
 func fetchGitRemotePublications(root string, remote contracts.SyncRemote) ([]SyncPublication, error) {
-	repoDir, err := ensureSyncGitCache(root, remote)
+	return fetchGitRemotePublicationsToMirror(root, remote, storage.SyncMirrorRemoteDir(root, remote.RemoteID))
+}
+
+func fetchGitRemotePublicationsToMirror(root string, remote contracts.SyncRemote, mirrorBase string) ([]SyncPublication, error) {
+	repoDir, err := ensureSyncGitCache(mirrorBase, remote)
 	if err != nil {
 		return nil, err
 	}
@@ -1034,7 +1142,7 @@ func fetchGitRemotePublications(root string, remote contracts.SyncRemote) ([]Syn
 		publication.SourceRemoteID = remote.RemoteID
 		publication.SourceRef = refName
 		publication.FetchedAt = timeNowUTC()
-		mirrorDir := filepath.Join(storage.SyncMirrorRemoteDir(root, remote.RemoteID), workspaceID)
+		mirrorDir := filepath.Join(mirrorBase, workspaceID)
 		if err := os.MkdirAll(mirrorDir, 0o755); err != nil {
 			return nil, fmt.Errorf("create git sync mirror dir: %w", err)
 		}
@@ -1163,13 +1271,17 @@ func cachedRemotePublications(root string, remoteID string) ([]SyncPublication, 
 }
 
 func selectFetchedPublication(root string, remoteID string, sourceWorkspaceID string, publications []SyncPublication) (SyncPublication, string, error) {
+	return selectFetchedPublicationFromMirror(storage.SyncMirrorRemoteDir(root, remoteID), sourceWorkspaceID, publications)
+}
+
+func selectFetchedPublicationFromMirror(mirrorBase string, sourceWorkspaceID string, publications []SyncPublication) (SyncPublication, string, error) {
 	if len(publications) == 0 {
-		return SyncPublication{}, "", apperr.New(apperr.CodeNotFound, fmt.Sprintf("no publications fetched for remote %s", remoteID))
+		return SyncPublication{}, "", apperr.New(apperr.CodeNotFound, "no publications fetched for remote")
 	}
 	if strings.TrimSpace(sourceWorkspaceID) != "" {
 		for _, publication := range publications {
 			if publication.WorkspaceID == strings.TrimSpace(sourceWorkspaceID) {
-				artifactPath := filepath.Join(storage.SyncMirrorRemoteDir(root, remoteID), publication.WorkspaceID, publication.ArtifactName)
+				artifactPath := filepath.Join(mirrorBase, publication.WorkspaceID, publication.ArtifactName)
 				return publication, artifactPath, nil
 			}
 		}
@@ -1179,8 +1291,22 @@ func selectFetchedPublication(root string, remoteID string, sourceWorkspaceID st
 		return SyncPublication{}, "", apperr.New(apperr.CodeInvalidInput, "multiple remote publications found; specify --workspace")
 	}
 	publication := publications[0]
-	artifactPath := filepath.Join(storage.SyncMirrorRemoteDir(root, remoteID), publication.WorkspaceID, publication.ArtifactName)
+	artifactPath := filepath.Join(mirrorBase, publication.WorkspaceID, publication.ArtifactName)
 	return publication, artifactPath, nil
+}
+
+func promoteFetchedPublication(durableMirrorBase string, stagingMirrorBase string, publication SyncPublication) error {
+	sourceDir := filepath.Join(stagingMirrorBase, publication.WorkspaceID)
+	targetDir := filepath.Join(durableMirrorBase, publication.WorkspaceID)
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return fmt.Errorf("create sync mirror dir: %w", err)
+	}
+	for _, name := range []string{publication.ArtifactName, publication.ManifestName, publication.ChecksumName} {
+		if err := copySyncFile(filepath.Join(sourceDir, name), filepath.Join(targetDir, name)); err != nil {
+			return err
+		}
+	}
+	return writeSyncPublication(filepath.Join(targetDir, "publication.json"), publication)
 }
 
 func writeSyncPublication(path string, publication SyncPublication) error {
@@ -1288,8 +1414,8 @@ func canonicalCandidatePath(path string) string {
 	}
 }
 
-func ensureSyncGitCache(root string, remote contracts.SyncRemote) (string, error) {
-	cacheDir := filepath.Join(storage.SyncMirrorRemoteDir(root, remote.RemoteID), ".git-cache")
+func ensureSyncGitCache(mirrorBase string, remote contracts.SyncRemote) (string, error) {
+	cacheDir := filepath.Join(mirrorBase, ".git-cache")
 	if _, err := os.Stat(filepath.Join(cacheDir, ".git")); err == nil {
 		if _, err := gitSyncOutput(cacheDir, nil, "remote", "set-url", "origin", remote.Location); err != nil {
 			return "", err
@@ -1362,6 +1488,16 @@ func collectSyncableFiles(root string) ([]string, error) {
 		storage.ExportsDir(root),
 		storage.RetentionPoliciesDir(root),
 		storage.ArchivesDir(root),
+		storage.PublicKeysDir(root),
+		storage.RevocationsDir(root),
+		storage.SignaturesDir(root),
+		storage.GovernancePoliciesDir(root),
+		storage.GovernancePacksDir(root),
+		storage.ClassificationLabelsDir(root),
+		storage.ClassificationPoliciesDir(root),
+		storage.RedactionRulesDir(root),
+		storage.AuditReportsDir(root),
+		storage.AuditPacketsDir(root),
 		storage.EventsDir(root),
 	}
 	for _, base := range walks {
@@ -1382,6 +1518,9 @@ func collectSyncableFiles(root string) ([]string, error) {
 				if strings.HasPrefix(canonicalPath(path), canonicalPath(storage.ArchivesDir(root))+string(filepath.Separator)) && path != storage.ArchivesDir(root) && !strings.HasSuffix(path, ".md") {
 					// archive payload dirs are local-only
 				}
+				return nil
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
 				return nil
 			}
 			rel, err := filepath.Rel(root, path)
@@ -1434,6 +1573,26 @@ func isSyncableRelativePath(rel string) bool {
 	case strings.HasPrefix(rel, ".tracker/retention/") && strings.HasSuffix(rel, ".toml"):
 		return true
 	case strings.HasPrefix(rel, ".tracker/archives/") && strings.HasSuffix(rel, ".md"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/security/keys/public/") && strings.HasSuffix(rel, ".md"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/security/revocations/") && strings.HasSuffix(rel, ".md"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/security/signatures/") && strings.HasSuffix(rel, ".json"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/governance/policies/") && strings.HasSuffix(rel, ".toml"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/governance/packs/") && strings.HasSuffix(rel, ".toml"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/classification/labels/") && strings.HasSuffix(rel, ".md"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/classification/policies/") && strings.HasSuffix(rel, ".toml"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/redaction/rules/") && strings.HasSuffix(rel, ".toml"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/audit/reports/") && strings.HasSuffix(rel, ".json"):
+		return true
+	case strings.HasPrefix(rel, ".tracker/audit/packets/") && strings.HasSuffix(rel, ".json"):
 		return true
 	case strings.HasPrefix(rel, ".tracker/events/") && strings.HasSuffix(rel, ".jsonl"):
 		return true

@@ -51,4 +51,6 @@ args = ["mcp", "serve", "--tool-profile", "admin", "--dangerously-allow-high-imp
 
 High-impact calls still require `tracker mcp approve-operation` outside MCP.
 
+For the CLI-first Codex workflow, read [Codex guide](guides/codex.md) and [Codex `/goal` guide](guides/codex-goals.md).
+
 See OpenAI’s Codex MCP docs: <https://developers.openai.com/codex/mcp>.

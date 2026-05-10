@@ -1,0 +1,15 @@
+{
+  "version": "v1.7",
+  "theme": "Trust, Governance, and Production Security",
+  "base_branch": "origin/main",
+  "base_sha": "e0083de1cfd8007d1331e211723f2c7c47f45ede",
+  "base_pr": 65,
+  "base_pr_title": "Merge pull request #65 from myrrazor/codex/pr-616-mcp-rc-adapter",
+  "created_at": "2026-05-06T00:00:00Z",
+  "v1_6_1_release_evidence": {
+    "local_rehearsal": "passed",
+    "hosted_prerelease_proof": "blocked_pending_workflow_permission_visibility",
+    "source": "docs/v1.6.1-release-evidence.md"
+  },
+  "release_rule": "v1.7 may begin from this base, but v1.7 is not release-ready until PR-708 completes hosted proof or records an explicit no-ship decision."
+}
