@@ -885,14 +885,11 @@ func (s *ActionService) buildGoalBrief(ctx context.Context, target string) (cont
 func (s *ActionService) goalBriefForTicket(ctx context.Context, ticket contracts.TicketSnapshot, run *contracts.RunSnapshot) (contracts.GoalBrief, error) {
 	targetKind := contracts.GoalTargetTicket
 	targetID := ticket.ID
-	objective := strings.TrimSpace(firstNonEmpty(ticket.Summary, ticket.Description, ticket.Title))
+	objective := goalObjective(ticket, nil)
 	if run != nil {
 		targetKind = contracts.GoalTargetRun
 		targetID = run.RunID
-		objective = strings.TrimSpace(firstNonEmpty(run.Summary, run.Result, ticket.Summary, ticket.Description, ticket.Title))
-	}
-	if objective == "" {
-		objective = "Complete " + ticket.ID
+		objective = goalObjective(ticket, run)
 	}
 	sections, err := s.goalSections(ctx, ticket, run)
 	if err != nil {
@@ -938,13 +935,10 @@ func (s *ActionService) goalSections(ctx context.Context, ticket contracts.Ticke
 	if run != nil {
 		current = run.RunID + " for " + ticket.ID
 	}
-	goalBody := "Complete " + ticket.ID + ": " + ticket.Title
-	if strings.TrimSpace(ticket.Summary) != "" {
-		goalBody = ticket.Summary
-	}
+	goalBody := firstNonEmpty(ticket.Title, ticket.ID)
 	return completeGoalSections([]contracts.GoalSection{
 		{Heading: "Goal", Body: goalBody},
-		{Heading: "Objective", Body: firstNonEmpty(ticket.Summary, ticket.Description, ticket.Title)},
+		{Heading: "Objective", Body: goalObjective(ticket, run)},
 		{Heading: "Current State", Items: currentStateLines(ticket, run, gates)},
 		{Heading: "Ticket / Run", Items: goalCompactStrings(current, latestRunLine(run, ticket))},
 		{Heading: "Acceptance Criteria", Items: fallbackItems(ticket.AcceptanceCriteria, "Satisfy the ticket acceptance criteria and record evidence.")},
@@ -958,6 +952,18 @@ func (s *ActionService) goalSections(ctx context.Context, ticket contracts.Ticke
 		{Heading: "Done When", Items: doneWhenLines(ticket, gates)},
 		{Heading: "Verification", Items: verificationLines(ticket, run)},
 	}), nil
+}
+
+func goalObjective(ticket contracts.TicketSnapshot, run *contracts.RunSnapshot) string {
+	if run != nil {
+		if objective := strings.TrimSpace(firstNonEmpty(run.Summary, run.Result)); objective != "" {
+			return objective
+		}
+	}
+	if description := strings.TrimSpace(ticket.Description); description != "" {
+		return description
+	}
+	return "(no description recorded)"
 }
 
 func completeGoalSections(input []contracts.GoalSection) []contracts.GoalSection {
