@@ -412,7 +412,7 @@ func TestIntegrationsInstallCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read claude guide: %v", err)
 	}
-	if !strings.Contains(string(guide), "tracker review-queue --actor agent:reviewer-1 --json") {
+	if !strings.Contains(string(guide), "tracker agent available reviewer-1 --json") {
 		t.Fatalf("unexpected claude guide: %s", string(guide))
 	}
 }
