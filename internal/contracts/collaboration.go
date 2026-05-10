@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -20,9 +21,20 @@ var validCollaboratorStatuses = map[CollaboratorStatus]struct{}{
 	CollaboratorStatusRemoved:   {},
 }
 
+var collaboratorIDPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{0,63}$`)
+
 func (s CollaboratorStatus) IsValid() bool {
 	_, ok := validCollaboratorStatuses[s]
 	return ok
+}
+
+func IsValidCollaboratorID(id string) bool {
+	id = strings.TrimSpace(id)
+	return collaboratorIDPattern.MatchString(id)
+}
+
+func CollaboratorIDValidationMessage() string {
+	return "collaborator_id must match ^[A-Za-z][A-Za-z0-9_-]{0,63}$"
 }
 
 type CollaboratorTrustState string
@@ -278,6 +290,9 @@ func (c CollaboratorProfile) Validate() error {
 	if strings.TrimSpace(c.CollaboratorID) == "" {
 		return fmt.Errorf("collaborator_id is required")
 	}
+	if !IsValidCollaboratorID(c.CollaboratorID) {
+		return fmt.Errorf("%s", CollaboratorIDValidationMessage())
+	}
 	if !c.Status.IsValid() {
 		return fmt.Errorf("invalid collaborator status: %s", c.Status)
 	}
@@ -311,6 +326,9 @@ func (m MembershipBinding) Validate() error {
 	}
 	if strings.TrimSpace(m.CollaboratorID) == "" {
 		return fmt.Errorf("collaborator_id is required")
+	}
+	if !IsValidCollaboratorID(m.CollaboratorID) {
+		return fmt.Errorf("%s", CollaboratorIDValidationMessage())
 	}
 	if !m.ScopeKind.IsValid() {
 		return fmt.Errorf("invalid membership scope_kind: %s", m.ScopeKind)

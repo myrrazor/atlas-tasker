@@ -1,0 +1,14 @@
+version_contract=ok
+docs_links=ok
+snippets=ok
+stale_versions=ok
+leakage=ok
+readme_quickstart=ok
+terminal_accessibility=ok
+cross_surface_parity=ok
+performance_version_json_ms=14 budget_ms=2000
+performance_board_json_ms=15 budget_ms=3000
+performance_dashboard_json_ms=32 budget_ms=3000
+performance_goal_brief_md_ms=16 budget_ms=3000
+performance_budgets=ok
+rc_validation=ok version=v1.8.0-rc1

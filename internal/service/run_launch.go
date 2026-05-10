@@ -19,7 +19,10 @@ func (s *QueryService) RunOpen(ctx context.Context, runID string) (RunLaunchMani
 	if err != nil {
 		return RunLaunchManifestView{}, err
 	}
-	return launchManifestView(s.Root, detail.Run, s.now()), nil
+	view := launchManifestView(s.Root, detail.Run, s.now())
+	view.Missing = missingRuntimeArtifacts(view)
+	view.NeedsLaunch = len(view.Missing) > 0
+	return view, nil
 }
 
 func (s *ActionService) LaunchRun(ctx context.Context, runID string, refresh bool, actor contracts.Actor, reason string) (RunLaunchManifestView, error) {
@@ -81,6 +84,8 @@ func (s *ActionService) LaunchRun(ctx context.Context, runID string, refresh boo
 		view.Created = created
 		view.Updated = updated
 		view.GeneratedAt = s.now()
+		view.Missing = missingRuntimeArtifacts(view)
+		view.NeedsLaunch = len(view.Missing) > 0
 		_ = reason
 		return view, nil
 	})
@@ -100,6 +105,21 @@ func launchManifestView(root string, run contracts.RunSnapshot, generatedAt time
 		ClaudeLaunchPath: storage.RuntimeLaunchFile(root, run.RunID, "claude"),
 		GeneratedAt:      generatedAt.UTC(),
 	}
+}
+
+func missingRuntimeArtifacts(view RunLaunchManifestView) []string {
+	paths := []string{view.BriefPath, view.ContextPath, view.CodexLaunchPath, view.ClaudeLaunchPath}
+	missing := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if strings.TrimSpace(path) == "" {
+			continue
+		}
+		if _, err := os.Stat(path); err != nil {
+			missing = append(missing, path)
+		}
+	}
+	sort.Strings(missing)
+	return missing
 }
 
 func writeRuntimeArtifacts(refresh bool, files map[string]string) ([]string, []string, error) {

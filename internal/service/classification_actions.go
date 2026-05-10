@@ -643,7 +643,7 @@ func (s *ActionService) resolveClassifiedEntity(ctx context.Context, raw string)
 	}
 	kindRaw, entityID, ok := strings.Cut(raw, ":")
 	if !ok {
-		return "", "", apperr.New(apperr.CodeInvalidInput, "classification entity must be workspace or kind:id")
+		return "", "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("classification entity must be workspace or kind:id, for example ticket:APP-1 (valid kinds: %s)", strings.Join(contracts.ValidClassifiedEntityKindValues(), ", ")))
 	}
 	kind := contracts.ClassifiedEntityKind(strings.TrimSpace(kindRaw))
 	entityID = strings.TrimSpace(entityID)

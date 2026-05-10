@@ -19,6 +19,49 @@ func TestTicketsPrettyIncludesTicketID(t *testing.T) {
 	}
 }
 
+func TestSanitizeDisplayStripsTerminalControls(t *testing.T) {
+	out := SanitizeDisplay("safe\x1b[2J\x7f\nnext\tcell\u202etxt.exe")
+	if strings.ContainsAny(out, "\x1b\x7f") || strings.Contains(out, "\u202e") {
+		t.Fatalf("expected control bytes to be removed from terminal display, got %q", out)
+	}
+	if !strings.Contains(out, "\nnext celltxt.exe") {
+		t.Fatalf("expected structural newline and safe tab normalization, got %q", out)
+	}
+	line := SanitizeDisplayLine("Title\nFAKE\tLINE\u202eevil")
+	if strings.ContainsAny(line, "\n\t") || strings.Contains(line, "\u202e") || line != "Title FAKE LINEevil" {
+		t.Fatalf("expected inline display text to normalize layout controls, got %q", line)
+	}
+}
+
+func TestTicketPrettySanitizesUserContent(t *testing.T) {
+	ticket := contracts.TicketSnapshot{
+		ID:                 "APP-1",
+		Status:             contracts.StatusReady,
+		Priority:           contracts.PriorityHigh,
+		Title:              "wipe\x1b[2J",
+		Description:        "desc\x1b[H",
+		AcceptanceCriteria: []string{"criteria\x1b[31m"},
+	}
+	out := TicketPretty(ticket, []string{"comment\x1b[0m"})
+	if strings.Contains(out, "\x1b") {
+		t.Fatalf("expected pretty output to remove terminal escapes, got %q", out)
+	}
+	if !strings.Contains(out, "wipe[2J") || !strings.Contains(out, "comment[0m") {
+		t.Fatalf("expected sanitized content to remain visible, got %q", out)
+	}
+}
+
+func TestTicketSummarySanitizesTitle(t *testing.T) {
+	ticket := contracts.TicketSnapshot{ID: "APP-1", Status: contracts.StatusReady, Priority: contracts.PriorityHigh, Title: "\x1b[2Junsafe\nFAKE\tLINE\u202etxt.exe"}
+	out := TicketSummary(ticket, 80)
+	if strings.ContainsAny(out, "\x1b\n\t") || strings.Contains(out, "\u202e") {
+		t.Fatalf("expected summary to remove terminal and layout controls, got %q", out)
+	}
+	if !strings.Contains(out, "[2Junsafe FAKE LINEtxt.exe") {
+		t.Fatalf("expected sanitized title to remain readable, got %q", out)
+	}
+}
+
 func TestBoardPrettyIncludesColumnLabels(t *testing.T) {
 	board := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
 		contracts.StatusReady: {{ID: "APP-1", Title: "Task", UpdatedAt: time.Now()}},
