@@ -169,6 +169,9 @@ func (s *ActionService) commitMutation(ctx context.Context, purpose string, cano
 	if err := s.journal().Complete(journal.ID); err != nil {
 		return apperr.Wrap(apperr.CodeRepairNeeded, err, "finalize mutation journal")
 	}
+	if !historicalReplay(ctx) {
+		s.emitAgentWakeups(ctx, event)
+	}
 	if !historicalReplay(ctx) && s.Automation != nil {
 		_, _ = s.Automation.Run(ctx, s, NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock), event)
 	}

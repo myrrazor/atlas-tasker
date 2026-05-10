@@ -63,6 +63,7 @@ const (
 	EventAgentUpdated                     EventType = "agent.updated"
 	EventAgentEnabled                     EventType = "agent.enabled"
 	EventAgentDisabled                    EventType = "agent.disabled"
+	EventAgentWorkAvailable               EventType = "agent.work_available"
 	EventRunCreated                       EventType = "run.created"
 	EventRunDispatched                    EventType = "run.dispatched"
 	EventRunStarted                       EventType = "run.started"
@@ -181,6 +182,7 @@ var validEventTypes = map[EventType]struct{}{
 	EventAgentUpdated:                     {},
 	EventAgentEnabled:                     {},
 	EventAgentDisabled:                    {},
+	EventAgentWorkAvailable:               {},
 	EventRunCreated:                       {},
 	EventRunDispatched:                    {},
 	EventRunStarted:                       {},
