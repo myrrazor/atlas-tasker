@@ -81,7 +81,7 @@ func TestActionServiceDependenciesBlockUnsafeWorkflowTransitions(t *testing.T) {
 	}
 }
 
-func TestActionServiceRejectsAssigneeReviewerSelfApproval(t *testing.T) {
+func TestActionServiceAllowsAutonomousSelfApprovalByDefault(t *testing.T) {
 	ctx, actions := newWorkflowReadinessActions(t)
 	ticket := createWorkflowTicket(t, ctx, actions, contracts.TicketSnapshot{
 		Project:   "APP",
@@ -96,8 +96,42 @@ func TestActionServiceRejectsAssigneeReviewerSelfApproval(t *testing.T) {
 	if _, err := actions.RequestReviewWithReviewer(ctx, ticket.ID, "", contracts.Actor("agent:builder-1"), "ready"); err != nil {
 		t.Fatalf("request review: %v", err)
 	}
-	if _, err := actions.ApproveTicket(ctx, ticket.ID, contracts.Actor("agent:builder-1"), "approve myself"); err == nil || !strings.Contains(err.Error(), "self_approval_denied") {
-		t.Fatalf("expected self approval denial, got %v", err)
+	approved, err := actions.ApproveTicket(ctx, ticket.ID, contracts.Actor("agent:builder-1"), "approve myself")
+	if err != nil {
+		t.Fatalf("self approval should be allowed by default: %v", err)
+	}
+	if approved.ReviewState != contracts.ReviewStateApproved || approved.Reviewer != contracts.Actor("agent:builder-1") {
+		t.Fatalf("unexpected self-approved ticket: %#v", approved)
+	}
+}
+
+func TestActionServiceAllowsAssigneeApprovalWhenNoReviewerConfigured(t *testing.T) {
+	ctx, actions := newWorkflowReadinessActions(t)
+	ticket := createWorkflowTicket(t, ctx, actions, contracts.TicketSnapshot{
+		Project:   "APP",
+		Title:     "Autonomous ticket",
+		Type:      contracts.TicketTypeTask,
+		Status:    contracts.StatusInProgress,
+		Priority:  contracts.PriorityMedium,
+		Assignee:  contracts.Actor("agent:builder-1"),
+		CreatedAt: time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC),
+	})
+	if _, err := actions.RequestReviewWithReviewer(ctx, ticket.ID, "", contracts.Actor("agent:builder-1"), "ready"); err != nil {
+		t.Fatalf("request review: %v", err)
+	}
+	approved, err := actions.ApproveTicket(ctx, ticket.ID, contracts.Actor("agent:builder-1"), "approve own work")
+	if err != nil {
+		t.Fatalf("assignee approval should be allowed without reviewer: %v", err)
+	}
+	if approved.Reviewer != contracts.Actor("agent:builder-1") {
+		t.Fatalf("expected autonomous approval to persist reviewer, got %#v", approved)
+	}
+	completed, err := actions.CompleteTicket(ctx, ticket.ID, contracts.Actor("agent:builder-1"), "done")
+	if err != nil {
+		t.Fatalf("autonomous completion should be allowed in open mode: %v", err)
+	}
+	if completed.Status != contracts.StatusDone {
+		t.Fatalf("unexpected completed ticket: %#v", completed)
 	}
 }
 

@@ -29,7 +29,7 @@ Protected actions include sync/bundle/structured import apply, gate approve/waiv
 
 PR-704 makes governance executable for the first protected write paths. Governance packs are stored under `.tracker/governance/packs/`; applied policies are stored under `.tracker/governance/policies/`. TOML files use the same snake_case field names as JSON output, and `tracker governance validate` exits non-zero when any pack or policy is invalid.
 
-`ticket_approve` lets teams apply separation-of-duties at reviewer approval time instead of waiting until `ticket_complete`.
+`ticket_approve` lets teams apply separation-of-duties at reviewer approval time instead of waiting until `ticket_complete`. Without an applied governance policy, Atlas stays autonomy-first: a ticket assignee or active worker can approve their own ticket when no effective reviewer is configured.
 
 Commands:
 

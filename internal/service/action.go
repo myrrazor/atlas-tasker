@@ -945,12 +945,12 @@ func (s *ActionService) ApproveTicket(ctx context.Context, ticketID string, acto
 		if err := s.requireNoUnresolvedDependencies(ctx, ticket); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
-		reviewer := effectiveReviewer(ticket, policy)
-		if actor != contracts.Actor("human:owner") && actor != reviewer {
-			return contracts.TicketSnapshot{}, apperr.New(apperr.CodePermissionDenied, "only the assigned reviewer or human:owner can approve")
-		}
-		if actor != contracts.Actor("human:owner") && ticket.Assignee != "" && ticket.Assignee == actor && reviewer == actor {
-			return contracts.TicketSnapshot{}, apperr.New(apperr.CodePermissionDenied, fmt.Sprintf("self_approval_denied: actor %s is both assignee and reviewer for %s", actor, ticket.ID))
+		reviewer, allowed := approvalReviewerForActor(ticket, policy, actor, s.now())
+		if actor != contracts.Actor("human:owner") && !allowed {
+			if effectiveReviewer(ticket, policy) != "" {
+				return contracts.TicketSnapshot{}, apperr.New(apperr.CodePermissionDenied, "only the assigned reviewer or human:owner can approve")
+			}
+			return contracts.TicketSnapshot{}, apperr.New(apperr.CodePermissionDenied, "only the assignee, active worker, or human:owner can approve when no reviewer is configured")
 		}
 		governanceInput := GovernanceEvaluationInput{
 			Action:   contracts.ProtectedActionTicketApprove,

@@ -53,7 +53,7 @@ Atlas Tasker is the source of truth for ticket state. Prefer JSON reads, mutate 
 - Use `+"`tracker inspect <ID> --actor agent:<agent-id> --json`"+` before making workflow decisions.
 - Do not work a ticket with `+"`dependency_blocked`"+`, `+"`policy_blocked`"+`, `+"`claimed_by_other`"+`, or `+"`waiting_for_review`"+`.
 - Record durable context with comments, checkpoints, evidence, or handoffs.
-- Request review instead of marking protected work done yourself.
+- Self-approval is allowed by default when no reviewer or governance separation rule is configured; respect stricter workspace policies when they exist.
 
 ## More Detail
 
@@ -97,7 +97,7 @@ Only `+"`done`"+` unblocks dependencies. `+"`canceled`"+` does not.
 1. Read available work as the reviewer.
 2. Inspect the ticket, history, run evidence, and handoff.
 3. Approve or reject with explicit reason.
-4. Do not approve your own implementation unless the workspace has a documented owner override path.
+4. Approve your own implementation only when no reviewer or separation-of-duties policy applies.
 
 ## Blocker Loop
 
@@ -151,6 +151,6 @@ tracker agent available <agent-id> --json
 tracker ticket approve <ticket-id> --actor agent:<agent-id> --reason "review passed"
 ~~~
 
-Do not approve a ticket you implemented yourself. If the workspace blocks self-approval, follow the owner override or third-reviewer path.
+Self-approval is allowed for autonomous tickets. If the workspace requires separation-of-duties, follow the owner override or third-reviewer path.
 `) + "\n"
 }

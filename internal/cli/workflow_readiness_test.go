@@ -81,7 +81,7 @@ func TestProjectRequiredReviewerAndDependenciesAuthFlow(t *testing.T) {
 	}
 }
 
-func TestTicketApproveRejectsSelfApproval(t *testing.T) {
+func TestTicketApproveAllowsAutonomousSelfApproval(t *testing.T) {
 	withTempWorkspace(t)
 	must := func(args ...string) string {
 		t.Helper()
@@ -93,15 +93,23 @@ func TestTicketApproveRejectsSelfApproval(t *testing.T) {
 	}
 	must("init")
 	must("project", "create", "APP", "App")
-	must("ticket", "create", "--project", "APP", "--title", "Do not self approve", "--type", "task", "--status", "in_progress", "--assignee", "agent:builder-1", "--reviewer", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Self approve", "--type", "task", "--status", "in_progress", "--assignee", "agent:builder-1", "--reviewer", "agent:builder-1", "--actor", "human:owner")
 	must("ticket", "request-review", "APP-1", "--actor", "agent:builder-1", "--reason", "ready")
-	if out, err := runCLI(t, "ticket", "approve", "APP-1", "--actor", "agent:builder-1", "--reason", "approve myself"); err == nil || !strings.Contains(out+err.Error(), "self_approval_denied") {
-		t.Fatalf("expected self approval denial, err=%v out=%s", err, out)
+	if out := must("ticket", "approve", "APP-1", "--actor", "agent:builder-1", "--reason", "approve myself"); !strings.Contains(out, "approved APP-1") {
+		t.Fatalf("expected default self approval, got %s", out)
 	}
 	must("ticket", "create", "--project", "APP", "--title", "Separate reviewer", "--type", "task", "--status", "in_progress", "--assignee", "agent:builder-1", "--actor", "human:owner")
 	must("ticket", "request-review", "APP-2", "--reviewer", "agent:reviewer-1", "--actor", "agent:builder-1", "--reason", "ready")
 	if out := must("ticket", "approve", "APP-2", "--actor", "agent:reviewer-1", "--reason", "reviewed"); !strings.Contains(out, "approved APP-2") {
 		t.Fatalf("expected separate reviewer approval, got %s", out)
+	}
+	must("ticket", "create", "--project", "APP", "--title", "Assignee fallback", "--type", "task", "--status", "in_progress", "--assignee", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "request-review", "APP-3", "--actor", "agent:builder-1", "--reason", "ready")
+	if out := must("ticket", "approve", "APP-3", "--actor", "agent:builder-1", "--reason", "approve own work", "--json"); !strings.Contains(out, `"reviewer": "agent:builder-1"`) {
+		t.Fatalf("expected autonomous approval to persist reviewer, got %s", out)
+	}
+	if out := must("ticket", "complete", "APP-3", "--actor", "agent:builder-1", "--reason", "done"); !strings.Contains(out, "completed APP-3") {
+		t.Fatalf("expected autonomous completion, got %s", out)
 	}
 }
 
@@ -127,6 +135,26 @@ func TestTicketApproveCanBeProtectedByGovernanceSoD(t *testing.T) {
 	must("ticket", "request-review", "APP-1", "--actor", "agent:builder-1", "--reason", "ready")
 	if out, err := runCLI(t, "ticket", "approve", "APP-1", "--actor", "agent:builder-1", "--reason", "same actor"); err == nil || !strings.Contains(out+err.Error(), "separation_of_duties_violation") {
 		t.Fatalf("expected governance SoD denial, err=%v out=%s", err, out)
+	}
+}
+
+func TestOwnerCanApproveRequiredReviewerTicket(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "AUTH", "Auth")
+	must("project", "policy", "set", "AUTH", "--completion-mode", "review_gate", "--required-reviewer", "agent:reviewer-1", "--actor", "human:owner", "--reason", "default reviewer")
+	must("ticket", "create", "--project", "AUTH", "--title", "Owner review", "--type", "task", "--status", "in_progress", "--assignee", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "request-review", "AUTH-1", "--actor", "agent:builder-1", "--reason", "ready")
+	if out := must("ticket", "approve", "AUTH-1", "--actor", "human:owner", "--reason", "owner reviewed", "--json"); !strings.Contains(out, `"status": "done"`) {
+		t.Fatalf("owner approval should complete review_gate ticket: %s", out)
 	}
 }
 
