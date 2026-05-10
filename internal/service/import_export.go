@@ -1024,6 +1024,9 @@ func loadBundleManifest(path string) (bundleManifest, error) {
 func loadBundleManifestRaw(path string) (bundleManifest, []byte, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return bundleManifest{}, nil, apperr.New(apperr.CodeNotFound, "sidecar_manifest_missing:"+path)
+		}
 		return bundleManifest{}, nil, err
 	}
 	var manifest bundleManifest
@@ -1058,6 +1061,9 @@ func loadManifestFromArchive(path string) (bundleManifest, []byte, error) {
 func readBundleArchive(path string) (map[string][]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, apperr.New(apperr.CodeNotFound, "bundle_archive_missing:"+path)
+		}
 		return nil, err
 	}
 	defer file.Close()
@@ -1139,6 +1145,9 @@ func fileSHA256(path string) (string, error) {
 func readChecksumFile(path string) (string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return "", apperr.New(apperr.CodeNotFound, "sidecar_checksum_missing:"+path)
+		}
 		return "", err
 	}
 	parts := strings.Fields(string(raw))

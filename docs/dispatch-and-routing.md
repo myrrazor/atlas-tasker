@@ -12,6 +12,8 @@ Eligibility filters:
 - source repo cleanliness
 - runbook stage requirements
 
+Dispatch also expects a clean git workspace when worktree-backed execution is enabled. If a source-built binary or Atlas projection file is making the repo dirty, exclude local-only files such as `tracker`, `.tracker/write.lock`, `.tracker/index.sqlite`, `.tracker/index.sqlite-wal`, and `.tracker/index.sqlite-shm`, then commit the ticket/agent state before dispatch.
+
 Dispatch modes:
 - manual assignment
 - auto-suggest

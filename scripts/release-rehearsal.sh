@@ -2,12 +2,15 @@
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
-VERSION="${VERSION:-v1.6.0-rc1}"
+VERSION="${VERSION:-v1.8.0-rc1}"
 VERSION_NO_V="${VERSION#v}"
 BIN_NAME="tracker"
 DIST_DIR="${DIST_DIR:-$(mktemp -d)}"
 WORK_DIR="${WORK_DIR:-$(mktemp -d)}"
 INSTALL_DIR="${INSTALL_DIR:-$(mktemp -d)}"
+BUILDINFO_PKG="github.com/myrrazor/atlas-tasker/internal/buildinfo"
+COMMIT="${COMMIT:-$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)}"
+BUILD_DATE="${BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -15,6 +18,19 @@ need_cmd() {
     exit 1
   fi
 }
+
+validate_release_version() {
+  case "$VERSION" in
+    ""|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._+-]*)
+      echo "unsafe release version: $VERSION" >&2
+      exit 1
+      ;;
+  esac
+}
+
+validate_release_version
+
+LDFLAGS="-s -w -X ${BUILDINFO_PKG}.Version=${VERSION} -X ${BUILDINFO_PKG}.Commit=${COMMIT} -X ${BUILDINFO_PKG}.BuildDate=${BUILD_DATE}"
 
 need_cmd go
 need_cmd git
@@ -40,14 +56,11 @@ ARCHIVE="${BIN_NAME}_${VERSION_NO_V}_${OS_NAME}_${ARCH_NAME}.tar.gz"
 
 mkdir -p "$DIST_DIR" "$WORK_DIR" "$INSTALL_DIR"
 
-if [ -f "$ROOT_DIR/docs/v1.6-base-marker.txt" ]; then
-  echo "v1.6 base marker: $(cat "$ROOT_DIR/docs/v1.6-base-marker.txt")"
-fi
-if [ -f "$ROOT_DIR/docs/v1.6-base.json" ]; then
-  echo "v1.6 base json: $(cat "$ROOT_DIR/docs/v1.6-base.json")"
+if [ -f "$ROOT_DIR/docs/v1.8-base.json" ]; then
+  echo "v1.8 base json: $(cat "$ROOT_DIR/docs/v1.8-base.json")"
 fi
 
-GOOS="$OS_NAME" GOARCH="$ARCH_NAME" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$DIST_DIR/$BIN_NAME" "$ROOT_DIR/cmd/tracker"
+GOOS="$OS_NAME" GOARCH="$ARCH_NAME" CGO_ENABLED=0 go build -trimpath -ldflags="$LDFLAGS" -o "$DIST_DIR/$BIN_NAME" "$ROOT_DIR/cmd/tracker"
 tar -czf "$DIST_DIR/$ARCHIVE" -C "$DIST_DIR" "$BIN_NAME"
 if command -v shasum >/dev/null 2>&1; then
   shasum -a 256 "$DIST_DIR/$ARCHIVE" > "$DIST_DIR/checksums.txt"
@@ -86,8 +99,21 @@ if [ ! -f "$PORT_FILE" ]; then
 fi
 
 PORT="$(cat "$PORT_FILE")"
-VERSION="$VERSION" RELEASE_BASE_URL="http://127.0.0.1:$PORT" VERIFY_ATTESTATIONS=0 sh "$ROOT_DIR/scripts/verify-release.sh" "$DIST_DIR/$ARCHIVE"
-RELEASE_BASE_URL="http://127.0.0.1:$PORT" VERSION="$VERSION" BIN_DIR="$INSTALL_DIR" sh "$ROOT_DIR/scripts/install.sh"
+VERSION="$VERSION" RELEASE_BASE_URL="http://127.0.0.1:$PORT" VERIFY_ATTESTATIONS=0 ALLOW_INSECURE_RELEASE_BASE_URL=1 sh "$ROOT_DIR/scripts/verify-release.sh" "$DIST_DIR/$ARCHIVE"
+RELEASE_BASE_URL="http://127.0.0.1:$PORT" VERSION="$VERSION" BIN_DIR="$INSTALL_DIR" VERIFY_ATTESTATIONS=0 ALLOW_INSECURE_RELEASE_BASE_URL=1 sh "$ROOT_DIR/scripts/install.sh"
+VERSION_JSON="$("$INSTALL_DIR/$BIN_NAME" version --json)"
+case "$VERSION_JSON" in
+  *"\"version\": \"$VERSION\""*) ;;
+  *) echo "installed binary has unexpected version metadata: $VERSION_JSON" >&2; exit 1 ;;
+esac
+case "$VERSION_JSON" in
+  *"\"commit\": \"$COMMIT\""*) ;;
+  *) echo "installed binary has unexpected commit metadata: $VERSION_JSON" >&2; exit 1 ;;
+esac
+case "$VERSION_JSON" in
+  *"\"platform\": \"$OS_NAME/$ARCH_NAME\""*) ;;
+  *) echo "installed binary has unexpected platform metadata: $VERSION_JSON" >&2; exit 1 ;;
+esac
 
 cd "$WORK_DIR"
 git init -b main >/dev/null
@@ -301,4 +327,4 @@ case "$DOCTOR_JSON" in
   *) echo "expected doctor repair to settle after synced archive flow: $DOCTOR_JSON" >&2; exit 1 ;;
 esac
 
-echo "release rehearsal ok: version=$VERSION archive=$ARCHIVE install_dir=$INSTALL_DIR work_dir=$WORK_DIR git_remote=$GIT_REMOTE"
+echo "release rehearsal ok: version=$VERSION commit=$COMMIT archive=$ARCHIVE install_dir=$INSTALL_DIR work_dir=$WORK_DIR git_remote=$GIT_REMOTE"
