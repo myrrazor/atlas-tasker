@@ -14,24 +14,23 @@ Atlas implements:
 
 ## Markdown Sections
 
-Goal markdown uses this order:
+Goal markdown uses the ticket title as the H1, then these sections:
 
-1. Goal
-2. Objective
-3. Current State
-4. Ticket / Run
-5. Acceptance Criteria
-6. Constraints
-7. Required Evidence
-8. Required Gates
-9. Allowed Actions
-10. Do Not Do
-11. Context
-12. Suggested Commands
-13. Done When
-14. Verification
+1. Objective
+2. Current State
+3. Ticket / Run
+4. Acceptance Criteria
+5. Constraints
+6. Required Evidence
+7. Required Gates
+8. Allowed Actions
+9. Do Not Do
+10. Context
+11. Suggested Commands
+12. Done When
+13. Verification
 
-JSON output mirrors the same sections with stable fields. Goal manifests are redaction-aware and may be signed/verified as `goal_manifest` artifacts.
+JSON output keeps the stable `Goal` section for schema compatibility, but Markdown does not repeat it as `## Goal`. Goal manifests may be signed/verified as `goal_manifest` artifacts. Current goal output is not a redaction boundary: operators must avoid generating or sharing goal briefs from sensitive tickets unless the source ticket has already been redacted or classified for that audience.
 
 ## Output Contract
 

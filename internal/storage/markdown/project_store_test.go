@@ -2,6 +2,8 @@ package markdown
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -34,6 +36,25 @@ func TestProjectStoreCreateListGet(t *testing.T) {
 	}
 	if loaded.Name != project.Name {
 		t.Fatalf("unexpected project name: %s", loaded.Name)
+	}
+}
+
+func TestProjectStoreRejectsPathTraversalKey(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "workspace")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	store := ProjectStore{RootDir: root}
+	err := store.CreateProject(context.Background(), contracts.Project{Key: "../../etc", Name: "Bad", CreatedAt: time.Now().UTC()})
+	if err == nil {
+		t.Fatal("expected project key traversal to be rejected")
+	}
+	if _, statErr := os.Stat(filepath.Join(parent, "etc")); !os.IsNotExist(statErr) {
+		t.Fatalf("project traversal wrote outside workspace, stat err=%v", statErr)
+	}
+	if _, err := store.GetProject(context.Background(), "../../etc"); err == nil {
+		t.Fatal("expected get project traversal to be rejected")
 	}
 }
 

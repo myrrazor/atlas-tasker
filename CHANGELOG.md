@@ -4,9 +4,21 @@ Atlas is not yet published as a stable public release. This changelog starts wit
 
 ## Unreleased
 
-- v1.8 release-candidate polish is in progress.
-- Public README, OSS metadata, docs, terminal polish, agent guides, demos, validation, release evidence, and CSO closeout are tracked across PR-801 through PR-809.
-- Hosted release assets, checksums, attestations, install smoke, SBOM, vulnerability scan, and final ship/no-ship evidence are still required before public release sign-off.
+- v1.8 release-candidate polish is implementation-complete on the stacked PR train.
+- Local RC proof for `v1.8.0-rc1` is green: tests, vet, RC validation, stability smoke, release rehearsal, `govulncheck`, SBOM generation, proof-log leakage scan, and CSO closeout.
+- Hosted release assets, checksums, attestations, install smoke from published assets, and packaged smoke from a hosted binary remain blocked until a release actor creates and verifies the GitHub prerelease.
+- PR-811 fixes installer verification, HTTPS-only release downloads by default, CI security gates, release SBOM publication, terminal control-byte sanitization, README/tutorial copy-paste issues, and release evidence for v1.7 carry-forward findings.
+- Stable public release remains blocked by owner-selected license, hosted proof, human docs/aesthetic review, and unresolved/deferred v1.7 governance-security carry-forward verdicts.
+
+## v1.8.0-rc1 - Local RC Proof Complete
+
+- Rewrote the public README and OSS metadata for first-time GitHub readers.
+- Added public docs for installation, quickstart, tutorials, concepts, command references, troubleshooting, doctor/repair, release verification, and agent workflows.
+- Polished terminal, Markdown, and TUI output with width-aware layouts, render tokens, `NO_COLOR`, plain output, ASCII fallback, and better empty states.
+- Added Codex, Codex `/goal`, Claude Code, generic agent, and MCP workflow guides.
+- Added demo workspace scripts, prompt packs, terminal transcripts, and screenshot-friendly examples.
+- Added release preflight, `tracker version`, packaged rehearsal, SBOM/vulnerability proof hooks, and offline RC validation.
+- Added final release evidence, launch checklist, release notes, and no-ship decision for missing hosted proof.
 
 ## Pre-Public Work
 

@@ -7,6 +7,112 @@
   "base_pr": 76,
   "base_pr_title": "chore: close out v1.7.1 release proof",
   "created_at": "2026-05-07T00:00:00Z",
+  "included_trains": [
+    "v1.7 trust/governance/security stack",
+    "v1.7.1 release-signoff closeout",
+    "v1.8 release-candidate polish stack",
+    "v1.8.1 owner-release closeout"
+  ],
   "stacking_rule": "PR-801 starts from the unmerged v1.7.1 closeout tip and the v1.8 train stacks PR-801 through PR-809. Retarget or rebase to main after PRs 68-76 are merged.",
-  "release_rule": "v1.8 may polish the public release candidate from this base, but it must not claim ship readiness until hosted assets, checksums, attestations, install smoke, SBOM, vulnerability scan, and final release evidence pass."
+  "release_rule": "v1.8 may polish the public release candidate from this base, but it must not claim ship readiness until hosted assets, checksums, attestations, install smoke, SBOM, vulnerability scan, and final release evidence pass.",
+  "hosted_proof_state": {
+    "status": "blocked",
+    "reason": "No v1.8.0-rc1 hosted release exists yet and the current token could not read GitHub Actions workflow permission settings."
+  },
+  "sbom_state": {
+    "local_status": "generated",
+    "ci_status": "required",
+    "hosted_status": "pending_release_assets"
+  },
+  "vuln_state": {
+    "local_status": "passed",
+    "ci_status": "required",
+    "tool": "govulncheck"
+  },
+  "blockers": [
+    {
+      "id": "B-1801",
+      "source": "v1.8 release review",
+      "status": "fixed_in_pr_811",
+      "summary": "Installer must verify checksums and attestations and reject non-HTTPS release URLs by default."
+    },
+    {
+      "id": "B-1802",
+      "source": "v1.8 release review",
+      "status": "fixed_in_pr_811",
+      "summary": "Terminal-facing output must strip control bytes from user-controlled strings."
+    },
+    {
+      "id": "B-1803",
+      "source": "v1.8 release review",
+      "status": "fixed_in_pr_811",
+      "summary": "CI must include govulncheck, full-history gitleaks, and SBOM generation."
+    },
+    {
+      "id": "B-1804",
+      "source": "v1.8 release review",
+      "status": "fixed_in_pr_811",
+      "summary": "Release workflow third-party publish action must be pinned to a commit SHA."
+    },
+    {
+      "id": "B-1805",
+      "source": "owner/legal",
+      "status": "owner_required",
+      "summary": "A repository LICENSE file is still pending owner selection."
+    },
+    {
+      "id": "B-1704-01",
+      "source": "v1.7 carry-forward review",
+      "status": "requires_verdict",
+      "summary": "PR-704 backup_restore governance enforcement was reported unresolved."
+    },
+    {
+      "id": "B-1704-02",
+      "source": "v1.7 carry-forward review",
+      "status": "requires_verdict",
+      "summary": "PR-704 redaction_override governance enforcement was reported unresolved."
+    },
+    {
+      "id": "B-1706-01",
+      "source": "v1.7 carry-forward review",
+      "status": "requires_verdict",
+      "summary": "PR-706 audit policy_snapshot_hash/trust_snapshot_hash canonicalization bypass was reported unresolved."
+    },
+    {
+      "id": "B-1706-02",
+      "source": "v1.7 carry-forward review",
+      "status": "requires_verdict",
+      "summary": "PR-706 ExplainAuditPolicy coverage for AT-706-04 was reported unresolved."
+    },
+    {
+      "id": "B-1707-01",
+      "source": "v1.7 carry-forward review",
+      "status": "documented_no_claim",
+      "summary": "Goal manifests were overclaimed as redaction-aware; PR-811 documents that current goal output is not a redaction boundary."
+    },
+    {
+      "id": "B-1707-02",
+      "source": "v1.7 carry-forward review",
+      "status": "requires_verdict",
+      "summary": "Atomic write on restore and interrupted restore repair coverage were reported unresolved."
+    },
+    {
+      "id": "B-1705-01",
+      "source": "v1.7 carry-forward review",
+      "status": "requires_verdict",
+      "summary": "Redacted re-import warning plus sync/audit/backup/goal redaction routing were reported unresolved."
+    },
+    {
+      "id": "B-1702-01",
+      "source": "v1.7 carry-forward review",
+      "status": "requires_verdict",
+      "summary": "Key fingerprint truncation collision risk was reported unresolved."
+    },
+    {
+      "id": "B-1701-01",
+      "source": "v1.7 carry-forward review",
+      "status": "fixed_in_pr_811",
+      "summary": "Full-history gitleaks was missing; PR-811 adds it to CI."
+    }
+  ]
 }

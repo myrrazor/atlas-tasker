@@ -4,6 +4,11 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 )
 
 func TestDashboardCommandReturnsSummaryEnvelope(t *testing.T) {
@@ -35,6 +40,39 @@ func TestDashboardCommandReturnsSummaryEnvelope(t *testing.T) {
 	}
 	if payload.FormatVersion != jsonFormatVersion || payload.Kind != "dashboard_summary" {
 		t.Fatalf("unexpected dashboard payload: %#v", payload)
+	}
+}
+
+func TestFormatDashboardWithWidthTruncatesLongWarnings(t *testing.T) {
+	out := formatDashboardWithWidth(service.DashboardSummaryView{
+		ProviderMappingWarnings: []string{"APP:no project collaborators with github handles found for CODEOWNERS"},
+	}, 40)
+	for _, line := range strings.Split(out, "\n") {
+		if len(line) > 40 {
+			t.Fatalf("dashboard line exceeded width: len=%d line=%q", len(line), line)
+		}
+	}
+	if !strings.Contains(out, "...") {
+		t.Fatalf("expected long dashboard warning to truncate, got:\n%s", out)
+	}
+}
+
+func TestFormatTimelineWithWidthTruncatesLongEntries(t *testing.T) {
+	out := formatTimelineWithWidth(service.TimelineView{
+		TicketID: "APP-1",
+		Entries: []service.TimelineEntry{{
+			Timestamp: time.Date(2026, 5, 7, 1, 2, 3, 0, time.UTC),
+			Type:      contracts.EventTicketCommented,
+			Summary:   "comment: Wide timeline marker 表表表 with enough text to force truncation",
+		}},
+	}, 64)
+	for _, line := range strings.Split(out, "\n") {
+		if got := lipgloss.Width(line); got > 64 {
+			t.Fatalf("timeline line exceeded width: width=%d line=%q", got, line)
+		}
+	}
+	if !strings.Contains(out, "...") {
+		t.Fatalf("expected long timeline entry to truncate, got:\n%s", out)
 	}
 }
 

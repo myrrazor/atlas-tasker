@@ -12,8 +12,8 @@ Do not post secrets, private keys, webhook URLs, exploit payloads, or full `.tra
 
 Preferred paths:
 
-1. Use GitHub private vulnerability reporting if it is enabled for this repository.
-2. If private reporting is not available, open a public issue with a minimal title and no sensitive details, then ask the maintainer for a private channel.
+1. Use GitHub private vulnerability reporting: `https://github.com/myrrazor/atlas-tasker/security/advisories/new`.
+2. If GitHub reports that private vulnerability reporting is unavailable, open a public issue with a minimal title and no sensitive details, then ask the maintainer for a private channel.
 
 Good public issue title:
 

@@ -5,6 +5,7 @@ REPO="${REPO:-myrrazor/atlas-tasker}"
 VERSION="${VERSION:-latest}"
 RELEASE_BASE_URL="${RELEASE_BASE_URL:-}"
 VERIFY_ATTESTATIONS="${VERIFY_ATTESTATIONS:-1}"
+ALLOW_INSECURE_RELEASE_BASE_URL="${ALLOW_INSECURE_RELEASE_BASE_URL:-0}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -21,6 +22,29 @@ resolve_version() {
   curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
     | sed -n 's/.*"tag_name": "\([^"]*\)".*/\1/p' \
     | head -n1
+}
+
+validate_version() {
+  case "$1" in
+    ""|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._+-]*)
+      echo "unsafe release version: $1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+validate_release_base_url() {
+  base_url="$1"
+  case "$base_url" in
+    https://*) return ;;
+    http://127.0.0.1:*|http://localhost:*|http://\[::1\]:*)
+      if [ "$ALLOW_INSECURE_RELEASE_BASE_URL" = "1" ]; then
+        return
+      fi
+      ;;
+  esac
+  echo "RELEASE_BASE_URL must use https://; loopback http requires ALLOW_INSECURE_RELEASE_BASE_URL=1" >&2
+  exit 1
 }
 
 checksum_file() {
@@ -58,11 +82,13 @@ if [ -z "$TAG" ]; then
   echo "failed to resolve Atlas Tasker release version" >&2
   exit 1
 fi
+validate_version "$TAG"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
 if [ -n "$RELEASE_BASE_URL" ]; then
+  validate_release_base_url "$RELEASE_BASE_URL"
   CHECKSUMS_URL="${RELEASE_BASE_URL%/}/checksums.txt"
 else
   CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${TAG}/checksums.txt"

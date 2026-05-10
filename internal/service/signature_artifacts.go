@@ -116,6 +116,9 @@ func (s *ActionService) VerifyExportBundleSignature(ctx context.Context, bundleR
 	if err != nil {
 		return ArtifactSignatureVerifyView{}, err
 	}
+	if exportBundleRefIsPath(bundleRef) && len(bundle.SignatureEnvelopes) == 0 {
+		result.ReasonCodes = appendReasonCode(result.ReasonCodes, "missing_export_signature_sidecar:"+exportSignatureSidecarPath(bundle.ArtifactPath))
+	}
 	return ArtifactSignatureVerifyView{Kind: "signature_verify_result", Integrity: integrity, Signature: result, GeneratedAt: s.now()}, nil
 }
 

@@ -299,6 +299,7 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 		"VERSION="+version,
 		"RELEASE_BASE_URL="+server.URL,
 		"VERIFY_ATTESTATIONS=0",
+		"ALLOW_INSECURE_RELEASE_BASE_URL=1",
 	)
 	if output, err := verify.CombinedOutput(); err != nil {
 		t.Fatalf("verify packaged tracker: %v\n%s", err, output)
@@ -310,6 +311,8 @@ func TestPackagedReleaseRehearsalInstallsAndRunsSmokeFlow(t *testing.T) {
 		"VERSION="+version,
 		"BIN_DIR="+binDir,
 		"RELEASE_BASE_URL="+server.URL,
+		"VERIFY_ATTESTATIONS=0",
+		"ALLOW_INSECURE_RELEASE_BASE_URL=1",
 	)
 	if output, err := install.CombinedOutput(); err != nil {
 		t.Fatalf("install packaged tracker: %v\n%s", err, output)

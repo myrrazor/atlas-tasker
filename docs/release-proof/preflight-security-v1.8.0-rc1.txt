@@ -1,0 +1,13 @@
+preflight_status=ready
+mode=local
+version=v1.8.0-rc1
+commit=e6d76cbeeba3
+build_date=2026-05-07T05:13:24Z
+platform=darwin/arm64
+version_json=ok
+govulncheck_status=passed
+govulncheck_output=docs/release-proof/govulncheck-v1.8.0-rc1.txt
+sbom_status=generated
+sbom_output=docs/release-proof/sbom-v1.8.0-rc1.cdx.json
+hosted_preflight=skipped
+message=run 'sh scripts/preflight-release.sh --hosted' when GitHub prerelease proof is available
