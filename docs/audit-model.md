@@ -10,7 +10,7 @@ Verification checks the audit packet snapshot, not current live workspace meanin
 
 Audit packets can be exported and signed. Tampering with included hashes, signatures, or packet metadata must produce a failed verification state.
 
-PR-706 ships the first concrete audit surface:
+Atlas exposes these audit commands:
 
 - `tracker audit report --scope <SCOPE>` writes `.tracker/audit/reports/<id>.json` and records `audit.report.created`.
 - `tracker audit list` and `tracker audit view <REPORT-ID>` read local report snapshots.
@@ -26,10 +26,10 @@ Audit packets bind `packet_hash` to the canonical report payload. Verification r
 
 `tracker audit explain-policy` accepts `event_uid`, not a bare numeric `event_id`. Numeric event IDs are allocated per project stream, so treating them as workspace-global would be misleading in multi-project workspaces.
 
-PR-706 also enables the shared signature model for approval, handoff, and evidence artifacts through:
+Atlas uses the shared signature model for approval, handoff, and evidence artifacts through:
 
 - `tracker sign approval <GATE-ID>` / `tracker verify approval <GATE-ID>`
 - `tracker sign handoff <HANDOFF-ID>` / `tracker verify handoff <HANDOFF-ID>`
 - `tracker sign evidence <EVIDENCE-ID>` / `tracker verify evidence <EVIDENCE-ID>`
 
-Those signatures are stored in `.tracker/security/signatures/` and do not rewrite the source gate, handoff, or evidence document. Governance enforcement can consume the shared trust model, but PR-706 does not make every approval/handoff/evidence workflow require signatures by default.
+Those signatures are stored in `.tracker/security/signatures/` and do not rewrite the source gate, handoff, or evidence document. Governance enforcement can consume the shared trust model, but Atlas does not make every approval/handoff/evidence workflow require signatures by default.

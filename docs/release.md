@@ -1,8 +1,8 @@
 # Atlas Tasker Release Guide
 
-Atlas `v1.8.0-rc1` is planned, not shipped. This guide explains the release workflow and points to the current proof gates.
+Atlas is in the v1.9 release-readiness train. This guide explains the release workflow and points to the current proof gates.
 
-Current evidence: [v1.8 release evidence](release/v1.8-release-evidence.md), [launch checklist](release/launch-checklist.md), and [v1.8.1 release owner closeout](release/v1.8.1-release-owner-closeout.md).
+Current evidence: [v1.9 agent workflow evidence](release/v1.9-agent-workflow-evidence.md), [launch checklist](release/launch-checklist.md), and [public release gates](release/public-release-gates.md).
 
 ## Release States
 
@@ -27,9 +27,9 @@ Each archive contains a single `tracker` binary.
 ## Local Rehearsal
 
 ```bash
-VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh
-VERSION=v1.8.0-rc1 sh scripts/validate-rc.sh
-VERSION=v1.8.0-rc1 ./scripts/release-rehearsal.sh
+VERSION=v1.9.0-rc1 sh scripts/preflight-release.sh
+VERSION=v1.9.0-rc1 sh scripts/validate-rc.sh
+VERSION=v1.9.0-rc1 ./scripts/release-rehearsal.sh
 sh scripts/stability-smoke.sh
 ```
 
@@ -38,15 +38,15 @@ The preflight checks release script syntax and verifies the stamped `tracker ver
 Local vulnerability and SBOM proof is generated explicitly:
 
 ```bash
-VERSION=v1.8.0-rc1 RUN_GOVULNCHECK=1 RUN_SBOM=1 sh scripts/preflight-release.sh
+VERSION=v1.9.0-rc1 RUN_GOVULNCHECK=1 RUN_SBOM=1 sh scripts/preflight-release.sh
 ```
 
 ## Hosted Release Gate
 
 Before public sign-off, a release actor must:
 
-1. run `VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh --hosted`
-2. create a prerelease tag such as `v1.8.0-rc1`
+1. run `VERSION=v1.9.0-rc1 sh scripts/preflight-release.sh --hosted`
+2. create a prerelease tag such as `v1.9.0-rc1`
 3. let GitHub publish archives and `checksums.txt`
 4. download at least one published archive
 5. run `scripts/verify-release.sh` against that archive with attestation verification enabled
@@ -68,14 +68,14 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 Prefer explicit verification for release candidates:
 
 ```bash
-VERSION=v1.8.0-rc1 ./scripts/verify-release.sh ./tracker_1.8.0-rc1_darwin_arm64.tar.gz
-VERSION=v1.8.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=v1.9.0-rc1 ./scripts/verify-release.sh ./tracker_1.9.0-rc1_darwin_arm64.tar.gz
+VERSION=v1.9.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 ```
 
 `scripts/verify-release.sh` verifies checksums and GitHub artifact attestations by default:
 
 ```bash
-gh attestation verify ./tracker_1.8.0-rc1_darwin_arm64.tar.gz --repo myrrazor/atlas-tasker
+gh attestation verify ./tracker_1.9.0-rc1_darwin_arm64.tar.gz --repo myrrazor/atlas-tasker
 ```
 
 Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.
@@ -95,4 +95,4 @@ The packaged smoke flow should cover:
 - doctor and repair
 - release install path
 
-PR-807 and PR-809 record the final v1.8 proof transcript.
+The release evidence records the final proof transcript for the active train.

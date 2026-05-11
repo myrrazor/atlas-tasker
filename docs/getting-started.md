@@ -4,7 +4,7 @@ This path gets you from a clean checkout to a usable local Atlas workspace.
 
 ## 1. Build The CLI
 
-Until hosted release assets pass the v1.8 hosted gate, build locally:
+Until hosted release assets pass the hosted gate, build locally:
 
 ```bash
 go build -o tracker ./cmd/tracker

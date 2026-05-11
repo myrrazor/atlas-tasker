@@ -111,6 +111,44 @@ func TestAgentAvailablePendingCommands(t *testing.T) {
 	}
 }
 
+func TestSearchSupportsMultiWordTextAndInvalidInputCode(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "AUTH", "Auth Project")
+	must("ticket", "create", "--project", "AUTH", "--title", "logout flow regression", "--type", "task", "--actor", "human:owner", "--reason", "seed search")
+	must("ticket", "create", "--project", "AUTH", "--title", "profile parser", "--type", "task", "--actor", "human:owner", "--reason", "seed search")
+
+	structured := must("search", "project=AUTH text~logout flow", "--json")
+	if !strings.Contains(structured, "AUTH-1") || strings.Contains(structured, "AUTH-2") {
+		t.Fatalf("structured multi-word search returned wrong results:\n%s", structured)
+	}
+	plain := must("search", "logout flow", "--json")
+	if !strings.Contains(plain, "AUTH-1") || strings.Contains(plain, "AUTH-2") {
+		t.Fatalf("plain multi-word search returned wrong results:\n%s", plain)
+	}
+	quoted := must("search", `project=AUTH text~"logout flow"`, "--json")
+	if !strings.Contains(quoted, "AUTH-1") || strings.Contains(quoted, "AUTH-2") {
+		t.Fatalf("quoted multi-word search returned wrong results:\n%s", quoted)
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exit := Execute([]string{"search", "project=", "--json"}, &stdout, &stderr)
+	if exit != 2 {
+		t.Fatalf("expected invalid search exit 2, got %d\nstdout=%s\nstderr=%s", exit, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), `"code": "invalid_input"`) || strings.Contains(stderr.String(), `"code": "internal"`) {
+		t.Fatalf("invalid search should use invalid_input JSON error:\n%s", stderr.String())
+	}
+}
+
 func TestCLIRejectsPathDerivedIdentifierTraversal(t *testing.T) {
 	parent := t.TempDir()
 	workspaceRoot := filepath.Join(parent, "workspace")

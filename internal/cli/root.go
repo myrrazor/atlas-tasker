@@ -733,7 +733,8 @@ func newSearchCommand() *cobra.Command {
 			"",
 			"Examples:",
 			"  tracker search 'status=in_progress'",
-			"  tracker search 'project=AUTH text~logout'",
+			"  tracker search 'project=AUTH text~logout flow'",
+			"  tracker search 'text~\"scenario 1000\"'",
 		}, "\n"),
 		RunE: runSearch,
 	}
@@ -2668,7 +2669,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 			query, err = contracts.ParseSearchQuery("text~" + queryText)
 		}
 		if err != nil {
-			return fmt.Errorf("%w (try structured terms like status=in_progress or text~%s)", err, queryText)
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%v (try structured terms like status=in_progress, project=AUTH, or text~multi word text)", err))
 		}
 	}
 	tickets, err := workspace.queries.Search(ctx, query)

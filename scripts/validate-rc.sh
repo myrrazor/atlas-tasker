@@ -2,7 +2,7 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-VERSION="${VERSION:-v1.8.0-rc1}"
+VERSION="${VERSION:-v1.9.0-rc1}"
 WORK_PARENT="${VALIDATE_RC_WORK_DIR:-}"
 KEEP_WORK="${VALIDATE_RC_KEEP_WORK:-0}"
 PYTHON="${PYTHON:-python3}"

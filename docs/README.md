@@ -1,6 +1,6 @@
 # Atlas Docs
 
-Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for `v1.8.0-rc1`.
+Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for the v1.9 release-readiness train.
 
 ## First Ten Minutes
 
@@ -61,7 +61,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 
 ## Release Status
 
-`v1.8.0-rc1` is planned, not shipped. Local proof and hosted release proof are separate gates. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
+Atlas is in the v1.9 release-readiness train. Local proof and hosted release proof are separate gates. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
 
 ## Security Boundary
 
