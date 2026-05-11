@@ -2,6 +2,8 @@
 
 Atlas records mutations as events and rebuilds derived projections from those records.
 
+System-generated agent wake-up events use the reserved actor `agent:atlas`.
+
 Useful commands:
 
 ```bash

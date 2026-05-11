@@ -290,6 +290,8 @@ func newAgentCommand() *cobra.Command {
 	for _, sub := range []*cobra.Command{available, pending} {
 		sub.Flags().String("actor", "", "Actor to resolve when AGENT-ID is omitted (defaults through TRACKER_ACTOR or actor.default)")
 	}
+	wakeupView.Flags().String("actor", "", "Read-context actor accepted for command parity")
+	wakeupView.Flags().String("reason", "", "Read-context reason accepted for command parity")
 	for _, sub := range []*cobra.Command{wakeupAck, autoSet, autoOff} {
 		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
 		addReadOutputFlags(sub, &outputFlags{})

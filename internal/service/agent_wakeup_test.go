@@ -75,6 +75,9 @@ func TestAgentWakeupCreatedWhenBlockerReachesDone(t *testing.T) {
 	for _, event := range events {
 		if event.Type == contracts.EventAgentWorkAvailable {
 			found = true
+			if event.Actor != contracts.ActorAtlasSystem {
+				t.Fatalf("expected system actor %s, got %s", contracts.ActorAtlasSystem, event.Actor)
+			}
 		}
 	}
 	if !found {
