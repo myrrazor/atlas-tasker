@@ -1,4 +1,4 @@
-# Atlas Tasker v1.8 RC Command Reference
+# Atlas Tasker Command Reference
 
 ## Top-Level
 
@@ -324,7 +324,7 @@ Rules:
 - legacy `protected` or `sensitive` ticket flags still contribute `restricted`
 - redaction previews are local actor-bound records under `.tracker/redaction/previews/` with Unix mode `0600`
 - previews are single-use and bound to target, actor, source hash, policy hash, classification hash, command target, recomputed items, and a 10-minute TTL
-- PR-705 implements redacted workspace exports; default export redaction omits restricted files, restricted ticket- or run-owned gate/change/check/classification metadata, and extra files under restricted project directories, always omits `.tracker/events/` history, and writes `redaction_preview_id` into both the bundle record and artifact manifest
+- redacted workspace exports omit restricted files, restricted ticket- or run-owned gate/change/check/classification metadata, and extra files under restricted project directories, always omit `.tracker/events/` history, and write `redaction_preview_id` into both the bundle record and artifact manifest
 - built-in defaults stay active per redaction target unless a custom stored rule exists for that same target
 - redacted exports enforce the same `export_create` governance policies as normal exports
 - export redaction only supports `omit`; stored `mask`, `hash`, or marker export rules fail closed
@@ -400,14 +400,14 @@ Rules:
 - governance packs and applied policies are TOML files under `.tracker/governance/`
 - governance TOML uses the same snake_case field names as JSON output, and `tracker governance validate` emits a structured report plus non-zero exit when any pack or policy is invalid
 - all protected write paths use one evaluator after legacy permission checks and before live side effects
-- gate rejection is not governed by `gate_approve`; PR-704 only protects gate approval and waiver
+- gate rejection is not governed by `gate_approve`; `gate_approve` protects gate approval, while `gate_waive` protects waiver
 - `ticket_approve` is a protected action, so opt-in governance separation-of-duties and override policies can guard reviewer approval before completion.
 - ticket-level `ticket approve` is a convenience path for the effective reviewer or `human:owner`; when no reviewer is configured, the assignee or active worker may approve their own work by default. Reviewer quorum workflows should bind collaborators to a project reviewer membership and resolve review gates with `tracker gate approve <GATE-ID> --actor <ACTOR> --reason <TEXT>` so approvals are auditable.
 - trusted-signature requirements are not bypassed by owner override
 - structured CSV/GitHub import apply uses `import_apply`; signed sync/bundle imports use `sync_import_apply` and `bundle_import_apply`
 - sync export/import governance runs before migration scaffolding writes, so denied operations do not stamp migration state
 - `explain` and `simulate` accept `--reason` so reason-required owner overrides can be modeled before a mutation
-- PR-704 only accepts trusted-signature requirements for artifact import actions with real signature evidence: `bundle_import_apply` and `sync_import_apply`
+- trusted-signature requirements are accepted for artifact import actions with real signature evidence: `bundle_import_apply` and `sync_import_apply`
 - duplicate envelopes from the same trusted signer count once toward trusted-signature requirements
 - quorum rules with `require_trusted_signatures` count distinct trusted signer identities instead of gate approval actors
 - classification-scoped governance uses the exact effective inherited classification level; redaction rules use the ordered hierarchy
@@ -539,7 +539,7 @@ Rules:
 
 - handoff export uses deterministic markdown derived from the stored packet
 - handoffs survive `run cleanup`
-- handoff creation does not auto-open gates in PR-405; that comes with PR-406
+- handoff creation records a handoff packet; explicit review gates remain visible through `tracker gate list` and `tracker inbox`
 
 ## TUI
 
@@ -639,12 +639,13 @@ Search query terms:
 - `project=<KEY>`
 - `assignee=<ACTOR>`
 - `label=<LABEL>`
-- `text~<TEXT>`
+- `text~<TEXT>`; multi-word values can be written as `text~logout flow` or `text~"logout flow"`
 
 Examples:
 
 - `tracker search 'status=in_progress'`
-- `tracker search 'project=AUTH text~logout'`
+- `tracker search 'project=AUTH text~logout flow'`
+- `tracker search 'text~"scenario 1000"'`
 
 ## Saved Views
 
@@ -841,7 +842,7 @@ Useful config keys:
 `tracker version` prints release metadata in text form:
 
 ```text
-tracker v1.8.0-rc1
+tracker v1.9.0-rc1
 commit: abc123
 build date: 2026-05-07T04:00:00Z
 go: go1.26.3
@@ -854,7 +855,7 @@ platform: darwin/arm64
 {
   "format_version": "v1",
   "kind": "tracker_version",
-  "version": "v1.8.0-rc1",
+  "version": "v1.9.0-rc1",
   "commit": "abc123",
   "build_date": "2026-05-07T04:00:00Z",
   "go_version": "go1.26.3",

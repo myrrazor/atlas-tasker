@@ -4,7 +4,7 @@ Atlas supports source builds today and hosted release installs after the release
 
 ## Build From Source
 
-Use this while `v1.8.0-rc1` hosted assets are still blocked:
+Use this while hosted release assets are still blocked:
 
 ```bash
 go build -o tracker ./cmd/tracker
@@ -19,7 +19,7 @@ You can keep the binary local to the repo or move it onto your `PATH`. Unstamped
 The installer expects a real GitHub release with archives, `checksums.txt`, and GitHub artifact attestations. It verifies checksums before installing and verifies attestations by default.
 
 ```bash
-VERSION=v1.8.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=v1.9.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 "$HOME/.local/bin/tracker" version --json
 ```
 
@@ -36,7 +36,7 @@ Do not run installer commands copied from untrusted issues, comments, or chat tr
 For release candidates, verify the downloaded archive first:
 
 ```bash
-VERSION=v1.8.0-rc1 ./scripts/verify-release.sh ./tracker_1.8.0-rc1_darwin_arm64.tar.gz
+VERSION=v1.9.0-rc1 ./scripts/verify-release.sh ./tracker_1.9.0-rc1_darwin_arm64.tar.gz
 ```
 
 `scripts/verify-release.sh` checks `checksums.txt` and, by default, GitHub artifact attestations through `gh attestation verify`. Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.

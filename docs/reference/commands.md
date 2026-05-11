@@ -10,6 +10,7 @@ Core read commands:
 - `tracker dashboard`
 - `tracker inspect <TICKET-ID> --actor <ACTOR>`
 - `tracker ticket history <TICKET-ID> --json`
+- `tracker search 'project=AUTH text~logout flow' --json`
 
 Core write commands:
 
@@ -21,6 +22,8 @@ Core write commands:
 Agent workflow commands:
 
 - `tracker agent create <AGENT-ID> --name <NAME> --provider <PROVIDER> --capability <CAPABILITY> --actor <ACTOR> --reason <TEXT>`
+- `tracker agent available <AGENT-ID> --json`
+- `tracker agent pending <AGENT-ID> --json`
 - `tracker run dispatch <TICKET-ID> --agent <AGENT-ID> --actor <ACTOR> --reason <TEXT>`
 - `tracker run checkpoint <RUN-ID> --title <TITLE> --body <TEXT> --actor <ACTOR> --reason <TEXT>`
 - `tracker run evidence add <RUN-ID> --type note --title <TITLE> --body <TEXT> --actor <ACTOR> --reason <TEXT>`

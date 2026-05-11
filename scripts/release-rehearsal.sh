@@ -2,7 +2,7 @@
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
-VERSION="${VERSION:-v1.8.0-rc1}"
+VERSION="${VERSION:-v1.9.0-rc1}"
 VERSION_NO_V="${VERSION#v}"
 BIN_NAME="tracker"
 DIST_DIR="${DIST_DIR:-$(mktemp -d)}"
@@ -55,10 +55,6 @@ esac
 ARCHIVE="${BIN_NAME}_${VERSION_NO_V}_${OS_NAME}_${ARCH_NAME}.tar.gz"
 
 mkdir -p "$DIST_DIR" "$WORK_DIR" "$INSTALL_DIR"
-
-if [ -f "$ROOT_DIR/docs/v1.8-base.json" ]; then
-  echo "v1.8 base json: $(cat "$ROOT_DIR/docs/v1.8-base.json")"
-fi
 
 GOOS="$OS_NAME" GOARCH="$ARCH_NAME" CGO_ENABLED=0 go build -trimpath -ldflags="$LDFLAGS" -o "$DIST_DIR/$BIN_NAME" "$ROOT_DIR/cmd/tracker"
 tar -czf "$DIST_DIR/$ARCHIVE" -C "$DIST_DIR" "$BIN_NAME"

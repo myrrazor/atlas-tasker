@@ -13,10 +13,10 @@ Release scripts are proof helpers, not marketing status.
 Use:
 
 ```bash
-VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh
-VERSION=v1.8.0-rc1 sh scripts/validate-rc.sh
-VERSION=v1.8.0-rc1 ./scripts/release-rehearsal.sh
-VERSION=v1.8.0-rc1 ./scripts/verify-release.sh ./tracker_1.8.0-rc1_darwin_arm64.tar.gz
+VERSION=v1.9.0-rc1 sh scripts/preflight-release.sh
+VERSION=v1.9.0-rc1 sh scripts/validate-rc.sh
+VERSION=v1.9.0-rc1 ./scripts/release-rehearsal.sh
+VERSION=v1.9.0-rc1 ./scripts/verify-release.sh ./tracker_1.9.0-rc1_darwin_arm64.tar.gz
 ```
 
 `scripts/install.sh`, `scripts/verify-release.sh`, `scripts/preflight-release.sh`, `scripts/release-rehearsal.sh`, and `scripts/validate-rc.sh` validate `VERSION` before using it for stamped builds or downloads. Release downloads require `https://` unless a local rehearsal explicitly sets `ALLOW_INSECURE_RELEASE_BASE_URL=1` for loopback HTTP.
@@ -35,7 +35,7 @@ The stale-version scan excludes historical version plans. The leakage scan inclu
 For local security proof:
 
 ```bash
-VERSION=v1.8.0-rc1 \
+VERSION=v1.9.0-rc1 \
 RUN_GOVULNCHECK=1 \
 RUN_SBOM=1 \
 RELEASE_PROOF_DIR=docs/release-proof \
@@ -45,12 +45,12 @@ sh scripts/preflight-release.sh
 Pinned tools:
 
 - `go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 -show verbose ./...`
-- `go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0 app -json -output docs/release-proof/sbom-v1.8.0-rc1.cdx.json -main cmd/tracker .`
+- `go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0 app -json -output docs/release-proof/sbom-v1.9.0-rc1.cdx.json -main cmd/tracker .`
 
 The wrapper writes proof files under `RELEASE_PROOF_DIR` only when the corresponding `RUN_*` flag is set. Failures block local RC proof and final ship evidence. Hosted proof still requires:
 
 ```bash
-VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh --hosted
+VERSION=v1.9.0-rc1 sh scripts/preflight-release.sh --hosted
 ```
 
 Hosted mode delegates to `scripts/preflight-release-proof.sh` and preserves that script's `preflight_status`, `reason_code`, and exit behavior.
