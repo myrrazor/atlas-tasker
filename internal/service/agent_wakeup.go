@@ -346,7 +346,7 @@ func (s *ActionService) createAgentWakeup(ctx context.Context, ticket contracts.
 			"causation_event_id": fmt.Sprintf("%d", cause.EventID),
 		},
 	}
-	event, err := s.newEvent(ctx, ticket.Project, wakeup.CreatedAt, contracts.Actor("agent:automation"), wakeup.Reason, contracts.EventAgentWorkAvailable, ticket.ID, map[string]any{"wakeup": wakeup})
+	event, err := s.newEvent(ctx, ticket.Project, wakeup.CreatedAt, contracts.ActorAtlasSystem, wakeup.Reason, contracts.EventAgentWorkAvailable, ticket.ID, map[string]any{"wakeup": wakeup})
 	if err != nil {
 		return err
 	}

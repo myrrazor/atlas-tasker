@@ -5,7 +5,7 @@ Atlas writes local state under `.tracker/`. Important areas include:
 - `.tracker/projects/`: project and ticket markdown
 - `.tracker/events/`: append-only event JSONL
 - `.tracker/index.sqlite`: derived SQLite projection
-- `.tracker/runtime/`: run launch artifacts
+- `.tracker/runtime/`: run launch artifacts and agent wake-up records under `agent-wakeups/`
 - `.tracker/evidence/`: copied evidence artifacts
 - `.tracker/handoffs/`: immutable handoff snapshots
 - `.tracker/security/`: public keys, signatures, and private key material

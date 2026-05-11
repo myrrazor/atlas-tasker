@@ -14,6 +14,14 @@ tracker ticket move APP-1 in_progress --actor agent:builder-1 --reason "start im
 
 Use `available` to choose work Codex can do now. Use `pending` to explain blockers without inventing a polling loop. Use JSON reads when Codex needs exact state and Markdown reads when you want a pasteable prompt.
 
+Codex can dispatch itself to eligible assigned work without project membership:
+
+```bash
+tracker run dispatch APP-1 --agent agent:builder-1 --actor agent:builder-1 --reason "start Codex run"
+```
+
+Cross-agent dispatch still follows collaborator membership, permission profiles, and normal policy checks.
+
 Install the project skill pack with:
 
 ```bash
