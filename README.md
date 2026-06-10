@@ -1,6 +1,6 @@
 
 # Atlas Tasker
-<img width="1699" height="286" alt="atlas-tasker-wordmark" src="https://github.com/user-attachments/assets/fb31e508-ffe4-4b53-8766-57ec995c760b" />
+<img alt="Atlas Tasker" src="assets/brand/atlas-tasker-wordmark.png" width="850" />
 
 **Jira for your terminal, built for AI coding agents.**
 
@@ -42,6 +42,8 @@ tracker board
 Every ticket is a markdown file under `projects/`, every change is an append-only event in `.tracker/`, and a SQLite projection keeps queries instant. Your tracker ships with your repo: branch it, diff it, `git blame` a status change. If the index ever gets corrupted, `tracker doctor --repair` rebuilds it from the event log.
 
 Prefer a full-screen view? `tracker tui` opens the interactive console — board, work queues, ticket detail with timeline, search, review and owner queues, inbox, and an ops dashboard, all keyboard-driven.
+
+![TUI splash](docs/assets/splash.png)
 
 ![Interactive TUI board](docs/assets/tui-board.png)
 
