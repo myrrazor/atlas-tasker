@@ -34,7 +34,7 @@ func TestInstallCodexCreatesManagedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read codex skill: %v", err)
 	}
-	if !strings.Contains(string(skill), "name: atlas-worker") || !strings.Contains(string(skill), "tracker agent available <agent-id> --json") {
+	if !strings.Contains(string(skill), "name: atlas-worker") || !strings.Contains(string(skill), "tracker agent available <agent-id> --json") || !strings.Contains(string(skill), "tracker run dispatch <ID> --agent agent:<agent-id>") {
 		t.Fatalf("unexpected skill content: %s", string(skill))
 	}
 	if len(result.SkillFiles) == 0 || len(result.CommandFiles) == 0 {
@@ -95,7 +95,7 @@ func TestInstallGenericCreatesPortableSkillPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read generic skill: %v", err)
 	}
-	if !strings.Contains(string(skill), "Atlas Worker") || !strings.Contains(string(skill), "dependency_blocked") {
+	if !strings.Contains(string(skill), "Atlas Worker") || !strings.Contains(string(skill), "dependency_blocked") || !strings.Contains(string(skill), "tracker run dispatch <ID> --agent agent:<agent-id>") {
 		t.Fatalf("unexpected generic skill: %s", string(skill))
 	}
 }

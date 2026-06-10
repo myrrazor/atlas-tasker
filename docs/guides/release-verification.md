@@ -15,8 +15,8 @@ This proves your local checkout can build and that the version JSON contract is 
 ## Local Rehearsal
 
 ```bash
-VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh
-VERSION=v1.8.0-rc1 ./scripts/release-rehearsal.sh
+VERSION=v1.9.0-rc1 sh scripts/preflight-release.sh
+VERSION=v1.9.0-rc1 ./scripts/release-rehearsal.sh
 sh scripts/stability-smoke.sh
 ```
 
@@ -25,7 +25,7 @@ Local rehearsal proves packaging shape, installer behavior, and smoke flow again
 For the local security proof files used in release evidence:
 
 ```bash
-VERSION=v1.8.0-rc1 \
+VERSION=v1.9.0-rc1 \
 RUN_GOVULNCHECK=1 \
 RUN_SBOM=1 \
 RELEASE_PROOF_DIR=docs/release-proof \
@@ -41,12 +41,12 @@ This uses pinned tooling:
 
 Hosted proof requires published GitHub assets:
 
-1. run `VERSION=v1.8.0-rc1 sh scripts/preflight-release.sh --hosted`
-2. create a prerelease tag, such as `v1.8.0-rc1`
+1. run `VERSION=v1.9.0-rc1 sh scripts/preflight-release.sh --hosted`
+2. create a prerelease tag, such as `v1.9.0-rc1`
 3. confirm archives and `checksums.txt` uploaded by GitHub Actions
 4. download at least one hosted archive
-5. run `VERSION=v1.8.0-rc1 ./scripts/verify-release.sh <archive>` with attestation verification enabled
-6. install from published assets with `VERSION=v1.8.0-rc1 BIN_DIR=<clean-dir> sh scripts/install.sh`
+5. run `VERSION=v1.9.0-rc1 ./scripts/verify-release.sh <archive>` with attestation verification enabled
+6. install from published assets with `VERSION=v1.9.0-rc1 BIN_DIR=<clean-dir> sh scripts/install.sh`
 7. run `<clean-dir>/tracker version --json` and compare version, commit, build date, and platform to the hosted asset
 8. run the packaged smoke from the installed binary
 
