@@ -68,6 +68,18 @@ func openDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// IsCorrupt reports whether err is sqlite refusing the index file itself
+// (truncated, overwritten, or not sqlite at all). Matching message text is
+// ugly, but it survives driver upgrades better than poking at driver-private
+// error codes.
+func IsCorrupt(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "file is not a database") || strings.Contains(msg, "database disk image is malformed")
+}
+
 func (s *Store) Close() error {
 	if s.DB == nil {
 		return nil
