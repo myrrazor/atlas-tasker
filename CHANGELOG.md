@@ -1,8 +1,12 @@
 # Changelog
 
-Atlas ships public release candidates today; the first stable release follows once the remaining release gates close. This changelog starts with the public release-candidate polish train.
-
 ## Unreleased
+
+Nothing yet.
+
+## v1.9.0 - First Stable Release (2026-06-10)
+
+Everything from both release candidates, finalized. The hosted proof for `v1.9.0-rc2` (checksum + attestation verification, clean-directory install from published assets, version metadata match, packaged smoke) is recorded in `docs/release/v1.9.0-release-evidence.md` along with the owner ship decision.
 
 - The TUI opens with a branded splash (chrome-blue ATLAS TASKER art, any key skips, degrades cleanly on narrow and NO_COLOR terminals).
 - All terminal colors now come from one brand palette (`internal/theme`): electric-blue primary, adaptive light/dark pairs, semantic status hues, and a real priority scale (critical/high/low) instead of uniform gray badges.
@@ -12,6 +16,8 @@ Atlas ships public release candidates today; the first stable release follows on
 - README rewritten around the published release candidate: one-line verified install, terminal screenshots, demo GIF, and the agent workflow story.
 - `tracker team` applies ready-made agent team presets (solo, pair, swarm, crossfire): agent profiles, the standard-build runbook, separation-of-duties permissions, and the matching completion gate in one idempotent command with `--dry-run` preview.
 - Agent skill packs teach the full autonomous loop: bootstrap via team presets, wake-up acknowledgement, blocker reason codes, and the claim-build-review-handoff cycle. The Claude pack now installs to `.claude/skills/atlas-worker/` (modern Claude Code layout).
+- The TUI gained an in-app help guide.
+- Five superseded long-lived branches were retired with documented receipts (`docs/release/branch-cleanup-receipts.md`).
 
 ## v1.9.0-rc1 - First Public Release Candidate (2026-06-10)
 
