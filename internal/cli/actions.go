@@ -116,10 +116,10 @@ func writeCommandOutput(cmd *cobra.Command, data any, markdown string, pretty st
 		return nil
 	}
 	if mdMode {
-		fmt.Fprintln(cmd.OutOrStdout(), render.SanitizeDisplay(markdown))
+		fmt.Fprintln(cmd.OutOrStdout(), render.SanitizeTerminalOutput(markdown))
 		return nil
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), render.SanitizeDisplay(pretty))
+	fmt.Fprintln(cmd.OutOrStdout(), render.SanitizeTerminalOutput(pretty))
 	return nil
 }
 
