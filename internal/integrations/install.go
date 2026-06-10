@@ -122,13 +122,17 @@ func (i Installer) spec(target Target) (installSpec, error) {
 	case TargetClaude:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "claude-guide.md")
 		commandDir := filepath.Join(i.Root, ".claude", "commands")
+		skillDir := filepath.Join(i.Root, ".claude", "skills", "atlas-worker")
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "CLAUDE.md"),
 			guidePath:       guidePath,
 			blockBody:       claudeBlock(guidePath),
 			guideBody:       claudeGuide(),
 			extraFiles: []managedInstallFile{
-				{path: filepath.Join(i.Root, ".tracker", "integrations", "claude-atlas-worker-skill.md"), body: atlasWorkerSkill("claude"), kind: "skill"},
+				// modern Claude Code skill layout; the old
+				// .tracker/integrations copy retired with v1.9
+				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("claude"), kind: "skill"},
+				{path: filepath.Join(skillDir, "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
 				{path: filepath.Join(commandDir, "atlas-next.md"), body: atlasNextCommandTemplate(), kind: "command"},
 				{path: filepath.Join(commandDir, "atlas-take.md"), body: atlasTakeCommandTemplate(), kind: "command"},
 				{path: filepath.Join(commandDir, "atlas-review.md"), body: atlasReviewCommandTemplate(), kind: "command"},
