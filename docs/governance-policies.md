@@ -25,9 +25,9 @@ Separation-of-duties can block actors who implemented, dispatched, created a cha
 
 Protected actions include sync/bundle/structured import apply, gate approve/waive, ticket approve/complete, run complete, change merge, export create, archive apply/restore, backup restore, trust/revoke key, redaction override, and owner override.
 
-## PR-704 Implementation Notes
+## Implementation Notes
 
-PR-704 makes governance executable for the first protected write paths. Governance packs are stored under `.tracker/governance/packs/`; applied policies are stored under `.tracker/governance/policies/`. TOML files use the same snake_case field names as JSON output, and `tracker governance validate` exits non-zero when any pack or policy is invalid.
+Governance packs are stored under `.tracker/governance/packs/`; applied policies are stored under `.tracker/governance/policies/`. TOML files use the same snake_case field names as JSON output, and `tracker governance validate` exits non-zero when any pack or policy is invalid.
 
 `ticket_approve` lets teams apply separation-of-duties at reviewer approval time instead of waiting until `ticket_complete`. Without an applied governance policy, Atlas stays autonomy-first: a ticket assignee or active worker can approve their own ticket when no effective reviewer is configured.
 
@@ -41,9 +41,9 @@ Commands:
 
 The evaluator runs after the existing permission/collaborator checks and before live provider or durable filesystem side effects. Sync export/import governance runs before migration scaffolding writes, so denied operations do not stamp migration state. Remote sync pulls fetch into staging first, including Git fetch caches, then promote the fetched publication into the durable mirror only after `sync_import_apply` passes. Current protected hooks cover ticket completion, run completion, gate approval/waiver, change merge, structured import apply, sync/bundle import apply paths, sync push export creation, project-scoped archive apply/restore, and key trust/revoke operations.
 
-Gate rejection is not governed by `gate_approve`. Atlas treats rejection as a safe negative decision in PR-704; a future `gate_reject` protected action can be added if teams need rejection-specific policy.
+Gate rejection is not governed by `gate_approve`. Atlas treats rejection as a safe negative decision; a future `gate_reject` protected action can be added if teams need rejection-specific policy.
 
-Trusted-signature requirements are deliberately not owner-overridable. PR-704 only accepts them for artifact import actions that already carry verifiable signature evidence: `bundle_import_apply` and `sync_import_apply`. Duplicate envelopes from the same trusted signer count once. A quorum rule with `require_trusted_signatures = true` counts those distinct trusted signer identities as its quorum evidence rather than looking for gate approvals. Ticket/run/change/gate signature policies wait for the signed approval and audit packet work in PR-706.
+Trusted-signature requirements are deliberately not owner-overridable. Atlas accepts them for artifact import actions that already carry verifiable signature evidence: `bundle_import_apply` and `sync_import_apply`. Duplicate envelopes from the same trusted signer count once. A quorum rule with `require_trusted_signatures = true` counts those distinct trusted signer identities as its quorum evidence rather than looking for gate approvals. Ticket/run/change/gate signature policies use the signed approval and audit packet surfaces when those artifacts exist.
 
 Quorum and separation failures can be owner-overridden only when every failed matching policy has an applicable override rule, the actor is `human:owner`, and the reason/signature requirements on each override rule are satisfied. The override then evaluates matching `owner_override` policies before it is accepted. Atlas records `governance.override.recorded` only after the protected mutation succeeds.
 
@@ -53,6 +53,6 @@ Quorum and separation failures can be owner-overridden only when every failed ma
 
 `governance validate` is the recovery command for hand-edited policy files. It returns a structured validation report even when a policy or pack cannot be decoded into a valid contract.
 
-PR-705 replaces the temporary legacy-only classification fallback with inherited classification labels. Classification-scoped governance matches the exact effective classification level; legacy `protected` or `sensitive` tickets still contribute `restricted` to that effective level.
+Classification-scoped governance matches the exact effective classification level; legacy `protected` or `sensitive` tickets still contribute `restricted` to that effective level.
 
 Applying a reusable pack to multiple scopes writes scope-bound policy ids, so `project:APP` and `project:WEB` applications of the same pack can remain active at the same time.

@@ -83,6 +83,10 @@ const (
 // Actor is the mutation identity format (e.g. human:owner, agent:builder-1).
 type Actor string
 
+const (
+	ActorAtlasSystem Actor = "agent:atlas"
+)
+
 var validTicketTypes = map[TicketType]struct{}{
 	TicketTypeEpic: {}, TicketTypeTask: {}, TicketTypeBug: {}, TicketTypeSubtask: {},
 }

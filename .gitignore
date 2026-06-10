@@ -8,6 +8,10 @@ CLAW_REVIEW_*.md
 .claude/
 .gstack/
 
+# local planning docs and variant scratch trees — not for publication
+/design docs/
+/_variants/
+
 # editor/system
 .DS_Store
 

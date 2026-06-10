@@ -28,6 +28,10 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 		if !actor.IsValid() {
 			return DispatchResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
 		}
+		agentID = normalizeDispatchAgentID(agentID)
+		if agentID == "" {
+			return DispatchResult{}, apperr.New(apperr.CodeInvalidInput, "agent id is required")
+		}
 		ticket, err := s.Tickets.GetTicket(ctx, ticketID)
 		if err != nil {
 			return DispatchResult{}, err
@@ -49,6 +53,7 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 			ActorAgent:        &agent,
 			Runbook:           permissionRunbook(ticket, nil),
 			ChangedFilesKnown: false,
+			AllowSelfDispatch: isSelfDispatchActor(actor, &agent),
 		}); err != nil {
 			return DispatchResult{}, err
 		}
@@ -157,6 +162,21 @@ func (s *ActionService) DispatchRun(ctx context.Context, ticketID string, agentI
 		}
 		return DispatchResult{TicketID: ticket.ID, RunID: run.RunID, AgentID: agent.AgentID, Runbook: ticket.Runbook, Stage: run.BlueprintStage, WorktreePath: run.WorktreePath, GeneratedAt: s.now()}, nil
 	})
+}
+
+func normalizeDispatchAgentID(agentID string) string {
+	agentID = strings.TrimSpace(agentID)
+	if strings.HasPrefix(agentID, "agent:") {
+		return strings.TrimSpace(strings.TrimPrefix(agentID, "agent:"))
+	}
+	return agentID
+}
+
+func isSelfDispatchActor(actor contracts.Actor, agent *contracts.AgentProfile) bool {
+	if agent == nil || strings.TrimSpace(agent.AgentID) == "" {
+		return false
+	}
+	return actor == contracts.Actor("agent:"+strings.TrimSpace(agent.AgentID))
 }
 
 func (s *ActionService) StartRun(ctx context.Context, runID string, actor contracts.Actor, reason string, summary string) (contracts.RunSnapshot, error) {
