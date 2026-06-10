@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Nothing yet.
+- List output across the CLI and TUI moved to real terminal tables: rounded muted borders (ASCII under `NO_COLOR`), bold accent headers, and content-hugged columns that only clamp when the terminal is narrower than the data. Cells keep their semantic badge colors, the board groups each workflow column once and omits empty ones, and the TUI highlights the selected row.
 
 ## v1.9.0 - First Stable Release (2026-06-10)
 

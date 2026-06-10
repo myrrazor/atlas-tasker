@@ -1383,7 +1383,7 @@ func agentWorkView(work service.AgentWorkView, cursor int, width int) string {
 		}
 		appendEntry("Available", work.Available)
 		appendEntry("Pending", work.Pending)
-		return render.RenderTable([]string{"", "Bucket", "ID", "Status", "Pri", "Title", "Reason"}, rows, render.TableOptions{
+		return render.RenderTable([]string{"", "Bucket", "ID", "Status", "Priority", "Title", "Reason"}, rows, render.TableOptions{
 			Title:             fmt.Sprintf("Agent Work for %s", optionalActor(work.Actor, "unset")),
 			Width:             tableWidth(width),
 			SelectedRow:       selectedRow,

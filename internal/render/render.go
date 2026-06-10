@@ -294,7 +294,7 @@ func TicketsTable(title string, tickets []contracts.TicketSnapshot, width int, s
 			optionalString(SanitizeDisplayLine(ticket.Title), "(untitled)"),
 		})
 	}
-	return RenderTable([]string{"", "ID", "Type", "Status", "Pri", "Title"}, rows, TableOptions{
+	return RenderTable([]string{"", "ID", "Type", "Status", "Priority", "Title"}, rows, TableOptions{
 		Title:             title,
 		Width:             width,
 		SelectedRow:       selectedRow,
@@ -328,22 +328,34 @@ func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
 		rows := make([][]string, 0)
 		for _, status := range ordered {
 			tickets := sortedTickets(board.Columns[status])
-			column := fmt.Sprintf("%s (%d)", labels[status], len(tickets))
 			if len(tickets) == 0 {
-				rows = append(rows, []string{column, "-", "-", "-", "(empty)"})
+				// empty workflow columns are noise in a table; the kanban
+				// sections below still show them on narrow terminals
 				continue
 			}
-			for _, ticket := range tickets {
+			column := fmt.Sprintf("%s (%d)", labels[status], len(tickets))
+			if ColorEnabled() {
+				column = lipgloss.NewStyle().Bold(true).Foreground(theme.Primary).Render(column)
+			}
+			for idx, ticket := range tickets {
+				label := ""
+				if idx == 0 {
+					label = column
+				}
 				rows = append(rows, []string{
-					column,
+					label,
 					SanitizeDisplayLine(ticket.ID),
 					optionalString(TypeBadge(ticket.Type), "-"),
+					StatusBadge(ticket.Status),
 					PriorityBadge(ticket.Priority),
 					optionalString(SanitizeDisplayLine(ticket.Title), "(untitled)"),
 				})
 			}
 		}
-		return RenderTable([]string{"Column", "ID", "Type", "Pri", "Title"}, rows, TableOptions{
+		if len(rows) == 0 {
+			return EmptyState("Board", "No tickets yet.")
+		}
+		return RenderTable([]string{"Column", "ID", "Type", "Status", "Priority", "Title"}, rows, TableOptions{
 			Title: "Board",
 			Width: width,
 		})
@@ -413,7 +425,10 @@ func RenderTable(headers []string, rows [][]string, options TableOptions) string
 	for _, row := range rows {
 		clean := make([]string, 0, len(row))
 		for _, cell := range row {
-			clean = append(clean, strings.Join(strings.Fields(sanitizeDisplay(cell, false, false)), " "))
+			// keep our own SGR badge styling; renderers strict-scrub user
+			// content before any styling is applied (same invariant as the
+			// output boundary)
+			clean = append(clean, strings.Join(strings.Fields(sanitizeDisplay(cell, false, true)), " "))
 		}
 		cleanRows = append(cleanRows, clean)
 	}
@@ -438,21 +453,34 @@ func RenderTable(headers []string, rows [][]string, options TableOptions) string
 		}
 		return style
 	}
-	table := tableview.New().
-		Border(border).
-		BorderRow(false).
-		BorderHeader(true).
-		BorderColumn(true).
-		Wrap(false).
-		Width(width).
-		StyleFunc(styleCell).
-		Headers(cleanHeaders...).
-		Rows(cleanRows...)
-	if ColorEnabled() {
-		table.BorderStyle(lipgloss.NewStyle().Foreground(theme.Muted))
+	makeTable := func(fixedWidth int) *tableview.Table {
+		t := tableview.New().
+			Border(border).
+			BorderRow(false).
+			BorderHeader(true).
+			BorderColumn(true).
+			Wrap(false).
+			StyleFunc(styleCell).
+			Headers(cleanHeaders...).
+			Rows(cleanRows...)
+		if fixedWidth > 0 {
+			t = t.Width(fixedWidth)
+		}
+		if ColorEnabled() {
+			t.BorderStyle(lipgloss.NewStyle().Foreground(theme.Muted))
+		}
+		return t
 	}
 
-	rendered := table.String()
+	// hug the content like a real terminal table; only pin the width when the
+	// natural layout overflows the terminal
+	rendered := makeTable(0).String()
+	for _, line := range strings.Split(rendered, "\n") {
+		if lipgloss.Width(line) > width {
+			rendered = makeTable(width).String()
+			break
+		}
+	}
 	title := strings.TrimSpace(SanitizeDisplayLine(options.Title))
 	if title == "" {
 		return rendered

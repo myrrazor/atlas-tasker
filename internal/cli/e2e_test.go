@@ -52,7 +52,9 @@ func TestAcceptanceFlowWithRecovery(t *testing.T) {
 	if !strings.Contains(board, "APP-2") || !strings.Contains(board, "Done") {
 		t.Fatalf("board output missing expected ticket/state: %s", board)
 	}
-	if !strings.Contains(board, "Blocked (0)") || !strings.Contains(board, "APP-4") || !strings.Contains(board, "[bug]") || !strings.Contains(board, "Bug") {
+	// empty workflow columns are omitted from the table entirely, so a cleared
+	// blocked bucket means no "Blocked (" group remains at all
+	if strings.Contains(board, "Blocked (") || !strings.Contains(board, "APP-4") || !strings.Contains(board, "[bug]") || !strings.Contains(board, "Bug") {
 		t.Fatalf("board output should clear derived blocked placement after blocker is done: %s", board)
 	}
 
@@ -69,7 +71,7 @@ func TestAcceptanceFlowWithRecovery(t *testing.T) {
 	if !strings.Contains(reindexedBoard, "APP-2") {
 		t.Fatalf("reindex board missing APP-2: %s", reindexedBoard)
 	}
-	if !strings.Contains(reindexedBoard, "Blocked (0)") || !strings.Contains(reindexedBoard, "APP-4") || !strings.Contains(reindexedBoard, "[bug]") || !strings.Contains(reindexedBoard, "Bug") {
+	if strings.Contains(reindexedBoard, "Blocked (") || !strings.Contains(reindexedBoard, "APP-4") || !strings.Contains(reindexedBoard, "[bug]") || !strings.Contains(reindexedBoard, "Bug") {
 		t.Fatalf("reindex board should match live derived blocker state: %s", reindexedBoard)
 	}
 }

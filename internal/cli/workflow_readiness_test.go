@@ -68,7 +68,9 @@ func TestProjectRequiredReviewerAndDependenciesAuthFlow(t *testing.T) {
 	must("ticket", "approve", "AUTH-2", "--actor", "agent:reviewer-1", "--reason", "blocker reviewed")
 	must("ticket", "move", "AUTH-3", "in_progress", "--actor", "agent:builder-1")
 	boardUnblocked := must("board", "--project", "AUTH", "--pretty")
-	if !strings.Contains(boardUnblocked, "Blocked (0)") || !strings.Contains(boardUnblocked, "In Progress (1)") || !strings.Contains(boardUnblocked, "AUTH-3") {
+	// cleared derived-blocked now means the Blocked group vanishes from the
+	// table instead of rendering as "Blocked (0)"
+	if strings.Contains(boardUnblocked, "Blocked (") || !strings.Contains(boardUnblocked, "In Progress (1)") || !strings.Contains(boardUnblocked, "AUTH-3") {
 		t.Fatalf("expected board to clear derived blocked bucket after blocker done:\n%s", boardUnblocked)
 	}
 	if err := os.Remove(filepath.Join(".tracker", "index.sqlite")); err != nil {
@@ -76,7 +78,7 @@ func TestProjectRequiredReviewerAndDependenciesAuthFlow(t *testing.T) {
 	}
 	must("reindex")
 	reindexed := must("board", "--project", "AUTH", "--pretty")
-	if !strings.Contains(reindexed, "Blocked (0)") || !strings.Contains(reindexed, "In Progress (1)") || !strings.Contains(reindexed, "AUTH-3") {
+	if strings.Contains(reindexed, "Blocked (") || !strings.Contains(reindexed, "In Progress (1)") || !strings.Contains(reindexed, "AUTH-3") {
 		t.Fatalf("expected reindex to preserve unblocked board state:\n%s", reindexed)
 	}
 }

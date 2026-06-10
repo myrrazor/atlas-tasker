@@ -68,18 +68,67 @@ func TestRenderTableSanitizesAndFitsWideRows(t *testing.T) {
 	}
 }
 
-func TestRenderTableStripsStyledCellsBeforeTruncation(t *testing.T) {
-	styled := lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("[critical]")
-	out := RenderTable([]string{"Pri", "Title"}, [][]string{{styled, "a title long enough to truncate"}}, TableOptions{
+func TestRenderTableKeepsSGRStyledCells(t *testing.T) {
+	// our own badge styling must survive into cells; everything else stays banned
+	styled := "\x1b[38;5;203m[critical]\x1b[0m"
+	hostile := "title\x1b[2Jwith\x1b]0;evil\x07noise"
+	out := RenderTable([]string{"Priority", "Title"}, [][]string{{styled, hostile}}, TableOptions{
 		Title:  "Tickets",
-		Width:  28,
+		Width:  60,
 		Border: TableBorderUnicode,
 	})
-	if strings.ContainsRune(out, 0x1b) || strings.Contains(out, "38;") || strings.Contains(out, "203m") {
-		t.Fatalf("expected styled cells to be scrubbed before truncation, got %q", out)
+	if !strings.Contains(out, "\x1b[38;5;203m") {
+		t.Fatalf("expected SGR-styled cell to survive, got %q", out)
+	}
+	if strings.Contains(out, "\x1b[2J") || strings.Contains(out, "\x1b]0;") {
+		t.Fatalf("expected non-SGR escapes stripped from cells, got %q", out)
 	}
 	if !strings.Contains(out, "[critical]") {
 		t.Fatalf("expected readable cell text to remain, got:\n%s", out)
+	}
+}
+
+func TestRenderTableHugsContentInsteadOfStretching(t *testing.T) {
+	out := RenderTable([]string{"ID", "Title"}, [][]string{{"APP-1", "Tiny"}}, TableOptions{
+		Title:  "Tickets",
+		Width:  120,
+		Border: TableBorderASCII,
+	})
+	widest := 0
+	for _, line := range strings.Split(out, "\n") {
+		if w := visibleWidth(line); w > widest {
+			widest = w
+		}
+	}
+	// content is ~16 cells wide; a hugged table stays close to that instead
+	// of ballooning to the full 120-col terminal
+	if widest > 40 {
+		t.Fatalf("expected table to hug content, widest line = %d:\n%s", widest, out)
+	}
+}
+
+func TestBoardTableGroupsOnceSkipsEmptyShowsStatus(t *testing.T) {
+	board := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady: {
+			{ID: "APP-1", Type: contracts.TicketTypeTask, Status: contracts.StatusReady, Priority: contracts.PriorityHigh, Title: "First"},
+			{ID: "APP-2", Type: contracts.TicketTypeTask, Status: contracts.StatusReady, Priority: contracts.PriorityLow, Title: "Second"},
+		},
+		contracts.StatusDone: {
+			{ID: "APP-3", Type: contracts.TicketTypeTask, Status: contracts.StatusDone, Priority: contracts.PriorityMedium, Title: "Shipped"},
+		},
+	}}
+	out := BoardPrettyWithWidth(board, 100)
+	if got := strings.Count(out, "Ready (2)"); got != 1 {
+		t.Fatalf("expected group label exactly once, got %d:\n%s", got, out)
+	}
+	if strings.Contains(out, "(empty)") || strings.Contains(out, "In Review (0)") || strings.Contains(out, "Backlog (0)") {
+		t.Fatalf("expected empty workflow columns to be omitted, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Status") || !strings.Contains(out, "[ready]") || !strings.Contains(out, "[done]") {
+		t.Fatalf("expected per-ticket status column, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Priority") {
+		t.Fatalf("expected full Priority header, got:\n%s", out)
 	}
 }
 

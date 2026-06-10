@@ -3258,7 +3258,7 @@ func queuePrettySelected(queue service.QueueView, categories []string, title str
 			})
 		}
 	}
-	return render.RenderTable([]string{"Queue", "ID", "Status", "Pri", "Title", "Reason"}, rows, render.TableOptions{
+	return render.RenderTable([]string{"Queue", "ID", "Status", "Priority", "Title", "Reason"}, rows, render.TableOptions{
 		Title: fmt.Sprintf("%s for %s", title, queue.Actor),
 		Width: render.TerminalWidth(100),
 	})
@@ -3494,7 +3494,7 @@ func formatAgentWork(view service.AgentWorkView, state service.AgentWorkState) (
 			render.SanitizeDisplayLine(reason),
 		})
 	}
-	pretty = render.RenderTable([]string{"ID", "Action", "Status", "Pri", "Title", "Reason"}, rows, render.TableOptions{
+	pretty = render.RenderTable([]string{"ID", "Action", "Status", "Priority", "Title", "Reason"}, rows, render.TableOptions{
 		Title: fmt.Sprintf("%s for %s", title, view.Actor),
 		Width: render.TerminalWidth(100),
 	})
