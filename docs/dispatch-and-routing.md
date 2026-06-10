@@ -14,6 +14,8 @@ Eligibility filters:
 
 Dispatch also expects a clean git workspace when worktree-backed execution is enabled. If a source-built binary or Atlas projection file is making the repo dirty, exclude local-only files such as `tracker`, `.tracker/write.lock`, `.tracker/index.sqlite`, `.tracker/index.sqlite-wal`, and `.tracker/index.sqlite-shm`, then commit the ticket/agent state before dispatch.
 
+`--agent` accepts either a bare agent id such as `builder-1` or a qualified actor form such as `agent:builder-1`. An agent may dispatch itself to its own eligible work without project membership; dispatching another agent still goes through the normal membership, permission-profile, and policy checks.
+
 Dispatch modes:
 - manual assignment
 - auto-suggest

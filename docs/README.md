@@ -1,6 +1,6 @@
 # Atlas Docs
 
-Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for `v1.8.0-rc1`.
+Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for the v1.9 release-readiness train.
 
 ## First Ten Minutes
 
@@ -37,6 +37,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 - [Claude Code](guides/claude-code.md)
 - [Generic agents](guides/generic-agent.md)
 - [MCP for agents](guides/mcp-for-agents.md)
+- [v1.9 agent workflow](v1.9-agent-workflow.md)
 - [Doctor and repair](guides/doctor-and-repair.md)
 - [Release verification](guides/release-verification.md)
 - [Operations](guides/operations.md)
@@ -57,10 +58,11 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 - [Security model](reference/security-model.md)
 - [Release scripts](reference/release-scripts.md)
 - [Troubleshooting index](reference/troubleshooting.md)
+- [Known limitations](KNOWN_LIMITATIONS.md)
 
 ## Release Status
 
-`v1.8.0-rc1` is planned, not shipped. Local proof and hosted release proof are separate gates. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
+Atlas is in the v1.9 release-readiness train. Local proof and hosted release proof are separate gates. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
 
 ## Security Boundary
 
