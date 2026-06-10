@@ -16,6 +16,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/render"
+	"github.com/myrrazor/atlas-tasker/internal/theme"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
@@ -133,6 +134,7 @@ type model struct {
 	actor              contracts.Actor
 	actorErr           string
 	keys               keyMap
+	splash             splashState
 	help               help.Model
 	screen             screen
 	width              int
@@ -222,6 +224,7 @@ func Run(root string, explicitActor contracts.Actor) error {
 		return err
 	}
 	defer m.close()
+	m.splash = splashState{active: true}
 	program := tea.NewProgram(m, tea.WithAltScreen())
 	_, err = program.Run()
 	return err
@@ -296,7 +299,7 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 }
 
 func (m model) Init() tea.Cmd {
-	return m.refresh()
+	return tea.Batch(m.refresh(), splashMinDelayCmd())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -305,7 +308,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
+	case splashMinDelayMsg:
+		m.splash.minDelayDone = true
+		m.splash.maybeDismiss()
+		return m, nil
 	case loadedMsg:
+		// even a failed load counts as "ready" -- the splash must never
+		// outlive the data it was waiting for
+		m.splash.dataReady = true
+		m.splash.maybeDismiss()
 		if msg.err != nil {
 			m.status = msg.err.Error()
 			return m, nil
@@ -429,6 +440,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = fmt.Sprintf("bulk %s previewed", result.Preview.Kind)
 		return m, nil
 	case tea.KeyMsg:
+		if m.splash.active {
+			if key.Matches(msg, m.keys.Quit) {
+				return m, tea.Quit
+			}
+			m.splash.active = false
+			return m, nil
+		}
 		if m.dialog.active() {
 			return m.updateDialog(msg)
 		}
@@ -540,10 +558,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	if m.splash.active {
+		return m.splashView()
+	}
 	tabStyle := lipgloss.NewStyle().Padding(0, 1)
 	activeStyle := tabStyle.Bold(true)
 	if renderEnabled() {
-		activeStyle = activeStyle.Foreground(lipgloss.Color("10"))
+		activeStyle = activeStyle.Foreground(theme.Primary)
+		tabStyle = tabStyle.Foreground(theme.Muted)
 	}
 	tabs := make([]string, 0, len(screenNames))
 	for idx, label := range screenNames {
@@ -561,6 +583,10 @@ func (m model) View() string {
 	footer := fmt.Sprintf("actor: %s | collaborator: %s | %s", optionalActor(m.actor, "unset"), optionalString(strings.TrimSpace(m.collaboratorFilter), "all"), m.status)
 	if m.width > 0 {
 		footer = render.TruncateDisplay(footer, m.width)
+	}
+	if renderEnabled() {
+		// style after truncation -- the trimmer measures glyphs, not escapes
+		footer = lipgloss.NewStyle().Foreground(theme.Muted).Render(footer)
 	}
 	if width := m.width; width > 0 && width < lipgloss.Width(body) {
 		body = lipgloss.NewStyle().Width(width).Render(body)
@@ -1018,10 +1044,14 @@ func (m model) selectedTicket() (contracts.TicketSnapshot, bool) {
 
 func (m model) dialogView() string {
 	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1).Width(maxInt(48, minInt(m.width-4, 92)))
-	if !renderEnabled() {
+	title := m.dialog.Title
+	if renderEnabled() {
+		style = style.BorderForeground(theme.Primary)
+		title = lipgloss.NewStyle().Bold(true).Foreground(theme.Accent).Render(title)
+	} else {
 		style = style.Border(lipgloss.NormalBorder())
 	}
-	lines := []string{m.dialog.Title}
+	lines := []string{title}
 	if strings.TrimSpace(m.dialog.Hint) != "" {
 		lines = append(lines, m.dialog.Hint)
 	}
@@ -1031,10 +1061,7 @@ func (m model) dialogView() string {
 	case dialogForm:
 		lines = append(lines, "")
 		for idx, field := range m.dialog.Fields {
-			prefix := "  "
-			if idx == m.dialog.Focus {
-				prefix = "> "
-			}
+			prefix := cursorPrefix(idx == m.dialog.Focus)
 			lines = append(lines, fmt.Sprintf("%s%s", prefix, field.Label))
 			lines = append(lines, field.Input.View())
 		}
@@ -1223,10 +1250,7 @@ func agentWorkView(work service.AgentWorkView, cursor int, width int) string {
 			return
 		}
 		for _, entry := range entries {
-			prefix := "  "
-			if index == cursor {
-				prefix = "> "
-			}
+			prefix := cursorPrefix(index == cursor)
 			reason := entry.Reason
 			if reason == "" && len(entry.ReasonCodes) > 0 {
 				reason = strings.Join(entry.ReasonCodes, ",")
@@ -1383,10 +1407,7 @@ func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) s
 	}
 	lines := []string{"Saved Views:"}
 	for idx, view := range views {
-		prefix := "  "
-		if idx == cursor {
-			prefix = "> "
-		}
+		prefix := cursorPrefix(idx == cursor)
 		title := render.SanitizeDisplayLine(view.Title)
 		if strings.TrimSpace(title) == "" {
 			title = render.SanitizeDisplayLine(view.Name)
@@ -1547,10 +1568,7 @@ func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor in
 	}
 	lines := []string{render.SanitizeDisplayLine(title) + ":"}
 	for idx, ticket := range tickets {
-		prefix := "  "
-		if idx == cursor {
-			prefix = "> "
-		}
+		prefix := cursorPrefix(idx == cursor)
 		lines = append(lines, prefix+render.TicketSummary(ticket, width-lipgloss.Width(prefix)))
 	}
 	return strings.Join(lines, "\n")
@@ -1589,6 +1607,19 @@ func tuiAgentIDFromActor(actor contracts.Actor) string {
 
 func renderEnabled() bool {
 	return render.ColorEnabled()
+}
+
+// cursorPrefix keeps the selection marker two cells wide whether or not it
+// carries color -- callers do width math with lipgloss.Width, which ignores
+// the escapes.
+func cursorPrefix(active bool) string {
+	if !active {
+		return "  "
+	}
+	if !renderEnabled() {
+		return "> "
+	}
+	return lipgloss.NewStyle().Bold(true).Foreground(theme.Primary).Render("> ")
 }
 
 func firstBoardTicketID(board service.BoardViewModel) string {
