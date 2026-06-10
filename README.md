@@ -15,10 +15,10 @@ Atlas Tasker is a local-first issue tracker and orchestration layer that lives i
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | VERSION=v1.9.0-rc2 sh
+curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
 
-That's it. The installer downloads the release for your platform, verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else). Once a stable release ships, the `VERSION` pin goes away.
+That's it. The installer downloads the latest release for your platform, verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release).
 
 Building from source works too:
 
@@ -113,7 +113,7 @@ Start at the [docs landing page](docs/README.md), or jump to [installation](docs
 
 ## Status
 
-`v1.9.0-rc2` is the current public release candidate — installable today with the one-liner above. Stable follows once the remaining [release gates](docs/release/public-release-gates.md) (human docs review and owner sign-off) close out. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
+`v1.9.0` is the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 
 ## Contributing
 
