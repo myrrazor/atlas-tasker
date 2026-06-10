@@ -62,6 +62,8 @@ tracker ticket request-review APP-1 --actor agent:builder-1 --reason "implementa
 
 Do not treat a status move as completion. Completion still follows the active Atlas governance policy.
 
+For GitHub-backed work, `tracker gh create-pr APP-1` opens the pull request and links it as a change, `tracker gh request-review APP-1` moves a draft to ready, and `tracker gh checks APP-1 --json` gives Codex exact CI state. Run `tracker gh status` first to confirm the `gh` CLI is installed and authenticated.
+
 ## MCP
 
 Start Codex with the read profile first. Add workflow or delivery profiles only for a short session where the human expects Codex to mutate Atlas state.

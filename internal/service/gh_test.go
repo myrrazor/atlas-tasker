@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -124,6 +125,67 @@ esac
 	}
 	if mergedPR.State != "closed" || mergedPR.MergedAt.IsZero() {
 		t.Fatalf("expected merged PR payload, got %#v", mergedPR)
+	}
+}
+
+func TestGHServiceCreatePullRequest(t *testing.T) {
+	root := t.TempDir()
+	argsFile := filepath.Join(root, "create.args")
+	installFakeGH(t, `#!/bin/sh
+set -eu
+ARGS="`+argsFile+`"
+case "$1 $2" in
+  "auth status")
+    exit 0
+    ;;
+  "repo view")
+    echo '{"nameWithOwner":"myrrazor/atlas-tasker","url":"https://github.com/myrrazor/atlas-tasker"}'
+    ;;
+  "pr create")
+    printf '%s\n' "$*" > "$ARGS"
+    echo "Creating pull request for ticket/app-1-tighten-locks into main"
+    echo "https://github.com/myrrazor/atlas-tasker/pull/44"
+    ;;
+  "pr view")
+    echo '{"number":44,"title":"APP-1: tighten locks","url":"https://github.com/myrrazor/atlas-tasker/pull/44","state":"OPEN","isDraft":true,"headRefName":"ticket/app-1-tighten-locks","baseRefName":"main","reviewDecision":"REVIEW_REQUIRED","mergeStateStatus":"BLOCKED","mergedAt":""}'
+    ;;
+  *)
+    echo "unexpected gh args: $*" >&2
+    exit 1
+    ;;
+esac
+`)
+
+	service := GHService{Root: root, Repo: "myrrazor/atlas-tasker"}
+	pr, err := service.CreatePullRequest(context.Background(), CreatePROptions{
+		Title: "APP-1: tighten locks",
+		Body:  "covers the locking edge cases",
+		Head:  "ticket/app-1-tighten-locks",
+		Draft: true,
+	})
+	if err != nil {
+		t.Fatalf("create pull request: %v", err)
+	}
+	if pr.Number != 44 || pr.URL != "https://github.com/myrrazor/atlas-tasker/pull/44" || !pr.Draft {
+		t.Fatalf("unexpected created pr: %#v", pr)
+	}
+	recorded, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("read recorded gh args: %v", err)
+	}
+	got := string(recorded)
+	for _, want := range []string{
+		"--title APP-1: tighten locks",
+		"--head ticket/app-1-tighten-locks",
+		"--draft",
+		"--body covers the locking edge cases",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected gh pr create args to contain %q, got %q", want, got)
+		}
+	}
+	if strings.Contains(got, "--base") {
+		t.Fatalf("expected no --base flag when base is empty, got %q", got)
 	}
 }
 

@@ -62,4 +62,6 @@ tracker run evidence add <RUN-ID> \
 tracker ticket request-review APP-1 --actor agent:builder-1 --reason "ready for review"
 ```
 
+If the work ships through GitHub, the `tracker gh` family handles the pull request side: `tracker gh create-pr APP-1` opens and links the PR in one step, `tracker gh request-review APP-1` flips a draft to ready, and `tracker gh checks APP-1` reads CI state. `tracker gh status` tells you whether the `gh` CLI is installed and authenticated before Claude relies on it.
+
 For MCP setup, use [Claude Code MCP setup](../mcp-claude-code.md). Keep high-impact tools out of normal Claude Code sessions unless a human has created a specific external operation approval.

@@ -143,6 +143,59 @@ func (s GHService) PullRequestChecks(ctx context.Context, ref string) ([]GitHubC
 	return checks, nil
 }
 
+type CreatePROptions struct {
+	Title string
+	Body  string
+	Base  string
+	Head  string
+	Draft bool
+}
+
+func (s GHService) CreatePullRequest(ctx context.Context, opts CreatePROptions) (GitHubPRView, error) {
+	capability, err := s.Capability(ctx)
+	if err != nil {
+		return GitHubPRView{}, err
+	}
+	if !capability.Installed {
+		return GitHubPRView{}, fmt.Errorf("gh CLI is not installed")
+	}
+	if !capability.Authenticated {
+		return GitHubPRView{}, fmt.Errorf("gh CLI is not authenticated")
+	}
+	title := strings.TrimSpace(opts.Title)
+	if title == "" {
+		return GitHubPRView{}, fmt.Errorf("pull request title is required")
+	}
+	head := strings.TrimSpace(opts.Head)
+	if head == "" {
+		return GitHubPRView{}, fmt.Errorf("pull request head branch is required")
+	}
+	args := []string{"pr", "create", "--title", title, "--head", head}
+	if base := strings.TrimSpace(opts.Base); base != "" {
+		args = append(args, "--base", base)
+	}
+	if opts.Draft {
+		args = append(args, "--draft")
+	}
+	// always pass --body, even empty, so gh never drops into an interactive editor
+	args = append(args, "--body", opts.Body)
+	out, err := s.ghRepoOutput(ctx, args...)
+	if err != nil {
+		return GitHubPRView{}, err
+	}
+	// gh chats on stdout before printing the PR URL as the last line
+	created := ""
+	for _, line := range strings.Split(out, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			created = line
+		}
+	}
+	if _, _, err := s.ImportPullRequestURL(created); err != nil {
+		return GitHubPRView{}, fmt.Errorf("gh pr create did not return a pull request URL: %q", strings.TrimSpace(out))
+	}
+	return s.PullRequestView(ctx, created)
+}
+
 func (s GHService) RequestPullRequestReview(ctx context.Context, ref string) (GitHubPRView, error) {
 	capability, err := s.Capability(ctx)
 	if err != nil {

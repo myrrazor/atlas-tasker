@@ -92,6 +92,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newAutomationCommand())
 	root.AddCommand(newNotifyCommand())
 	root.AddCommand(newGitCommand())
+	root.AddCommand(newGHCommand())
 	root.AddCommand(newViewsCommand())
 	root.AddCommand(newWatchCommand())
 	root.AddCommand(newUnwatchCommand())
