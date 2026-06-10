@@ -373,3 +373,17 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** v1 introduces a dedicated closed/canceled view or separate board column configuration.
 9. **Affected PRs/Files:** PR-004, PR-008, PR-009; `internal/contracts/domain.go`, `internal/storage/sqlite/store.go`, `internal/cli/root.go`, `internal/render/render.go`, board-related tests/docs.
+
+## DEC-027
+
+1. **Decision ID:** DEC-027
+2. **Date:** 2026-06-10
+3. **Question:** How should TUI help be exposed for users learning the keyboard and command-palette workflow?
+4. **Options Considered:**
+   - Keep only the footer keybinding summary.
+   - Add a modal in-app help guide opened by `?` and `/help`.
+5. **Chosen Option:** Add a modal in-app help guide opened by `?` and `/help`.
+6. **Why We Chose It:** The footer is good for reminders but too terse for learning Atlas Tasker. A modal guide keeps help discoverable inside the TUI and can document tabs, keyboard actions, bulk flow, and slash-command examples without sending users back to external docs.
+7. **Confidence:** high
+8. **Revisit Trigger:** The TUI command surface grows enough that generated help or per-tab help becomes easier to keep accurate than a curated guide.
+9. **Affected PRs/Files:** `internal/tui/app.go`, `internal/tui/mutations.go`, `internal/tui/app_test.go`, `docs/reference/tui.md`, `docs/tutorials/05-use-the-tui.md`.

@@ -209,6 +209,8 @@ func (m model) runSlashMutation(input string) tea.Cmd {
 		return nil
 	}
 	switch args[0] {
+	case "help":
+		return func() tea.Msg { return helpMsg{} }
 	case "ticket":
 		return m.runMutation("", func(ctx context.Context, actor contracts.Actor) (string, error) {
 			return m.executeSlash(ctx, args, actor)
@@ -223,7 +225,7 @@ func (m model) runSlashMutation(input string) tea.Cmd {
 		}
 		return failMutation(fmt.Errorf("supported view command: /views run <NAME>"))
 	default:
-		return failMutation(fmt.Errorf("TUI command palette currently supports /ticket, /run, /bulk, and /views run"))
+		return failMutation(fmt.Errorf("TUI command palette currently supports /help, /ticket, /run, /bulk, and /views run"))
 	}
 }
 

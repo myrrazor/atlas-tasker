@@ -154,6 +154,105 @@ func TestModelViewTruncatesFooterAtWidth(t *testing.T) {
 	}
 }
 
+func TestQuestionMarkTogglesUsefulTUIHelp(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	defer m.close()
+	updated, _ := m.Update(m.refresh()().(loadedMsg))
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+	m = updated.(model)
+	if !m.showHelp || !m.help.ShowAll {
+		t.Fatalf("expected expanded help to open, showHelp=%v showAll=%v", m.showHelp, m.help.ShowAll)
+	}
+	view := m.View()
+	for _, needle := range []string{
+		"TUI Help",
+		"Press ? to open or close this guide",
+		"Board:",
+		"Queues:",
+		"Detail:",
+		"Search:",
+		"Review:",
+		"Owner:",
+		"Inbox:",
+		"Views:",
+		"Ops:",
+		"Ticket Actions",
+		"Bulk and Collaboration",
+		"Command Palette",
+		"/ticket create",
+		"/ticket edit",
+		"/ticket move",
+		"/ticket claim",
+		"/ticket release",
+		"/ticket heartbeat",
+		"/ticket assign",
+		"/ticket comment",
+		"/ticket request-review",
+		"/ticket approve",
+		"/ticket reject",
+		"/ticket complete",
+		"/ticket link",
+		"/ticket unlink",
+		"/run open",
+		"/run launch",
+		"/bulk move",
+		"/bulk assign",
+		"/bulk request-review",
+		"/bulk complete",
+		"/bulk claim",
+		"/bulk release",
+		"/views run",
+	} {
+		if !strings.Contains(view, needle) {
+			t.Fatalf("expected help to contain %q, got %s", needle, view)
+		}
+	}
+
+	before := m.screen
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(model)
+	if m.screen != before || !m.showHelp {
+		t.Fatalf("expected help to ignore navigation until closed, screen=%v help=%v", m.screen, m.showHelp)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	if m.showHelp || m.help.ShowAll {
+		t.Fatalf("expected esc to close help, showHelp=%v showAll=%v", m.showHelp, m.help.ShowAll)
+	}
+}
+
+func TestPaletteHelpOpensTUIHelp(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	m, err := newModel(root, contracts.Actor("agent:builder-1"))
+	if err != nil {
+		t.Fatalf("new model: %v", err)
+	}
+	defer m.close()
+	updated, _ := m.Update(m.refresh()().(loadedMsg))
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(model)
+	m.dialog.Input.SetValue("/help")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("expected help command from palette submit")
+	}
+	updated, _ = m.Update(cmd().(helpMsg))
+	m = updated.(model)
+	if !m.showHelp || !strings.Contains(m.View(), "Supported families: /help, /ticket, /run, /bulk, /views run") {
+		t.Fatalf("expected /help to open useful help, got %s", m.View())
+	}
+}
+
 func TestPaletteMutationMovesTicket(t *testing.T) {
 	root := seededTUIWorkspace(t)
 	m, err := newModel(root, contracts.Actor("agent:builder-1"))
