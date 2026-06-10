@@ -4,6 +4,9 @@ Atlas ships public release candidates today; the first stable release follows on
 
 ## Unreleased
 
+- The TUI opens with a branded splash (chrome-blue ATLAS TASKER art, any key skips, degrades cleanly on narrow and NO_COLOR terminals).
+- All terminal colors now come from one brand palette (`internal/theme`): electric-blue primary, adaptive light/dark pairs, semantic status hues, and a real priority scale (critical/high/low) instead of uniform gray badges.
+- Brand assets are committed under `assets/brand/` and the README wordmark is served from the repo.
 - CLI color output now reaches the terminal intact: the display sanitizer preserves the SGR styling Atlas emits itself while still stripping every other escape sequence, so `tracker board` no longer prints `[90m` residue in color-capable terminals. Truncation drops styling cleanly instead of slicing escapes in half.
 - README rewritten around the published release candidate: one-line verified install, terminal screenshots, demo GIF, and the agent workflow story.
 

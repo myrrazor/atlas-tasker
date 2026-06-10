@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/theme"
 	"golang.org/x/term"
 )
 
@@ -142,8 +143,8 @@ func TicketPretty(ticket contracts.TicketSnapshot, comments []string) string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	mutedStyle := lipgloss.NewStyle()
 	if useColor {
-		titleStyle = titleStyle.Foreground(lipgloss.Color("10"))
-		mutedStyle = mutedStyle.Foreground(lipgloss.Color("8"))
+		titleStyle = titleStyle.Foreground(theme.Primary)
+		mutedStyle = mutedStyle.Foreground(theme.Muted)
 	}
 
 	out := strings.Builder{}
@@ -219,7 +220,11 @@ func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
 			}
 			return tickets[i].UpdatedAt.Before(tickets[j].UpdatedAt)
 		})
-		section := []string{TruncateDisplay(fmt.Sprintf("%s (%d)", labels[status], len(tickets)), width)}
+		header := TruncateDisplay(fmt.Sprintf("%s (%d)", labels[status], len(tickets)), width)
+		if ColorEnabled() {
+			header = lipgloss.NewStyle().Bold(true).Foreground(theme.Primary).Render(header)
+		}
+		section := []string{header}
 		if len(tickets) == 0 {
 			section = append(section, TruncateDisplay("  - (empty)", width))
 		} else {
@@ -268,7 +273,20 @@ func TypeBadge(ticketType contracts.TicketType) string {
 }
 
 func PriorityBadge(priority contracts.Priority) string {
-	return valueBadge(string(priority))
+	value := strings.TrimSpace(SanitizeDisplayLine(string(priority)))
+	if value == "" {
+		value = "unknown"
+	}
+	text := "[" + value + "]"
+	if !ColorEnabled() {
+		return text
+	}
+	// urgency scale instead of the status buckets: critical screams, high
+	// glows, medium stays quiet, low fades
+	if color, ok := theme.PriorityColor(value); ok {
+		return lipgloss.NewStyle().Foreground(color).Render(text)
+	}
+	return text
 }
 
 func GateBadge(state any) string {
@@ -370,7 +388,7 @@ func valueBadge(value string) string {
 	if !ColorEnabled() {
 		return text
 	}
-	return lipgloss.NewStyle().Foreground(colorFor(value)).Render(text)
+	return lipgloss.NewStyle().Foreground(theme.StatusColor(value)).Render(text)
 }
 
 func namedBadge(kind string, value string) string {
@@ -386,20 +404,5 @@ func namedBadge(kind string, value string) string {
 	if !ColorEnabled() {
 		return text
 	}
-	return lipgloss.NewStyle().Foreground(colorFor(value)).Render(text)
-}
-
-func colorFor(value string) lipgloss.Color {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "ready", "active", "approved", "trusted_valid", "completed", "resolved", "passing", "success", "enabled":
-		return lipgloss.Color("10")
-	case "blocked", "failed", "rejected", "invalid_signature", "payload_hash_mismatch", "canonicalization_mismatch", "dirty":
-		return lipgloss.Color("9")
-	case "in_progress", "in_review", "open", "running", "verifying", "publishing", "planned", "valid_untrusted", "valid_unknown_key":
-		return lipgloss.Color("11")
-	case "done", "merged", "synced":
-		return lipgloss.Color("14")
-	default:
-		return lipgloss.Color("8")
-	}
+	return lipgloss.NewStyle().Foreground(theme.StatusColor(value)).Render(text)
 }
