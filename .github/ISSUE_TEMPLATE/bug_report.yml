@@ -12,7 +12,7 @@ body:
     attributes:
       label: Atlas version or commit
       description: Use a tag, branch, commit SHA, or PR number.
-      placeholder: v1.8.0-rc1 planned / 9b2ec1a / PR #77
+      placeholder: v1.9.0-rc1 planned / 9b2ec1a / PR #90
     validations:
       required: true
   - type: input

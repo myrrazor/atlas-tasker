@@ -882,6 +882,9 @@ func inspectSyncBundle(artifactPath string) (SyncPublication, error) {
 	}
 	manifestRaw, err := os.ReadFile(manifestPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return SyncPublication{}, apperr.New(apperr.CodeNotFound, "sidecar_manifest_missing:"+manifestPath)
+		}
 		return SyncPublication{}, fmt.Errorf("read sync manifest: %w", err)
 	}
 	var manifest bundleManifest
@@ -947,6 +950,9 @@ func verifySyncBundle(artifactPath string) (SyncBundleVerifyView, error) {
 	checksumPath := strings.TrimSuffix(artifactPath, ".tar.gz") + ".sha256"
 	manifestRaw, err := os.ReadFile(manifestPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return SyncBundleVerifyView{}, apperr.New(apperr.CodeNotFound, "sidecar_manifest_missing:"+manifestPath)
+		}
 		return SyncBundleVerifyView{}, fmt.Errorf("read sync manifest: %w", err)
 	}
 	var manifest bundleManifest

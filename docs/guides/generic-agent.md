@@ -14,6 +14,14 @@ tracker ticket move <TICKET-ID> in_progress --actor <actor> --reason "start work
 
 Agents should use `available` for work they can do now and `pending` to explain why they are waiting. Treat `tracker inspect` as the truth for policy, lease, gate, and review state.
 
+An agent may dispatch itself to its own eligible work without project membership:
+
+```bash
+tracker run dispatch <TICKET-ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason "start run"
+```
+
+That exception is deliberately narrow. Cross-agent dispatch, disabled agents, capacity, dependencies, permission-profile denies, protected-ticket rules, and governance still apply.
+
 ## Prompt Contract
 
 ```bash

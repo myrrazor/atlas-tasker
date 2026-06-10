@@ -55,7 +55,7 @@ func ToolSpecs() []ToolSpec {
 		writeTool("atlas.ticket.claim", ClassWorkflow, workflowProfiles, false, "Claim a ticket lease.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.ClaimTicket", "ticket_id", ticketClaimTool),
 		writeTool("atlas.ticket.release", ClassWorkflow, workflowProfiles, false, "Release a ticket lease.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.ReleaseTicket", "ticket_id", ticketReleaseTool),
 		writeTool("atlas.ticket.move", ClassWorkflow, workflowProfiles, false, "Move a ticket among non-terminal workflow statuses.", objectSchema([]string{"ticket_id", "status", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "status": stringProp("Target status."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.MoveTicket", "ticket_id", ticketMoveTool),
-		writeTool("atlas.ticket.request_review", ClassWorkflow, workflowProfiles, false, "Request review for a ticket.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.RequestReview", "ticket_id", ticketRequestReviewTool),
+		writeTool("atlas.ticket.request_review", ClassWorkflow, workflowProfiles, false, "Request review for a ticket.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "reviewer": stringProp("Optional reviewer actor."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.RequestReviewWithReviewer", "ticket_id", ticketRequestReviewTool),
 		writeTool("atlas.gate.approve", ClassWorkflow, workflowProfiles, false, "Approve a normal approval gate.", objectSchema([]string{"gate_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"gate_id": stringProp("Gate ID.")})), "ActionService.ApproveGate", "gate_id", gateApproveTool),
 		writeTool("atlas.gate.reject", ClassWorkflow, workflowProfiles, false, "Reject a normal approval gate.", objectSchema([]string{"gate_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"gate_id": stringProp("Gate ID.")})), "ActionService.RejectGate", "gate_id", gateRejectTool),
 		writeTool("atlas.run.checkpoint", ClassWorkflow, workflowProfiles, false, "Add a checkpoint evidence item to a run.", objectSchema([]string{"run_id", "title", "body", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"run_id": stringProp("Run ID."), "title": stringProp("Checkpoint title."), "body": stringProp("Checkpoint body.")})), "ActionService.CheckpointRun", "run_id", runCheckpointTool),
@@ -384,7 +384,7 @@ func ticketRequestReviewTool(tc ToolContext, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return tc.Server.Workspace.Actions.RequestReview(ctx, stringArg(args, "ticket_id"), contracts.Actor(tc.Actor), tc.Reason)
+	return tc.Server.Workspace.Actions.RequestReviewWithReviewer(ctx, stringArg(args, "ticket_id"), contracts.Actor(stringArg(args, "reviewer")), contracts.Actor(tc.Actor), tc.Reason)
 }
 
 func gateApproveTool(tc ToolContext, args map[string]any) (any, error) {
