@@ -4,6 +4,9 @@ Atlas is not yet published as a stable public release. This changelog starts wit
 
 ## Unreleased
 
+- Agent wake-ups now fire for `backlog` and `blocked` tickets when their last dependency completes; failed wake-up recording leaves a visible `failed` record instead of disappearing.
+- A corrupted projection index now exits `repair_needed` with `tracker doctor --repair` guidance instead of leaking the raw sqlite error, and read-only `doctor` diagnoses it.
+- Local planning docs and variant scratch trees are gitignored so they cannot ride along in a public push.
 - v1.9 release-readiness work adds agent work queues, skill packs, wake-ups, workflow fixes, and this public cleanup pass.
 - MIT license is committed.
 - Public docs now point at the current v1.9 readiness state while historical v1.8 evidence remains available.
