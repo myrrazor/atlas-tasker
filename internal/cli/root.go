@@ -1663,6 +1663,9 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	repairActions := make([]string, 0)
 	if err != nil {
 		if !repair {
+			if sqlitestore.IsCorrupt(err) {
+				return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection index is unreadable; rerun as 'tracker doctor --repair' to rebuild it")
+			}
 			return err
 		}
 		for _, candidate := range []string{projectionPath, projectionPath + "-wal", projectionPath + "-shm"} {
@@ -1709,7 +1712,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	repairReport := service.RepairReport{}
 	if _, err := projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
 		if !repair {
-			return err
+			return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection index failed its health check; rerun as 'tracker doctor --repair' to rebuild it")
 		}
 		if rebuildErr := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 			var err error
