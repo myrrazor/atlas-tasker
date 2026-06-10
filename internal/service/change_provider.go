@@ -204,6 +204,92 @@ func (s *ActionService) ImportChangeURL(ctx context.Context, ticketID string, ra
 	})
 }
 
+func (s *ActionService) CreatePullRequestForTicket(ctx context.Context, ticketID string, opts CreatePROptions, actor contracts.Actor, reason string) (ChangeCreateResultView, error) {
+	return withWriteLock(ctx, s.LockManager, "create pull request", func(ctx context.Context) (ChangeCreateResultView, error) {
+		if !actor.IsValid() {
+			return ChangeCreateResultView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+		}
+		ticket, err := s.Tickets.GetTicket(ctx, ticketID)
+		if err != nil {
+			return ChangeCreateResultView{}, err
+		}
+		defaults, err := resolveSCMDefaults(ctx, s.Root, s.Projects, ticket.Project)
+		if err != nil {
+			return ChangeCreateResultView{}, err
+		}
+		gh := GHService{Root: s.Root, Repo: defaults.Repo}
+		capability, err := gh.Capability(ctx)
+		if err != nil {
+			return ChangeCreateResultView{}, err
+		}
+		if !capability.Installed {
+			return ChangeCreateResultView{}, apperr.New(apperr.CodeConflict, "pull request create blocked: provider_unavailable")
+		}
+		if !capability.Authenticated {
+			return ChangeCreateResultView{}, apperr.New(apperr.CodeConflict, "pull request create blocked: provider_unauthenticated")
+		}
+		if strings.TrimSpace(opts.Head) == "" {
+			opts.Head = SCMService{Root: s.Root}.SuggestedBranch(ticket)
+		}
+		if strings.TrimSpace(opts.Title) == "" {
+			opts.Title = fmt.Sprintf("%s: %s", ticket.ID, strings.TrimSpace(ticket.Title))
+		}
+		pr, err := gh.CreatePullRequest(ctx, opts)
+		if err != nil {
+			return ChangeCreateResultView{}, err
+		}
+		reasons := []string{}
+		change, found, err := linkedGitHubChange(ctx, s.Changes, ticket, pr.URL, pr.Number)
+		if err != nil {
+			return ChangeCreateResultView{}, err
+		}
+		if !found {
+			change = contracts.ChangeRef{
+				ChangeID:      "change_" + NewOpaqueID(),
+				CreatedAt:     s.now(),
+				SchemaVersion: contracts.CurrentSchemaVersion,
+			}
+		}
+		change.Provider = contracts.ChangeProviderGitHub
+		change.TicketID = ticket.ID
+		change.URL = pr.URL
+		change.ExternalID = strconv.Itoa(pr.Number)
+		change.BranchName = firstNonEmpty(change.BranchName, pr.HeadRef)
+		change.HeadRef = firstNonEmpty(change.HeadRef, pr.HeadRef)
+		change.BaseBranch = firstNonEmpty(pr.BaseRef, change.BaseBranch, defaults.BaseBranch)
+		checkAggregate := contracts.CheckAggregateUnknown
+		if checkViews, checksErr := gh.PullRequestChecks(ctx, pr.URL); checksErr == nil {
+			checkAggregate = aggregateGitHubChecks(checkViews)
+		} else if isBenignGHRepoError(checksErr) {
+			reasons = append(reasons, "provider_checks_unavailable")
+		} else {
+			return ChangeCreateResultView{}, checksErr
+		}
+		change.Status = observedStatusFromGitHub(change, pr, checkAggregate)
+		change.ChecksStatus = checkAggregate
+		eventType := contracts.EventChangeCreated
+		purpose := "create pull request"
+		if found {
+			eventType = contracts.EventChangeUpdated
+			purpose = "refresh created pull request"
+		}
+		saved, ticket, err := s.upsertLinkedChangeLocked(ctx, ticket, change, actor, reason, eventType, purpose)
+		if err != nil {
+			return ChangeCreateResultView{}, err
+		}
+		if found {
+			reasons = append(reasons, "existing_change_reused")
+		}
+		return ChangeCreateResultView{
+			Change:      saved,
+			Created:     !found,
+			ReasonCodes: dedupeStrings(reasons),
+			Ticket:      ticket,
+			GeneratedAt: s.now(),
+		}, nil
+	})
+}
+
 func (s *ActionService) SyncChange(ctx context.Context, changeID string, actor contracts.Actor, reason string) (ChangeStatusView, error) {
 	return withWriteLock(ctx, s.LockManager, "sync change", func(ctx context.Context) (ChangeStatusView, error) {
 		if !actor.IsValid() {
