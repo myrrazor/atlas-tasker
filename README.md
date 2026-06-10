@@ -1,4 +1,6 @@
+
 # Atlas Tasker
+<img width="1699" height="286" alt="atlas-tasker-wordmark" src="https://github.com/user-attachments/assets/fb31e508-ffe4-4b53-8766-57ec995c760b" />
 
 **Jira for your terminal, built for AI coding agents.**
 
