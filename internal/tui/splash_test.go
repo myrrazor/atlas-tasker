@@ -62,7 +62,7 @@ func TestSplashCompactAndTinyWidths(t *testing.T) {
 	m := splashTestModel()
 	m.width = 30
 	view := m.View()
-	if strings.Contains(view, "___") {
+	if strings.Contains(view, "█") {
 		t.Fatalf("no block art at tiny width, got: %q", view)
 	}
 	for _, line := range strings.Split(view, "\n") {
@@ -71,7 +71,7 @@ func TestSplashCompactAndTinyWidths(t *testing.T) {
 		}
 	}
 	m.width = 60
-	if view := m.View(); !strings.Contains(view, "___") {
+	if view := m.View(); !strings.Contains(view, "█") {
 		t.Fatalf("expected block art at width 60, got: %q", view)
 	}
 }
