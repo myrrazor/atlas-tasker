@@ -274,12 +274,30 @@ func newAgentCommand() *cobra.Command {
 	eligible := &cobra.Command{Use: "eligible <TICKET-ID>", Args: cobra.ExactArgs(1), Short: "Show eligibility for one ticket across enabled agents", RunE: runAgentEligible}
 	available := &cobra.Command{Use: "available [AGENT-ID]", Args: cobra.MaximumNArgs(1), Short: "Show work this agent can act on now", RunE: runAgentAvailable}
 	pending := &cobra.Command{Use: "pending [AGENT-ID]", Args: cobra.MaximumNArgs(1), Short: "Show work this agent is waiting on", RunE: runAgentPending}
-	for _, sub := range []*cobra.Command{list, view, create, edit, enable, disable, eligible, available, pending} {
+	wakeups := &cobra.Command{Use: "wakeups", Short: "Inspect agent wake-up records"}
+	wakeupList := &cobra.Command{Use: "list [AGENT-ID]", Args: cobra.MaximumNArgs(1), Short: "List agent wake-up records", RunE: runAgentWakeupsList}
+	wakeupView := &cobra.Command{Use: "view <WAKEUP-ID>", Args: cobra.ExactArgs(1), Short: "Show one wake-up record", RunE: runAgentWakeupView}
+	wakeupAck := &cobra.Command{Use: "ack <WAKEUP-ID>", Args: cobra.ExactArgs(1), Short: "Acknowledge an agent wake-up", RunE: runAgentWakeupAck}
+	wakeups.AddCommand(wakeupList, wakeupView, wakeupAck)
+	auto := &cobra.Command{Use: "auto", Short: "Configure owner-enabled agent wake-up auto mode"}
+	autoStatus := &cobra.Command{Use: "status <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Show agent auto mode", RunE: runAgentAutoStatus}
+	autoSet := &cobra.Command{Use: "set <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Set agent auto mode", RunE: runAgentAutoSet}
+	autoOff := &cobra.Command{Use: "off <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Return agent auto mode to notify-only", RunE: runAgentAutoOff}
+	auto.AddCommand(autoStatus, autoSet, autoOff)
+	for _, sub := range []*cobra.Command{list, view, create, edit, enable, disable, eligible, available, pending, wakeupList, wakeupView, autoStatus} {
 		addReadOutputFlags(sub, &outputFlags{})
 	}
 	for _, sub := range []*cobra.Command{available, pending} {
 		sub.Flags().String("actor", "", "Actor to resolve when AGENT-ID is omitted (defaults through TRACKER_ACTOR or actor.default)")
 	}
+	wakeupView.Flags().String("actor", "", "Read-context actor accepted for command parity")
+	wakeupView.Flags().String("reason", "", "Read-context reason accepted for command parity")
+	for _, sub := range []*cobra.Command{wakeupAck, autoSet, autoOff} {
+		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
+		addReadOutputFlags(sub, &outputFlags{})
+	}
+	autoSet.Flags().String("mode", "notify", "Auto mode: notify or command")
+	autoSet.Flags().StringArray("argv", nil, "Command argv item; repeat once per argument. Shell interpreters are rejected.")
 	for _, sub := range []*cobra.Command{create, edit} {
 		sub.Flags().String("name", "", "Display name")
 		sub.Flags().String("provider", "", "Provider: codex, claude, human, custom")
@@ -301,7 +319,7 @@ func newAgentCommand() *cobra.Command {
 	}
 	_ = create.MarkFlagRequired("name")
 	_ = create.MarkFlagRequired("provider")
-	cmd.AddCommand(list, view, create, edit, enable, disable, eligible, available, pending)
+	cmd.AddCommand(list, view, create, edit, enable, disable, eligible, available, pending, wakeups, auto)
 	return cmd
 }
 
@@ -522,6 +540,7 @@ func newTicketCommand() *cobra.Command {
 	move := &cobra.Command{Use: "move <ID> <STATUS>", Args: cobra.ExactArgs(2), Short: "Move ticket status", RunE: runTicketMove}
 	addMutationFlags(move, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(move, &outputFlags{})
+	addDependencyOverrideFlag(move)
 	cmd.AddCommand(move)
 
 	assign := &cobra.Command{Use: "assign <ID> <ACTOR>", Args: cobra.ExactArgs(2), Short: "Set ticket assignee only", Long: "Set the ticket assignee only. Use `tracker ticket edit <ID> --reviewer <ACTOR>` or `tracker ticket request-review <ID> --reviewer <ACTOR>` to set review ownership.", RunE: runTicketAssign}
@@ -578,11 +597,13 @@ func newTicketCommand() *cobra.Command {
 	requestReview.Flags().String("reviewer", "", "Reviewer actor to assign before requesting review")
 	addMutationFlags(requestReview, &mutationFlags{})
 	addReadOutputFlags(requestReview, &outputFlags{})
+	addDependencyOverrideFlag(requestReview)
 	cmd.AddCommand(requestReview)
 
 	approve := &cobra.Command{Use: "approve <ID>", Args: cobra.ExactArgs(1), Short: "Approve a ticket in review", RunE: runTicketApprove}
 	addMutationFlags(approve, &mutationFlags{})
 	addReadOutputFlags(approve, &outputFlags{})
+	addDependencyOverrideFlag(approve)
 	cmd.AddCommand(approve)
 
 	reject := &cobra.Command{Use: "reject <ID>", Args: cobra.ExactArgs(1), Short: "Reject a ticket in review", RunE: runTicketReject}
@@ -594,6 +615,7 @@ func newTicketCommand() *cobra.Command {
 	complete := &cobra.Command{Use: "complete <ID>", Args: cobra.ExactArgs(1), Short: "Complete an approved ticket", RunE: runTicketComplete}
 	addMutationFlags(complete, &mutationFlags{})
 	addReadOutputFlags(complete, &outputFlags{})
+	addDependencyOverrideFlag(complete)
 	cmd.AddCommand(complete)
 
 	policy := &cobra.Command{Use: "policy", Short: "Read or update ticket policy"}
@@ -713,7 +735,8 @@ func newSearchCommand() *cobra.Command {
 			"",
 			"Examples:",
 			"  tracker search 'status=in_progress'",
-			"  tracker search 'project=AUTH text~logout'",
+			"  tracker search 'project=AUTH text~logout flow'",
+			"  tracker search 'text~\"scenario 1000\"'",
 		}, "\n"),
 		RunE: runSearch,
 	}
@@ -813,6 +836,11 @@ func addBulkTargetFlags(cmd *cobra.Command) {
 	cmd.Flags().String("view", "", "Saved view used to resolve ticket IDs")
 	cmd.Flags().Bool("dry-run", false, "Preview the batch without mutating")
 	cmd.Flags().Bool("yes", false, "Apply the batch without prompting")
+	addDependencyOverrideFlag(cmd)
+}
+
+func addDependencyOverrideFlag(cmd *cobra.Command) {
+	cmd.Flags().Bool("override-deps", false, "Allow human:owner to override unresolved blocked_by dependencies with an audited reason")
 }
 
 func newRenderCommand() *cobra.Command {
@@ -1173,6 +1201,10 @@ func runTicketMove(cmd *cobra.Command, args []string) error {
 	if !to.IsValid() {
 		return fmt.Errorf("invalid status: %s", to)
 	}
+	ctx, err = commandContextWithDependencyOverride(cmd, ctx, actor, reason)
+	if err != nil {
+		return err
+	}
 	ticket, err := workspace.actions.MoveTicket(ctx, args[0], to, actor, reason)
 	if err != nil {
 		return err
@@ -1392,6 +1424,24 @@ func runTicketHeartbeat(cmd *cobra.Command, args []string) error {
 	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\nlease extended", ticket.ID), pretty)
 }
 
+func commandContextWithDependencyOverride(cmd *cobra.Command, ctx context.Context, actor contracts.Actor, reason string) (context.Context, error) {
+	flag := cmd.Flags().Lookup("override-deps")
+	if flag == nil {
+		return ctx, nil
+	}
+	overrideDeps, _ := cmd.Flags().GetBool("override-deps")
+	if !overrideDeps {
+		return ctx, nil
+	}
+	if actor != contracts.Actor("human:owner") {
+		return nil, apperr.New(apperr.CodePermissionDenied, "dependency_override_requires_owner")
+	}
+	if strings.TrimSpace(reason) == "" {
+		return nil, apperr.New(apperr.CodeInvalidInput, "dependency_override_requires_reason")
+	}
+	return service.WithDependencyOverride(ctx, actor, reason), nil
+}
+
 func runTicketRequestReview(cmd *cobra.Command, args []string) error {
 	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
@@ -1402,6 +1452,10 @@ func runTicketRequestReview(cmd *cobra.Command, args []string) error {
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ctx, err = commandContextWithDependencyOverride(cmd, ctx, actor, reason)
 	if err != nil {
 		return err
 	}
@@ -1427,6 +1481,10 @@ func runTicketApprove(cmd *cobra.Command, args []string) error {
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ctx, err = commandContextWithDependencyOverride(cmd, ctx, actor, reason)
 	if err != nil {
 		return err
 	}
@@ -1467,6 +1525,10 @@ func runTicketComplete(cmd *cobra.Command, args []string) error {
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	ctx, err = commandContextWithDependencyOverride(cmd, ctx, actor, reason)
 	if err != nil {
 		return err
 	}
@@ -1601,6 +1663,9 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	repairActions := make([]string, 0)
 	if err != nil {
 		if !repair {
+			if sqlitestore.IsCorrupt(err) {
+				return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection index is unreadable; rerun as 'tracker doctor --repair' to rebuild it")
+			}
 			return err
 		}
 		for _, candidate := range []string{projectionPath, projectionPath + "-wal", projectionPath + "-shm"} {
@@ -1647,7 +1712,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	repairReport := service.RepairReport{}
 	if _, err := projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
 		if !repair {
-			return err
+			return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection index failed its health check; rerun as 'tracker doctor --repair' to rebuild it")
 		}
 		if rebuildErr := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 			var err error
@@ -2609,7 +2674,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 			query, err = contracts.ParseSearchQuery("text~" + queryText)
 		}
 		if err != nil {
-			return fmt.Errorf("%w (try structured terms like status=in_progress or text~%s)", err, queryText)
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%v (try structured terms like status=in_progress, project=AUTH, or text~multi word text)", err))
 		}
 	}
 	tickets, err := workspace.queries.Search(ctx, query)
@@ -2902,6 +2967,7 @@ func runBulkOperation(cmd *cobra.Command, base service.BulkOperation) error {
 	reason, _ := cmd.Flags().GetString("reason")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	confirm, _ := cmd.Flags().GetBool("yes")
+	overrideDeps, _ := cmd.Flags().GetBool("override-deps")
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
 	if err != nil {
 		return err
@@ -2915,6 +2981,7 @@ func runBulkOperation(cmd *cobra.Command, base service.BulkOperation) error {
 	base.TicketIDs = ticketIDs
 	base.DryRun = dryRun
 	base.Confirm = confirm
+	base.OverrideDeps = overrideDeps
 	result, err := workspace.actions.RunBulk(ctx, base)
 	if err != nil {
 		return err
@@ -3402,6 +3469,135 @@ func formatAgentWork(view service.AgentWorkView, state service.AgentWorkState) (
 		if reason != "" {
 			pretty += " (" + reason + ")"
 		}
+	}
+	return md, pretty
+}
+
+func runAgentWakeupsList(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	agentID := ""
+	if len(args) > 0 {
+		agentID = strings.TrimSpace(args[0])
+	}
+	items, err := workspace.queries.AgentWakeups(commandContext(cmd), agentID)
+	if err != nil {
+		return err
+	}
+	md := "## Agent Wakeups\n\n"
+	pretty := "agent wakeups"
+	if len(items) == 0 {
+		md += "No wake-ups.\n"
+		pretty += "\n(no wake-ups)"
+	} else {
+		for _, item := range items {
+			md += fmt.Sprintf("- `%s` %s for `%s` after `%s` [%s]\n", item.WakeupID, item.Actor, item.TicketID, item.BlockerTicketID, item.State)
+			pretty += fmt.Sprintf("\n- %s %s ticket=%s blocker=%s state=%s", item.WakeupID, item.Actor, item.TicketID, item.BlockerTicketID, item.State)
+		}
+	}
+	payload := map[string]any{"kind": "agent_wakeup_list", "generated_at": time.Now().UTC(), "items": items}
+	return writeCommandOutput(cmd, payload, md, pretty)
+}
+
+func runAgentWakeupView(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	item, err := workspace.queries.AgentWakeup(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	md, pretty := formatWakeup(item)
+	payload := map[string]any{"kind": "agent_wakeup", "generated_at": time.Now().UTC(), "payload": item}
+	return writeCommandOutput(cmd, payload, md, pretty)
+}
+
+func runAgentWakeupAck(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actor, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	item, err := workspace.actions.AckAgentWakeup(commandContext(cmd), args[0], normalizeActor(actor), reason)
+	if err != nil {
+		return err
+	}
+	md, pretty := formatWakeup(item)
+	return writeCommandOutput(cmd, map[string]any{"kind": "agent_wakeup", "generated_at": time.Now().UTC(), "payload": item}, md, pretty)
+}
+
+func runAgentAutoStatus(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	config, err := workspace.queries.AgentAutoStatus(commandContext(cmd), args[0])
+	if err != nil {
+		return err
+	}
+	md, pretty := formatAgentAuto(config)
+	return writeCommandOutput(cmd, map[string]any{"kind": "agent_auto", "generated_at": time.Now().UTC(), "payload": config}, md, pretty)
+}
+
+func runAgentAutoSet(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	modeRaw, _ := cmd.Flags().GetString("mode")
+	argv, _ := cmd.Flags().GetStringArray("argv")
+	actor, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	config, err := workspace.actions.SetAgentAuto(commandContext(cmd), args[0], service.AgentAutoMode(strings.TrimSpace(modeRaw)), argv, normalizeActor(actor), reason)
+	if err != nil {
+		return err
+	}
+	md, pretty := formatAgentAuto(config)
+	return writeCommandOutput(cmd, map[string]any{"kind": "agent_auto", "generated_at": time.Now().UTC(), "payload": config}, md, pretty)
+}
+
+func runAgentAutoOff(cmd *cobra.Command, args []string) error {
+	workspace, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer workspace.close()
+	actor, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	config, err := workspace.actions.DisableAgentAuto(commandContext(cmd), args[0], normalizeActor(actor), reason)
+	if err != nil {
+		return err
+	}
+	md, pretty := formatAgentAuto(config)
+	return writeCommandOutput(cmd, map[string]any{"kind": "agent_auto", "generated_at": time.Now().UTC(), "payload": config}, md, pretty)
+}
+
+func formatWakeup(item service.AgentWakeup) (string, string) {
+	md := fmt.Sprintf("## Wakeup %s\n\n- Ticket: %s\n- Blocker: %s\n- Actor: %s\n- State: %s\n- Mode: %s\n", item.WakeupID, item.TicketID, item.BlockerTicketID, item.Actor, item.State, item.Mode)
+	if item.Error != "" {
+		md += fmt.Sprintf("- Error: %s\n", item.Error)
+	}
+	pretty := fmt.Sprintf("wakeup %s ticket=%s blocker=%s actor=%s state=%s mode=%s", item.WakeupID, item.TicketID, item.BlockerTicketID, item.Actor, item.State, item.Mode)
+	return md, pretty
+}
+
+func formatAgentAuto(config service.AgentAutoConfig) (string, string) {
+	md := fmt.Sprintf("## Agent Auto %s\n\n- Mode: %s\n", config.AgentID, config.Mode)
+	if len(config.Argv) > 0 {
+		md += fmt.Sprintf("- Argv: `%s`\n", strings.Join(config.Argv, " "))
+	}
+	pretty := fmt.Sprintf("agent auto %s mode=%s", config.AgentID, config.Mode)
+	if len(config.Argv) > 0 {
+		pretty += " argv=" + strings.Join(config.Argv, " ")
 	}
 	return md, pretty
 }

@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -139,6 +140,64 @@ func TestDispatchSuggestQueueAndBulkAutoRoute(t *testing.T) {
 		if item.TicketID == "APP-1" && item.OK {
 			t.Fatalf("expected APP-1 preview to fail because it already has an active run, got %#v", bulk.Payload.Items)
 		}
+	}
+}
+
+func TestRunDispatchAcceptsQualifiedAgentAndAllowsSelfDispatch(t *testing.T) {
+	withTempWorkspace(t)
+	gitRunCLI(t, "init", "-b", "main")
+	gitRunCLI(t, "config", "user.email", "atlas@example.com")
+	gitRunCLI(t, "config", "user.name", "Atlas")
+	writeGitFile(t, "README.md", "# atlas\n")
+	gitRunCLI(t, "add", "README.md")
+	gitRunCLI(t, "commit", "-m", "init")
+
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--default-runbook", "implement", "--actor", "human:owner")
+	must("collaborator", "add", "builder", "--name", "Builder", "--actor-map", "agent:builder-1", "--actor", "human:owner")
+	must("collaborator", "add", "other", "--name", "Other", "--actor-map", "agent:other-1", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Bare dispatch", "--type", "task", "--status", "ready", "--assignee", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Qualified dispatch", "--type", "task", "--status", "ready", "--assignee", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Cross dispatch", "--type", "task", "--status", "ready", "--assignee", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Denied dispatch", "--type", "task", "--status", "ready", "--assignee", "agent:builder-1", "--actor", "human:owner")
+
+	assertDispatch := func(ticketID string, agentArg string) {
+		t.Helper()
+		out := must("run", "dispatch", ticketID, "--agent", agentArg, "--actor", "agent:builder-1", "--json")
+		var payload struct {
+			Payload struct {
+				AgentID string `json:"agent_id"`
+				RunID   string `json:"run_id"`
+			} `json:"payload"`
+		}
+		if err := json.Unmarshal([]byte(out), &payload); err != nil {
+			t.Fatalf("parse dispatch output: %v\nraw=%s", err, out)
+		}
+		if payload.Payload.AgentID != "builder-1" || payload.Payload.RunID == "" {
+			t.Fatalf("unexpected dispatch payload for %s: %#v", agentArg, payload.Payload)
+		}
+	}
+
+	assertDispatch("APP-1", "builder-1")
+	assertDispatch("APP-2", "agent:builder-1")
+
+	if out, err := runCLI(t, "run", "dispatch", "APP-3", "--agent", "builder-1", "--actor", "agent:other-1"); err == nil || !strings.Contains(out+err.Error(), "missing_membership") {
+		t.Fatalf("expected cross-agent dispatch to retain membership check, err=%v out=%s", err, out)
+	}
+
+	must("permission-profile", "create", "deny-dispatch", "--workspace-default", "--deny-action", "dispatch", "--actor", "human:owner")
+	if out, err := runCLI(t, "run", "dispatch", "APP-4", "--agent", "builder-1", "--actor", "agent:builder-1"); err == nil || !strings.Contains(out+err.Error(), "permission_action_denied") {
+		t.Fatalf("expected permission profile deny to block self-dispatch, err=%v out=%s", err, out)
 	}
 }
 

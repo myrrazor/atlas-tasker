@@ -3,11 +3,12 @@
 Local-first task orchestration for AI coding agents and humans.
 
 [![CI](https://github.com/myrrazor/atlas-tasker/actions/workflows/ci.yml/badge.svg)](https://github.com/myrrazor/atlas-tasker/actions/workflows/ci.yml)
-[![Release status](https://img.shields.io/badge/status-v1.8.0--rc1%20planned-yellow)](docs/release/public-release-gates.md)
+[![Release status](https://img.shields.io/badge/status-v1.9%20release--readiness-yellow)](docs/release/public-release-gates.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Atlas Tasker is a terminal-first, markdown-native issue tracker and orchestration layer. It gives you Jira-like tickets, Kanban views, review gates, agent runs, evidence, handoffs, Git/worktree integration, collaboration sync, signed artifacts, audit packets, backups, goal manifests, and MCP access without requiring a hosted server.
 
-`v1.8.0-rc1` is planned, not shipped. Release sign-off is blocked until hosted gates pass, an owner-selected `LICENSE` is committed, and human README/docs/aesthetic review is complete. See [public release gates](docs/release/public-release-gates.md).
+The current public-readiness train is v1.9. Local proof can pass before Atlas is publicly shippable; release sign-off is still blocked until hosted GitHub assets, checksums, attestations, install smoke, and owner release review are complete. See [public release gates](docs/release/public-release-gates.md).
 
 ## Why Atlas
 
@@ -79,7 +80,7 @@ Goal manifests help coding agents start with the right context:
 
 ## Install And Verify
 
-The one-line installer is intended for published releases. Do not use it for `v1.8.0-rc1` until GitHub release assets exist and the hosted proof in `docs/release/public-release-gates.md` is green.
+The one-line installer is intended for published releases. Do not use it for `v1.9.0-rc1` until GitHub release assets exist and the hosted proof in `docs/release/public-release-gates.md` is green.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
@@ -88,8 +89,8 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 For release candidates, prefer explicit verification:
 
 ```bash
-VERSION=v1.8.0-rc1 ./scripts/verify-release.sh ./tracker_1.8.0-rc1_darwin_arm64.tar.gz
-VERSION=v1.8.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=v1.9.0-rc1 ./scripts/verify-release.sh ./tracker_1.9.0-rc1_darwin_arm64.tar.gz
+VERSION=v1.9.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 "$HOME/.local/bin/tracker" version --json
 ```
 
@@ -126,10 +127,10 @@ Do not paste private keys, webhook URLs, tokens, full `.tracker` archives, or un
 
 ## Project Status
 
-- Current train: `v1.8.0-rc1` planned
-- Local v1.8 proof: green
+- Current train: v1.9 release-readiness
+- Local v1.9 proof: green on the current cleanup branch
 - Hosted prerelease proof: blocked until a release actor publishes and verifies assets
-- License: pending owner selection; public reuse terms are not finalized yet
+- License: MIT
 
 ## Contributing
 

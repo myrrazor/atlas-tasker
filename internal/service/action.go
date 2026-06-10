@@ -169,6 +169,9 @@ func (s *ActionService) commitMutation(ctx context.Context, purpose string, cano
 	if err := s.journal().Complete(journal.ID); err != nil {
 		return apperr.Wrap(apperr.CodeRepairNeeded, err, "finalize mutation journal")
 	}
+	if !historicalReplay(ctx) {
+		s.emitAgentWakeups(ctx, event)
+	}
 	if !historicalReplay(ctx) && s.Automation != nil {
 		_, _ = s.Automation.Run(ctx, s, NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock), event)
 	}
@@ -796,6 +799,11 @@ func (s *ActionService) MoveTicket(ctx context.Context, ticketID string, to cont
 		}
 		ticket.UpdatedAt = now
 		payload := map[string]any{"from": from, "to": to, "ticket": ticket}
+		if overridePayload, err := s.dependencyOverridePayload(ctx, ticket); err != nil {
+			return contracts.TicketSnapshot{}, err
+		} else if overridePayload != nil {
+			payload["dependency_override"] = overridePayload
+		}
 		if err := s.commitTicketSnapshotEvent(ctx, "move ticket", ticket, actor, reason, contracts.EventTicketMoved, payload); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
@@ -851,6 +859,11 @@ func (s *ActionService) RequestReviewWithReviewer(ctx context.Context, ticketID 
 			ticket.OpenGateIDs = appendStringUnique(ticket.OpenGateIDs, gate.GateID)
 		}
 		payload := map[string]any{"ticket": ticket}
+		if overridePayload, err := s.dependencyOverridePayload(ctx, ticket); err != nil {
+			return contracts.TicketSnapshot{}, err
+		} else if overridePayload != nil {
+			payload["dependency_override"] = overridePayload
+		}
 		if gate.GateID != "" {
 			payload["gate"] = gate
 		}
@@ -942,12 +955,12 @@ func (s *ActionService) ApproveTicket(ctx context.Context, ticketID string, acto
 		if err := s.requireNoUnresolvedDependencies(ctx, ticket); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
-		reviewer := effectiveReviewer(ticket, policy)
-		if actor != contracts.Actor("human:owner") && actor != reviewer {
-			return contracts.TicketSnapshot{}, apperr.New(apperr.CodePermissionDenied, "only the assigned reviewer or human:owner can approve")
-		}
-		if actor != contracts.Actor("human:owner") && ticket.Assignee != "" && ticket.Assignee == actor && reviewer == actor {
-			return contracts.TicketSnapshot{}, apperr.New(apperr.CodePermissionDenied, fmt.Sprintf("self_approval_denied: actor %s is both assignee and reviewer for %s", actor, ticket.ID))
+		reviewer, allowed := approvalReviewerForActor(ticket, policy, actor, s.now())
+		if actor != contracts.Actor("human:owner") && !allowed {
+			if effectiveReviewer(ticket, policy) != "" {
+				return contracts.TicketSnapshot{}, apperr.New(apperr.CodePermissionDenied, "only the assigned reviewer or human:owner can approve")
+			}
+			return contracts.TicketSnapshot{}, apperr.New(apperr.CodePermissionDenied, "only the assignee, active worker, or human:owner can approve when no reviewer is configured")
 		}
 		governanceInput := GovernanceEvaluationInput{
 			Action:   contracts.ProtectedActionTicketApprove,
@@ -975,6 +988,11 @@ func (s *ActionService) ApproveTicket(ctx context.Context, ticketID string, acto
 			return contracts.TicketSnapshot{}, err
 		}
 		payload := map[string]any{"ticket": ticket}
+		if overridePayload, err := s.dependencyOverridePayload(ctx, ticket); err != nil {
+			return contracts.TicketSnapshot{}, err
+		} else if overridePayload != nil {
+			payload["dependency_override"] = overridePayload
+		}
 		if hasGate {
 			payload["gate"] = gate
 		}
@@ -1131,6 +1149,11 @@ func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, act
 		ticket.Lease = contracts.LeaseState{}
 		ticket.UpdatedAt = now
 		payload := map[string]any{"from": from, "to": contracts.StatusDone, "ticket": ticket}
+		if overridePayload, err := s.dependencyOverridePayload(ctx, ticket); err != nil {
+			return contracts.TicketSnapshot{}, err
+		} else if overridePayload != nil {
+			payload["dependency_override"] = overridePayload
+		}
 		if err := s.commitTicketSnapshotEvent(ctx, "complete ticket", ticket, actor, reason, contracts.EventTicketMoved, payload); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
