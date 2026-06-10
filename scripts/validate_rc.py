@@ -560,7 +560,7 @@ def check_version_contract(tracker: Path, version: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate Atlas v1.8 RC polish gates offline.")
+    parser = argparse.ArgumentParser(description="Validate Atlas release-candidate gates offline.")
     parser.add_argument("--repo", required=True, type=Path)
     parser.add_argument("--tracker", required=True, type=Path)
     parser.add_argument("--work-dir", required=True, type=Path)

@@ -1,6 +1,6 @@
 # Tutorial 1: Install And Initialize
 
-Build locally while hosted `v1.8.0-rc1` assets are pending:
+Build locally while hosted release assets are pending:
 
 ```bash
 go build -o tracker ./cmd/tracker

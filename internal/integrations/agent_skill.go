@@ -9,6 +9,7 @@ func genericBlock(guidePath string) string {
 	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (Generic Agent)
 
 - Start with `+"`tracker agent available <agent-id> --json`"+` and `+"`tracker agent pending <agent-id> --json`"+`.
+- Agents may self-dispatch eligible assigned work with `+"`tracker run dispatch <ticket-id> --agent agent:<agent-id> --actor agent:<agent-id>`"+`.
 - Claim before editing and request review when done.
 - Treat `+"`dependency_blocked`"+` as a stop sign until the blocker reaches `+"`done`"+`.
 - Use explicit `+"`--actor`"+` and `+"`--reason`"+` flags for every write.
@@ -24,8 +25,9 @@ Use Atlas Tasker as the durable workflow layer. The shortest safe loop is:
 1. `+"`tracker agent available <agent-id> --json`"+`
 2. `+"`tracker ticket claim <ID> --actor agent:<agent-id> --reason \"start work\"`"+`
 3. `+"`tracker ticket move <ID> in_progress --actor agent:<agent-id> --reason \"start work\"`"+`
-4. Record evidence, then request review.
-5. Check `+"`tracker agent pending <agent-id> --json`"+` when blocked.
+4. If a run is needed, dispatch yourself with `+"`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`"+`.
+5. Record evidence, then request review.
+6. Check `+"`tracker agent pending <agent-id> --json`"+` when blocked.
 
 Atlas does not poll or launch agents unless an owner enables agent auto mode.
 `) + "\n"
@@ -47,13 +49,14 @@ Atlas Tasker is the source of truth for ticket state. Prefer JSON reads, mutate 
 2. Run `+"`tracker agent available <agent-id> --json`"+`.
 3. If nothing is available, run `+"`tracker agent pending <agent-id> --json`"+` and report the blocker reason codes.
 4. Before editing, claim the ticket and move it to `+"`in_progress`"+` if it is still ready.
+5. When a run is needed, dispatch yourself with `+"`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`"+`.
 
 ## Work
 
 - Use `+"`tracker inspect <ID> --actor agent:<agent-id> --json`"+` before making workflow decisions.
 - Do not work a ticket with `+"`dependency_blocked`"+`, `+"`policy_blocked`"+`, `+"`claimed_by_other`"+`, or `+"`waiting_for_review`"+`.
 - Record durable context with comments, checkpoints, evidence, or handoffs.
-- Request review instead of marking protected work done yourself.
+- Self-approval is allowed by default when no reviewer or governance separation rule is configured; respect stricter workspace policies when they exist.
 
 ## More Detail
 
@@ -81,23 +84,24 @@ func atlasWorkerReference() string {
 - `+"`agent_at_capacity`"+`
 - `+"`missing_capability`"+`
 
-Only `+"`done`"+` unblocks dependencies. `+"`canceled`"+` does not.
+Only `+"`done`"+` unblocks dependencies. `+"`canceled`"+` does not. `+"`--override-deps`"+` is for `+"`human:owner`"+` only and must include a reason.
 
 ## Worker Loop
 
 1. Read available work.
 2. Claim the ticket.
 3. Move it to `+"`in_progress`"+`.
-4. Implement narrowly.
-5. Attach evidence with `+"`tracker run evidence add`"+` or ticket comments.
-6. Request review with `+"`tracker ticket request-review <ID> --actor agent:<agent-id> --reason \"ready for review\"`"+`.
+4. Dispatch yourself if the workflow needs a run snapshot: `+"`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`"+`.
+5. Implement narrowly.
+6. Attach evidence with `+"`tracker run evidence add`"+` or ticket comments.
+7. Request review with `+"`tracker ticket request-review <ID> --actor agent:<agent-id> --reason \"ready for review\"`"+`.
 
 ## Reviewer Loop
 
 1. Read available work as the reviewer.
 2. Inspect the ticket, history, run evidence, and handoff.
 3. Approve or reject with explicit reason.
-4. Do not approve your own implementation unless the workspace has a documented owner override path.
+4. Approve your own implementation only when no reviewer or separation-of-duties policy applies.
 
 ## Blocker Loop
 
@@ -134,6 +138,7 @@ Assign yourself as the active worker only when the user or policy allows it.
 ~~~bash
 tracker ticket claim <ticket-id> --actor agent:<agent-id> --reason "start work"
 tracker ticket move <ticket-id> in_progress --actor agent:<agent-id> --reason "start work"
+tracker run dispatch <ticket-id> --agent agent:<agent-id> --actor agent:<agent-id> --reason "start run"
 ~~~
 
 If tracker agent available did not list the ticket, inspect it before changing anything.
@@ -151,6 +156,6 @@ tracker agent available <agent-id> --json
 tracker ticket approve <ticket-id> --actor agent:<agent-id> --reason "review passed"
 ~~~
 
-Do not approve a ticket you implemented yourself. If the workspace blocks self-approval, follow the owner override or third-reviewer path.
+Self-approval is allowed for autonomous tickets. If the workspace requires separation-of-duties, follow the owner override or third-reviewer path.
 `) + "\n"
 }

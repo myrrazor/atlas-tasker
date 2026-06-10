@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -11,11 +12,36 @@ import (
 
 const dependencyBlockedReason = "dependency_blocked"
 
+type dependencyOverrideKey struct{}
+
+type DependencyOverrideContext struct {
+	Actor  contracts.Actor
+	Reason string
+}
+
+func WithDependencyOverride(ctx context.Context, actor contracts.Actor, reason string) context.Context {
+	return context.WithValue(ctx, dependencyOverrideKey{}, DependencyOverrideContext{Actor: actor, Reason: strings.TrimSpace(reason)})
+}
+
 func effectiveReviewer(ticket contracts.TicketSnapshot, policy EffectivePolicyView) contracts.Actor {
 	if ticket.Reviewer != "" {
 		return ticket.Reviewer
 	}
 	return policy.RequiredReviewer
+}
+
+func approvalReviewerForActor(ticket contracts.TicketSnapshot, policy EffectivePolicyView, actor contracts.Actor, now time.Time) (contracts.Actor, bool) {
+	reviewer := effectiveReviewer(ticket, policy)
+	if reviewer != "" {
+		return reviewer, actor == reviewer
+	}
+	if ticket.Assignee != "" && actor == ticket.Assignee {
+		return actor, true
+	}
+	if ticket.Lease.Kind == contracts.LeaseKindWork && ticket.Lease.Active(now) && ticket.Lease.Actor == actor {
+		return actor, true
+	}
+	return "", false
 }
 
 func validateRequestedReviewer(ticket contracts.TicketSnapshot, policy EffectivePolicyView, reviewer contracts.Actor) error {
@@ -79,9 +105,39 @@ func (s *ActionService) requireNoUnresolvedDependencies(ctx context.Context, tic
 		return err
 	}
 	if len(blockers) > 0 {
+		override, ok := ctx.Value(dependencyOverrideKey{}).(DependencyOverrideContext)
+		if ok {
+			if override.Actor != contracts.Actor("human:owner") {
+				return apperr.New(apperr.CodePermissionDenied, "dependency_override_requires_owner")
+			}
+			if strings.TrimSpace(override.Reason) == "" {
+				return apperr.New(apperr.CodeInvalidInput, "dependency_override_requires_reason")
+			}
+			return nil
+		}
 		return dependencyBlockedError(ticket, blockers)
 	}
 	return nil
+}
+
+func (s *ActionService) dependencyOverridePayload(ctx context.Context, ticket contracts.TicketSnapshot) (map[string]any, error) {
+	override, ok := ctx.Value(dependencyOverrideKey{}).(DependencyOverrideContext)
+	if !ok {
+		return nil, nil
+	}
+	blockers, err := unresolvedBlockersFromStore(ctx, s.Tickets, ticket)
+	if err != nil {
+		return nil, err
+	}
+	if len(blockers) == 0 {
+		return nil, nil
+	}
+	return map[string]any{
+		"applied":             true,
+		"actor":               override.Actor,
+		"reason":              strings.TrimSpace(override.Reason),
+		"unresolved_blockers": blockers,
+	}, nil
 }
 
 func (s *QueryService) BoardStatus(ctx context.Context, ticket contracts.TicketSnapshot) (contracts.Status, error) {
