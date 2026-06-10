@@ -6,13 +6,68 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
+	"github.com/myrrazor/atlas-tasker/internal/testutil"
 )
+
+func TestCorruptProjectionGuidesOperatorToRepair(t *testing.T) {
+	withTempWorkspace(t)
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if _, err := runCLI(t, "project", "create", "APP", "App Project"); err != nil {
+		t.Fatalf("project create failed: %v", err)
+	}
+	if _, err := runCLI(t, "ticket", "create", "--project", "APP", "--title", "Index casualty", "--type", "task", "--actor", "human:owner"); err != nil {
+		t.Fatalf("ticket create failed: %v", err)
+	}
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := testutil.CorruptProjection(root); err != nil {
+		t.Fatalf("corrupt projection: %v", err)
+	}
+
+	// any read command should say what happened and how to get out of it,
+	// not just leak the raw sqlite error
+	var stdout, stderr bytes.Buffer
+	exit := Execute([]string{"board", "--plain"}, &stdout, &stderr)
+	if exit != 7 {
+		t.Fatalf("expected repair_needed exit 7 on corrupted index, got %d (stderr=%s)", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "doctor --repair") {
+		t.Fatalf("expected repair guidance on stderr, got: %s", stderr.String())
+	}
+
+	// read-only doctor exists to diagnose exactly this; it must not choke
+	stdout.Reset()
+	stderr.Reset()
+	exit = Execute([]string{"doctor"}, &stdout, &stderr)
+	if exit != 7 {
+		t.Fatalf("expected read-only doctor to diagnose corruption with exit 7, got %d (stderr=%s)", exit, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "doctor --repair") {
+		t.Fatalf("expected doctor to point at --repair, got: %s", stderr.String())
+	}
+
+	if out, err := runCLI(t, "doctor", "--repair"); err != nil {
+		t.Fatalf("doctor --repair should recover: %v (%s)", err, out)
+	}
+	out, err := runCLI(t, "board", "--plain")
+	if err != nil {
+		t.Fatalf("board after repair: %v", err)
+	}
+	if !strings.Contains(out, "Index casualty") {
+		t.Fatalf("expected recovered board to show the ticket, got: %s", out)
+	}
+}
 
 func TestExecuteUsesStructuredJSONErrorsAndExitCodes(t *testing.T) {
 	withTempWorkspace(t)

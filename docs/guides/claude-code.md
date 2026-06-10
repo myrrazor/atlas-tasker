@@ -14,6 +14,14 @@ tracker goal brief APP-1 --md
 
 Use `available` for actionable work and `pending` for blocker explanations. Paste the goal brief into Claude Code when you want the session to stay inside Atlas constraints.
 
+Claude can dispatch itself to eligible assigned work without project membership:
+
+```bash
+tracker run dispatch APP-1 --agent agent:builder-1 --actor agent:builder-1 --reason "start Claude run"
+```
+
+Operators still use collaborator membership and permission policies for cross-agent dispatch.
+
 Install the Claude guidance and slash-command templates with:
 
 ```bash

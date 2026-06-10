@@ -18,4 +18,4 @@ A release is not ready because code merged. Release readiness is recorded in rel
 
 ## License
 
-The public license is not finalized in this PR. Until a license lands, public reuse terms are not granted by this repository.
+Atlas Tasker is released under the MIT License. See [LICENSE](LICENSE).

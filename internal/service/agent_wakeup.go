@@ -313,17 +313,19 @@ func (s *ActionService) emitAgentWakeups(ctx context.Context, event contracts.Ev
 		if err != nil || len(blockers) > 0 {
 			continue
 		}
-		view, err := queries.AgentAvailable(ctx, candidate.Assignee)
-		if err != nil || !agentWorkViewContains(view, candidate.ID) {
+		view, err := queries.AgentWork(ctx, candidate.Assignee)
+		if err != nil || !agentWakeupEligible(view, candidate) {
 			continue
 		}
-		_ = s.createAgentWakeup(ctx, candidate, completed.ID, event)
+		if err := s.createAgentWakeup(ctx, candidate, completed.ID, event); err != nil {
+			s.recordWakeupFailure(candidate, completed.ID, err)
+		}
 	}
 }
 
 func (s *ActionService) createAgentWakeup(ctx context.Context, ticket contracts.TicketSnapshot, blockerID string, cause contracts.Event) error {
 	store := AgentWakeupStore{Root: s.Root}
-	wakeupID := fmt.Sprintf("wakeup_%s_after_%s", safeFileStem(ticket.ID), safeFileStem(blockerID))
+	wakeupID := agentWakeupID(ticket.ID, blockerID)
 	if store.Exists(wakeupID) {
 		return nil
 	}
@@ -346,7 +348,7 @@ func (s *ActionService) createAgentWakeup(ctx context.Context, ticket contracts.
 			"causation_event_id": fmt.Sprintf("%d", cause.EventID),
 		},
 	}
-	event, err := s.newEvent(ctx, ticket.Project, wakeup.CreatedAt, contracts.Actor("agent:automation"), wakeup.Reason, contracts.EventAgentWorkAvailable, ticket.ID, map[string]any{"wakeup": wakeup})
+	event, err := s.newEvent(ctx, ticket.Project, wakeup.CreatedAt, contracts.ActorAtlasSystem, wakeup.Reason, contracts.EventAgentWorkAvailable, ticket.ID, map[string]any{"wakeup": wakeup})
 	if err != nil {
 		return err
 	}
@@ -371,13 +373,64 @@ func ticketCompletionEvent(event contracts.Event) bool {
 	}
 }
 
-func agentWorkViewContains(view AgentWorkView, ticketID string) bool {
+// agentWakeupEligible decides whether the assignee should be poked about this
+// ticket now that its final blocker is done. Anything already available
+// qualifies outright. backlog/blocked tickets qualify too when stale status is
+// all that's left in the way -- promoting the ticket is the woken agent's own
+// first move. Real obstacles (disabled agent, someone else's lease, missing
+// capability, open gate) keep the wakeup suppressed.
+func agentWakeupEligible(view AgentWorkView, ticket contracts.TicketSnapshot) bool {
 	for _, entry := range view.Available {
-		if entry.Ticket.ID == ticketID {
+		if entry.Ticket.ID == ticket.ID {
 			return true
 		}
 	}
+	if ticket.Status != contracts.StatusBacklog && ticket.Status != contracts.StatusBlocked {
+		return false
+	}
+	for _, entry := range view.Pending {
+		if entry.Ticket.ID != ticket.ID {
+			continue
+		}
+		for _, code := range entry.ReasonCodes {
+			// dependency_blocked here is just the persisted-status echo:
+			// emitAgentWakeups already checked every blocker is done.
+			if code != AgentWorkReasonNotReadyStatus && code != AgentWorkReasonDependencyBlocked {
+				return false
+			}
+		}
+		return true
+	}
 	return false
+}
+
+func agentWakeupID(ticketID, blockerID string) string {
+	return fmt.Sprintf("wakeup_%s_after_%s", safeFileStem(ticketID), safeFileStem(blockerID))
+}
+
+// recordWakeupFailure keeps a failed wakeup visible in `agent wakeups list`
+// instead of dropping it. Wakeups are post-commit side effects, so there is no
+// mutation left to fail by the time we get here.
+func (s *ActionService) recordWakeupFailure(ticket contracts.TicketSnapshot, blockerID string, cause error) {
+	store := AgentWakeupStore{Root: s.Root}
+	id := agentWakeupID(ticket.ID, blockerID)
+	wakeup, err := store.LoadWakeup(id)
+	if err != nil {
+		wakeup = AgentWakeup{
+			WakeupID:        id,
+			TicketID:        ticket.ID,
+			BlockerTicketID: blockerID,
+			Actor:           ticket.Assignee,
+			AgentID:         agentIDFromActor(ticket.Assignee),
+			Mode:            AgentAutoModeNotify,
+			Reason:          "dependency completed; assigned work is available",
+			CreatedAt:       s.now(),
+		}
+	}
+	wakeup.State = AgentWakeupFailed
+	wakeup.Error = cause.Error()
+	// nowhere left to report to if even this write fails
+	_ = store.SaveWakeup(wakeup)
 }
 
 func launchAgentWakeupCommand(ctx context.Context, wakeup AgentWakeup, config AgentAutoConfig) AgentWakeup {

@@ -65,6 +65,7 @@ type permissionEvalInput struct {
 	Runbook           string
 	ChangedFiles      []string
 	ChangedFilesKnown bool
+	AllowSelfDispatch bool
 }
 
 type permissionEvaluator struct {
@@ -138,6 +139,7 @@ func (s *QueryService) PermissionsView(ctx context.Context, target string, actor
 			Runbook:           runbook,
 			ChangedFiles:      changedFiles,
 			ChangedFilesKnown: changedKnown,
+			AllowSelfDispatch: candidate == contracts.PermissionActionDispatch && isSelfDispatchActor(actor, actorAgent),
 		})
 		if err != nil {
 			return PermissionsView{}, err
@@ -208,7 +210,7 @@ func (e permissionEvaluator) evaluate(ctx context.Context, input permissionEvalI
 		case contracts.CollaboratorStatusSuspended, contracts.CollaboratorStatusRemoved:
 			decision.ReasonCodes = append(decision.ReasonCodes, "collaborator_suspended")
 		}
-		if collaboratorActionNeedsProjectMembership(input.Action) && len(activeMemberships) == 0 {
+		if collaboratorActionNeedsProjectMembership(input.Action) && !input.AllowSelfDispatch && len(activeMemberships) == 0 {
 			decision.ReasonCodes = append(decision.ReasonCodes, "missing_membership")
 		}
 		if collaboratorActionRequiresTrust(input.Action) && collaborator.TrustState != contracts.CollaboratorTrustStateTrusted {

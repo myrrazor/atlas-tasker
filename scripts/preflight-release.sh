@@ -2,7 +2,7 @@
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
-VERSION="${VERSION:-v1.8.0-rc1}"
+VERSION="${VERSION:-v1.9.0-rc1}"
 RELEASE_PROOF_DIR="${RELEASE_PROOF_DIR:-$ROOT_DIR/docs/release-proof}"
 RUN_GOVULNCHECK="${RUN_GOVULNCHECK:-0}"
 RUN_SBOM="${RUN_SBOM:-0}"
