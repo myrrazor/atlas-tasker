@@ -37,7 +37,8 @@ func ParseSearchQuery(raw string) (SearchQuery, error) {
 	tokens := strings.Fields(trimmed)
 	terms := make([]SearchTerm, 0, len(tokens))
 
-	for _, token := range tokens {
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
 		switch {
 		case strings.HasPrefix(token, "status="):
 			value := strings.TrimPrefix(token, "status=")
@@ -71,6 +72,11 @@ func ParseSearchQuery(raw string) (SearchQuery, error) {
 			terms = append(terms, SearchTerm{Kind: SearchTermLabel, Value: value})
 		case strings.HasPrefix(token, "text~"):
 			value := strings.TrimPrefix(token, "text~")
+			for i+1 < len(tokens) && !isSearchTermStart(tokens[i+1]) {
+				i++
+				value += " " + tokens[i]
+			}
+			value = cleanSearchValue(value)
 			if value == "" {
 				return SearchQuery{}, fmt.Errorf("text query missing value")
 			}
@@ -81,4 +87,25 @@ func ParseSearchQuery(raw string) (SearchQuery, error) {
 	}
 
 	return SearchQuery{Terms: terms}, nil
+}
+
+func isSearchTermStart(token string) bool {
+	for _, prefix := range []string{"status=", "type=", "project=", "assignee=", "label=", "text~"} {
+		if strings.HasPrefix(token, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func cleanSearchValue(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 {
+		first := value[0]
+		last := value[len(value)-1]
+		if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+			return strings.TrimSpace(value[1 : len(value)-1])
+		}
+	}
+	return value
 }

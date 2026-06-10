@@ -30,7 +30,7 @@ func TestSearchAndReviewHelpDocumentWorkflowSyntax(t *testing.T) {
 		t.Fatalf("find search command: %v", err)
 	}
 	searchHelp := search.Long
-	for _, expected := range []string{"status=<STATUS>", "type=<TYPE>", "project=<KEY>", "assignee=<ACTOR>", "label=<LABEL>", "text~<TEXT>", "tracker search 'status=in_progress'", "tracker search 'project=AUTH text~logout'"} {
+	for _, expected := range []string{"status=<STATUS>", "type=<TYPE>", "project=<KEY>", "assignee=<ACTOR>", "label=<LABEL>", "text~<TEXT>", "tracker search 'status=in_progress'", "tracker search 'project=AUTH text~logout flow'", "tracker search 'text~\"scenario 1000\"'"} {
 		if !strings.Contains(searchHelp, expected) {
 			t.Fatalf("search help missing %q:\n%s", expected, searchHelp)
 		}
