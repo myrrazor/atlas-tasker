@@ -78,8 +78,33 @@ func TestCommandOutputSanitizesTerminalControls(t *testing.T) {
 	if strings.Contains(out, "\x1b") {
 		t.Fatalf("expected CLI text output to sanitize terminal controls, got %q", out)
 	}
-	if !strings.Contains(out, "wipe[2J") {
+	if strings.Contains(out, "[2J") || !strings.Contains(out, "wipe") {
 		t.Fatalf("expected sanitized title to remain readable, got %q", out)
+	}
+}
+
+func TestPrettyListCommandsUseTableOutput(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Table polish", "--type", "task", "--status", "ready", "--actor", "human:owner")
+	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner", "--reason", "test setup")
+
+	board := must("board", "--pretty")
+	if !strings.Contains(board, "Column") || !strings.Contains(board, "+") || !strings.Contains(board, "APP-1") {
+		t.Fatalf("expected board pretty output to use a table, got:\n%s", board)
+	}
+	available := must("agent", "available", "builder-1", "--pretty")
+	if !strings.Contains(available, "Agent Available") || !strings.Contains(available, "+") || !strings.Contains(available, "APP-1") {
+		t.Fatalf("expected agent available pretty output to use a table, got:\n%s", available)
 	}
 }
 

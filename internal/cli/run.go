@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/spf13/cobra"
 )
@@ -450,16 +451,20 @@ func formatRunList(runs []contracts.RunSnapshot) string {
 	if len(runs) == 0 {
 		return "no runs"
 	}
-	lines := make([]string, 0, len(runs)+1)
-	lines = append(lines, "runs:")
+	rows := make([][]string, 0, len(runs))
 	for _, run := range runs {
-		line := fmt.Sprintf("- %s [%s] ticket=%s agent=%s", run.RunID, run.Status, run.TicketID, run.AgentID)
-		if run.WorktreePath != "" {
-			line += fmt.Sprintf(" worktree=%s", run.WorktreePath)
-		}
-		lines = append(lines, line)
+		rows = append(rows, []string{
+			render.SanitizeDisplayLine(run.RunID),
+			render.StatusBadge(contracts.Status(run.Status)),
+			render.SanitizeDisplayLine(run.TicketID),
+			render.SanitizeDisplayLine(run.AgentID),
+			render.SanitizeDisplayLine(run.WorktreePath),
+		})
 	}
-	return strings.Join(lines, "\n")
+	return render.RenderTable([]string{"Run", "Status", "Ticket", "Agent", "Worktree"}, rows, render.TableOptions{
+		Title: "Runs",
+		Width: render.TerminalWidth(100),
+	})
 }
 
 func formatRunDetail(detail service.RunDetailView) string {
@@ -525,19 +530,19 @@ func formatEvidenceList(items []contracts.EvidenceItem) string {
 	if len(items) == 0 {
 		return "no evidence"
 	}
-	lines := make([]string, 0, len(items)+1)
-	lines = append(lines, "evidence:")
+	rows := make([][]string, 0, len(items))
 	for _, item := range items {
-		line := fmt.Sprintf("- %s [%s]", item.EvidenceID, item.Type)
-		if item.Title != "" {
-			line += " " + item.Title
-		}
-		if item.ArtifactPath != "" {
-			line += " artifact=" + item.ArtifactPath
-		}
-		lines = append(lines, line)
+		rows = append(rows, []string{
+			render.SanitizeDisplayLine(item.EvidenceID),
+			render.SanitizeDisplayLine(string(item.Type)),
+			render.SanitizeDisplayLine(item.Title),
+			render.SanitizeDisplayLine(item.ArtifactPath),
+		})
 	}
-	return strings.Join(lines, "\n")
+	return render.RenderTable([]string{"Evidence", "Type", "Title", "Artifact"}, rows, render.TableOptions{
+		Title: "Evidence",
+		Width: render.TerminalWidth(100),
+	})
 }
 
 func formatEvidenceDetail(item contracts.EvidenceItem) string {
@@ -565,12 +570,20 @@ func formatWorktreeList(items []service.WorktreeStatusView) string {
 	if len(items) == 0 {
 		return "no managed worktrees"
 	}
-	lines := make([]string, 0, len(items)+1)
-	lines = append(lines, "worktrees:")
+	rows := make([][]string, 0, len(items))
 	for _, item := range items {
-		lines = append(lines, fmt.Sprintf("- %s present=%t dirty=%t path=%s", item.RunID, item.Present, item.Dirty, item.Path))
+		rows = append(rows, []string{
+			render.SanitizeDisplayLine(item.RunID),
+			fmt.Sprint(item.Present),
+			fmt.Sprint(item.Dirty),
+			render.SanitizeDisplayLine(item.BranchName),
+			render.SanitizeDisplayLine(item.Path),
+		})
 	}
-	return strings.Join(lines, "\n")
+	return render.RenderTable([]string{"Run", "Present", "Dirty", "Branch", "Path"}, rows, render.TableOptions{
+		Title: "Worktrees",
+		Width: render.TerminalWidth(100),
+	})
 }
 
 func formatWorktreeDetail(item service.WorktreeStatusView) string {

@@ -138,6 +138,19 @@ func TestTicketsListViewUsesNarrowWidth(t *testing.T) {
 	}
 }
 
+func TestTicketsListViewUsesTableAtNormalWidth(t *testing.T) {
+	out := ticketsListView("Board", []contracts.TicketSnapshot{{
+		ID:       "APP-1",
+		Type:     contracts.TicketTypeTask,
+		Status:   contracts.StatusReady,
+		Priority: contracts.PriorityHigh,
+		Title:    "Clean table row",
+	}}, 0, 80)
+	if !strings.Contains(out, "+") || !strings.Contains(out, ">") || !strings.Contains(out, "Clean table row") {
+		t.Fatalf("expected bordered selected table row, got:\n%s", out)
+	}
+}
+
 func TestModelViewTruncatesFooterAtWidth(t *testing.T) {
 	m := model{
 		screen:             screenBoard,
@@ -437,7 +450,7 @@ func TestInboxViewShowsApprovalsAndHumanInboxPanels(t *testing.T) {
 	m = updated.(model)
 	m.screen = screenInbox
 	view := m.View()
-	if !strings.Contains(view, "Approvals:") || !strings.Contains(view, "Human Inbox:") {
+	if !strings.Contains(view, "Approvals") || !strings.Contains(view, "Human Inbox") || !strings.Contains(view, "+") {
 		t.Fatalf("expected approvals and inbox panels, got %s", view)
 	}
 	if !strings.Contains(view, "gate_1") {
@@ -466,10 +479,10 @@ func TestOpsViewShowsAgentsDispatchAndWorktreesPanels(t *testing.T) {
 	m = updated.(model)
 	m.screen = screenOps
 	view := m.View()
-	if !strings.Contains(view, "Dashboard:") || !strings.Contains(view, "Agents:") || !strings.Contains(view, "Dispatch Queue:") || !strings.Contains(view, "Worktrees:") {
+	if !strings.Contains(view, "Dashboard") || !strings.Contains(view, "Agents") || !strings.Contains(view, "Dispatch Queue") || !strings.Contains(view, "Worktrees") || !strings.Contains(view, "+") {
 		t.Fatalf("expected ops panels in view, got %s", view)
 	}
-	if !strings.Contains(view, "active_runs:") || !strings.Contains(view, "builder-1") || !strings.Contains(view, "APP-1") {
+	if !strings.Contains(view, "active_runs") || !strings.Contains(view, "builder-1") || !strings.Contains(view, "APP-1") {
 		t.Fatalf("expected populated agent/dispatch content, got %s", view)
 	}
 }
@@ -570,7 +583,7 @@ func TestOpsViewShowsCollaborationConsole(t *testing.T) {
 	m = updated.(model)
 	m.screen = screenOps
 	view := m.View()
-	for _, needle := range []string{"collaborator: rev-1", "Remote Health:", "Conflict Queue:", "Mention Queue:"} {
+	for _, needle := range []string{"collaborator: rev-1", "Remote Health", "Conflict Queue", "Mention Queue"} {
 		if !strings.Contains(view, needle) {
 			t.Fatalf("expected %q in ops view, got %s", needle, view)
 		}

@@ -46,7 +46,7 @@ func TestSavedViewCommandsAndFlags(t *testing.T) {
 	}
 
 	queueOut := must("queue", "--view", "my-queue", "--pretty")
-	if !strings.Contains(queueOut, "sprint queue for agent:builder-1") || !strings.Contains(queueOut, "claimed_by_me") || strings.Contains(queueOut, "ready_for_me") {
+	if !strings.Contains(queueOut, "Sprint Queue for agent:builder-1") || !strings.Contains(queueOut, "claimed_by_me") || strings.Contains(queueOut, "ready_for_me") {
 		t.Fatalf("expected queue view output to be filtered: %s", queueOut)
 	}
 

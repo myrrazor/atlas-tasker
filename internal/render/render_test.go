@@ -19,6 +19,83 @@ func TestTicketsPrettyIncludesTicketID(t *testing.T) {
 	}
 }
 
+func TestRenderTableBorderModes(t *testing.T) {
+	unicode := RenderTable([]string{"ID", "Title"}, [][]string{{"APP-1", "Task"}}, TableOptions{
+		Title:  "Tickets",
+		Width:  40,
+		Border: TableBorderUnicode,
+	})
+	if !strings.Contains(unicode, "╭") || !strings.Contains(unicode, "│") {
+		t.Fatalf("expected unicode border, got:\n%s", unicode)
+	}
+	ascii := RenderTable([]string{"ID", "Title"}, [][]string{{"APP-1", "Task"}}, TableOptions{
+		Title:  "Tickets",
+		Width:  40,
+		Border: TableBorderASCII,
+	})
+	if !strings.Contains(ascii, "+") || strings.Contains(ascii, "╭") {
+		t.Fatalf("expected ascii border, got:\n%s", ascii)
+	}
+}
+
+func TestRenderTableAutoUsesASCIINoColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	out := RenderTable([]string{"ID", "Title"}, [][]string{{"APP-1", "Task"}}, TableOptions{
+		Title: "Tickets",
+		Width: 40,
+	})
+	if !strings.Contains(out, "+") || strings.Contains(out, "╭") {
+		t.Fatalf("expected auto table to use ASCII without color, got:\n%s", out)
+	}
+}
+
+func TestRenderTableSanitizesAndFitsWideRows(t *testing.T) {
+	out := RenderTable([]string{"ID", "Title"}, [][]string{{"APP-1", "wide 表表\x1b[2J title"}}, TableOptions{
+		Title:  "Tickets",
+		Width:  34,
+		Border: TableBorderASCII,
+	})
+	if strings.ContainsRune(out, 0x1b) {
+		t.Fatalf("expected table cells to scrub escapes, got %q", out)
+	}
+	if !strings.Contains(out, "wide") {
+		t.Fatalf("expected readable sanitized content, got:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if visibleWidth(line) > 34 {
+			t.Fatalf("expected table line to fit width, got width=%d line=%q", visibleWidth(line), line)
+		}
+	}
+}
+
+func TestRenderTableStripsStyledCellsBeforeTruncation(t *testing.T) {
+	styled := lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("[critical]")
+	out := RenderTable([]string{"Pri", "Title"}, [][]string{{styled, "a title long enough to truncate"}}, TableOptions{
+		Title:  "Tickets",
+		Width:  28,
+		Border: TableBorderUnicode,
+	})
+	if strings.ContainsRune(out, 0x1b) || strings.Contains(out, "38;") || strings.Contains(out, "203m") {
+		t.Fatalf("expected styled cells to be scrubbed before truncation, got %q", out)
+	}
+	if !strings.Contains(out, "[critical]") {
+		t.Fatalf("expected readable cell text to remain, got:\n%s", out)
+	}
+}
+
+func TestTicketsTableMarksSelectedRow(t *testing.T) {
+	out := TicketsTable("Board", []contracts.TicketSnapshot{{
+		ID:       "APP-1",
+		Type:     contracts.TicketTypeTask,
+		Status:   contracts.StatusReady,
+		Priority: contracts.PriorityHigh,
+		Title:    "Selected",
+	}}, 72, 0)
+	if !strings.Contains(out, ">") || !strings.Contains(out, "Selected") {
+		t.Fatalf("expected selected table row marker, got:\n%s", out)
+	}
+}
+
 func TestSanitizeDisplayStripsTerminalControls(t *testing.T) {
 	out := SanitizeDisplay("safe\x1b[2J\x7f\nnext\tcell\u202etxt.exe")
 	if strings.ContainsAny(out, "\x1b\x7f") || strings.Contains(out, "\u202e") {
@@ -45,11 +122,14 @@ func TestSanitizeTerminalOutputPreservesSGRStylingOnly(t *testing.T) {
 	if strings.ContainsRune(got, 0x1b) || strings.ContainsRune(got, 0x9b) {
 		t.Fatalf("expected non-SGR escapes stripped, got %q", got)
 	}
+	if strings.Contains(got, "[2J") || strings.Contains(got, "[10;10H") || strings.Contains(got, "31m") {
+		t.Fatalf("expected whole non-SGR control sequences stripped, got %q", got)
+	}
 	// the strict passes used on user content keep rejecting SGR too
-	if got := SanitizeDisplay("desc\x1b[31mred"); strings.ContainsRune(got, 0x1b) {
+	if got := SanitizeDisplay("desc\x1b[31mred"); strings.ContainsRune(got, 0x1b) || strings.Contains(got, "[31m") {
 		t.Fatalf("expected strict block scrubber to drop SGR, got %q", got)
 	}
-	if line := SanitizeDisplayLine("title\x1b[31mred"); strings.ContainsRune(line, 0x1b) {
+	if line := SanitizeDisplayLine("title\x1b[31mred"); strings.ContainsRune(line, 0x1b) || strings.Contains(line, "[31m") {
 		t.Fatalf("expected user-content scrubber to drop SGR, got %q", line)
 	}
 }
@@ -83,7 +163,10 @@ func TestTicketPrettySanitizesUserContent(t *testing.T) {
 	if strings.Contains(out, "\x1b") {
 		t.Fatalf("expected pretty output to remove terminal escapes, got %q", out)
 	}
-	if !strings.Contains(out, "wipe[2J") || !strings.Contains(out, "comment[0m") {
+	if strings.Contains(out, "[2J") || strings.Contains(out, "[0m") {
+		t.Fatalf("expected whole terminal control sequences to be removed, got %q", out)
+	}
+	if !strings.Contains(out, "wipe") || !strings.Contains(out, "comment") {
 		t.Fatalf("expected sanitized content to remain visible, got %q", out)
 	}
 }
@@ -94,7 +177,7 @@ func TestTicketSummarySanitizesTitle(t *testing.T) {
 	if strings.ContainsAny(out, "\x1b\n\t") || strings.Contains(out, "\u202e") {
 		t.Fatalf("expected summary to remove terminal and layout controls, got %q", out)
 	}
-	if !strings.Contains(out, "[2Junsafe FAKE LINEtxt.exe") {
+	if !strings.Contains(out, "unsafe FAKE LINEtxt.exe") || strings.Contains(out, "[2J") {
 		t.Fatalf("expected sanitized title to remain readable, got %q", out)
 	}
 }
