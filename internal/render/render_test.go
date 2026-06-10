@@ -33,6 +33,43 @@ func TestSanitizeDisplayStripsTerminalControls(t *testing.T) {
 	}
 }
 
+func TestSanitizeTerminalOutputPreservesSGRStylingOnly(t *testing.T) {
+	// the output-boundary pass runs after our own lipgloss styling; stripping
+	// the ESC there leaves "[90m" residue in every color-capable terminal
+	styled := "\x1b[1mSHOP-1\x1b[0m \x1b[38;5;10m[ready]\x1b[0m Add Stripe payment intents"
+	if got := SanitizeTerminalOutput(styled); got != styled {
+		t.Fatalf("expected SGR styling to survive the output pass, got %q", got)
+	}
+	hostile := "a\x1b]0;evil\x07b \x1b[2Jc \x1b[10;10Hd \x9b31me"
+	got := SanitizeTerminalOutput(hostile)
+	if strings.ContainsRune(got, 0x1b) || strings.ContainsRune(got, 0x9b) {
+		t.Fatalf("expected non-SGR escapes stripped, got %q", got)
+	}
+	// the strict passes used on user content keep rejecting SGR too
+	if got := SanitizeDisplay("desc\x1b[31mred"); strings.ContainsRune(got, 0x1b) {
+		t.Fatalf("expected strict block scrubber to drop SGR, got %q", got)
+	}
+	if line := SanitizeDisplayLine("title\x1b[31mred"); strings.ContainsRune(line, 0x1b) {
+		t.Fatalf("expected user-content scrubber to drop SGR, got %q", line)
+	}
+}
+
+func TestTruncateDisplayKeepsStylingWhenLineFits(t *testing.T) {
+	styled := "- SHOP-1 \x1b[90m[epic]\x1b[0m \x1b[90m[backlog]\x1b[0m Checkout revamp"
+	if got := TruncateDisplay(styled, 120); !strings.Contains(got, "\x1b[90m[epic]\x1b[0m") {
+		t.Fatalf("expected fitted line to keep badge styling, got %q", got)
+	}
+	// overflowing lines trade styling for a safe cut -- never a half escape
+	long := "\x1b[90m[epic]\x1b[0m " + strings.Repeat("x", 60)
+	got := TruncateDisplay(long, 20)
+	if strings.ContainsRune(got, 0x1b) {
+		t.Fatalf("expected truncated line to drop styling cleanly, got %q", got)
+	}
+	if !strings.HasSuffix(got, "...") || lipgloss.Width(got) > 20 {
+		t.Fatalf("expected width-bounded ellipsis truncation, got %q (width %d)", got, lipgloss.Width(got))
+	}
+}
+
 func TestTicketPrettySanitizesUserContent(t *testing.T) {
 	ticket := contracts.TicketSnapshot{
 		ID:                 "APP-1",

@@ -56,20 +56,44 @@ func markdownWidth(width int) int {
 }
 
 func SanitizeDisplay(value string) string {
-	return sanitizeDisplay(value, true)
+	return sanitizeDisplay(value, true, false)
+}
+
+// SanitizeTerminalOutput is the lenient variant for the final CLI output
+// boundary only. Renderers strict-scrub every piece of user content before
+// styling (SanitizeDisplay / SanitizeDisplayLine), so the only escapes left in
+// an assembled pretty block are the SGR colors our own styles emitted --
+// stripping those leaves "[90m" residue in every color-capable terminal.
+func SanitizeTerminalOutput(value string) string {
+	return sanitizeDisplay(value, true, true)
 }
 
 func SanitizeDisplayLine(value string) string {
-	return strings.Join(strings.Fields(sanitizeDisplay(value, false)), " ")
+	return strings.Join(strings.Fields(sanitizeDisplay(value, false, false)), " ")
 }
 
-func sanitizeDisplay(value string, preserveNewlines bool) string {
+// allowSGR lets plain color sequences (ESC '[' [0-9;:]* 'm') through; only
+// SanitizeTerminalOutput sets it. Everything else stays strict so user
+// content can never reach the output boundary with an intact escape byte.
+func sanitizeDisplay(value string, preserveNewlines bool, allowSGR bool) string {
 	if value == "" {
 		return ""
 	}
+	runes := []rune(value)
 	var out strings.Builder
-	for _, r := range value {
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
 		switch {
+		case r == 0x1b:
+			if allowSGR {
+				if end, ok := sgrEnd(runes, i); ok {
+					for j := i; j <= end; j++ {
+						out.WriteRune(runes[j])
+					}
+					i = end
+				}
+			}
+			// every other escape sequence stays banned
 		case r == '\n' || r == '\r':
 			if preserveNewlines {
 				out.WriteRune('\n')
@@ -87,6 +111,26 @@ func sanitizeDisplay(value string, preserveNewlines bool) string {
 		}
 	}
 	return out.String()
+}
+
+// sgrEnd reports the index of the terminating 'm' when runes[start] opens a
+// plain SGR sequence -- the only escape sanitizeDisplay ever lets through.
+func sgrEnd(runes []rune, start int) (int, bool) {
+	i := start + 1
+	if i >= len(runes) || runes[i] != '[' {
+		return 0, false
+	}
+	for i++; i < len(runes); i++ {
+		switch {
+		case runes[i] == 'm':
+			return i, true
+		case (runes[i] >= '0' && runes[i] <= '9') || runes[i] == ';' || runes[i] == ':':
+			// still inside the parameter list
+		default:
+			return 0, false
+		}
+	}
+	return 0, false
 }
 
 func isBidiOverride(r rune) bool {
@@ -269,10 +313,18 @@ func compactNonEmpty(values ...string) []string {
 }
 
 func TruncateDisplay(value string, maxWidth int) string {
-	value = SanitizeDisplayLine(value)
+	// keep our own SGR styling intact while scrubbing everything else;
+	// lipgloss.Width is ansi-aware so the fit check still measures glyphs
+	value = strings.Join(strings.Fields(sanitizeDisplay(value, false, true)), " ")
 	if maxWidth <= 0 {
 		return ""
 	}
+	if lipgloss.Width(value) <= maxWidth {
+		return value
+	}
+	// too wide: drop styling so the rune cut below can't slice an escape
+	// sequence in half
+	value = SanitizeDisplayLine(value)
 	if lipgloss.Width(value) <= maxWidth {
 		return value
 	}
