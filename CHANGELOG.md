@@ -9,6 +9,8 @@ Atlas ships public release candidates today; the first stable release follows on
 - Brand assets are committed under `assets/brand/` and the README wordmark is served from the repo.
 - CLI color output now reaches the terminal intact: the display sanitizer preserves the SGR styling Atlas emits itself while still stripping every other escape sequence, so `tracker board` no longer prints `[90m` residue in color-capable terminals. Truncation drops styling cleanly instead of slicing escapes in half.
 - README rewritten around the published release candidate: one-line verified install, terminal screenshots, demo GIF, and the agent workflow story.
+- `tracker team` applies ready-made agent team presets (solo, pair, swarm, crossfire): agent profiles, the standard-build runbook, separation-of-duties permissions, and the matching completion gate in one idempotent command with `--dry-run` preview.
+- Agent skill packs teach the full autonomous loop: bootstrap via team presets, wake-up acknowledgement, blocker reason codes, and the claim-build-review-handoff cycle. The Claude pack now installs to `.claude/skills/atlas-worker/` (modern Claude Code layout).
 
 ## v1.9.0-rc1 - First Public Release Candidate (2026-06-10)
 

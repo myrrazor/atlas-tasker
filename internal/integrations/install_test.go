@@ -80,6 +80,32 @@ func TestInstallClaudeReplacesOnlyManagedBlock(t *testing.T) {
 	if !strings.Contains(string(command), "tracker agent pending <agent-id> --json") {
 		t.Fatalf("unexpected claude command template: %s", string(command))
 	}
+	// modern Claude Code skill location with the reference alongside
+	skill, err := os.ReadFile(filepath.Join(root, ".claude", "skills", "atlas-worker", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read claude skill: %v", err)
+	}
+	if !strings.Contains(string(skill), "name: atlas-worker") {
+		t.Fatalf("unexpected claude skill frontmatter: %s", string(skill))
+	}
+	if _, err := os.ReadFile(filepath.Join(root, ".claude", "skills", "atlas-worker", "references", "workflow.md")); err != nil {
+		t.Fatalf("claude skill should ship its workflow reference: %v", err)
+	}
+}
+
+func TestSkillContentTeachesBootstrapAndWakeups(t *testing.T) {
+	skill := atlasWorkerSkill("claude")
+	for _, needle := range []string{"tracker team list", "tracker agent wakeups"} {
+		if !strings.Contains(skill, needle) {
+			t.Fatalf("skill should mention %q:\n%s", needle, skill)
+		}
+	}
+	reference := atlasWorkerReference()
+	for _, needle := range []string{"tracker team apply", "wakeups ack", "agent.work_available"} {
+		if !strings.Contains(reference, needle) {
+			t.Fatalf("reference should mention %q:\n%s", needle, reference)
+		}
+	}
 }
 
 func TestInstallGenericCreatesPortableSkillPack(t *testing.T) {
