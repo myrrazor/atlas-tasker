@@ -8,6 +8,23 @@ Launch the full-screen interface:
 
 The TUI uses the same service layer as the CLI. A ticket mutation from the TUI should produce the same event metadata as the equivalent command.
 
+Once it opens, press `?` for the built-in help guide. The guide explains the tabs, keybindings, bulk flow, and supported palette commands. You can also press `/`, type `/help`, and press enter to open the same guide from the command palette.
+
+Useful keys:
+
+```text
+tab/right      next tab
+shift+tab/left previous tab
+j/down         move down
+k/up           move up
+enter          open or submit
+/              command palette
+?              help
+esc            close help or dialog
+r              refresh
+q              quit
+```
+
 Useful fallback commands while learning the UI:
 
 ```bash

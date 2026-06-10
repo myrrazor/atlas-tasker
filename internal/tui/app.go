@@ -16,12 +16,12 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/render"
-	"github.com/myrrazor/atlas-tasker/internal/theme"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
 	sqlitestore "github.com/myrrazor/atlas-tasker/internal/storage/sqlite"
+	"github.com/myrrazor/atlas-tasker/internal/theme"
 )
 
 type screen int
@@ -87,17 +87,18 @@ type keyMap struct {
 	Filter        key.Binding
 	BulkPreview   key.Binding
 	BulkApply     key.Binding
+	Help          key.Binding
 	Cancel        key.Binding
 	Quit          key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Palette, k.Filter, k.BulkPreview, k.Refresh, k.Quit}
+	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Palette, k.Help, k.Filter, k.BulkPreview, k.Refresh, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Left, k.Right, k.Up, k.Down, k.Select, k.Refresh, k.Quit, k.Cancel},
+		{k.Left, k.Right, k.Up, k.Down, k.Select, k.Refresh, k.Help, k.Quit, k.Cancel},
 		{k.Palette, k.New, k.Edit, k.Move, k.Assign, k.Link, k.Unlink, k.Filter},
 		{k.Claim, k.Comment, k.RequestReview, k.Approve, k.Reject, k.Complete, k.BulkPreview, k.BulkApply},
 	}
@@ -168,6 +169,7 @@ type model struct {
 	selectedView       string
 	cursor             int
 	status             string
+	showHelp           bool
 	dialog             dialogState
 	lastBulk           *service.BulkOperationResult
 	pendingBulk        *service.BulkOperation
@@ -217,6 +219,8 @@ type bulkMsg struct {
 	applied bool
 	err     error
 }
+
+type helpMsg struct{}
 
 func Run(root string, explicitActor contracts.Actor) error {
 	m, err := newModel(root, explicitActor)
@@ -277,6 +281,7 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		Filter:        key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "collab filter")),
 		BulkPreview:   key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "bulk preview")),
 		BulkApply:     key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "apply bulk")),
+		Help:          key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Cancel:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel dialog")),
 		Quit:          key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
@@ -439,6 +444,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenOps
 		m.status = fmt.Sprintf("bulk %s previewed", result.Preview.Kind)
 		return m, nil
+	case helpMsg:
+		m.showHelp = true
+		m.help.ShowAll = true
+		m.status = "help open"
+		return m, nil
 	case tea.KeyMsg:
 		if m.splash.active {
 			if key.Matches(msg, m.keys.Quit) {
@@ -449,6 +459,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.dialog.active() {
 			return m.updateDialog(msg)
+		}
+		if m.showHelp {
+			switch {
+			case key.Matches(msg, m.keys.Quit):
+				return m, tea.Quit
+			case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Help):
+				m.showHelp = false
+				m.help.ShowAll = false
+				m.status = "help closed"
+				return m, nil
+			default:
+				return m, nil
+			}
+		}
+		if key.Matches(msg, m.keys.Help) {
+			m.showHelp = true
+			m.help.ShowAll = true
+			m.status = "help open"
+			return m, nil
 		}
 		if m.screen == screenSearch {
 			var cmd tea.Cmd
@@ -580,6 +609,9 @@ func (m model) View() string {
 	if m.dialog.active() {
 		body = body + "\n\n" + m.dialogView()
 	}
+	if m.showHelp {
+		body = body + "\n\n" + m.helpGuideView()
+	}
 	footer := fmt.Sprintf("actor: %s | collaborator: %s | %s", optionalActor(m.actor, "unset"), optionalString(strings.TrimSpace(m.collaboratorFilter), "all"), m.status)
 	if m.width > 0 {
 		footer = render.TruncateDisplay(footer, m.width)
@@ -592,6 +624,80 @@ func (m model) View() string {
 		body = lipgloss.NewStyle().Width(width).Render(body)
 	}
 	return strings.TrimSpace(header + "\n\n" + body + "\n\n" + footer + "\n" + m.help.View(m.keys))
+}
+
+func (m model) helpGuideView() string {
+	width := 92
+	if m.width > 0 {
+		width = minInt(96, maxInt(24, m.width-4))
+		if m.width < 44 {
+			width = maxInt(20, m.width)
+		}
+	}
+	contentWidth := maxInt(16, width-4)
+	lines := []string{
+		"TUI Help",
+		"Press ? to open or close this guide. Press esc to close it. Use /help from the command palette for the same view.",
+		"",
+		"Navigation",
+		"  left/shift+tab and right/tab move between tabs. up/k and down/j move the cursor.",
+		"  enter opens the selected ticket, runs a saved view, submits search, or submits the active dialog field.",
+		"  r refreshes all panels. q or ctrl+c quits.",
+		"",
+		"Tabs",
+		"  Board: status columns for the workspace.",
+		"  Queues: available and pending work for the active actor.",
+		"  Detail: selected ticket, links, policy, git, runs, evidence, handoffs, and timeline.",
+		"  Search: query tickets, for example status=ready text~auth label=bug.",
+		"  Review: tickets waiting on the active actor's review.",
+		"  Owner: tickets waiting on human owner action.",
+		"  Inbox: approvals and derived operator inbox items.",
+		"  Views: saved searches and queues; enter runs the selected view.",
+		"  Ops: agents, dispatch queue, automation, sync health, conflicts, mentions, and bulk previews.",
+		"",
+		"Ticket Actions",
+		"  n creates a minimal ticket. e edits the selected ticket title and description.",
+		"  m moves status. s assigns. l links. u unlinks. o comments.",
+		"  c claims or releases the selected ticket depending on the current lease.",
+		"  p requests review. v approves. x rejects with a reason. d completes an approved ticket.",
+		"",
+		"Bulk and Collaboration",
+		"  f filters collaboration panels by collaborator id; blank clears the filter.",
+		"  b previews a bulk action over the current view. y applies the last previewed bulk action.",
+		"  Bulk actions: move <STATUS>, assign <ACTOR>, request-review, complete, claim, release.",
+		"",
+		"Command Palette",
+		"  / opens the palette. Supported families: /help, /ticket, /run, /bulk, /views run.",
+		"  /ticket create --project APP --title \"Fix auth\" --type task",
+		"  /ticket edit APP-1 --title \"New title\" --description \"Details\"",
+		"  /ticket move APP-1 in_progress --actor agent:builder-1 --reason \"starting work\"",
+		"  /ticket claim APP-1 | /ticket release APP-1 | /ticket heartbeat APP-1",
+		"  /ticket assign APP-1 agent:builder-1",
+		"  /ticket comment APP-1 --body \"Found the failing path\"",
+		"  /ticket request-review APP-1 | /ticket approve APP-1",
+		"  /ticket reject APP-1 --reason \"needs tests\" | /ticket complete APP-1",
+		"  /ticket link APP-1 --blocks APP-2 | --blocked-by APP-2 | --parent APP-2",
+		"  /ticket unlink APP-1 APP-2",
+		"  /run open RUN-ID | /run launch RUN-ID [--refresh]",
+		"  /bulk move in_review | /bulk assign agent:reviewer-1 | /bulk request-review",
+		"  /bulk complete | /bulk claim | /bulk release",
+		"  /views run ready-search",
+		"",
+		"Notes",
+		"  Mutations use the same service layer and event metadata as the CLI.",
+		"  Queue-aware tabs need --actor, TRACKER_ACTOR, or actor.default. Empty queues usually mean the actor has no actionable work.",
+	}
+	for idx, line := range lines {
+		lines[idx] = render.TruncateDisplay(line, contentWidth)
+	}
+	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1).Width(width)
+	if renderEnabled() {
+		style = style.BorderForeground(theme.Primary)
+		lines[0] = lipgloss.NewStyle().Bold(true).Foreground(theme.Accent).Render(lines[0])
+	} else {
+		style = style.Border(lipgloss.NormalBorder())
+	}
+	return style.Render(strings.Join(lines, "\n"))
 }
 
 func (m model) bodyView() string {
