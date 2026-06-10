@@ -1,137 +1,99 @@
 # Atlas Tasker
 
-Local-first task orchestration for AI coding agents and humans.
+**Jira for your terminal, built for AI coding agents.**
 
 [![CI](https://github.com/myrrazor/atlas-tasker/actions/workflows/ci.yml/badge.svg)](https://github.com/myrrazor/atlas-tasker/actions/workflows/ci.yml)
-[![Release status](https://img.shields.io/badge/status-v1.9%20release--readiness-yellow)](docs/release/public-release-gates.md)
+[![Release](https://img.shields.io/github/v/release/myrrazor/atlas-tasker?include_prereleases&label=release)](https://github.com/myrrazor/atlas-tasker/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Atlas Tasker is a terminal-first, markdown-native issue tracker and orchestration layer. It gives you Jira-like tickets, Kanban views, review gates, agent runs, evidence, handoffs, Git/worktree integration, collaboration sync, signed artifacts, audit packets, backups, goal manifests, and MCP access without requiring a hosted server.
+Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your repo. You get Jira-grade tickets — boards, dependencies, review gates, audit history — as plain markdown files plus a fast SQLite index, with no server, no account, and no browser tab. Then it goes where Jira can't: your coding agents (Claude Code, Codex, anything that speaks MCP) claim tickets, get blocked on each other, wake up when their dependencies land, attach evidence, and hand work off for review.
 
-The current public-readiness train is v1.9. Local proof can pass before Atlas is publicly shippable; release sign-off is still blocked until hosted GitHub assets, checksums, attestations, install smoke, and owner release review are complete. See [public release gates](docs/release/public-release-gates.md).
+![Atlas Tasker demo](docs/assets/demo.gif)
 
-## Why Atlas
-
-Coding agents need more than a TODO list. They need work queues, ownership, review gates, durable evidence, handoffs, and a way for humans to see what happened without scraping terminal scrollback.
-
-Atlas keeps that coordination in your repo:
-
-- tickets and project state live as local markdown plus Atlas metadata
-- every mutation goes through the same service layer from CLI, shell, TUI, and MCP
-- agent runs can attach checkpoints, evidence, handoffs, changes, checks, and review gates
-- collaboration sync, bundles, archives, audits, and backups stay inspectable
-- v1.7 security surfaces add signatures, governance, redaction previews, audit packets, and restore planning
-
-## Quickstart
-
-Build from source while the hosted release is still gated:
+## Install
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | VERSION=v1.9.0-rc2 sh
+```
+
+That's it. The installer downloads the release for your platform, verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else). Once a stable release ships, the `VERSION` pin goes away.
+
+Building from source works too:
+
+```bash
+git clone https://github.com/myrrazor/atlas-tasker && cd atlas-tasker
 go build -o tracker ./cmd/tracker
-./tracker version --json
-./tracker init
-./tracker project create APP "Example App"
-./tracker ticket create --project APP --title "Ship first feature" --type task --actor human:owner --reason "quickstart"
-./tracker ticket move APP-1 ready --actor human:owner --reason "start work"
-./tracker board
-./tracker tui
 ```
 
-Typical terminal output is intentionally scannable:
-
-```text
-Backlog (0)
-  - (empty)
-
-Ready (1)
-  - APP-1 [ready] [medium] Ship first feature
-
-In Progress (0)
-  - (empty)
-```
-
-For a longer end-to-end example, read the [demo workspace transcript](docs/examples/transcripts/demo-workspace.md).
-
-## Agent Workflows
-
-Atlas works best when humans and agents share the same ticket flow:
-
-The capture examples below use `jq`; without it, copy the `run_id` and `gate_id` from the JSON output.
+## Five minutes to a working board
 
 ```bash
-./tracker agent create builder-1 --name "Builder One" --provider codex --capability go --actor human:owner --reason "register builder"
-RUN_ID=$(./tracker run dispatch APP-1 --agent builder-1 --actor human:owner --reason "start implementation" --json | jq -r '.payload.run_id')
-./tracker run launch "$RUN_ID" --actor human:owner --reason "prepare launch files"
-./tracker run open "$RUN_ID" --json
-./tracker run checkpoint "$RUN_ID" --title "Implemented first pass" --body "Tests are green locally." --actor agent:builder-1 --reason "status update"
-./tracker run evidence add "$RUN_ID" --type note --title "Test proof" --body "go test ./... passed" --actor agent:builder-1 --reason "attach proof"
-./tracker run handoff "$RUN_ID" --next-actor agent:reviewer-1 --next-gate review --actor agent:builder-1 --reason "ready for review"
-GATE_ID=$(./tracker gate list --run "$RUN_ID" --json | jq -r '.items[0].gate_id')
-./tracker gate approve "$GATE_ID" --actor agent:reviewer-1 --reason "reviewed evidence"
-./tracker ticket complete APP-1 --actor human:owner --reason "done"
+tracker init
+tracker project create APP "My App"
+tracker ticket create --project APP --title "Ship first feature" --type task --actor human:owner --reason "first ticket"
+tracker ticket move APP-1 ready --actor human:owner --reason "groomed"
+tracker board
 ```
 
-Goal manifests help coding agents start with the right context:
+![Kanban board in the terminal](docs/assets/board.png)
+
+Every ticket is a markdown file under `projects/`, every change is an append-only event in `.tracker/`, and a SQLite projection keeps queries instant. Your tracker ships with your repo: branch it, diff it, `git blame` a status change. If the index ever gets corrupted, `tracker doctor --repair` rebuilds it from the event log.
+
+Prefer a full-screen view? `tracker tui` opens the interactive console — board, work queues, ticket detail with timeline, search, review and owner queues, inbox, and an ops dashboard, all keyboard-driven.
+
+![Interactive TUI board](docs/assets/tui-board.png)
+
+![Ticket detail with runs, evidence, and timeline](docs/assets/tui-detail.png)
+
+## Built for agents, not just humans
+
+This is the part Jira doesn't do. Register your agents, assign them tickets, wire up the dependency graph, and let the workflow drive itself:
 
 ```bash
-./tracker goal brief APP-1 --md
-./tracker goal manifest APP-1 --actor human:owner --reason "prepare Codex goal" --md
+tracker agent create builder-1 --name "Builder" --provider claude --capability go \
+  --actor human:owner --reason "register"
+tracker ticket assign APP-2 agent:builder-1 --actor human:owner --reason "agent work"
+tracker ticket link APP-2 --blocked-by APP-1 --actor human:owner --reason "needs the API first"
 ```
 
-## Install And Verify
+Each agent has its own work queue — what's ready for it, what it has claimed, what's still blocked and why:
 
-The one-line installer is intended for published releases. Do not use it for `v1.9.0-rc1` until GitHub release assets exist and the hosted proof in `docs/release/public-release-gates.md` is green.
+![Agent work queue](docs/assets/agent-queue.png)
+
+When `APP-1` lands, Atlas notices that `APP-2` just became unblocked and wakes the assigned agent: it emits an `agent.work_available` event, records a wakeup you can inspect with `tracker agent wakeups list`, and — if you've opted in — launches a command of your choosing, no shell involved:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
+tracker agent auto set builder-1 --mode command \
+  --argv claude --argv "work the tracker ticket {ticket_id}" \
+  --actor human:owner --reason "auto pickup"
 ```
 
-For release candidates, prefer explicit verification:
+Around that core, agents get the full delivery loop:
 
-```bash
-VERSION=v1.9.0-rc1 ./scripts/verify-release.sh ./tracker_1.9.0-rc1_darwin_arm64.tar.gz
-VERSION=v1.9.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
-"$HOME/.local/bin/tracker" version --json
-```
+- **Leases** stop two agents from grabbing the same ticket; stale claims expire on their own.
+- **Runs** track each work session, with checkpoints and per-run git worktrees.
+- **Evidence** attaches proof to runs — test output, diffs, logs, screenshots — so review isn't vibes.
+- **Gates** block completion until a reviewer, owner, QA, or release check signs off.
+- **Handoffs** package up changed files, open questions, and risks for the next agent.
+- **MCP** exposes all of it as tools (`tracker mcp serve`), with tiered profiles from read-only to admin and typed approvals for high-impact operations.
+- **Goal manifests** (`tracker goal brief APP-1 --md`) give an agent the full context of a ticket in one shot.
 
-`scripts/install.sh` now verifies release checksums before installing and verifies GitHub artifact attestations by default. `scripts/verify-release.sh` performs the same archive verification directly. Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.
+The [Claude Code guide](docs/guides/claude-code.md), [Codex guide](docs/guides/codex.md), and [generic agent guide](docs/guides/generic-agent.md) walk through real setups.
+
+## Everything else you'd expect from a real tracker
+
+Epics with progress rollups, subtasks, labels, priorities, comments, saved views, full-text search (`tracker search 'text~payment status=ready'`), bulk operations with dry-run previews, watch subscriptions, automations, a REPL shell, JSON output and stable exit codes on every command for scripting, import/export, archives, and a `doctor` that can actually fix things.
+
+For the paranoid (complimentary): signed artifacts and trust keys, governance policies, structured redaction, signed audit packets, and side-effect-free restore planning. Read what Atlas deliberately does **not** claim in [security limitations](docs/security-limitations.md) — local-first means your filesystem is the trust boundary.
 
 ## Docs
 
-Start with the [docs landing page](docs/README.md), or jump straight to:
+Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [getting started](docs/getting-started.md), [your first agent workflow](docs/first-agent-workflow.md), [MCP for agents](docs/guides/mcp-for-agents.md), [the command reference](docs/reference/commands.md), or [troubleshooting](docs/troubleshooting.md).
 
-- [Installation](docs/installation.md)
-- [Getting started](docs/getting-started.md)
-- [Quickstart](docs/quickstart.md)
-- [First agent workflow](docs/first-agent-workflow.md)
-- [Codex guide](docs/guides/codex.md)
-- [Codex `/goal` guide](docs/guides/codex-goals.md)
-- [Claude Code guide](docs/guides/claude-code.md)
-- [Generic agent guide](docs/guides/generic-agent.md)
-- [Demo examples](docs/examples/README.md)
-- [Tutorials](docs/README.md#tutorials)
-- [MCP for agents](docs/guides/mcp-for-agents.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Doctor and repair](docs/guides/doctor-and-repair.md)
-- [Release verification](docs/guides/release-verification.md)
-- [Command reference](docs/reference/commands.md)
-- [Security limitations](docs/security-limitations.md)
+## Status
 
-## Security
-
-Atlas can verify signed artifacts against trusted local keys, enforce app-level governance, apply structured redaction to Atlas-owned data, produce signed audit packets, and plan restores without known local side effects.
-
-Atlas does not claim OS sandboxing, hosted identity, encrypted-at-rest storage, protection from malicious local filesystem users, formal DLP, full provider-rule enforcement, or full MCP client safety. Read [security limitations](docs/security-limitations.md) before using Atlas on sensitive workspaces.
-
-Do not paste private keys, webhook URLs, tokens, full `.tracker` archives, or unredacted logs into public issues.
-
-## Project Status
-
-- Current train: v1.9 release-readiness
-- Local v1.9 proof: green on the current cleanup branch
-- Hosted prerelease proof: blocked until a release actor publishes and verifies assets
-- License: MIT
+`v1.9.0-rc2` is the current public release candidate — installable today with the one-liner above. Stable follows once the remaining [release gates](docs/release/public-release-gates.md) (human docs review and owner sign-off) close out. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [GOVERNANCE.md](GOVERNANCE.md). PRs should include local proof, docs updates for public interfaces, and no secret material in examples or logs.
+PRs welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) for the local gates (tests, vet, no secrets in examples). The project is MIT licensed.

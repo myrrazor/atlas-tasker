@@ -1,9 +1,17 @@
 # Changelog
 
-Atlas is not yet published as a stable public release. This changelog starts with the public release-candidate polish train.
+Atlas ships public release candidates today; the first stable release follows once the remaining release gates close. This changelog starts with the public release-candidate polish train.
 
 ## Unreleased
 
+- CLI color output now reaches the terminal intact: the display sanitizer preserves the SGR styling Atlas emits itself while still stripping every other escape sequence, so `tracker board` no longer prints `[90m` residue in color-capable terminals. Truncation drops styling cleanly instead of slicing escapes in half.
+- README rewritten around the published release candidate: one-line verified install, terminal screenshots, demo GIF, and the agent workflow story.
+
+## v1.9.0-rc1 - First Public Release Candidate (2026-06-10)
+
+- Published GitHub prerelease with archives for darwin/linux on amd64/arm64, `checksums.txt`, a CycloneDX SBOM, build attestations, and the installer script.
+- Hosted release proof is green: checksum + attestation verification, clean-directory install from published assets, version metadata match, and packaged smoke.
+- Go toolchain moved to 1.26.4 to clear stdlib govulncheck findings (GO-2026-5037, GO-2026-5039).
 - Agent wake-ups now fire for `backlog` and `blocked` tickets when their last dependency completes; failed wake-up recording leaves a visible `failed` record instead of disappearing.
 - A corrupted projection index now exits `repair_needed` with `tracker doctor --repair` guidance instead of leaking the raw sqlite error, and read-only `doctor` diagnoses it.
 - Local planning docs and variant scratch trees are gitignored so they cannot ride along in a public push.
