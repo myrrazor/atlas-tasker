@@ -111,6 +111,36 @@ func TestAgentAvailablePendingCommands(t *testing.T) {
 	}
 }
 
+func TestAgentWakeupViewAcceptsReadContextActor(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("agent", "create", "builder-1", "--name", "Builder", "--provider", "codex", "--actor", "human:owner", "--reason", "test")
+	must("ticket", "create", "--project", "APP", "--title", "Blocker", "--type", "task", "--status", "in_review", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Ready work", "--type", "task", "--status", "ready", "--assignee", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "link", "APP-2", "--blocked-by", "APP-1", "--actor", "human:owner", "--reason", "test dependency")
+	must("ticket", "approve", "APP-1", "--actor", "human:owner", "--reason", "approved")
+	must("ticket", "move", "APP-1", "done", "--actor", "human:owner", "--reason", "blocker done")
+
+	before := eventLogSize(t)
+	view := must("agent", "wakeups", "view", "wakeup_APP-2_after_APP-1", "--actor", "agent:builder-1", "--reason", "read context", "--json")
+	after := eventLogSize(t)
+	if before != after {
+		t.Fatalf("wakeup view should be read-only, event log size changed from %d to %d", before, after)
+	}
+	if !strings.Contains(view, `"wakeup_id": "wakeup_APP-2_after_APP-1"`) || !strings.Contains(view, `"actor": "agent:builder-1"`) {
+		t.Fatalf("unexpected wakeup view:\n%s", view)
+	}
+}
+
 func TestSearchSupportsMultiWordTextAndInvalidInputCode(t *testing.T) {
 	withTempWorkspace(t)
 	must := func(args ...string) string {
@@ -147,6 +177,26 @@ func TestSearchSupportsMultiWordTextAndInvalidInputCode(t *testing.T) {
 	if !strings.Contains(stderr.String(), `"code": "invalid_input"`) || strings.Contains(stderr.String(), `"code": "internal"`) {
 		t.Fatalf("invalid search should use invalid_input JSON error:\n%s", stderr.String())
 	}
+}
+
+func eventLogSize(t *testing.T) int64 {
+	t.Helper()
+	var total int64
+	err := filepath.WalkDir(".tracker/events", func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry == nil || entry.IsDir() {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		total += info.Size()
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("measure event log: %v", err)
+	}
+	return total
 }
 
 func TestCLIRejectsPathDerivedIdentifierTraversal(t *testing.T) {

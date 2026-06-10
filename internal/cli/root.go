@@ -290,6 +290,8 @@ func newAgentCommand() *cobra.Command {
 	for _, sub := range []*cobra.Command{available, pending} {
 		sub.Flags().String("actor", "", "Actor to resolve when AGENT-ID is omitted (defaults through TRACKER_ACTOR or actor.default)")
 	}
+	wakeupView.Flags().String("actor", "", "Read-context actor accepted for command parity")
+	wakeupView.Flags().String("reason", "", "Read-context reason accepted for command parity")
 	for _, sub := range []*cobra.Command{wakeupAck, autoSet, autoOff} {
 		addMutationFlags(sub, &mutationFlags{Actor: "human:owner"})
 		addReadOutputFlags(sub, &outputFlags{})
@@ -1661,6 +1663,9 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	repairActions := make([]string, 0)
 	if err != nil {
 		if !repair {
+			if sqlitestore.IsCorrupt(err) {
+				return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection index is unreadable; rerun as 'tracker doctor --repair' to rebuild it")
+			}
 			return err
 		}
 		for _, candidate := range []string{projectionPath, projectionPath + "-wal", projectionPath + "-shm"} {
@@ -1707,7 +1712,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	repairReport := service.RepairReport{}
 	if _, err := projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
 		if !repair {
-			return err
+			return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection index failed its health check; rerun as 'tracker doctor --repair' to rebuild it")
 		}
 		if rebuildErr := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 			var err error

@@ -162,7 +162,7 @@
 - `tracker agent available [AGENT-ID] [--actor <ACTOR>]`
 - `tracker agent pending [AGENT-ID] [--actor <ACTOR>]`
 - `tracker agent wakeups list [AGENT-ID]`
-- `tracker agent wakeups view <WAKEUP-ID>`
+- `tracker agent wakeups view <WAKEUP-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker agent wakeups ack <WAKEUP-ID> --actor <ACTOR> --reason <TEXT>`
 - `tracker agent auto status <AGENT-ID>`
 - `tracker agent auto set <AGENT-ID> --mode notify|command [--argv <ARG> ...] --actor human:owner --reason <TEXT>`
@@ -174,7 +174,8 @@ Behavior:
 - disabled agents and capability mismatches are reported explicitly in JSON mode
 - `available` lists tickets an agent can start, continue, review, or complete now
 - `pending` lists relevant tickets that are blocked by dependencies, review, owner gates, claims, capacity, or policy
-- wake-ups are event-driven records created when a `done` ticket unblocks assigned agent work
+- wake-ups are event-driven records created under `.tracker/runtime/agent-wakeups/` when a `done` ticket unblocks assigned agent work
+- `agent.work_available` events use reserved actor `agent:atlas`
 - auto mode defaults to `notify`; command mode stores argv items and refuses shell interpreters
 
 ## Runs
@@ -197,6 +198,8 @@ Behavior:
 Rules:
 
 - dispatch creates a run snapshot first, then the managed worktree and runtime directory
+- `--agent` accepts `builder-1` or `agent:builder-1`; the run stores the bare agent id
+- an agent can self-dispatch its own eligible work without project membership, but cross-agent dispatch still uses membership and permission policies
 - one active run per ticket is the default; parallel dispatch requires `allow_parallel_runs=true`
 - `run attach` is idempotent for the same provider/session pair
 - `run open` is read-only and reports the canonical runtime, evidence, and worktree paths; if `needs_launch=true`, run `tracker run launch <RUN-ID> --actor <ACTOR> --reason "prepare launch files"` before handing the files to an agent

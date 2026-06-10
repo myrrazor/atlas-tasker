@@ -58,6 +58,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 - [Security model](reference/security-model.md)
 - [Release scripts](reference/release-scripts.md)
 - [Troubleshooting index](reference/troubleshooting.md)
+- [Known limitations](KNOWN_LIMITATIONS.md)
 
 ## Release Status
 
