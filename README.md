@@ -82,6 +82,23 @@ Around that core, agents get the full delivery loop:
 
 The [Claude Code guide](docs/guides/claude-code.md), [Codex guide](docs/guides/codex.md), and [generic agent guide](docs/guides/generic-agent.md) walk through real setups.
 
+### Pick your team
+
+You don't have to design the org chart yourself. One command turns a fresh workspace into a working agent team — profiles, runbook, separation-of-duties permissions, and the right completion gate included:
+
+```bash
+tracker team apply crossfire --actor human:owner --reason "team setup"
+```
+
+| Preset | What you get |
+|---|---|
+| `solo` | One builder working the whole board, completions stay open |
+| `pair` | Builder + reviewer with an enforced review gate — builders can't approve their own work |
+| `swarm` | Three builders pulling by routing weight, QA gate, owner delegate |
+| `crossfire` | Codex builds, Claude reviews (flip it with `--provider claude`) — two different models keeping each other honest |
+
+`tracker team show <preset>` previews the roster, `--dry-run` applies nothing, and re-running is always safe — existing agents are never overwritten. Then install the matching skill (`tracker integrations install claude` or `codex`), file your tickets, and the agents handle claiming, building, review handoffs, and wake-ups on their own. The [team presets guide](docs/guides/team-presets.md) has the full walkthrough.
+
 ## Everything else you'd expect from a real tracker
 
 Epics with progress rollups, subtasks, labels, priorities, comments, saved views, full-text search (`tracker search 'text~payment status=ready'`), bulk operations with dry-run previews, watch subscriptions, automations, a REPL shell, JSON output and stable exit codes on every command for scripting, import/export, archives, and a `doctor` that can actually fix things.
