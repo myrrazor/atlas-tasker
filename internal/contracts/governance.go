@@ -14,6 +14,7 @@ const (
 	ProtectedActionImportApply       ProtectedAction = "import_apply"
 	ProtectedActionGateApprove       ProtectedAction = "gate_approve"
 	ProtectedActionGateWaive         ProtectedAction = "gate_waive"
+	ProtectedActionTicketApprove     ProtectedAction = "ticket_approve"
 	ProtectedActionTicketComplete    ProtectedAction = "ticket_complete"
 	ProtectedActionRunComplete       ProtectedAction = "run_complete"
 	ProtectedActionChangeMerge       ProtectedAction = "change_merge"
@@ -29,7 +30,7 @@ const (
 
 var validProtectedActions = map[ProtectedAction]struct{}{
 	ProtectedActionSyncImportApply: {}, ProtectedActionBundleImportApply: {}, ProtectedActionImportApply: {}, ProtectedActionGateApprove: {},
-	ProtectedActionGateWaive: {}, ProtectedActionTicketComplete: {}, ProtectedActionRunComplete: {},
+	ProtectedActionGateWaive: {}, ProtectedActionTicketApprove: {}, ProtectedActionTicketComplete: {}, ProtectedActionRunComplete: {},
 	ProtectedActionChangeMerge: {}, ProtectedActionExportCreate: {}, ProtectedActionArchiveRestore: {},
 	ProtectedActionArchiveApply: {}, ProtectedActionBackupRestore: {}, ProtectedActionTrustKey: {}, ProtectedActionRevokeKey: {},
 	ProtectedActionRedactionOverride: {}, ProtectedActionOwnerOverride: {},

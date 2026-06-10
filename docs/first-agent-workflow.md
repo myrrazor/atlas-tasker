@@ -56,6 +56,8 @@ Evidence can also copy a file into the run evidence bundle with `--artifact <PAT
 GATE_ID=$(./tracker gate list --run "$RUN_ID" --json | jq -r '.items[0].gate_id')
 ```
 
+The active run actor or ticket assignee may generate this handoff packet and open the review handoff gate. That does not approve or complete the work; it only creates the review packet and gate for the next actor.
+
 If a gate is opened for `agent:reviewer-1`, that reviewer actor must approve or reject it:
 
 ```bash

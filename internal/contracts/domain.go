@@ -83,6 +83,10 @@ const (
 // Actor is the mutation identity format (e.g. human:owner, agent:builder-1).
 type Actor string
 
+const (
+	ActorAtlasSystem Actor = "agent:atlas"
+)
+
 var validTicketTypes = map[TicketType]struct{}{
 	TicketTypeEpic: {}, TicketTypeTask: {}, TicketTypeBug: {}, TicketTypeSubtask: {},
 }
@@ -693,9 +697,6 @@ func IsTerminalStatus(status Status) bool {
 func BoardStatus(ticket TicketSnapshot) Status {
 	if IsTerminalStatus(ticket.Status) {
 		return StatusDone
-	}
-	if ticket.Status != StatusBlocked && len(ticket.BlockedBy) > 0 {
-		return StatusBlocked
 	}
 	return ticket.Status
 }

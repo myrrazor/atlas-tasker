@@ -18,7 +18,10 @@ func (s *QueryService) DispatchSuggest(ctx context.Context, ticketID string) (Di
 	if err != nil {
 		return DispatchSuggestion{}, err
 	}
-	commonReasons := s.dispatchBlockers(ticket)
+	commonReasons, err := s.dispatchBlockers(ctx, ticket)
+	if err != nil {
+		return DispatchSuggestion{}, err
+	}
 	eligibleCount := 0
 	autoRoute := ""
 	for i := range report.Entries {
@@ -119,18 +122,22 @@ func (s *QueryService) resolveRunbookForAgent(ctx context.Context, ticket contra
 	return contracts.Runbook{}, "", apperr.New(apperr.CodeInvalidInput, "no runbook matches this ticket")
 }
 
-func (s *QueryService) dispatchBlockers(ticket contracts.TicketSnapshot) []string {
+func (s *QueryService) dispatchBlockers(ctx context.Context, ticket contracts.TicketSnapshot) ([]string, error) {
 	codes := make([]string, 0, 4)
 	if ticket.Archived || ticket.Status == contracts.StatusDone || ticket.Status == contracts.StatusCanceled {
 		codes = appendReasonCode(codes, "ticket_status_ineligible")
 	}
-	if len(ticket.BlockedBy) > 0 || ticket.Status == contracts.StatusBlocked {
+	boardStatus, err := s.BoardStatus(ctx, ticket)
+	if err != nil {
+		return nil, err
+	}
+	if boardStatus == contracts.StatusBlocked {
 		codes = appendReasonCode(codes, "blocked_dependency")
 	}
 	if len(ticket.OpenGateIDs) > 0 {
 		codes = appendReasonCode(codes, "open_gate_prevents_dispatch")
 	}
-	return codes
+	return codes, nil
 }
 
 func appendReasonCode(values []string, code string) []string {

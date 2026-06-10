@@ -47,20 +47,49 @@ type QueueView struct {
 	Categories  map[QueueCategory][]QueueEntry `json:"categories"`
 }
 
+type AgentWorkState string
+
+const (
+	AgentWorkAvailable AgentWorkState = "available"
+	AgentWorkPending   AgentWorkState = "pending"
+)
+
+type AgentWorkEntry struct {
+	Ticket         contracts.TicketSnapshot `json:"ticket"`
+	State          AgentWorkState           `json:"state"`
+	Action         string                   `json:"action"`
+	ReasonCodes    []string                 `json:"reason_codes,omitempty"`
+	Reason         string                   `json:"reason,omitempty"`
+	Suggested      []string                 `json:"suggested_commands,omitempty"`
+	UnresolvedDeps []string                 `json:"unresolved_dependencies,omitempty"`
+	RunID          string                   `json:"run_id,omitempty"`
+	GitHint        string                   `json:"git_hint,omitempty"`
+}
+
+type AgentWorkView struct {
+	Actor       contracts.Actor  `json:"actor"`
+	AgentID     string           `json:"agent_id,omitempty"`
+	GeneratedAt time.Time        `json:"generated_at"`
+	Available   []AgentWorkEntry `json:"available"`
+	Pending     []AgentWorkEntry `json:"pending"`
+}
+
 type BoardViewModel struct {
 	Board contracts.BoardView `json:"board"`
 }
 
 type TicketDetailView struct {
-	Ticket          contracts.TicketSnapshot `json:"ticket"`
-	Comments        []string                 `json:"comments"`
-	Mentions        []contracts.Mention      `json:"mentions,omitempty"`
-	History         []contracts.Event        `json:"history"`
-	Gates           []contracts.GateSnapshot `json:"gates,omitempty"`
-	Changes         []contracts.ChangeRef    `json:"changes,omitempty"`
-	Checks          []contracts.CheckResult  `json:"checks,omitempty"`
-	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
-	Git             GitContextView           `json:"git"`
+	Ticket            contracts.TicketSnapshot `json:"ticket"`
+	BoardStatus       contracts.Status         `json:"board_status"`
+	EffectiveReviewer contracts.Actor          `json:"effective_reviewer,omitempty"`
+	Comments          []string                 `json:"comments"`
+	Mentions          []contracts.Mention      `json:"mentions,omitempty"`
+	History           []contracts.Event        `json:"history"`
+	Gates             []contracts.GateSnapshot `json:"gates,omitempty"`
+	Changes           []contracts.ChangeRef    `json:"changes,omitempty"`
+	Checks            []contracts.CheckResult  `json:"checks,omitempty"`
+	EffectivePolicy   EffectivePolicyView      `json:"effective_policy"`
+	Git               GitContextView           `json:"git"`
 }
 
 type HistoryView struct {
@@ -154,19 +183,20 @@ type TimelineView struct {
 }
 
 type InspectView struct {
-	Ticket          contracts.TicketSnapshot `json:"ticket"`
-	BoardStatus     contracts.Status         `json:"board_status"`
-	LeaseActive     bool                     `json:"lease_active"`
-	Migration       MigrationStatusView      `json:"migration"`
-	EffectivePolicy EffectivePolicyView      `json:"effective_policy"`
-	Permissions     []PermissionDecisionView `json:"permissions,omitempty"`
-	History         []contracts.Event        `json:"history"`
-	Gates           []contracts.GateSnapshot `json:"gates,omitempty"`
-	Changes         []contracts.ChangeRef    `json:"changes,omitempty"`
-	Checks          []contracts.CheckResult  `json:"checks,omitempty"`
-	Git             GitContextView           `json:"git"`
-	Mentions        []contracts.Mention      `json:"mentions,omitempty"`
-	QueueCategories []QueueCategory          `json:"queue_categories,omitempty"`
+	Ticket            contracts.TicketSnapshot `json:"ticket"`
+	BoardStatus       contracts.Status         `json:"board_status"`
+	EffectiveReviewer contracts.Actor          `json:"effective_reviewer,omitempty"`
+	LeaseActive       bool                     `json:"lease_active"`
+	Migration         MigrationStatusView      `json:"migration"`
+	EffectivePolicy   EffectivePolicyView      `json:"effective_policy"`
+	Permissions       []PermissionDecisionView `json:"permissions,omitempty"`
+	History           []contracts.Event        `json:"history"`
+	Gates             []contracts.GateSnapshot `json:"gates,omitempty"`
+	Changes           []contracts.ChangeRef    `json:"changes,omitempty"`
+	Checks            []contracts.CheckResult  `json:"checks,omitempty"`
+	Git               GitContextView           `json:"git"`
+	Mentions          []contracts.Mention      `json:"mentions,omitempty"`
+	QueueCategories   []QueueCategory          `json:"queue_categories,omitempty"`
 }
 
 type ChangeDetailView struct {
@@ -236,25 +266,27 @@ const (
 )
 
 type BulkOperation struct {
-	Kind      BulkOperationKind `json:"kind"`
-	Actor     contracts.Actor   `json:"actor"`
-	Assignee  contracts.Actor   `json:"assignee,omitempty"`
-	Status    contracts.Status  `json:"status,omitempty"`
-	Reason    string            `json:"reason,omitempty"`
-	TicketIDs []string          `json:"ticket_ids"`
-	DryRun    bool              `json:"dry_run"`
-	Confirm   bool              `json:"confirm"`
-	BatchID   string            `json:"batch_id,omitempty"`
+	Kind         BulkOperationKind `json:"kind"`
+	Actor        contracts.Actor   `json:"actor"`
+	Assignee     contracts.Actor   `json:"assignee,omitempty"`
+	Status       contracts.Status  `json:"status,omitempty"`
+	Reason       string            `json:"reason,omitempty"`
+	TicketIDs    []string          `json:"ticket_ids"`
+	DryRun       bool              `json:"dry_run"`
+	Confirm      bool              `json:"confirm"`
+	BatchID      string            `json:"batch_id,omitempty"`
+	OverrideDeps bool              `json:"override_deps,omitempty"`
 }
 
 type BulkPreview struct {
-	Kind        BulkOperationKind `json:"kind"`
-	Actor       contracts.Actor   `json:"actor"`
-	Assignee    contracts.Actor   `json:"assignee,omitempty"`
-	Status      contracts.Status  `json:"status,omitempty"`
-	TicketIDs   []string          `json:"ticket_ids"`
-	TicketCount int               `json:"ticket_count"`
-	DryRun      bool              `json:"dry_run"`
+	Kind         BulkOperationKind `json:"kind"`
+	Actor        contracts.Actor   `json:"actor"`
+	Assignee     contracts.Actor   `json:"assignee,omitempty"`
+	Status       contracts.Status  `json:"status,omitempty"`
+	TicketIDs    []string          `json:"ticket_ids"`
+	TicketCount  int               `json:"ticket_count"`
+	DryRun       bool              `json:"dry_run"`
+	OverrideDeps bool              `json:"override_deps,omitempty"`
 }
 
 type BulkTicketResult struct {

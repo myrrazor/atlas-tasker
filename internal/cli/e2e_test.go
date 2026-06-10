@@ -52,8 +52,8 @@ func TestAcceptanceFlowWithRecovery(t *testing.T) {
 	if !strings.Contains(board, "APP-2") || !strings.Contains(board, "Done") {
 		t.Fatalf("board output missing expected ticket/state: %s", board)
 	}
-	if !strings.Contains(board, "Blocked (1)") || !strings.Contains(board, "APP-4 [bug] [blocked]") || !strings.Contains(board, "Bug") {
-		t.Fatalf("board output missing blocked ticket placement: %s", board)
+	if !strings.Contains(board, "Blocked (0)") || !strings.Contains(board, "APP-4 [bug] [backlog]") || !strings.Contains(board, "Bug") {
+		t.Fatalf("board output should clear derived blocked placement after blocker is done: %s", board)
 	}
 
 	history := must("ticket", "history", "APP-2", "--pretty")
@@ -69,8 +69,8 @@ func TestAcceptanceFlowWithRecovery(t *testing.T) {
 	if !strings.Contains(reindexedBoard, "APP-2") {
 		t.Fatalf("reindex board missing APP-2: %s", reindexedBoard)
 	}
-	if !strings.Contains(reindexedBoard, "Blocked (1)") || !strings.Contains(reindexedBoard, "APP-4 [bug] [blocked]") || !strings.Contains(reindexedBoard, "Bug") {
-		t.Fatalf("reindex board missing blocked placement: %s", reindexedBoard)
+	if !strings.Contains(reindexedBoard, "Blocked (0)") || !strings.Contains(reindexedBoard, "APP-4 [bug] [backlog]") || !strings.Contains(reindexedBoard, "Bug") {
+		t.Fatalf("reindex board should match live derived blocker state: %s", reindexedBoard)
 	}
 }
 
