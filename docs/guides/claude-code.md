@@ -5,13 +5,34 @@ Use Atlas as the durable workflow layer around Claude Code sessions. Claude can 
 ## Start A Session
 
 ```bash
-tracker queue --actor agent:builder-1 --json
+tracker agent available builder-1 --json
+tracker agent pending builder-1 --json
 tracker inspect APP-1 --actor agent:builder-1 --json
 tracker ticket claim APP-1 --actor agent:builder-1
 tracker goal brief APP-1 --md
 ```
 
-Paste the goal brief into Claude Code when you want the session to stay inside Atlas constraints.
+Use `available` for actionable work and `pending` for blocker explanations. Paste the goal brief into Claude Code when you want the session to stay inside Atlas constraints.
+
+Claude can dispatch itself to eligible assigned work without project membership:
+
+```bash
+tracker run dispatch APP-1 --agent agent:builder-1 --actor agent:builder-1 --reason "start Claude run"
+```
+
+Operators still use collaborator membership and permission policies for cross-agent dispatch.
+
+Install the Claude guidance and slash-command templates with:
+
+```bash
+tracker integrations install claude
+```
+
+If a dependency completion wakes Claude work, inspect the local inbox first:
+
+```bash
+tracker agent wakeups list builder-1 --json
+```
 
 ## Record Progress
 

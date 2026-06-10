@@ -47,6 +47,33 @@ type QueueView struct {
 	Categories  map[QueueCategory][]QueueEntry `json:"categories"`
 }
 
+type AgentWorkState string
+
+const (
+	AgentWorkAvailable AgentWorkState = "available"
+	AgentWorkPending   AgentWorkState = "pending"
+)
+
+type AgentWorkEntry struct {
+	Ticket         contracts.TicketSnapshot `json:"ticket"`
+	State          AgentWorkState           `json:"state"`
+	Action         string                   `json:"action"`
+	ReasonCodes    []string                 `json:"reason_codes,omitempty"`
+	Reason         string                   `json:"reason,omitempty"`
+	Suggested      []string                 `json:"suggested_commands,omitempty"`
+	UnresolvedDeps []string                 `json:"unresolved_dependencies,omitempty"`
+	RunID          string                   `json:"run_id,omitempty"`
+	GitHint        string                   `json:"git_hint,omitempty"`
+}
+
+type AgentWorkView struct {
+	Actor       contracts.Actor  `json:"actor"`
+	AgentID     string           `json:"agent_id,omitempty"`
+	GeneratedAt time.Time        `json:"generated_at"`
+	Available   []AgentWorkEntry `json:"available"`
+	Pending     []AgentWorkEntry `json:"pending"`
+}
+
 type BoardViewModel struct {
 	Board contracts.BoardView `json:"board"`
 }
@@ -239,25 +266,27 @@ const (
 )
 
 type BulkOperation struct {
-	Kind      BulkOperationKind `json:"kind"`
-	Actor     contracts.Actor   `json:"actor"`
-	Assignee  contracts.Actor   `json:"assignee,omitempty"`
-	Status    contracts.Status  `json:"status,omitempty"`
-	Reason    string            `json:"reason,omitempty"`
-	TicketIDs []string          `json:"ticket_ids"`
-	DryRun    bool              `json:"dry_run"`
-	Confirm   bool              `json:"confirm"`
-	BatchID   string            `json:"batch_id,omitempty"`
+	Kind         BulkOperationKind `json:"kind"`
+	Actor        contracts.Actor   `json:"actor"`
+	Assignee     contracts.Actor   `json:"assignee,omitempty"`
+	Status       contracts.Status  `json:"status,omitempty"`
+	Reason       string            `json:"reason,omitempty"`
+	TicketIDs    []string          `json:"ticket_ids"`
+	DryRun       bool              `json:"dry_run"`
+	Confirm      bool              `json:"confirm"`
+	BatchID      string            `json:"batch_id,omitempty"`
+	OverrideDeps bool              `json:"override_deps,omitempty"`
 }
 
 type BulkPreview struct {
-	Kind        BulkOperationKind `json:"kind"`
-	Actor       contracts.Actor   `json:"actor"`
-	Assignee    contracts.Actor   `json:"assignee,omitempty"`
-	Status      contracts.Status  `json:"status,omitempty"`
-	TicketIDs   []string          `json:"ticket_ids"`
-	TicketCount int               `json:"ticket_count"`
-	DryRun      bool              `json:"dry_run"`
+	Kind         BulkOperationKind `json:"kind"`
+	Actor        contracts.Actor   `json:"actor"`
+	Assignee     contracts.Actor   `json:"assignee,omitempty"`
+	Status       contracts.Status  `json:"status,omitempty"`
+	TicketIDs    []string          `json:"ticket_ids"`
+	TicketCount  int               `json:"ticket_count"`
+	DryRun       bool              `json:"dry_run"`
+	OverrideDeps bool              `json:"override_deps,omitempty"`
 }
 
 type BulkTicketResult struct {

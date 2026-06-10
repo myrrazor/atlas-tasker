@@ -139,6 +139,7 @@ type model struct {
 	height             int
 	board              service.BoardViewModel
 	queue              service.QueueView
+	agentWork          service.AgentWorkView
 	review             service.QueueView
 	owner              service.QueueView
 	runs               []contracts.RunSnapshot
@@ -148,6 +149,7 @@ type model struct {
 	approvals          []service.ApprovalItemView
 	operatorInbox      []service.InboxItemView
 	dispatchQueue      service.DispatchQueueView
+	agentWakeups       []service.AgentWakeup
 	worktrees          []service.WorktreeStatusView
 	dashboard          service.DashboardSummaryView
 	timeline           service.TimelineView
@@ -172,6 +174,7 @@ type model struct {
 type loadedMsg struct {
 	board             service.BoardViewModel
 	queue             service.QueueView
+	agentWork         service.AgentWorkView
 	review            service.QueueView
 	owner             service.QueueView
 	runs              []contracts.RunSnapshot
@@ -181,6 +184,7 @@ type loadedMsg struct {
 	approvals         []service.ApprovalItemView
 	operatorInbox     []service.InboxItemView
 	dispatchQueue     service.DispatchQueueView
+	agentWakeups      []service.AgentWakeup
 	worktrees         []service.WorktreeStatusView
 	dashboard         service.DashboardSummaryView
 	timeline          service.TimelineView
@@ -312,6 +316,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.queue.Categories != nil {
 			m.queue = msg.queue
 		}
+		if msg.agentWork.GeneratedAt != (time.Time{}) {
+			m.agentWork = msg.agentWork
+		}
 		if msg.review.Categories != nil {
 			m.review = msg.review
 		}
@@ -338,6 +345,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.dispatchQueue.GeneratedAt != (time.Time{}) || msg.dispatchQueue.Entries != nil {
 			m.dispatchQueue = msg.dispatchQueue
+		}
+		if msg.agentWakeups != nil {
+			m.agentWakeups = msg.agentWakeups
 		}
 		if msg.worktrees != nil {
 			m.worktrees = msg.worktrees
@@ -566,7 +576,7 @@ func (m model) bodyView() string {
 		if m.actor == "" {
 			return render.EmptyState("Queues", "Set --actor, TRACKER_ACTOR, or actor.default to populate queues.")
 		}
-		return ticketsListView("Queues", m.itemsForScreen(), m.cursor, m.width)
+		return agentWorkView(m.agentWork, m.cursor, m.width)
 	case screenDetail:
 		if m.detail.Ticket.ID == "" {
 			return render.EmptyState("Detail", "No ticket selected yet.")
@@ -590,7 +600,7 @@ func (m model) bodyView() string {
 	case screenViews:
 		return savedViewsPanel(m.savedViews, m.selectedViewName(), m.cursor)
 	case screenOps:
-		return opsView(m.dashboard, m.agents, m.dispatchQueue, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk, m.collaboratorFilter)
+		return opsView(m.dashboard, m.agents, m.dispatchQueue, m.agentWakeups, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk, m.collaboratorFilter)
 	default:
 		return ""
 	}
@@ -618,6 +628,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			return loadedMsg{err: err}
 		}
 		queue := service.QueueView{}
+		agentWork := service.AgentWorkView{GeneratedAt: m.now()}
 		review := service.QueueView{}
 		runs := []contracts.RunSnapshot{}
 		runDetail := service.RunDetailView{GeneratedAt: m.now()}
@@ -626,6 +637,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		approvals := []service.ApprovalItemView{}
 		operatorInbox := []service.InboxItemView{}
 		dispatchQueue := service.DispatchQueueView{}
+		agentWakeups := []service.AgentWakeup{}
 		worktrees := []service.WorktreeStatusView{}
 		dashboard := service.DashboardSummaryView{GeneratedAt: m.now()}
 		timeline := service.TimelineView{GeneratedAt: m.now()}
@@ -635,6 +647,10 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		}
 		if actor != "" {
 			queue, err = m.queries.Queue(ctx, actor)
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+			agentWork, err = m.queries.AgentWork(ctx, actor)
 			if err != nil {
 				return loadedMsg{err: err}
 			}
@@ -673,6 +689,12 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		dispatchQueue, err = m.queries.DispatchQueue(ctx)
 		if err != nil {
 			return loadedMsg{err: err}
+		}
+		if actor != "" {
+			agentWakeups, err = m.queries.AgentWakeups(ctx, tuiAgentIDFromActor(actor))
+			if err != nil {
+				return loadedMsg{err: err}
+			}
 		}
 		worktrees, err = m.queries.WorktreeList(ctx)
 		if err != nil {
@@ -735,6 +757,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		return loadedMsg{
 			board:             board,
 			queue:             queue,
+			agentWork:         agentWork,
 			review:            review,
 			owner:             owner,
 			runs:              runs,
@@ -744,6 +767,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			approvals:         approvals,
 			operatorInbox:     operatorInbox,
 			dispatchQueue:     dispatchQueue,
+			agentWakeups:      agentWakeups,
 			worktrees:         worktrees,
 			dashboard:         dashboard,
 			timeline:          timeline,
@@ -840,7 +864,7 @@ func (m model) itemsForScreen() []contracts.TicketSnapshot {
 		}
 		return items
 	case screenQueues:
-		return queueItems(m.queue)
+		return agentWorkItems(m.agentWork)
 	case screenReview:
 		return queueItems(m.review)
 	case screenOwner:
@@ -1172,6 +1196,58 @@ func queueItems(queue service.QueueView) []contracts.TicketSnapshot {
 	return items
 }
 
+func agentWorkItems(work service.AgentWorkView) []contracts.TicketSnapshot {
+	items := make([]contracts.TicketSnapshot, 0, len(work.Available)+len(work.Pending))
+	for _, entry := range work.Available {
+		items = append(items, entry.Ticket)
+	}
+	for _, entry := range work.Pending {
+		items = append(items, entry.Ticket)
+	}
+	return items
+}
+
+func agentWorkView(work service.AgentWorkView, cursor int, width int) string {
+	if work.GeneratedAt.IsZero() {
+		return render.EmptyState("Agent Work", "No agent queue loaded yet.")
+	}
+	if len(work.Available) == 0 && len(work.Pending) == 0 {
+		return render.EmptyState("Agent Work", "No available or pending work for this actor.")
+	}
+	lines := []string{fmt.Sprintf("Agent Work for %s", optionalActor(work.Actor, "unset"))}
+	index := 0
+	appendEntry := func(label string, entries []service.AgentWorkEntry) {
+		lines = append(lines, "", label+":")
+		if len(entries) == 0 {
+			lines = append(lines, "  (none)")
+			return
+		}
+		for _, entry := range entries {
+			prefix := "  "
+			if index == cursor {
+				prefix = "> "
+			}
+			reason := entry.Reason
+			if reason == "" && len(entry.ReasonCodes) > 0 {
+				reason = strings.Join(entry.ReasonCodes, ",")
+			}
+			summaryWidth := width - lipgloss.Width(prefix)
+			if summaryWidth <= 0 {
+				summaryWidth = 88
+			}
+			summary := render.TicketSummary(entry.Ticket, summaryWidth)
+			if reason != "" {
+				summary += " [" + render.SanitizeDisplayLine(reason) + "]"
+			}
+			lines = append(lines, prefix+summary)
+			index++
+		}
+	}
+	appendEntry("Available", work.Available)
+	appendEntry("Pending", work.Pending)
+	return strings.Join(lines, "\n")
+}
+
 func nextTickets(next service.NextView) []contracts.TicketSnapshot {
 	items := make([]contracts.TicketSnapshot, 0, len(next.Entries))
 	for _, entry := range next.Entries {
@@ -1323,7 +1399,7 @@ func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) s
 	return strings.Join(lines, "\n")
 }
 
-func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetailView, dispatch service.DispatchQueueView, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation, collaboratorFilter string) string {
+func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetailView, dispatch service.DispatchQueueView, wakeups []service.AgentWakeup, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation, collaboratorFilter string) string {
 	lines := []string{
 		"Dashboard:",
 		fmt.Sprintf("- collaborator_filter: %s", optionalString(strings.TrimSpace(collaboratorFilter), "all")),
@@ -1402,6 +1478,14 @@ func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetai
 		for _, entry := range dispatch.Entries {
 			auto := optionalString(entry.Suggestion.AutoRouteAgentID, "manual")
 			lines = append(lines, fmt.Sprintf("- %s auto=%s", render.SanitizeDisplayLine(entry.Ticket.ID), auto))
+		}
+	}
+	lines = append(lines, "", "Agent Wakeups:")
+	if len(wakeups) == 0 {
+		lines = append(lines, "- none")
+	} else {
+		for _, item := range wakeups {
+			lines = append(lines, fmt.Sprintf("- %s ticket=%s blocker=%s state=%s", render.SanitizeDisplayLine(item.WakeupID), render.SanitizeDisplayLine(item.TicketID), render.SanitizeDisplayLine(item.BlockerTicketID), item.State))
 		}
 	}
 	lines = append(lines, "", "Worktrees:")
@@ -1493,6 +1577,14 @@ func optionalActor(actor contracts.Actor, fallback string) string {
 		return fallback
 	}
 	return string(actor)
+}
+
+func tuiAgentIDFromActor(actor contracts.Actor) string {
+	raw := strings.TrimSpace(string(actor))
+	if strings.HasPrefix(raw, "agent:") {
+		return strings.TrimPrefix(raw, "agent:")
+	}
+	return ""
 }
 
 func renderEnabled() bool {

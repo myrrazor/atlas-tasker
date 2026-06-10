@@ -214,4 +214,27 @@ func TestBulkMoveRespectsDependencyBlocks(t *testing.T) {
 	if !strings.Contains(view, `"status": "ready"`) || !strings.Contains(view, `"board_status": "blocked"`) {
 		t.Fatalf("bulk dependency failure should leave status ready and board_status blocked: %s", view)
 	}
+	override := must("bulk", "move", "in_progress", "--ticket", "APP-2", "--yes", "--override-deps", "--actor", "human:owner", "--reason", "accept dependency risk", "--json")
+	var overrideApplied struct {
+		Preview struct {
+			OverrideDeps bool `json:"override_deps"`
+		} `json:"preview"`
+		Summary struct {
+			Succeeded int `json:"succeeded"`
+			Failed    int `json:"failed"`
+		} `json:"summary"`
+		Results []struct {
+			Reason string `json:"reason"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(override), &overrideApplied); err != nil {
+		t.Fatalf("parse override bulk output: %v\nraw=%s", err, override)
+	}
+	if !overrideApplied.Preview.OverrideDeps || overrideApplied.Summary.Succeeded != 1 || overrideApplied.Summary.Failed != 0 || !strings.Contains(overrideApplied.Results[0].Reason, "moved") {
+		t.Fatalf("expected owner override bulk move to succeed: %#v", overrideApplied)
+	}
+	history := must("ticket", "history", "APP-2", "--json")
+	if !strings.Contains(history, `"dependency_override"`) || !strings.Contains(history, `"APP-1"`) {
+		t.Fatalf("expected bulk override audit payload in history: %s", history)
+	}
 }

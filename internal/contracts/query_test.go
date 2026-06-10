@@ -26,6 +26,51 @@ func TestParseSearchQuerySupportsAllV1Operators(t *testing.T) {
 	}
 }
 
+func TestParseSearchQuerySupportsMultiWordText(t *testing.T) {
+	query, err := ParseSearchQuery("project=AUTH text~logout flow")
+	if err != nil {
+		t.Fatalf("parse search query: %v", err)
+	}
+	if len(query.Terms) != 2 {
+		t.Fatalf("expected two terms, got %#v", query.Terms)
+	}
+	if query.Terms[0] != (SearchTerm{Kind: SearchTermProject, Value: "AUTH"}) {
+		t.Fatalf("unexpected project term: %#v", query.Terms[0])
+	}
+	if query.Terms[1] != (SearchTerm{Kind: SearchTermTextLike, Value: "logout flow"}) {
+		t.Fatalf("unexpected text term: %#v", query.Terms[1])
+	}
+}
+
+func TestParseSearchQuerySupportsQuotedMultiWordText(t *testing.T) {
+	query, err := ParseSearchQuery(`project=AUTH text~"logout flow"`)
+	if err != nil {
+		t.Fatalf("parse search query: %v", err)
+	}
+	if len(query.Terms) != 2 {
+		t.Fatalf("expected two terms, got %#v", query.Terms)
+	}
+	if query.Terms[1] != (SearchTerm{Kind: SearchTermTextLike, Value: "logout flow"}) {
+		t.Fatalf("unexpected text term: %#v", query.Terms[1])
+	}
+}
+
+func TestParseSearchQueryTextStopsAtNextStructuredTerm(t *testing.T) {
+	query, err := ParseSearchQuery("text~logout flow status=ready")
+	if err != nil {
+		t.Fatalf("parse search query: %v", err)
+	}
+	if len(query.Terms) != 2 {
+		t.Fatalf("expected two terms, got %#v", query.Terms)
+	}
+	if query.Terms[0] != (SearchTerm{Kind: SearchTermTextLike, Value: "logout flow"}) {
+		t.Fatalf("unexpected text term: %#v", query.Terms[0])
+	}
+	if query.Terms[1] != (SearchTerm{Kind: SearchTermStatus, Value: "ready"}) {
+		t.Fatalf("unexpected status term: %#v", query.Terms[1])
+	}
+}
+
 func TestParseSearchQueryRejectsUnsupportedToken(t *testing.T) {
 	_, err := ParseSearchQuery("foo=bar")
 	if err == nil {
