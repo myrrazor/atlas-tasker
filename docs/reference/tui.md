@@ -4,6 +4,8 @@
 
 The TUI is optimized for scanning queues, boards, ticket details, approvals, inbox items, runs, sync state, and operations dashboards. It uses the same service layer as the CLI.
 
+Repeated items render as bordered tables where the terminal is wide enough, so board, queue, inbox, saved-view, and ops panels line up with the CLI pretty output.
+
 Help is available inside the TUI:
 
 - `?` opens or closes the expanded help guide
@@ -29,6 +31,7 @@ Display rules:
 
 - `NO_COLOR=1` disables color
 - `COLUMNS=<N>` controls width in non-interactive validation
+- table borders fall back to ASCII in plain/non-color contexts
 - user-controlled strings are sanitized before display
 - JSON remains the better source for exact stored values
 

@@ -9,10 +9,27 @@ import (
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
+	tableview "github.com/charmbracelet/lipgloss/table"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/theme"
 	"golang.org/x/term"
 )
+
+type TableBorderMode int
+
+const (
+	TableBorderAuto TableBorderMode = iota
+	TableBorderUnicode
+	TableBorderASCII
+)
+
+type TableOptions struct {
+	Title             string
+	Width             int
+	SelectedRow       int
+	HighlightSelected bool
+	Border            TableBorderMode
+}
 
 func colorEnabled() bool {
 	return ColorEnabled()
@@ -80,21 +97,31 @@ func sanitizeDisplay(value string, preserveNewlines bool, allowSGR bool) string 
 	if value == "" {
 		return ""
 	}
+	value = stripRawC1CSI(value)
+	value = strings.ToValidUTF8(value, "")
 	runes := []rune(value)
 	var out strings.Builder
 	for i := 0; i < len(runes); i++ {
 		r := runes[i]
 		switch {
 		case r == 0x1b:
-			if allowSGR {
-				if end, ok := sgrEnd(runes, i); ok {
+			if end, ok := sgrEnd(runes, i); ok {
+				if allowSGR {
 					for j := i; j <= end; j++ {
 						out.WriteRune(runes[j])
 					}
-					i = end
 				}
+				i = end
+				continue
+			}
+			if end, ok := escapeSequenceEnd(runes, i); ok {
+				i = end
 			}
 			// every other escape sequence stays banned
+		case r == 0x9b:
+			if end, ok := csiEnd(runes, i+1); ok {
+				i = end
+			}
 		case r == '\n' || r == '\r':
 			if preserveNewlines {
 				out.WriteRune('\n')
@@ -112,6 +139,65 @@ func sanitizeDisplay(value string, preserveNewlines bool, allowSGR bool) string 
 		}
 	}
 	return out.String()
+}
+
+func stripRawC1CSI(value string) string {
+	bytes := []byte(value)
+	var out strings.Builder
+	for i := 0; i < len(bytes); i++ {
+		if bytes[i] != 0x9b {
+			out.WriteByte(bytes[i])
+			continue
+		}
+		for i+1 < len(bytes) {
+			i++
+			if bytes[i] >= 0x40 && bytes[i] <= 0x7e {
+				break
+			}
+		}
+	}
+	return out.String()
+}
+
+func escapeSequenceEnd(runes []rune, start int) (int, bool) {
+	if start+1 >= len(runes) {
+		return start, true
+	}
+	switch runes[start+1] {
+	case '[':
+		return csiEnd(runes, start+2)
+	case ']':
+		return oscEnd(runes, start+2), true
+	default:
+		return start + 1, true
+	}
+}
+
+func csiEnd(runes []rune, start int) (int, bool) {
+	for i := start; i < len(runes); i++ {
+		if runes[i] >= 0x40 && runes[i] <= 0x7e {
+			return i, true
+		}
+	}
+	if len(runes) == 0 {
+		return 0, false
+	}
+	return len(runes) - 1, true
+}
+
+func oscEnd(runes []rune, start int) int {
+	for i := start; i < len(runes); i++ {
+		if runes[i] == '\a' {
+			return i
+		}
+		if runes[i] == 0x1b && i+1 < len(runes) && runes[i+1] == '\\' {
+			return i + 1
+		}
+	}
+	if len(runes) == 0 {
+		return 0
+	}
+	return len(runes) - 1
 }
 
 // sgrEnd reports the index of the terminating 'm' when runes[start] opens a
@@ -182,11 +268,38 @@ func TicketsPrettyWithWidth(title string, tickets []contracts.TicketSnapshot, wi
 		return EmptyState(title, "No tickets found. Try creating one with `tracker ticket create`.")
 	}
 	width = normalizedWidth(width)
+	if width >= 44 {
+		return TicketsTable(title, tickets, width, -1)
+	}
 	lines := []string{SanitizeDisplayLine(title) + ":"}
 	for _, ticket := range tickets {
 		lines = append(lines, "- "+TicketSummary(ticket, width-2))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func TicketsTable(title string, tickets []contracts.TicketSnapshot, width int, selectedRow int) string {
+	rows := make([][]string, 0, len(tickets))
+	for idx, ticket := range tickets {
+		marker := ""
+		if idx == selectedRow {
+			marker = ">"
+		}
+		rows = append(rows, []string{
+			marker,
+			SanitizeDisplayLine(ticket.ID),
+			optionalString(TypeBadge(ticket.Type), "-"),
+			StatusBadge(ticket.Status),
+			PriorityBadge(ticket.Priority),
+			optionalString(SanitizeDisplayLine(ticket.Title), "(untitled)"),
+		})
+	}
+	return RenderTable([]string{"", "ID", "Type", "Status", "Priority", "Title"}, rows, TableOptions{
+		Title:             title,
+		Width:             width,
+		SelectedRow:       selectedRow,
+		HighlightSelected: selectedRow >= 0,
+	})
 }
 
 func BoardPretty(board contracts.BoardView) string {
@@ -211,15 +324,45 @@ func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
 		contracts.StatusBlocked:    "Blocked",
 		contracts.StatusDone:       "Done",
 	}
+	if width >= 54 {
+		rows := make([][]string, 0)
+		for _, status := range ordered {
+			tickets := sortedTickets(board.Columns[status])
+			if len(tickets) == 0 {
+				// empty workflow columns are noise in a table; the kanban
+				// sections below still show them on narrow terminals
+				continue
+			}
+			column := fmt.Sprintf("%s (%d)", labels[status], len(tickets))
+			if ColorEnabled() {
+				column = lipgloss.NewStyle().Bold(true).Foreground(theme.Primary).Render(column)
+			}
+			for idx, ticket := range tickets {
+				label := ""
+				if idx == 0 {
+					label = column
+				}
+				rows = append(rows, []string{
+					label,
+					SanitizeDisplayLine(ticket.ID),
+					optionalString(TypeBadge(ticket.Type), "-"),
+					StatusBadge(ticket.Status),
+					PriorityBadge(ticket.Priority),
+					optionalString(SanitizeDisplayLine(ticket.Title), "(untitled)"),
+				})
+			}
+		}
+		if len(rows) == 0 {
+			return EmptyState("Board", "No tickets yet.")
+		}
+		return RenderTable([]string{"Column", "ID", "Type", "Status", "Priority", "Title"}, rows, TableOptions{
+			Title: "Board",
+			Width: width,
+		})
+	}
 	sections := make([]string, 0, len(ordered))
 	for _, status := range ordered {
-		tickets := board.Columns[status]
-		sort.Slice(tickets, func(i, j int) bool {
-			if tickets[i].UpdatedAt.Equal(tickets[j].UpdatedAt) {
-				return tickets[i].ID < tickets[j].ID
-			}
-			return tickets[i].UpdatedAt.Before(tickets[j].UpdatedAt)
-		})
+		tickets := sortedTickets(board.Columns[status])
 		header := TruncateDisplay(fmt.Sprintf("%s (%d)", labels[status], len(tickets)), width)
 		if ColorEnabled() {
 			header = lipgloss.NewStyle().Bold(true).Foreground(theme.Primary).Render(header)
@@ -241,6 +384,17 @@ func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
 	return strings.Join(sections, "\n\n")
 }
 
+func sortedTickets(tickets []contracts.TicketSnapshot) []contracts.TicketSnapshot {
+	out := append([]contracts.TicketSnapshot{}, tickets...)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
+			return out[i].ID < out[j].ID
+		}
+		return out[i].UpdatedAt.Before(out[j].UpdatedAt)
+	})
+	return out
+}
+
 func Markdown(input string) string {
 	return MarkdownWithWidth(input, terminalWidth(100)-4)
 }
@@ -259,6 +413,94 @@ func MarkdownWithWidth(input string, width int) string {
 		return input
 	}
 	return out
+}
+
+func RenderTable(headers []string, rows [][]string, options TableOptions) string {
+	width := normalizedWidth(options.Width)
+	cleanHeaders := make([]string, 0, len(headers))
+	for _, header := range headers {
+		cleanHeaders = append(cleanHeaders, SanitizeDisplayLine(header))
+	}
+	cleanRows := make([][]string, 0, len(rows))
+	for _, row := range rows {
+		clean := make([]string, 0, len(row))
+		for _, cell := range row {
+			// keep our own SGR badge styling; renderers strict-scrub user
+			// content before any styling is applied (same invariant as the
+			// output boundary)
+			clean = append(clean, strings.Join(strings.Fields(sanitizeDisplay(cell, false, true)), " "))
+		}
+		cleanRows = append(cleanRows, clean)
+	}
+
+	border := lipgloss.RoundedBorder()
+	if tableUsesASCII(options.Border) {
+		border = lipgloss.ASCIIBorder()
+	}
+	styleCell := func(row, _ int) lipgloss.Style {
+		style := lipgloss.NewStyle().Padding(0, 1)
+		switch {
+		case row == tableview.HeaderRow:
+			style = style.Bold(true)
+			if ColorEnabled() {
+				style = style.Foreground(theme.Accent)
+			}
+		case options.HighlightSelected && options.SelectedRow >= 0 && row == options.SelectedRow:
+			style = style.Bold(true)
+			if ColorEnabled() {
+				style = style.Foreground(theme.Primary)
+			}
+		}
+		return style
+	}
+	makeTable := func(fixedWidth int) *tableview.Table {
+		t := tableview.New().
+			Border(border).
+			BorderRow(false).
+			BorderHeader(true).
+			BorderColumn(true).
+			Wrap(false).
+			StyleFunc(styleCell).
+			Headers(cleanHeaders...).
+			Rows(cleanRows...)
+		if fixedWidth > 0 {
+			t = t.Width(fixedWidth)
+		}
+		if ColorEnabled() {
+			t.BorderStyle(lipgloss.NewStyle().Foreground(theme.Muted))
+		}
+		return t
+	}
+
+	// hug the content like a real terminal table; only pin the width when the
+	// natural layout overflows the terminal
+	rendered := makeTable(0).String()
+	for _, line := range strings.Split(rendered, "\n") {
+		if lipgloss.Width(line) > width {
+			rendered = makeTable(width).String()
+			break
+		}
+	}
+	title := strings.TrimSpace(SanitizeDisplayLine(options.Title))
+	if title == "" {
+		return rendered
+	}
+	titleText := TruncateDisplay(title, width)
+	if ColorEnabled() {
+		titleText = lipgloss.NewStyle().Bold(true).Foreground(theme.Primary).Render(titleText)
+	}
+	return titleText + "\n" + rendered
+}
+
+func tableUsesASCII(mode TableBorderMode) bool {
+	switch mode {
+	case TableBorderASCII:
+		return true
+	case TableBorderUnicode:
+		return false
+	default:
+		return !ColorEnabled()
+	}
 }
 
 func StatusBadge(status contracts.Status) string {

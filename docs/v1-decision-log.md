@@ -387,3 +387,18 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** The TUI command surface grows enough that generated help or per-tab help becomes easier to keep accurate than a curated guide.
 9. **Affected PRs/Files:** `internal/tui/app.go`, `internal/tui/mutations.go`, `internal/tui/app_test.go`, `docs/reference/tui.md`, `docs/tutorials/05-use-the-tui.md`.
+
+## DEC-028
+
+1. **Decision ID:** DEC-028
+2. **Date:** 2026-06-10
+3. **Question:** How should repeated terminal items be presented in CLI pretty output and the TUI?
+4. **Options Considered:**
+   - Keep bullet-only list output.
+   - Add bordered tables to repeated-row views while preserving JSON and Markdown contracts.
+   - Add a new output flag for table output.
+5. **Chosen Option:** Use bordered tables for repeated-row pretty/TUI views by default.
+6. **Why We Chose It:** Atlas is terminal-first, and board, queue, agent work, saved-view, run, evidence, and operations lists are easier to scan when columns line up with clear borders. Keeping this in pretty/TUI presentation avoids changing machine-readable JSON or agent-readable Markdown.
+7. **Confidence:** high
+8. **Revisit Trigger:** Terminal compatibility or accessibility reports show box rendering is unreliable, or users need a persistent table style setting beyond `--plain`/`NO_COLOR`.
+9. **Affected PRs/Files:** `internal/render/render.go`, `internal/cli/root.go`, `internal/cli/run.go`, `internal/tui/app.go`, renderer/CLI/TUI tests, terminal output docs.

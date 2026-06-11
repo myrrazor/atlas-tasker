@@ -2701,15 +2701,23 @@ func runViewsList(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	md := "## Saved Views\n\n"
-	pretty := "saved views:\n"
+	rows := make([][]string, 0, len(views))
 	for _, view := range views {
 		title := strings.TrimSpace(view.Title)
 		if title == "" {
 			title = view.Name
 		}
 		md += fmt.Sprintf("- %s [%s] %s\n", view.Name, view.Kind, title)
-		pretty += fmt.Sprintf("- %s [%s] %s\n", view.Name, view.Kind, title)
+		rows = append(rows, []string{
+			render.SanitizeDisplayLine(view.Name),
+			render.SanitizeDisplayLine(string(view.Kind)),
+			render.SanitizeDisplayLine(title),
+		})
 	}
+	pretty := render.RenderTable([]string{"Name", "Kind", "Title"}, rows, render.TableOptions{
+		Title: "Saved Views",
+		Width: render.TerminalWidth(100),
+	})
 	return writeCommandOutput(cmd, views, md, pretty)
 }
 
@@ -3232,19 +3240,28 @@ func queuePretty(queue service.QueueView) string {
 }
 
 func queuePrettySelected(queue service.QueueView, categories []string, title string) string {
-	pretty := fmt.Sprintf("%s for %s:\n", strings.ToLower(title), queue.Actor)
+	rows := make([][]string, 0)
 	for _, category := range orderedQueueCategoriesSelected(categories) {
 		entries := queue.Categories[category]
-		pretty += fmt.Sprintf("%s:\n", category)
 		if len(entries) == 0 {
-			pretty += "  (empty)\n"
+			rows = append(rows, []string{string(category), "-", "-", "-", "(empty)", ""})
 			continue
 		}
 		for _, entry := range entries {
-			pretty += fmt.Sprintf("  - %s [%s/%s] %s — %s\n", entry.Ticket.ID, entry.Ticket.Status, entry.Ticket.Priority, entry.Ticket.Title, entry.Reason)
+			rows = append(rows, []string{
+				render.SanitizeDisplayLine(string(category)),
+				render.SanitizeDisplayLine(entry.Ticket.ID),
+				render.StatusBadge(entry.Ticket.Status),
+				render.PriorityBadge(entry.Ticket.Priority),
+				render.SanitizeDisplayLine(entry.Ticket.Title),
+				render.SanitizeDisplayLine(entry.Reason),
+			})
 		}
 	}
-	return pretty
+	return render.RenderTable([]string{"Queue", "ID", "Status", "Priority", "Title", "Reason"}, rows, render.TableOptions{
+		Title: fmt.Sprintf("%s for %s", title, queue.Actor),
+		Width: render.TerminalWidth(100),
+	})
 }
 
 func orderedQueueCategories() []service.QueueCategory {
@@ -3450,6 +3467,7 @@ func formatAgentWork(view service.AgentWorkView, state service.AgentWorkState) (
 		pretty += "\n(no tickets)"
 		return md, pretty
 	}
+	rows := make([][]string, 0, len(entries))
 	for _, entry := range entries {
 		reason := entry.Reason
 		if reason == "" && len(entry.ReasonCodes) > 0 {
@@ -3467,11 +3485,19 @@ func formatAgentWork(view service.AgentWorkView, state service.AgentWorkState) (
 		} else {
 			md += "\n"
 		}
-		pretty += fmt.Sprintf("\n- %s [%s] %s", entry.Ticket.ID, entry.Action, entry.Ticket.Title)
-		if reason != "" {
-			pretty += " (" + reason + ")"
-		}
+		rows = append(rows, []string{
+			render.SanitizeDisplayLine(entry.Ticket.ID),
+			render.SanitizeDisplayLine(string(entry.Action)),
+			render.StatusBadge(entry.Ticket.Status),
+			render.PriorityBadge(entry.Ticket.Priority),
+			render.SanitizeDisplayLine(entry.Ticket.Title),
+			render.SanitizeDisplayLine(reason),
+		})
 	}
+	pretty = render.RenderTable([]string{"ID", "Action", "Status", "Priority", "Title", "Reason"}, rows, render.TableOptions{
+		Title: fmt.Sprintf("%s for %s", title, view.Actor),
+		Width: render.TerminalWidth(100),
+	})
 	return md, pretty
 }
 

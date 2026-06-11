@@ -728,11 +728,11 @@ func (m model) bodyView() string {
 	case screenOwner:
 		return ticketsListView("Owner Attention", m.itemsForScreen(), m.cursor, m.width)
 	case screenInbox:
-		return attentionView(m.approvals, m.operatorInbox, m.inbox, m.deadLetters)
+		return attentionView(m.approvals, m.operatorInbox, m.inbox, m.deadLetters, m.width)
 	case screenViews:
-		return savedViewsPanel(m.savedViews, m.selectedViewName(), m.cursor)
+		return savedViewsPanel(m.savedViews, m.selectedViewName(), m.cursor, m.width)
 	case screenOps:
-		return opsView(m.dashboard, m.agents, m.dispatchQueue, m.agentWakeups, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk, m.collaboratorFilter)
+		return opsView(m.dashboard, m.agents, m.dispatchQueue, m.agentWakeups, m.worktrees, m.automations, m.automationExplain, m.lastBulk, m.pendingBulk, m.collaboratorFilter, m.width)
 	default:
 		return ""
 	}
@@ -1347,6 +1347,49 @@ func agentWorkView(work service.AgentWorkView, cursor int, width int) string {
 	if len(work.Available) == 0 && len(work.Pending) == 0 {
 		return render.EmptyState("Agent Work", "No available or pending work for this actor.")
 	}
+	if width >= 54 {
+		rows := make([][]string, 0, len(work.Available)+len(work.Pending)+2)
+		itemIndex := 0
+		tableRow := 0
+		selectedRow := -1
+		appendEntry := func(label string, entries []service.AgentWorkEntry) {
+			if len(entries) == 0 {
+				rows = append(rows, []string{"", label, "-", "-", "-", "(none)", ""})
+				tableRow++
+				return
+			}
+			for _, entry := range entries {
+				marker := ""
+				if itemIndex == cursor {
+					marker = ">"
+					selectedRow = tableRow
+				}
+				reason := entry.Reason
+				if reason == "" && len(entry.ReasonCodes) > 0 {
+					reason = strings.Join(entry.ReasonCodes, ",")
+				}
+				rows = append(rows, []string{
+					marker,
+					label,
+					render.SanitizeDisplayLine(entry.Ticket.ID),
+					render.StatusBadge(entry.Ticket.Status),
+					render.PriorityBadge(entry.Ticket.Priority),
+					render.SanitizeDisplayLine(entry.Ticket.Title),
+					render.SanitizeDisplayLine(reason),
+				})
+				itemIndex++
+				tableRow++
+			}
+		}
+		appendEntry("Available", work.Available)
+		appendEntry("Pending", work.Pending)
+		return render.RenderTable([]string{"", "Bucket", "ID", "Status", "Priority", "Title", "Reason"}, rows, render.TableOptions{
+			Title:             fmt.Sprintf("Agent Work for %s", optionalActor(work.Actor, "unset")),
+			Width:             tableWidth(width),
+			SelectedRow:       selectedRow,
+			HighlightSelected: selectedRow >= 0,
+		})
+	}
 	lines := []string{fmt.Sprintf("Agent Work for %s", optionalActor(work.Actor, "unset"))}
 	index := 0
 	appendEntry := func(label string, entries []service.AgentWorkEntry) {
@@ -1471,197 +1514,233 @@ func detailWithOrchestration(detail service.TicketDetailView, runs []contracts.R
 	return body + "\n\n" + strings.Join(gitLines, "\n") + "\n\n" + strings.Join(runLines, "\n") + "\n\n" + strings.Join(evidenceLines, "\n") + "\n\n" + strings.Join(handoffLines, "\n") + "\n\n" + strings.Join(runtimeLines, "\n") + "\n\n" + strings.Join(timelineLines, "\n")
 }
 
-func attentionView(approvals []service.ApprovalItemView, items []service.InboxItemView, records []service.NotificationDelivery, deadLetters []service.NotificationDelivery) string {
-	lines := []string{"Approvals:"}
+func attentionView(approvals []service.ApprovalItemView, items []service.InboxItemView, records []service.NotificationDelivery, deadLetters []service.NotificationDelivery, width int) string {
+	tableWidth := tableWidth(width)
+	approvalRows := make([][]string, 0, maxInt(1, len(approvals)))
 	if len(approvals) == 0 {
-		lines = append(lines, "- none")
+		approvalRows = append(approvalRows, []string{"-", "-", "none"})
 	} else {
 		for _, item := range approvals {
-			lines = append(lines, fmt.Sprintf("- %s %s [%s] %s", render.SanitizeDisplayLine(item.Gate.GateID), render.GateBadge(item.Gate.State), item.Gate.Kind, render.SanitizeDisplayLine(item.Summary)))
+			approvalRows = append(approvalRows, []string{
+				render.SanitizeDisplayLine(item.Gate.GateID),
+				render.GateBadge(item.Gate.State),
+				render.SanitizeDisplayLine(string(item.Gate.Kind)),
+				render.SanitizeDisplayLine(item.Summary),
+			})
 		}
 	}
-	lines = append(lines, "", "Human Inbox:")
+	inboxRows := make([][]string, 0, maxInt(1, len(items)))
 	if len(items) == 0 {
-		lines = append(lines, "- none")
+		inboxRows = append(inboxRows, []string{"-", "-", "none"})
 	} else {
 		for _, item := range items {
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", render.SanitizeDisplayLine(item.ID), item.State, render.SanitizeDisplayLine(item.Summary)))
+			inboxRows = append(inboxRows, []string{render.SanitizeDisplayLine(item.ID), render.SanitizeDisplayLine(string(item.State)), render.SanitizeDisplayLine(item.Summary)})
 		}
 	}
-	lines = append(lines, "", "Recent Deliveries:")
+	deliveryRows := make([][]string, 0, maxInt(1, len(records)))
 	if len(records) == 0 {
-		lines = append(lines, "- none")
+		deliveryRows = append(deliveryRows, []string{"-", "-", "-", "none"})
 	} else {
 		for _, record := range records {
-			lines = append(lines, fmt.Sprintf("- %s %s %s via %s", record.Timestamp.Format(time.RFC3339), record.Event.Type, optionalString(record.Event.TicketID, record.Event.Project), render.SanitizeDisplayLine(record.Sink)))
+			deliveryRows = append(deliveryRows, []string{
+				record.Timestamp.Format(time.RFC3339),
+				render.SanitizeDisplayLine(string(record.Event.Type)),
+				optionalString(record.Event.TicketID, record.Event.Project),
+				render.SanitizeDisplayLine(record.Sink),
+			})
 		}
 	}
-	lines = append(lines, "", "Dead Letters:")
+	deadRows := make([][]string, 0, maxInt(1, len(deadLetters)))
 	if len(deadLetters) == 0 {
-		lines = append(lines, "- none")
+		deadRows = append(deadRows, []string{"-", "-", "none"})
 	} else {
 		for _, record := range deadLetters {
-			lines = append(lines, fmt.Sprintf("- %s %s via %s (%s)", record.Timestamp.Format(time.RFC3339), record.Event.Type, render.SanitizeDisplayLine(record.Sink), render.SanitizeDisplayLine(record.Error)))
+			deadRows = append(deadRows, []string{record.Timestamp.Format(time.RFC3339), render.SanitizeDisplayLine(record.Sink), render.SanitizeDisplayLine(record.Error)})
 		}
 	}
-	return strings.Join(lines, "\n")
+	sections := []string{
+		render.RenderTable([]string{"Gate", "State", "Kind", "Summary"}, approvalRows, render.TableOptions{Title: "Approvals", Width: tableWidth}),
+		render.RenderTable([]string{"ID", "State", "Summary"}, inboxRows, render.TableOptions{Title: "Human Inbox", Width: tableWidth}),
+		render.RenderTable([]string{"Time", "Event", "Target", "Sink"}, deliveryRows, render.TableOptions{Title: "Recent Deliveries", Width: tableWidth}),
+		render.RenderTable([]string{"Time", "Sink", "Error"}, deadRows, render.TableOptions{Title: "Dead Letters", Width: tableWidth}),
+	}
+	return strings.Join(sections, "\n\n")
 }
 
-func savedViewsPanel(views []contracts.SavedView, selected string, cursor int) string {
+func savedViewsPanel(views []contracts.SavedView, selected string, cursor int, width int) string {
 	if len(views) == 0 {
 		return render.EmptyState("Views", "No saved views yet.")
 	}
-	lines := []string{"Saved Views:"}
+	rows := make([][]string, 0, len(views))
 	for idx, view := range views {
-		prefix := cursorPrefix(idx == cursor)
+		marker := ""
+		if idx == cursor {
+			marker = ">"
+		}
 		title := render.SanitizeDisplayLine(view.Title)
 		if strings.TrimSpace(title) == "" {
 			title = render.SanitizeDisplayLine(view.Name)
 		}
-		lines = append(lines, fmt.Sprintf("%s%s [%s] %s", prefix, render.SanitizeDisplayLine(view.Name), view.Kind, title))
+		rows = append(rows, []string{marker, render.SanitizeDisplayLine(view.Name), render.SanitizeDisplayLine(string(view.Kind)), title})
 	}
+	out := render.RenderTable([]string{"", "Name", "Kind", "Title"}, rows, render.TableOptions{
+		Title:             "Saved Views",
+		Width:             tableWidth(width),
+		SelectedRow:       cursor,
+		HighlightSelected: cursor >= 0,
+	})
 	if strings.TrimSpace(selected) != "" {
-		lines = append(lines, "", fmt.Sprintf("enter runs %s into the matching tab", render.SanitizeDisplayLine(selected)))
+		out += "\n\n" + fmt.Sprintf("enter runs %s into the matching tab", render.SanitizeDisplayLine(selected))
 	}
-	return strings.Join(lines, "\n")
+	return out
 }
 
-func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetailView, dispatch service.DispatchQueueView, wakeups []service.AgentWakeup, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation, collaboratorFilter string) string {
-	lines := []string{
-		"Dashboard:",
-		fmt.Sprintf("- collaborator_filter: %s", optionalString(strings.TrimSpace(collaboratorFilter), "all")),
-		fmt.Sprintf("- active_runs: %d", dashboard.ActiveRuns),
-		fmt.Sprintf("- awaiting_review: %d", dashboard.AwaitingReview.Count),
-		fmt.Sprintf("- awaiting_owner: %d", dashboard.AwaitingOwner.Count),
-		fmt.Sprintf("- merge_ready: %d", dashboard.MergeReady.Count),
-		fmt.Sprintf("- blocked_by_checks: %d", dashboard.BlockedByChecks.Count),
-		fmt.Sprintf("- stale_worktrees: %s", optionalString(strings.Join(dashboard.StaleWorktrees, ","), "none")),
-		fmt.Sprintf("- retention_pressure: %s", optionalString(strings.Join(dashboard.RetentionTargets, ","), "none")),
-		"",
-		"Collaboration:",
-		fmt.Sprintf("- mentions: %d", len(dashboard.MentionQueue)),
-		fmt.Sprintf("- conflicts: %d", len(dashboard.ConflictQueue)),
-		fmt.Sprintf("- failed_sync_jobs: %s", optionalString(strings.Join(dashboard.FailedSyncJobs, ","), "none")),
-		"",
-		"Collaborator Workload:",
+func opsView(dashboard service.DashboardSummaryView, agents []service.AgentDetailView, dispatch service.DispatchQueueView, wakeups []service.AgentWakeup, worktrees []service.WorktreeStatusView, rules []contracts.AutomationRule, explain []service.AutomationResult, lastBulk *service.BulkOperationResult, pendingBulk *service.BulkOperation, collaboratorFilter string, width int) string {
+	width = tableWidth(width)
+	summaryRows := [][]string{
+		{"collaborator_filter", optionalString(strings.TrimSpace(collaboratorFilter), "all")},
+		{"active_runs", fmt.Sprint(dashboard.ActiveRuns)},
+		{"awaiting_review", fmt.Sprint(dashboard.AwaitingReview.Count)},
+		{"awaiting_owner", fmt.Sprint(dashboard.AwaitingOwner.Count)},
+		{"merge_ready", fmt.Sprint(dashboard.MergeReady.Count)},
+		{"blocked_by_checks", fmt.Sprint(dashboard.BlockedByChecks.Count)},
+		{"stale_worktrees", optionalString(strings.Join(dashboard.StaleWorktrees, ","), "none")},
+		{"retention_pressure", optionalString(strings.Join(dashboard.RetentionTargets, ","), "none")},
+		{"mentions", fmt.Sprint(len(dashboard.MentionQueue))},
+		{"conflicts", fmt.Sprint(len(dashboard.ConflictQueue))},
+		{"failed_sync_jobs", optionalString(strings.Join(dashboard.FailedSyncJobs, ","), "none")},
 	}
+	sections := []string{
+		render.RenderTable([]string{"Metric", "Value"}, summaryRows, render.TableOptions{Title: "Dashboard", Width: width}),
+	}
+	workloadRows := make([][]string, 0, maxInt(1, len(dashboard.CollaboratorWorkload)))
 	if len(dashboard.CollaboratorWorkload) == 0 {
-		lines = append(lines, "- none")
+		workloadRows = append(workloadRows, []string{"-", "-", "-", "-", "-"})
 	} else {
 		for _, item := range dashboard.CollaboratorWorkload {
-			lines = append(lines, fmt.Sprintf("- %s approvals=%d inbox=%d mentions=%d handoffs=%d", render.SanitizeDisplayLine(item.CollaboratorID), item.Approvals, item.InboxItems, item.Mentions, item.Handoffs))
+			workloadRows = append(workloadRows, []string{render.SanitizeDisplayLine(item.CollaboratorID), fmt.Sprint(item.Approvals), fmt.Sprint(item.InboxItems), fmt.Sprint(item.Mentions), fmt.Sprint(item.Handoffs)})
 		}
 	}
-	lines = append(lines, "", "Remote Health:")
+	sections = append(sections, render.RenderTable([]string{"Collaborator", "Approvals", "Inbox", "Mentions", "Handoffs"}, workloadRows, render.TableOptions{Title: "Collaborator Workload", Width: width}))
+	remoteRows := make([][]string, 0, maxInt(1, len(dashboard.RemoteHealth)))
 	if len(dashboard.RemoteHealth) == 0 {
-		lines = append(lines, "- none")
+		remoteRows = append(remoteRows, []string{"-", "-", "-", "-"})
 	} else {
 		for _, item := range dashboard.RemoteHealth {
-			lines = append(lines, fmt.Sprintf("- %s %s publications=%d failed=%d", render.SanitizeDisplayLine(item.RemoteID), render.SyncBadge(item.State), item.PublicationCount, item.FailedJobs))
+			remoteRows = append(remoteRows, []string{render.SanitizeDisplayLine(item.RemoteID), render.SyncBadge(item.State), fmt.Sprint(item.PublicationCount), fmt.Sprint(item.FailedJobs)})
 		}
 	}
-	lines = append(lines, "", "Conflict Queue:")
+	sections = append(sections, render.RenderTable([]string{"Remote", "State", "Publications", "Failed"}, remoteRows, render.TableOptions{Title: "Remote Health", Width: width}))
+	conflictRows := make([][]string, 0, maxInt(1, len(dashboard.ConflictQueue)))
 	if len(dashboard.ConflictQueue) == 0 {
-		lines = append(lines, "- none")
+		conflictRows = append(conflictRows, []string{"-", "-", "-"})
 	} else {
 		for _, item := range dashboard.ConflictQueue {
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", render.SanitizeDisplayLine(item.ConflictID), item.EntityKind, render.SanitizeDisplayLine(string(item.ConflictType))))
+			conflictRows = append(conflictRows, []string{render.SanitizeDisplayLine(item.ConflictID), render.SanitizeDisplayLine(string(item.EntityKind)), render.SanitizeDisplayLine(string(item.ConflictType))})
 		}
 	}
-	lines = append(lines, "", "Mention Queue:")
+	sections = append(sections, render.RenderTable([]string{"Conflict", "Kind", "Type"}, conflictRows, render.TableOptions{Title: "Conflict Queue", Width: width}))
+	mentionRows := make([][]string, 0, maxInt(1, len(dashboard.MentionQueue)))
 	if len(dashboard.MentionQueue) == 0 {
-		lines = append(lines, "- none")
+		mentionRows = append(mentionRows, []string{"-", "-", "none"})
 	} else {
 		for _, item := range dashboard.MentionQueue {
-			lines = append(lines, fmt.Sprintf("- %s @%s %s", render.SanitizeDisplayLine(item.MentionUID), render.SanitizeDisplayLine(item.CollaboratorID), render.SanitizeDisplayLine(item.Summary)))
+			mentionRows = append(mentionRows, []string{render.SanitizeDisplayLine(item.MentionUID), render.SanitizeDisplayLine(item.CollaboratorID), render.SanitizeDisplayLine(item.Summary)})
 		}
 	}
-	lines = append(lines, "", "Provider Mapping Warnings:")
+	sections = append(sections, render.RenderTable([]string{"Mention", "Collaborator", "Summary"}, mentionRows, render.TableOptions{Title: "Mention Queue", Width: width}))
+	warningRows := make([][]string, 0, maxInt(1, len(dashboard.ProviderMappingWarnings)))
 	if len(dashboard.ProviderMappingWarnings) == 0 {
-		lines = append(lines, "- none")
+		warningRows = append(warningRows, []string{"none"})
 	} else {
 		for _, warning := range dashboard.ProviderMappingWarnings {
-			lines = append(lines, "- "+render.SanitizeDisplayLine(warning))
+			warningRows = append(warningRows, []string{render.SanitizeDisplayLine(warning)})
 		}
 	}
-	lines = append(lines, "",
-		"Agents:",
-	)
+	sections = append(sections, render.RenderTable([]string{"Warning"}, warningRows, render.TableOptions{Title: "Provider Mapping Warnings", Width: width}))
+	agentRows := make([][]string, 0, maxInt(1, len(agents)))
 	if len(agents) == 0 {
-		lines = append(lines, "- none")
+		agentRows = append(agentRows, []string{"-", "-", "-"})
 	} else {
 		for _, agent := range agents {
 			state := "disabled"
 			if agent.Profile.Enabled {
 				state = "enabled"
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s] active=%d", render.SanitizeDisplayLine(agent.Profile.AgentID), state, agent.ActiveRuns))
+			agentRows = append(agentRows, []string{render.SanitizeDisplayLine(agent.Profile.AgentID), state, fmt.Sprint(agent.ActiveRuns)})
 		}
 	}
-	lines = append(lines, "", "Dispatch Queue:")
+	sections = append(sections, render.RenderTable([]string{"Agent", "State", "Active"}, agentRows, render.TableOptions{Title: "Agents", Width: width}))
+	dispatchRows := make([][]string, 0, maxInt(1, len(dispatch.Entries)))
 	if len(dispatch.Entries) == 0 {
-		lines = append(lines, "- none")
+		dispatchRows = append(dispatchRows, []string{"-", "-"})
 	} else {
 		for _, entry := range dispatch.Entries {
 			auto := optionalString(entry.Suggestion.AutoRouteAgentID, "manual")
-			lines = append(lines, fmt.Sprintf("- %s auto=%s", render.SanitizeDisplayLine(entry.Ticket.ID), auto))
+			dispatchRows = append(dispatchRows, []string{render.SanitizeDisplayLine(entry.Ticket.ID), auto})
 		}
 	}
-	lines = append(lines, "", "Agent Wakeups:")
+	sections = append(sections, render.RenderTable([]string{"Ticket", "Route"}, dispatchRows, render.TableOptions{Title: "Dispatch Queue", Width: width}))
+	wakeupRows := make([][]string, 0, maxInt(1, len(wakeups)))
 	if len(wakeups) == 0 {
-		lines = append(lines, "- none")
+		wakeupRows = append(wakeupRows, []string{"-", "-", "-", "-"})
 	} else {
 		for _, item := range wakeups {
-			lines = append(lines, fmt.Sprintf("- %s ticket=%s blocker=%s state=%s", render.SanitizeDisplayLine(item.WakeupID), render.SanitizeDisplayLine(item.TicketID), render.SanitizeDisplayLine(item.BlockerTicketID), item.State))
+			wakeupRows = append(wakeupRows, []string{render.SanitizeDisplayLine(item.WakeupID), render.SanitizeDisplayLine(item.TicketID), render.SanitizeDisplayLine(item.BlockerTicketID), render.SanitizeDisplayLine(string(item.State))})
 		}
 	}
-	lines = append(lines, "", "Worktrees:")
+	sections = append(sections, render.RenderTable([]string{"Wakeup", "Ticket", "Blocker", "State"}, wakeupRows, render.TableOptions{Title: "Agent Wakeups", Width: width}))
+	worktreeRows := make([][]string, 0, maxInt(1, len(worktrees)))
 	if len(worktrees) == 0 {
-		lines = append(lines, "- none")
+		worktreeRows = append(worktreeRows, []string{"-", "-", "-"})
 	} else {
 		for _, item := range worktrees {
-			lines = append(lines, fmt.Sprintf("- %s present=%t dirty=%t", render.SanitizeDisplayLine(item.RunID), item.Present, item.Dirty))
+			worktreeRows = append(worktreeRows, []string{render.SanitizeDisplayLine(item.RunID), fmt.Sprint(item.Present), fmt.Sprint(item.Dirty)})
 		}
 	}
-	lines = append(lines, "", "Automation Rules:")
+	sections = append(sections, render.RenderTable([]string{"Run", "Present", "Dirty"}, worktreeRows, render.TableOptions{Title: "Worktrees", Width: width}))
+	ruleRows := make([][]string, 0, maxInt(1, len(rules)))
 	if len(rules) == 0 {
-		lines = append(lines, "- none")
+		ruleRows = append(ruleRows, []string{"-", "-"})
 	} else {
 		for _, rule := range rules {
 			state := "disabled"
 			if rule.Enabled {
 				state = "enabled"
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s]", render.SanitizeDisplayLine(rule.Name), state))
+			ruleRows = append(ruleRows, []string{render.SanitizeDisplayLine(rule.Name), state})
 		}
 	}
-	lines = append(lines, "", "Automation Explain:")
+	sections = append(sections, render.RenderTable([]string{"Rule", "State"}, ruleRows, render.TableOptions{Title: "Automation Rules", Width: width}))
+	explainRows := make([][]string, 0, maxInt(1, len(explain)))
 	if len(explain) == 0 {
-		lines = append(lines, "- select a ticket to inspect rule matches")
+		explainRows = append(explainRows, []string{"-", "-", "select a ticket to inspect rule matches"})
 	} else {
 		for _, result := range explain {
 			state := "skip"
 			if result.Matched {
 				state = "match"
 			}
-			lines = append(lines, fmt.Sprintf("- %s [%s] %s", render.SanitizeDisplayLine(result.Rule.Name), state, render.SanitizeDisplayLine(strings.Join(result.Actions, ", "))))
+			explainRows = append(explainRows, []string{render.SanitizeDisplayLine(result.Rule.Name), state, render.SanitizeDisplayLine(strings.Join(result.Actions, ", "))})
 		}
 	}
-	lines = append(lines, "", "Bulk Preview:")
+	sections = append(sections, render.RenderTable([]string{"Rule", "State", "Actions"}, explainRows, render.TableOptions{Title: "Automation Explain", Width: width}))
+	bulkRows := [][]string{}
 	switch {
 	case lastBulk != nil:
-		lines = append(lines,
-			fmt.Sprintf("- last batch: %s", render.SanitizeDisplayLine(lastBulk.BatchID)),
-			fmt.Sprintf("- kind: %s", render.SanitizeDisplayLine(string(lastBulk.Preview.Kind))),
-			fmt.Sprintf("- total: %d ok=%d failed=%d skipped=%d", lastBulk.Summary.Total, lastBulk.Summary.Succeeded, lastBulk.Summary.Failed, lastBulk.Summary.Skipped),
+		bulkRows = append(bulkRows,
+			[]string{"last_batch", render.SanitizeDisplayLine(lastBulk.BatchID)},
+			[]string{"kind", render.SanitizeDisplayLine(string(lastBulk.Preview.Kind))},
+			[]string{"total", fmt.Sprintf("%d ok=%d failed=%d skipped=%d", lastBulk.Summary.Total, lastBulk.Summary.Succeeded, lastBulk.Summary.Failed, lastBulk.Summary.Skipped)},
 		)
 	case pendingBulk != nil:
-		lines = append(lines, fmt.Sprintf("- pending %s on %d tickets", render.SanitizeDisplayLine(string(pendingBulk.Kind)), len(pendingBulk.TicketIDs)))
+		bulkRows = append(bulkRows, []string{"pending", fmt.Sprintf("%s on %d tickets", render.SanitizeDisplayLine(string(pendingBulk.Kind)), len(pendingBulk.TicketIDs))})
 	default:
-		lines = append(lines, "- press b to preview a bulk action for the current ticket list")
+		bulkRows = append(bulkRows, []string{"next", "press b to preview a bulk action for the current ticket list"})
 	}
-	lines = append(lines, "- press y to apply the last preview")
-	return strings.Join(lines, "\n")
+	bulkRows = append(bulkRows, []string{"apply", "press y to apply the last preview"})
+	sections = append(sections, render.RenderTable([]string{"Item", "Value"}, bulkRows, render.TableOptions{Title: "Bulk Preview", Width: width}))
+	return strings.Join(sections, "\n\n")
 }
 
 func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor int, widths ...int) string {
@@ -1672,12 +1751,22 @@ func ticketsListView(title string, tickets []contracts.TicketSnapshot, cursor in
 	if len(widths) > 0 && widths[0] > 0 {
 		width = widths[0]
 	}
+	if width >= 44 {
+		return render.TicketsTable(title, tickets, width, cursor)
+	}
 	lines := []string{render.SanitizeDisplayLine(title) + ":"}
 	for idx, ticket := range tickets {
 		prefix := cursorPrefix(idx == cursor)
 		lines = append(lines, prefix+render.TicketSummary(ticket, width-lipgloss.Width(prefix)))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func tableWidth(width int) int {
+	if width <= 0 {
+		return 88
+	}
+	return width
 }
 
 func optionalString(value string, fallback string) string {
