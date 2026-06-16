@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Nothing yet.
+- Added the v1.10 local web Kanban board work-in-progress: `tracker web serve/open/status`, embedded server-rendered board assets, local session/CSRF protections, docs, and focused web tests.
 
 ## v1.9.1 - Agent Loop README And Table Polish (2026-06-16)
 

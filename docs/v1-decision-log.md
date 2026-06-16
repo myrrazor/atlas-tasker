@@ -402,3 +402,18 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Terminal compatibility or accessibility reports show box rendering is unreliable, or users need a persistent table style setting beyond `--plain`/`NO_COLOR`.
 9. **Affected PRs/Files:** `internal/render/render.go`, `internal/cli/root.go`, `internal/cli/run.go`, `internal/tui/app.go`, renderer/CLI/TUI tests, terminal output docs.
+
+## DEC-029
+
+1. **Decision ID:** DEC-029
+2. **Date:** 2026-06-16
+3. **Question:** How should Atlas expose a browser Kanban board without weakening the local-first storage and security model?
+4. **Options Considered:**
+   - Add a server-rendered local web board over existing services.
+   - Add a SPA with a broad local JSON API.
+   - Add hosted/server mode with login.
+5. **Chosen Option:** Add a server-rendered local web board over existing services.
+6. **Why We Chose It:** The browser board should make Atlas easier to inspect and demo while preserving Markdown snapshots, JSONL events, SQLite projection, `ActionService` writes, `QueryService` reads, and local-only security defaults.
+7. **Confidence:** high
+8. **Revisit Trigger:** Future product direction requires remote collaboration or a public API surface.
+9. **Affected PRs/Files:** `internal/web/*`, `internal/cli/*`, `internal/contracts/events.go`, web board docs, tests.

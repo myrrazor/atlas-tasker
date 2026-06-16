@@ -49,6 +49,8 @@ Prefer a full-screen view? `tracker tui` opens the interactive console — board
 
 ![Ticket detail with runs, evidence, and timeline](docs/assets/tui-detail.png)
 
+Prefer a browser without giving up local-first storage? `tracker web serve --open` starts the optional local Kanban board on `127.0.0.1` with a session token, CSRF checks, and the same `QueryService`/`ActionService` paths as the CLI. It is still just your repo: no hosted mode, no login system, and no second database.
+
 ## Built for agents, not just humans
 
 This is the part Jira doesn't do. Register your agents, assign them tickets, wire up the dependency graph, and let the workflow drive itself:
@@ -120,7 +122,7 @@ For the paranoid (complimentary): signed artifacts and trust keys, governance po
 
 ## Docs
 
-Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [getting started](docs/getting-started.md), [your first agent workflow](docs/first-agent-workflow.md), [MCP for agents](docs/guides/mcp-for-agents.md), [the command reference](docs/reference/commands.md), or [troubleshooting](docs/troubleshooting.md).
+Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [getting started](docs/getting-started.md), [your first agent workflow](docs/first-agent-workflow.md), [the local web board](docs/web-board.md), [MCP for agents](docs/guides/mcp-for-agents.md), [the command reference](docs/reference/commands.md), or [troubleshooting](docs/troubleshooting.md).
 
 ## Status
 

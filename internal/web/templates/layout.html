@@ -1,0 +1,35 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="atlas-csrf-token" content="{{.CSRFToken}}">
+  <title>Atlas Tasker Web Board</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/board" aria-label="Atlas Tasker board">
+      <img src="/static/brand/atlas-tasker-wordmark.png" alt="Atlas Tasker">
+    </a>
+    <div class="top-meta">
+      <span class="meta-block"><span class="meta-label">Workspace</span><strong>{{.Workspace}}</strong></span>
+      <span class="meta-block"><span class="meta-label">Local</span><strong><span class="status-dot online"></span>{{.Host}}</strong></span>
+      <span class="meta-block"><span class="meta-label">Actor</span><strong>{{.Actor}}</strong></span>
+      {{if .ReadOnly}}<span class="mode-chip readonly">Read only</span>{{else}}<span class="mode-chip">Read/write</span>{{end}}
+    </div>
+    <form class="searchbar" method="get" action="/board" role="search">
+      <input type="search" name="q" value="{{.Query}}" placeholder="Search tickets..." aria-label="Search tickets">
+      <input type="hidden" name="project" value="{{.Project}}">
+      <button type="submit">Search</button>
+    </form>
+    <a class="new-button" href="/board?new=1{{if .Project}}&project={{.Project}}{{end}}">New Ticket</a>
+  </header>
+  {{template "content" .}}
+  <script src="/static/vendor/sortable.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
+{{end}}

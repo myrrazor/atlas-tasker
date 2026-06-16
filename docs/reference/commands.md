@@ -7,6 +7,7 @@ Core read commands:
 - `tracker queue --actor <ACTOR>`
 - `tracker next --actor <ACTOR>`
 - `tracker board`
+- `tracker web serve --open`
 - `tracker dashboard`
 - `tracker inspect <TICKET-ID> --actor <ACTOR>`
 - `tracker ticket history <TICKET-ID> --json`
@@ -47,5 +48,6 @@ tracker ticket --help
 tracker run --help
 tracker goal --help
 tracker mcp --help
+tracker web --help
 tracker version --json
 ```

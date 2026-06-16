@@ -1,0 +1,273 @@
+{{define "content"}}
+<main class="app-shell">
+  <section class="board-shell" aria-label="Kanban board">
+    {{if .Flash}}<div class="flash" role="status">{{.Flash}}</div>{{end}}
+    {{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
+
+    <form class="filters" method="get" action="/board">
+      <label>Project <input name="project" value="{{.Project}}" placeholder="APP"></label>
+      <label>View <input name="view" value="{{.View}}" placeholder="web-board"></label>
+      <label>Assignee <input name="assignee" value="{{.Assignee}}" placeholder="agent:builder-1"></label>
+      <label>Reviewer <input name="reviewer" value="{{.Reviewer}}" placeholder="agent:reviewer-1"></label>
+      <label>Label <input name="label" value="{{.Label}}" placeholder="security"></label>
+      <label>Search <input name="q" value="{{.Query}}" placeholder="handoff, release, login"></label>
+      <label>Priority
+        <select name="priority">
+          <option value="">Any</option>
+          <option value="critical" {{if eq .Priority "critical"}}selected{{end}}>Critical</option>
+          <option value="high" {{if eq .Priority "high"}}selected{{end}}>High</option>
+          <option value="medium" {{if eq .Priority "medium"}}selected{{end}}>Medium</option>
+          <option value="low" {{if eq .Priority "low"}}selected{{end}}>Low</option>
+        </select>
+      </label>
+      <label>Type
+        <select name="type">
+          <option value="">Any</option>
+          <option value="task" {{if eq .Type "task"}}selected{{end}}>Task</option>
+          <option value="bug" {{if eq .Type "bug"}}selected{{end}}>Bug</option>
+          <option value="epic" {{if eq .Type "epic"}}selected{{end}}>Epic</option>
+          <option value="subtask" {{if eq .Type "subtask"}}selected{{end}}>Subtask</option>
+        </select>
+      </label>
+      <button type="submit">Filters</button>
+    </form>
+
+    <nav class="mobile-columns" aria-label="Board columns">
+      {{range .Columns}}
+        <a class="{{if .ActiveMobile}}active{{end}}" href="/board?column={{.Status}}">{{.Label}} <span>{{.Count}}</span></a>
+      {{end}}
+    </nav>
+
+    <div class="board-grid">
+      {{range .Columns}}
+        {{template "column" .}}
+      {{end}}
+    </div>
+    <footer class="keyboard-help" aria-label="Keyboard shortcuts">
+      <span>↑ ↓ Move</span>
+      <span>← → Change column</span>
+      <span>d Details</span>
+      <span>n New ticket</span>
+      <span>/ Search</span>
+      <span>? Help</span>
+    </footer>
+  </section>
+
+  <aside class="detail-drawer" aria-label="Ticket detail">
+    {{if .ShowNew}}
+      {{template "newTicket" .}}
+    {{else if .Detail}}
+      {{template "detail" .}}
+    {{else}}
+      <div class="empty-detail">
+        <h2>No ticket selected</h2>
+        <p>Create a ticket or pick one from the board.</p>
+        <a class="new-button wide" href="/board?new=1">New Ticket</a>
+      </div>
+    {{end}}
+  </aside>
+</main>
+{{end}}
+
+{{define "column"}}
+<article class="column {{if .ActiveMobile}}is-active-mobile{{end}}" data-status="{{.Status}}">
+  <header>
+    <h2>{{.Label}}</h2>
+    <span>{{.Count}}</span>
+    <button aria-label="Column options">⋮</button>
+  </header>
+  <div class="ticket-list" data-status="{{.Status}}">
+    {{range .Tickets}}
+      {{template "card" .}}
+    {{else}}
+      <div class="empty-column">
+        <span class="empty-icon">□</span>
+        <strong>No tickets</strong>
+        <p>{{if eq (statusKey .Status) "done"}}Completed tickets appear here.{{else}}Drag or create a ticket to get started.{{end}}</p>
+      </div>
+    {{end}}
+  </div>
+  <a class="column-new" href="/board?new=1">＋ New Ticket</a>
+</article>
+{{end}}
+
+{{define "card"}}
+<a class="ticket-card" href="/board?ticket={{.Ticket.ID}}" data-ticket-id="{{.Ticket.ID}}">
+  <span class="drag-handle" aria-hidden="true">⋮⋮</span>
+  <span class="card-menu" aria-hidden="true">⋮</span>
+  <strong>{{.Ticket.ID}}</strong>
+  <h3>{{.Ticket.Title}}</h3>
+  <div class="card-meta">
+    <span class="priority {{priorityDot .Ticket.Priority}}"><i></i>{{.Ticket.Priority}}</span>
+    {{if .Ticket.Assignee}}<span>{{.Ticket.Assignee}} <b>{{actorInitials .Ticket.Assignee}}</b></span>{{end}}
+    {{if .EffectiveReviewer}}<span>{{.EffectiveReviewer}} <b>{{actorInitials .EffectiveReviewer}}</b></span>{{end}}
+  </div>
+  <div class="card-stats">
+    <span title="Blockers">⚠ {{len .Ticket.BlockedBy}}</span>
+    <span title="Checks">◎ {{len .Ticket.OpenGateIDs}}</span>
+    <span title="Comments">▱ {{.CommentCount}}</span>
+  </div>
+  {{if .Ticket.Labels}}
+    <div class="labels">{{range .Ticket.Labels}}<span>{{.}}</span>{{end}}</div>
+  {{end}}
+</a>
+{{end}}
+
+{{define "newTicket"}}
+<div class="drawer-head">
+  <div>
+    <span class="eyeline">New Ticket</span>
+    <h1>Create tracked work</h1>
+  </div>
+  <a href="/board" class="close-button" aria-label="Close">×</a>
+</div>
+<form class="drawer-form" method="post" action="/actions/tickets/create">
+  <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <input type="hidden" name="actor" value="{{.Actor}}">
+  <label>Project <input name="project" value="{{.Project}}" required></label>
+  <label>Title <input name="title" placeholder="Ship the web board" required></label>
+  <div class="form-row">
+    <label>Type
+      <select name="type">
+        <option value="task">Task</option>
+        <option value="bug">Bug</option>
+        <option value="epic">Epic</option>
+        <option value="subtask">Subtask</option>
+      </select>
+    </label>
+    <label>Priority
+      <select name="priority">
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="critical">Critical</option>
+        <option value="low">Low</option>
+      </select>
+    </label>
+  </div>
+  <label>Assignee <input name="assignee" placeholder="agent:builder-1"></label>
+  <label>Reviewer <input name="reviewer" placeholder="agent:reviewer-1"></label>
+  <label>Labels <input name="labels" placeholder="web, ui"></label>
+  <label>Description <textarea name="description" rows="4"></textarea></label>
+  <label>Acceptance Criteria <textarea name="acceptance" rows="5" placeholder="One item per line"></textarea></label>
+  <label>Reason <input name="reason" value="web ticket create"></label>
+  <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>Create Ticket</button>
+</form>
+{{end}}
+
+{{define "detail"}}
+{{$d := .Detail.View}}
+<div class="drawer-head">
+  <div>
+    <span class="eyeline">{{$d.Ticket.ID}} <span class="priority {{priorityDot $d.Ticket.Priority}}"><i></i>{{$d.Ticket.Priority}}</span></span>
+    <h1>{{$d.Ticket.Title}}</h1>
+    <p><span class="status-pill">{{statusLabel $d.BoardStatus}}</span> Assignee {{$d.Ticket.Assignee}} · Reviewer {{$d.EffectiveReviewer}}</p>
+  </div>
+  <a href="/board" class="close-button" aria-label="Close">×</a>
+</div>
+
+{{range .Detail.Warnings}}
+  <div class="warning" role="alert">⚠ {{.}}</div>
+{{end}}
+
+<nav class="tabs" aria-label="Ticket detail sections">
+  <button class="active" data-tab="overview">Overview</button>
+  <button data-tab="activity">Activity</button>
+  <button data-tab="gates">Policy/Gates</button>
+  <button data-tab="evidence">Evidence</button>
+</nav>
+
+<section class="tab-panel active" id="tab-overview">
+  <h2>Description</h2>
+  <pre class="prose">{{if $d.Ticket.Description}}{{$d.Ticket.Description}}{{else}}No description yet.{{end}}</pre>
+  <h2>Acceptance Criteria <span>{{len $d.Ticket.AcceptanceCriteria}}</span></h2>
+  <ul class="check-list">
+    {{range $d.Ticket.AcceptanceCriteria}}<li>{{.}}</li>{{else}}<li>No acceptance criteria yet.</li>{{end}}
+  </ul>
+  <details class="edit-box">
+    <summary>Edit ticket</summary>
+    <form class="drawer-form compact" method="post" action="/actions/tickets/{{$d.Ticket.ID}}/edit">
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="actor" value="{{$.Actor}}">
+      <label>Title <input name="title" value="{{$d.Ticket.Title}}" required></label>
+      <label>Description <textarea name="description" rows="4">{{$d.Ticket.Description}}</textarea></label>
+      <label>Acceptance <textarea name="acceptance" rows="5">{{join $d.Ticket.AcceptanceCriteria "\n"}}</textarea></label>
+      <label>Labels <input name="labels" value="{{join $d.Ticket.Labels ", "}}"></label>
+      <label>Reason <input name="reason" value="web ticket edit"></label>
+      <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Save changes</button>
+    </form>
+  </details>
+</section>
+
+<section class="tab-panel" id="tab-activity">
+  <h2>Comments</h2>
+  {{range $d.Comments}}<pre class="comment">{{.}}</pre>{{else}}<p class="muted">No comments yet.</p>{{end}}
+  <form class="drawer-form compact" method="post" action="/actions/tickets/{{$d.Ticket.ID}}/comment">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <input type="hidden" name="actor" value="{{$.Actor}}">
+    <textarea name="body" rows="3" placeholder="Add a comment"></textarea>
+    <input type="hidden" name="reason" value="web ticket comment">
+    <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Add Comment</button>
+  </form>
+  <h2>Recent History</h2>
+  <ol class="history">
+    {{range $.Detail.Recent}}<li><b>{{.Type}}</b> by {{.Actor}} <span>{{formatTime .Timestamp}}</span></li>{{else}}<li>No history yet.</li>{{end}}
+  </ol>
+</section>
+
+<section class="tab-panel" id="tab-gates">
+  <h2>Policy</h2>
+  <div class="data-list">
+    <span>Completion</span><strong>{{$d.EffectivePolicy.CompletionMode}}</strong>
+    <span>Required reviewer</span><strong>{{$d.EffectiveReviewer}}</strong>
+    <span>Open gates</span><strong>{{len $d.Gates}}</strong>
+  </div>
+  <h2>Blockers</h2>
+  <ul class="check-list">{{range $d.Ticket.BlockedBy}}<li>{{.}}</li>{{else}}<li>No unresolved blockers recorded.</li>{{end}}</ul>
+</section>
+
+<section class="tab-panel" id="tab-evidence">
+  <h2>Evidence / Runs</h2>
+  <div class="run-card">
+    <strong>{{if $d.Ticket.LatestRunID}}{{$d.Ticket.LatestRunID}}{{else}}No run yet{{end}}</strong>
+    <span>{{len $d.Changes}} changes · {{$.Detail.CheckCount}} checks · {{len $d.Gates}} gates</span>
+  </div>
+</section>
+
+<div class="drawer-actions">
+  <form method="post" action="/actions/tickets/{{$d.Ticket.ID}}/request-review">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <input type="hidden" name="actor" value="{{$.Actor}}">
+    <input type="hidden" name="reason" value="web request review">
+    <button class="primary-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>Request Review</button>
+  </form>
+  <form method="post" action="/actions/tickets/{{$d.Ticket.ID}}/approve">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <input type="hidden" name="actor" value="{{$.Actor}}">
+    <input type="hidden" name="reason" value="web approve">
+    <button class="approve-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>Approve</button>
+  </form>
+  <form method="post" action="/actions/tickets/{{$d.Ticket.ID}}/complete">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <input type="hidden" name="actor" value="{{$.Actor}}">
+    <input type="hidden" name="reason" value="web complete">
+    <button class="complete-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>Complete</button>
+  </form>
+  <details class="more-actions">
+    <summary>More</summary>
+    <form method="post" action="/actions/tickets/{{$d.Ticket.ID}}/move">
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="actor" value="{{$.Actor}}">
+      <input type="hidden" name="reason" value="web move">
+      <select name="status">
+        <option value="backlog">Backlog</option>
+        <option value="ready">Ready</option>
+        <option value="in_progress">In Progress</option>
+        <option value="in_review">In Review</option>
+        <option value="blocked">Blocked</option>
+        <option value="done">Done</option>
+      </select>
+      <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Move</button>
+    </form>
+  </details>
+</div>
+{{end}}
