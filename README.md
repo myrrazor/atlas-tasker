@@ -27,7 +27,7 @@ git clone https://github.com/myrrazor/atlas-tasker && cd atlas-tasker
 go build -o tracker ./cmd/tracker
 ```
 
-## Five minutes to a working board
+## Minutes to a working board
 
 ```bash
 tracker init
@@ -82,6 +82,17 @@ Around that core, agents get the full delivery loop:
 - **MCP** exposes all of it as tools (`tracker mcp serve`), with tiered profiles from read-only to admin and typed approvals for high-impact operations.
 - **Goal manifests** (`tracker goal brief APP-1 --md`) give an agent the full context of a ticket in one shot.
 
+To hand work off, install the Atlas worker skill and give the ticket to Claude Code, Codex, or an OpenClaw-style agent. The skill allows the agent to do this all autonomously: read its queue, claim work, dispatch a run, attach evidence, request review, acknowledge wake-ups, and hand off context while everything is tracked in Atlas Tasker. That gives you an agentic loop that your agents can use while humans choose where to manually intervene through assignments, review gates, owner gates, and explicit handoffs.
+
+```bash
+tracker team apply crossfire --actor human:owner --reason "agentic loop"
+tracker integrations install codex
+tracker integrations install claude
+tracker ticket assign APP-2 agent:builder-1 --actor human:owner --reason "agent work"
+tracker run dispatch APP-2 --agent agent:builder-1 --actor human:owner --reason "start tracked run"
+tracker goal brief APP-2 --md
+```
+
 The [Claude Code guide](docs/guides/claude-code.md), [Codex guide](docs/guides/codex.md), and [generic agent guide](docs/guides/generic-agent.md) walk through real setups.
 
 ### Pick your team
@@ -113,7 +124,7 @@ Start at the [docs landing page](docs/README.md), or jump to [installation](docs
 
 ## Status
 
-`v1.9.0` is the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
+`v1.9.1` is the current stable release; `v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 
 ## Contributing
 
