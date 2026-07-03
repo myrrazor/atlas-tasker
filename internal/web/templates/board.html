@@ -119,8 +119,8 @@
 <form class="drawer-form" method="post" action="/actions/tickets/create">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
   <input type="hidden" name="actor" value="{{.Actor}}">
-  <label>Project <input name="project" value="{{.Project}}" required></label>
-  <label>Title <input name="title" placeholder="Ship the web board" required></label>
+  <label>Project <input name="project" value="{{formValue .Form "project" .Project}}" required></label>
+  <label>Title <input name="title" value="{{formValue .Form "title" ""}}" placeholder="Ship the web board" required></label>
   <div class="form-row">
     <label>Type
       <select name="type">
@@ -139,12 +139,12 @@
       </select>
     </label>
   </div>
-  <label>Assignee <input name="assignee" placeholder="agent:builder-1"></label>
-  <label>Reviewer <input name="reviewer" placeholder="agent:reviewer-1"></label>
-  <label>Labels <input name="labels" placeholder="web, ui"></label>
-  <label>Description <textarea name="description" rows="4"></textarea></label>
-  <label>Acceptance Criteria <textarea name="acceptance" rows="5" placeholder="One item per line"></textarea></label>
-  <label>Reason <input name="reason" value="web ticket create"></label>
+  <label>Assignee <input name="assignee" value="{{formValue .Form "assignee" ""}}" placeholder="agent:builder-1"></label>
+  <label>Reviewer <input name="reviewer" value="{{formValue .Form "reviewer" ""}}" placeholder="agent:reviewer-1"></label>
+  <label>Labels <input name="labels" value="{{formValue .Form "labels" ""}}" placeholder="web, ui"></label>
+  <label>Description <textarea name="description" rows="4">{{formValue .Form "description" ""}}</textarea></label>
+  <label>Acceptance Criteria <textarea name="acceptance" rows="5" placeholder="One item per line">{{formValue .Form "acceptance" ""}}</textarea></label>
+  <label>Reason <input name="reason" value="{{formValue .Form "reason" "web ticket create"}}"></label>
   <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>Create Ticket</button>
 </form>
 {{end}}
@@ -183,11 +183,11 @@
     <form class="drawer-form compact" method="post" action="/actions/tickets/{{$d.Ticket.ID}}/edit">
       <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
       <input type="hidden" name="actor" value="{{$.Actor}}">
-      <label>Title <input name="title" value="{{$d.Ticket.Title}}" required></label>
-      <label>Description <textarea name="description" rows="4">{{$d.Ticket.Description}}</textarea></label>
-      <label>Acceptance <textarea name="acceptance" rows="5">{{join $d.Ticket.AcceptanceCriteria "\n"}}</textarea></label>
-      <label>Labels <input name="labels" value="{{join $d.Ticket.Labels ", "}}"></label>
-      <label>Reason <input name="reason" value="web ticket edit"></label>
+      <label>Title <input name="title" value="{{formValue $.Form "title" $d.Ticket.Title}}" required></label>
+      <label>Description <textarea name="description" rows="4">{{formValue $.Form "description" $d.Ticket.Description}}</textarea></label>
+      <label>Acceptance <textarea name="acceptance" rows="5">{{formValue $.Form "acceptance" (join $d.Ticket.AcceptanceCriteria "\n")}}</textarea></label>
+      <label>Labels <input name="labels" value="{{formValue $.Form "labels" (join $d.Ticket.Labels ", ")}}"></label>
+      <label>Reason <input name="reason" value="{{formValue $.Form "reason" "web ticket edit"}}"></label>
       <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Save changes</button>
     </form>
   </details>

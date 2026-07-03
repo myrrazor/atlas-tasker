@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -308,8 +309,10 @@ func (s *Server) writeError(w http.ResponseWriter, r *http.Request, err error, s
 }
 
 // writeActionError reports a failed mutation. Fetch callers get the JSON
-// envelope; plain form posts redirect back to the board (PRG) so the user
-// isn't dead-ended on a text/plain error page.
+// envelope. Plain form posts re-render the board in place with the real
+// error status, an error banner, and the submitted values echoed into the
+// form — a redirect would both lose everything the user typed (no-store
+// disables bfcache) and read as success to non-browser clients following it.
 func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err error, ticketID string) {
 	if wantsJSON(r) {
 		s.writeError(w, r, err, statusForError(err))
@@ -319,8 +322,26 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 	if ticketID != "" {
 		q.Set("ticket", ticketID)
 	}
-	q.Set("error_flash", err.Error())
-	http.Redirect(w, r, "/board?"+q.Encode(), http.StatusSeeOther)
+	if strings.HasSuffix(r.URL.Path, "/create") {
+		q.Set("new", "1")
+	}
+	pageReq := r.Clone(r.Context())
+	pageReq.URL = &url.URL{Path: "/board", RawQuery: q.Encode()}
+	page, buildErr := s.buildBoardPage(r.Context(), pageReq)
+	if buildErr != nil {
+		http.Error(w, err.Error(), statusForError(err))
+		return
+	}
+	page.Error = err.Error()
+	page.Form = r.Form
+	var buf bytes.Buffer
+	if renderErr := s.templates.ExecuteTemplate(&buf, "layout", page); renderErr != nil {
+		http.Error(w, err.Error(), statusForError(err))
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(statusForError(err))
+	_, _ = buf.WriteTo(w)
 }
 
 func requestIDFromContext(ctx context.Context) string {

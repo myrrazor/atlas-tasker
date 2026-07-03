@@ -177,7 +177,9 @@ func webHealth(rawURL string) string {
 		healthURL = strings.TrimSuffix(healthURL, "/board")
 	}
 	healthURL += "/healthz"
-	client := &http.Client{Timeout: 500 * time.Millisecond}
+	// generous: a saturated server rendering a huge board can take >500ms,
+	// and `web open` refusing to open a live server is worse than waiting
+	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(healthURL)
 	if err != nil {
 		return "down"

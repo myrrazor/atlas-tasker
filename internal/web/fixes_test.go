@@ -120,24 +120,47 @@ func TestForbiddenTransitionMapsToConflict(t *testing.T) {
 	}
 }
 
-// Plain form posts (no JS) must not dead-end on a raw text error page; they
-// redirect back to the board with the error in the query string.
-func TestFormMutationErrorRedirectsToBoard(t *testing.T) {
+// Plain form posts (no JS) must not dead-end on a raw text page OR silently
+// redirect: they re-render the board with a real error status, the error
+// banner, and the submitted values so nothing the user typed is lost.
+func TestFormMutationErrorRendersBoardWithTypedValues(t *testing.T) {
 	h := newWebHarness(t, false)
 	form := url.Values{
-		"csrf_token": {"test-csrf"},
-		"status":     {"bogus"},
+		"csrf_token":  {"test-csrf"},
+		"project":     {"WEB"},
+		"title":       {"Payment retry hardening"},
+		"description": {"long description the user must not lose"},
+		"assignee":    {"bob"}, // invalid: actors need a human:/agent: prefix
 	}
+	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/create", form.Encode(), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+		"Origin":       "http://atlas.local",
+	})
+	if res.code != http.StatusBadRequest {
+		t.Fatalf("expected create rejection to keep its error status for non-JS posts, got %d", res.code)
+	}
+	for _, want := range []string{`role="alert"`, "invalid assignee", "long description the user must not lose", "Payment retry hardening"} {
+		if !strings.Contains(res.body, want) {
+			t.Fatalf("expected re-rendered form to contain %q, got:\n%s", want, excerpt(res.body, "alert"))
+		}
+	}
+}
+
+// Rejections in the security middleware (CSRF, origin) must keep their error
+// status for every client — a 303 makes curl -L report success on a rejected
+// mutation.
+func TestCSRFFailureKeepsErrorStatusForBrowsers(t *testing.T) {
+	h := newWebHarness(t, false)
+	form := url.Values{"csrf_token": {"stale"}, "status": {"ready"}}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/move", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
 		"Origin":       "http://atlas.local",
 	})
-	if res.code != http.StatusSeeOther {
-		t.Fatalf("expected form error to redirect, got %d body=%s", res.code, res.body)
+	if res.code != http.StatusForbidden {
+		t.Fatalf("expected CSRF failure to stay 403 for HTML clients, got %d", res.code)
 	}
-	loc := res.header.Get("Location")
-	if !strings.Contains(loc, "error_flash=") || !strings.HasPrefix(loc, "/board") {
-		t.Fatalf("expected redirect to /board with error_flash, got %q", loc)
+	if !strings.Contains(res.body, `role="alert"`) || !strings.Contains(res.body, "invalid csrf token") {
+		t.Fatalf("expected rendered error banner, got:\n%s", excerpt(res.body, "alert"))
 	}
 }
 
@@ -270,13 +293,29 @@ func TestFilterBoardAppliesAssigneeProjectType(t *testing.T) {
 	if got := len(filtered.Columns[contracts.StatusReady]); got != 1 || filtered.Columns[contracts.StatusReady][0].ID != "A-1" {
 		t.Fatalf("assignee filter not applied, got %#v", filtered.Columns[contracts.StatusReady])
 	}
-	filtered = filterBoard(board, BoardPage{Project: "B"})
+	// project narrowing only applies to saved views, and only when the user
+	// explicitly asked for a project — the SQL path scopes the direct board
+	filtered = filterBoard(board, BoardPage{View: "some-view", Project: "B", ProjectExplicit: true})
 	if got := len(filtered.Columns[contracts.StatusReady]); got != 1 || filtered.Columns[contracts.StatusReady][0].ID != "B-1" {
-		t.Fatalf("project filter not applied, got %#v", filtered.Columns[contracts.StatusReady])
+		t.Fatalf("explicit project filter not applied to saved view, got %#v", filtered.Columns[contracts.StatusReady])
 	}
 	filtered = filterBoard(board, BoardPage{Type: "bug"})
 	if got := len(filtered.Columns[contracts.StatusReady]); got != 1 || filtered.Columns[contracts.StatusReady][0].ID != "A-1" {
 		t.Fatalf("type filter not applied, got %#v", filtered.Columns[contracts.StatusReady])
+	}
+}
+
+// A server started with --project APP must not empty a saved view that is
+// scoped to a different project: the implicit default is not a user filter.
+func TestSavedViewNotEmptiedByDefaultProject(t *testing.T) {
+	board := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady: {
+			{ID: "LIB-1", Project: "LIB", Type: contracts.TicketTypeTask},
+		},
+	}}
+	filtered := filterBoard(board, BoardPage{View: "lib-board", Project: "APP", ProjectExplicit: false})
+	if got := len(filtered.Columns[contracts.StatusReady]); got != 1 {
+		t.Fatalf("saved view must ignore the server default project, got %#v", filtered.Columns)
 	}
 }
 

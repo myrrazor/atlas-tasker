@@ -4,6 +4,7 @@ import (
 	"embed"
 	"html/template"
 	"io/fs"
+	"net/url"
 	"strings"
 	"time"
 	"unicode"
@@ -18,6 +19,7 @@ var embeddedFiles embed.FS
 func parseTemplates() (*template.Template, error) {
 	funcs := template.FuncMap{
 		"actorInitials": actorInitials,
+		"formValue":     formValue,
 		"formatTime":    formatTime,
 		"join":          strings.Join,
 		"priorityDot":   priorityDot,
@@ -104,6 +106,18 @@ func actorInitials(actor contracts.Actor) string {
 		return string(unicode.ToUpper(r))
 	}
 	return string(initials)
+}
+
+// formValue echoes what the user submitted on a rejected form, falling back
+// to the stored value on a fresh render.
+func formValue(form url.Values, key string, fallback string) string {
+	if form == nil {
+		return fallback
+	}
+	if v := strings.TrimSpace(form.Get(key)); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func formatTime(t time.Time) string {

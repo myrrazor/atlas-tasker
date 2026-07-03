@@ -67,7 +67,7 @@ func CodeOf(err error) Code {
 	switch {
 	case strings.Contains(text, "not found"):
 		return CodeNotFound
-	case strings.Contains(text, "already exists"), strings.Contains(text, "already claimed"), strings.Contains(text, "claimed by"), strings.Contains(text, "forbidden transition"):
+	case strings.Contains(text, "already exists"), strings.Contains(text, "already claimed"), strings.Contains(text, "claimed by"):
 		return CodeConflict
 	case strings.Contains(text, "invalid "), strings.Contains(text, " is required"), strings.Contains(text, "requires a reason"), strings.Contains(text, "must be "):
 		return CodeInvalidInput

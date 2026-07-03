@@ -45,6 +45,18 @@
     }
   }
 
+  function resyncWithError(message) {
+    // the failed drag may mean our board is stale (e.g. moved from another
+    // window) — resync after the user has had a beat to read the error, and
+    // carry it in the URL so the reload doesn't eat it
+    window.setTimeout(() => {
+      const target = new URL(window.location.href);
+      target.searchParams.set('error_flash', message);
+      target.searchParams.delete('flash');
+      window.location.assign(target.toString());
+    }, 1500);
+  }
+
   function reloadWithFlash(message) {
     const target = new URL(window.location.href);
     target.searchParams.set('flash', message);
@@ -85,6 +97,7 @@
               const message = data.error?.message || `Move failed with ${response.status}`;
               revertCard(event);
               showFlash(message, true);
+              resyncWithError(message);
               return;
             }
             const data = await response.json().catch(() => ({}));
@@ -92,6 +105,7 @@
           } catch (err) {
             revertCard(event);
             showFlash(err.message || 'Move failed', true);
+            resyncWithError(err.message || 'Move failed');
           }
         }
       });

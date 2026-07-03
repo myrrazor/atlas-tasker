@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -12,26 +13,32 @@ import (
 )
 
 type BoardPage struct {
-	Workspace    string
-	Host         string
-	Actor        contracts.Actor
-	ReadOnly     bool
-	Project      string
-	View         string
-	Query        string
-	Assignee     string
-	Reviewer     string
-	Label        string
-	Priority     string
-	Type         string
-	ActiveColumn contracts.Status
+	Workspace string
+	Host      string
+	Actor     contracts.Actor
+	ReadOnly  bool
+	Project   string
+	// true when the project came from the request, not the server default —
+	// saved views must not be narrowed by an implicit --project
+	ProjectExplicit bool `json:"-"`
+	View            string
+	Query           string
+	Assignee        string
+	Reviewer        string
+	Label           string
+	Priority        string
+	Type            string
+	ActiveColumn    contracts.Status
 	// rendered into the page for forms/fetch; never exposed via /api/board
 	CSRFToken string `json:"-"`
-	Columns   []BoardColumn
-	Detail       *TicketDetail
-	Flash        string
-	Error        string
-	ShowNew      bool
+	// submitted values of a rejected form, echoed back so typed content
+	// survives server-side validation errors
+	Form    url.Values `json:"-"`
+	Columns []BoardColumn
+	Detail  *TicketDetail
+	Flash   string
+	Error   string
+	ShowNew bool
 }
 
 type BoardColumn struct {
@@ -72,23 +79,24 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		activeColumn = contracts.StatusReady
 	}
 	page := BoardPage{
-		Workspace:    s.cfg.Workspace,
-		Host:         s.cfg.Host,
-		Actor:        s.cfg.Actor,
-		ReadOnly:     s.cfg.ReadOnly,
-		Project:      firstNonEmpty(query.Get("project"), s.cfg.Project),
-		View:         strings.TrimSpace(query.Get("view")),
-		Query:        strings.TrimSpace(query.Get("q")),
-		Assignee:     strings.TrimSpace(query.Get("assignee")),
-		Reviewer:     strings.TrimSpace(query.Get("reviewer")),
-		Label:        strings.TrimSpace(query.Get("label")),
-		Priority:     strings.TrimSpace(query.Get("priority")),
-		Type:         strings.TrimSpace(query.Get("type")),
-		ActiveColumn: activeColumn,
-		CSRFToken:    s.cfg.CSRFToken,
-		Flash:        strings.TrimSpace(query.Get("flash")),
-		Error:        strings.TrimSpace(query.Get("error_flash")),
-		ShowNew:      query.Get("new") == "1",
+		Workspace:       s.cfg.Workspace,
+		Host:            s.cfg.Host,
+		Actor:           s.cfg.Actor,
+		ReadOnly:        s.cfg.ReadOnly,
+		Project:         firstNonEmpty(query.Get("project"), s.cfg.Project),
+		ProjectExplicit: strings.TrimSpace(query.Get("project")) != "",
+		View:            strings.TrimSpace(query.Get("view")),
+		Query:           strings.TrimSpace(query.Get("q")),
+		Assignee:        strings.TrimSpace(query.Get("assignee")),
+		Reviewer:        strings.TrimSpace(query.Get("reviewer")),
+		Label:           strings.TrimSpace(query.Get("label")),
+		Priority:        strings.TrimSpace(query.Get("priority")),
+		Type:            strings.TrimSpace(query.Get("type")),
+		ActiveColumn:    activeColumn,
+		CSRFToken:       s.cfg.CSRFToken,
+		Flash:           strings.TrimSpace(query.Get("flash")),
+		Error:           strings.TrimSpace(query.Get("error_flash")),
+		ShowNew:         query.Get("new") == "1",
 	}
 	board, err := s.loadBoard(ctx, page)
 	if err != nil {
@@ -122,11 +130,9 @@ func (s *Server) loadBoard(ctx context.Context, page BoardPage) (contracts.Board
 		}
 		board = result.Board.Board
 	} else {
-		vm, err := s.queries.Board(ctx, contracts.BoardQueryOptions{
-			Project:  page.Project,
-			Assignee: contracts.Actor(page.Assignee),
-			Type:     contracts.TicketType(page.Type),
-		})
+		// SQL scopes by project only; every other predicate lives in
+		// filterBoard so both board paths share one filtering semantics
+		vm, err := s.queries.Board(ctx, contracts.BoardQueryOptions{Project: page.Project})
 		if err != nil {
 			return contracts.BoardView{}, err
 		}
@@ -196,14 +202,16 @@ func (s *Server) ticketDetail(ctx context.Context, ticketID string) (TicketDetai
 func filterBoard(board contracts.BoardView, page BoardPage) contracts.BoardView {
 	out := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{}}
 	query := strings.ToLower(page.Query)
+	// project is special: the direct path already scopes it in SQL, and a
+	// saved view defines its own scope — only an explicit user filter may
+	// narrow a view further
+	narrowProject := page.View != "" && page.ProjectExplicit && page.Project != ""
 	for _, status := range boardStatuses {
 		for _, ticket := range board.Columns[status] {
-			// saved views load unfiltered, so the form filters have to apply
-			// here for both paths — not just in the direct board query
 			if page.Assignee != "" && string(ticket.Assignee) != page.Assignee {
 				continue
 			}
-			if page.Project != "" && !strings.EqualFold(ticket.Project, page.Project) {
+			if narrowProject && !strings.EqualFold(ticket.Project, page.Project) {
 				continue
 			}
 			if page.Type != "" && string(ticket.Type) != page.Type {
