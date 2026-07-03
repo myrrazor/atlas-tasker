@@ -52,7 +52,7 @@
     </footer>
   </section>
 
-  <aside class="detail-drawer" aria-label="Ticket detail">
+  <aside class="detail-drawer" aria-label="Ticket detail"{{if .FormTarget}} data-form-echo="{{.FormTarget}}"{{end}}>
     {{if .ShowNew}}
       {{template "newTicket" .}}
     {{else if .Detail}}

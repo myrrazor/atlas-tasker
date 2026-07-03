@@ -205,12 +205,38 @@ func TestRejectedEditEchoesIntoCorrectTicket(t *testing.T) {
 // Embedded static files have zero modtimes, so FileServer emits no
 // Last-Modified/ETag — without an explicit Cache-Control browsers
 // heuristically cache app.js forever and users keep stale JS after
-// upgrading the tracker binary.
-func TestStaticAssetsRevalidate(t *testing.T) {
+// upgrading the tracker binary. ETags keep the forced revalidation cheap.
+func TestStaticAssetsRevalidateWithETag(t *testing.T) {
 	h := newWebHarness(t, false)
 	res := doRaw(t, h.handler, http.MethodGet, "/static/app.js", nil)
 	if got := res.Header().Get("Cache-Control"); got != "no-cache" {
 		t.Fatalf("static assets must force revalidation, got Cache-Control=%q", got)
+	}
+	etag := res.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("static assets must carry an ETag so revalidation can 304")
+	}
+	revalidated := doRaw(t, h.handler, http.MethodGet, "/static/app.js", map[string]string{"If-None-Match": etag})
+	if revalidated.Code != http.StatusNotModified {
+		t.Fatalf("expected 304 for matching If-None-Match, got %d", revalidated.Code)
+	}
+}
+
+// The drawer advertises when it is rendering echoed rejected-form values so
+// the client-side refresh knows never to swap it out.
+func TestDrawerMarksFormEcho(t *testing.T) {
+	h := newWebHarness(t, false)
+	form := url.Values{"csrf_token": {"test-csrf"}, "body": {""}}
+	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/comment", form.Encode(), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+		"Origin":       "http://atlas.local",
+	})
+	if !strings.Contains(res.body, `data-form-echo="comment"`) {
+		t.Fatalf("expected drawer to be marked as echoing a rejected form:\n%s", excerpt(res.body, "detail-drawer"))
+	}
+	clean := h.doAuthed(t, http.MethodGet, "/board?ticket="+url.QueryEscape(h.ticketID), "", nil)
+	if strings.Contains(clean.body, "data-form-echo") {
+		t.Fatalf("clean renders must not carry the echo marker")
 	}
 }
 

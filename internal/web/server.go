@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -50,12 +51,13 @@ type Config struct {
 }
 
 type Server struct {
-	cfg       Config
-	actions   *service.ActionService
-	queries   *service.QueryService
-	templates *template.Template
-	static    fs.FS
-	startedAt time.Time
+	cfg         Config
+	actions     *service.ActionService
+	queries     *service.QueryService
+	templates   *template.Template
+	static      fs.FS
+	staticETags map[string]string
+	startedAt   time.Time
 }
 
 type contextKey string
@@ -104,19 +106,53 @@ func NewServer(services Services, cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	etags, err := computeStaticETags(static)
+	if err != nil {
+		return nil, err
+	}
 	return &Server{
-		cfg:       cfg,
-		actions:   services.Actions,
-		queries:   services.Queries,
-		templates: templates,
-		static:    static,
-		startedAt: cfg.Clock(),
+		cfg:         cfg,
+		actions:     services.Actions,
+		queries:     services.Queries,
+		templates:   templates,
+		static:      static,
+		staticETags: etags,
+		startedAt:   cfg.Clock(),
 	}, nil
+}
+
+// computeStaticETags hashes the embedded assets once at startup; embed files
+// have zero modtimes, so ETags are the only way revalidation can 304.
+func computeStaticETags(fsys fs.FS) (map[string]string, error) {
+	etags := map[string]string{}
+	err := fs.WalkDir(fsys, ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		raw, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(raw)
+		etags[path] = `"` + hex.EncodeToString(sum[:8]) + `"`
+		return nil
+	})
+	return etags, err
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(s.static))))
+	fileServer := http.StripPrefix("/static/", http.FileServer(http.FS(s.static)))
+	mux.Handle("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if etag, ok := s.staticETags[strings.TrimPrefix(r.URL.Path, "/static/")]; ok {
+			w.Header().Set("ETag", etag)
+			if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, etag) {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 	mux.HandleFunc("/favicon.ico", s.handleFavicon)
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/board", s.handleBoardAPI)

@@ -54,47 +54,96 @@
     return new URL('/board', window.location.origin);
   }
 
-  // Sync the columns with the server WITHOUT navigating: fetch the board
-  // page, swap in the fresh grid, and rebind drag handlers. Nothing outside
-  // the grid is touched, so typed input, open drawers, filter fields, and
-  // the flash all survive — success, rejection, and network recovery share
-  // this one path.
-  async function refreshBoard(message, isError, attempt = 0) {
-    try {
-      const response = await fetch(boardURL().toString(), { headers: { 'Accept': 'text/html' } });
-      if (!response.ok) throw new Error(`board refresh got ${response.status}`);
-      const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
-      let swapped = false;
-      ['.board-grid', '.mobile-columns'].forEach((selector) => {
-        const next = doc.querySelector(selector);
-        const current = document.querySelector(selector);
-        if (next && current) {
-          current.replaceWith(next);
-          swapped = true;
+  // Refresh concurrency model: a generation counter makes every new refresh
+  // supersede older in-flight/retrying ones (no stale snapshot or stale
+  // flash can land late), and swaps wait for any active drag to finish so
+  // the grid is never pulled out from under the pointer.
+  let refreshSeq = 0;
+  let dragsInFlight = 0;
+  let boundSortables = [];
+
+  function sleep(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  async function waitForDragEnd() {
+    while (dragsInFlight > 0) {
+      await sleep(150);
+    }
+  }
+
+  function drawerSafeToSwap() {
+    // never touch a drawer that is echoing a rejected form or holding
+    // anything the user typed; only sync it when the URL pins the ticket
+    if (!new URL(window.location.href).searchParams.has('ticket')) return false;
+    const drawer = document.querySelector('.detail-drawer');
+    if (!drawer || drawer.dataset.formEcho) return false;
+    return !Array.from(drawer.querySelectorAll('textarea, input:not([type="hidden"])'))
+      .some((el) => el.value !== el.defaultValue);
+  }
+
+  // Sync with the server WITHOUT navigating: fetch the board page and swap
+  // in the fresh grid (and drawer, when provably safe). Typed input, filter
+  // fields, and the flash survive; unreachable servers are retried with
+  // backoff so a committed-but-unacknowledged move still converges.
+  async function refreshBoard(message, isError) {
+    const seq = ++refreshSeq;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (seq !== refreshSeq) return;
+      try {
+        const response = await fetch(boardURL().toString(), { headers: { 'Accept': 'text/html' } });
+        if (response.status === 401) {
+          showFlash('Session expired — run `tracker web serve --open` and use the new session URL', true);
+          return;
         }
-      });
-      if (swapped) setupSortable();
-      if (message) showFlash(message, isError);
-    } catch (err) {
-      // server unreachable or mid-restart: keep the board we have, retry a
-      // few times so a committed-but-unacknowledged move still converges
-      if (attempt < 5) {
-        window.setTimeout(() => refreshBoard(message, isError, attempt + 1), 2000 * (attempt + 1));
+        if (!response.ok) throw new Error(`board refresh got ${response.status}`);
+        const html = await response.text();
+        await waitForDragEnd();
+        if (seq !== refreshSeq) return;
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const selectors = ['.board-grid', '.mobile-columns'];
+        if (drawerSafeToSwap()) selectors.push('.detail-drawer');
+        let sweptGrid = false;
+        let sweptDrawer = false;
+        selectors.forEach((selector) => {
+          const next = doc.querySelector(selector);
+          const current = document.querySelector(selector);
+          if (next && current) {
+            current.replaceWith(next);
+            if (selector === '.board-grid') sweptGrid = true;
+            if (selector === '.detail-drawer') sweptDrawer = true;
+          }
+        });
+        if (sweptGrid) setupSortable();
+        if (sweptDrawer) setupTabs();
+        if (message) showFlash(message, isError);
         return;
+      } catch (err) {
+        await sleep(2000 * (attempt + 1));
       }
+    }
+    if (seq === refreshSeq) {
       showFlash('Board may be out of date — could not reach the server', true);
     }
   }
 
   function setupSortable() {
     if (!window.Sortable) return;
+    // destroy instances bound to grids that replaceWith detached, or every
+    // refresh leaks a full board subtree in long-lived tabs
+    boundSortables.forEach((instance) => {
+      try { instance.destroy(); } catch (err) { /* already detached */ }
+    });
+    boundSortables = [];
     document.querySelectorAll('.ticket-list').forEach((list) => {
-      window.Sortable.create(list, {
+      boundSortables.push(window.Sortable.create(list, {
         group: 'atlas-board',
         handle: '.drag-handle',
         animation: 120,
         sort: false,
         ghostClass: 'sortable-ghost',
+        onStart: () => { dragsInFlight++; },
+        onEnd: () => { dragsInFlight = Math.max(0, dragsInFlight - 1); },
         onAdd: async (event) => {
           const card = event.item;
           const ticketID = card.dataset.ticketId;
@@ -114,24 +163,23 @@
               },
               body
             });
+            const data = await response.json().catch(() => ({}));
             if (!response.ok) {
-              const data = await response.json().catch(() => ({}));
-              const message = data.error?.message || `Move failed with ${response.status}`;
+              // feedback first — the resync may take a while or fail
               revertCard(event);
-              await refreshBoard(message, true);
+              showFlash(data.error?.message || `Move failed with ${response.status}`, true);
+              refreshBoard();
               return;
             }
-            const data = await response.json().catch(() => ({}));
-            await refreshBoard(data.payload?.flash || `updated ${ticketID}`, false);
+            showFlash(data.payload?.flash || `updated ${ticketID}`, false);
+            refreshBoard();
           } catch (err) {
-            // the move may or may not have committed — refreshBoard retries
-            // until the server answers, so the board converges either way
             revertCard(event);
             showFlash(err.message || 'Move failed', true);
-            refreshBoard(err.message || 'Move failed', true);
+            refreshBoard();
           }
         }
-      });
+      }));
     });
   }
 
