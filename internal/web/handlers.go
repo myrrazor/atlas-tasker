@@ -134,7 +134,7 @@ func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// same invariant the CLI enforces: tickets are not born finished
-	if status == contracts.StatusDone || status == contracts.StatusCanceled {
+	if contracts.IsTerminalStatus(status) {
 		s.writeActionError(w, r, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("status %s is not allowed on ticket create", status)), "")
 		return
 	}
@@ -194,67 +194,13 @@ func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch action {
 	case "edit":
-		ticket, err = s.actions.MutateTrackedTicket(ctx, id, actor, reason, "web edit ticket", func(ticket *contracts.TicketSnapshot) error {
-			// the store validates on create but not on update, so the edit
-			// path has to reject what create would have refused
-			if r.Form.Has("title") {
-				title := strings.TrimSpace(r.Form.Get("title"))
-				if title == "" {
-					return apperr.New(apperr.CodeInvalidInput, "title is required")
-				}
-				ticket.Title = title
-			}
-			if r.Form.Has("description") {
-				ticket.Description = strings.TrimSpace(r.Form.Get("description"))
-			}
-			if r.Form.Has("priority") {
-				priority, err := parsePriorityDefault(r.Form.Get("priority"), ticket.Priority)
-				if err != nil {
-					return err
-				}
-				ticket.Priority = priority
-			}
-			if r.Form.Has("assignee") {
-				assignee := strings.TrimSpace(r.Form.Get("assignee"))
-				if assignee != "" && !contracts.Actor(assignee).IsValid() {
-					return apperr.New(apperr.CodeInvalidInput, "invalid assignee actor: "+assignee)
-				}
-				ticket.Assignee = contracts.Actor(assignee)
-			}
-			if r.Form.Has("reviewer") {
-				reviewer := strings.TrimSpace(r.Form.Get("reviewer"))
-				if reviewer != "" && !contracts.Actor(reviewer).IsValid() {
-					return apperr.New(apperr.CodeInvalidInput, "invalid reviewer actor: "+reviewer)
-				}
-				ticket.Reviewer = contracts.Actor(reviewer)
-			}
-			if r.Form.Has("labels") {
-				ticket.Labels = splitCSV(r.Form.Get("labels"))
-			}
-			if r.Form.Has("acceptance") {
-				ticket.AcceptanceCriteria = splitLines(r.Form.Get("acceptance"))
-			}
-			return nil
-		})
+		ticket, err = s.actions.MutateTrackedTicket(ctx, id, actor, reason, "web edit ticket", editMutatorFromForm(r))
 	case "move":
-		var to contracts.Status
-		to, err = parseStatusStrict(r.Form.Get("status"))
-		if err != nil {
-			break
-		}
-		var current contracts.TicketSnapshot
-		current, err = s.actions.Tickets.GetTicket(ctx, id)
-		if err != nil {
-			break
-		}
-		// cards can render in a projected column (e.g. Blocked) while the
-		// stored status is something else — dropping a card on its own status
-		// is a no-op, not a forbidden self-transition
-		if current.Status == to {
-			s.actionSuccess(w, r, id, fmt.Sprintf("%s is already %s", id, statusLabel(to)))
+		var handled bool
+		ticket, handled, err = s.applyMoveAction(w, r, ctx, id, actor, reason)
+		if handled {
 			return
 		}
-		ticket, err = s.moveTicket(ctx, id, to, actor, reason, contracts.Actor(strings.TrimSpace(r.Form.Get("reviewer"))))
 	case "assign":
 		ticket, err = s.actions.AssignTicket(ctx, id, contracts.Actor(strings.TrimSpace(r.Form.Get("assignee"))), actor, reason)
 	case "comment":
@@ -296,6 +242,73 @@ func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.actionSuccess(w, r, ticket.ID, fmt.Sprintf("updated %s", ticket.ID))
+}
+
+// editMutatorFromForm applies only the submitted fields; the store validates
+// on create but not on update, so edits must reject what create would refuse.
+func editMutatorFromForm(r *http.Request) func(*contracts.TicketSnapshot) error {
+	return func(ticket *contracts.TicketSnapshot) error {
+		if r.Form.Has("title") {
+			title := strings.TrimSpace(r.Form.Get("title"))
+			if title == "" {
+				return apperr.New(apperr.CodeInvalidInput, "title is required")
+			}
+			ticket.Title = title
+		}
+		if r.Form.Has("description") {
+			ticket.Description = strings.TrimSpace(r.Form.Get("description"))
+		}
+		if r.Form.Has("priority") {
+			priority, err := parsePriorityDefault(r.Form.Get("priority"), ticket.Priority)
+			if err != nil {
+				return err
+			}
+			ticket.Priority = priority
+		}
+		if r.Form.Has("assignee") {
+			assignee := strings.TrimSpace(r.Form.Get("assignee"))
+			if assignee != "" && !contracts.Actor(assignee).IsValid() {
+				return apperr.New(apperr.CodeInvalidInput, "invalid assignee actor: "+assignee)
+			}
+			ticket.Assignee = contracts.Actor(assignee)
+		}
+		if r.Form.Has("reviewer") {
+			reviewer := strings.TrimSpace(r.Form.Get("reviewer"))
+			if reviewer != "" && !contracts.Actor(reviewer).IsValid() {
+				return apperr.New(apperr.CodeInvalidInput, "invalid reviewer actor: "+reviewer)
+			}
+			ticket.Reviewer = contracts.Actor(reviewer)
+		}
+		if r.Form.Has("labels") {
+			ticket.Labels = splitCSV(r.Form.Get("labels"))
+		}
+		if r.Form.Has("acceptance") {
+			ticket.AcceptanceCriteria = splitLines(r.Form.Get("acceptance"))
+		}
+		return nil
+	}
+}
+
+// applyMoveAction validates the drop target and short-circuits same-status
+// drops: cards can render in a projected column (e.g. Blocked) while the
+// stored status is something else, and dropping a card on its own status is
+// a no-op, not a forbidden self-transition. handled=true means the response
+// was already written.
+func (s *Server) applyMoveAction(w http.ResponseWriter, r *http.Request, ctx context.Context, id string, actor contracts.Actor, reason string) (contracts.TicketSnapshot, bool, error) {
+	to, err := parseStatusStrict(r.Form.Get("status"))
+	if err != nil {
+		return contracts.TicketSnapshot{}, false, err
+	}
+	current, err := s.actions.Tickets.GetTicket(ctx, id)
+	if err != nil {
+		return contracts.TicketSnapshot{}, false, err
+	}
+	if current.Status == to {
+		s.actionSuccess(w, r, id, fmt.Sprintf("%s is already %s", id, statusLabel(to)))
+		return current, true, nil
+	}
+	ticket, err := s.moveTicket(ctx, id, to, actor, reason, contracts.Actor(strings.TrimSpace(r.Form.Get("reviewer"))))
+	return ticket, false, err
 }
 
 func (s *Server) moveTicket(ctx context.Context, id string, to contracts.Status, actor contracts.Actor, reason string, reviewer contracts.Actor) (contracts.TicketSnapshot, error) {

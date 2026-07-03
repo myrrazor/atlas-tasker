@@ -1,8 +1,10 @@
 package domain
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
 
@@ -65,5 +67,20 @@ func TestValidateMoveSkipsCompletionRuleOutsideReviewToDone(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("expected non-completion move to pass permission checks: %v", err)
+	}
+}
+
+func TestValidateTransitionReturnsTypedCodes(t *testing.T) {
+	var appErr *apperr.Error
+	err := ValidateTransition(contracts.StatusReady, contracts.StatusInReview)
+	if !errors.As(err, &appErr) || appErr.Code != apperr.CodeConflict {
+		t.Fatalf("forbidden transition must carry a typed conflict code, got %#v", err)
+	}
+	if got := err.Error(); got != "forbidden transition: ready -> in_review" {
+		t.Fatalf("message must stay stable for scripts, got %q", got)
+	}
+	err = ValidateTransition(contracts.Status("nope"), contracts.StatusReady)
+	if !errors.As(err, &appErr) || appErr.Code != apperr.CodeInvalidInput {
+		t.Fatalf("invalid source status must carry invalid_input, got %#v", err)
 	}
 }

@@ -106,8 +106,11 @@ func TestBoardThousandTicketPerformanceTarget(t *testing.T) {
 	if got := countBoardTickets(board.Board); got != 1000 {
 		t.Fatalf("expected 1000 tickets, got %d", got)
 	}
-	if elapsed := time.Since(queryStarted); elapsed > 250*time.Millisecond {
-		// wall-clock targets flake on loaded runners; hard-fail only when asked
+	// two tiers: a generous always-on cap so CI still catches order-of-magnitude
+	// regressions, and the real target enforced when ATLAS_PERF_STRICT is set
+	if elapsed := time.Since(queryStarted); elapsed > 2*time.Second {
+		t.Fatalf("1000-ticket board query blew the 2s sanity cap: %s", elapsed)
+	} else if elapsed > 250*time.Millisecond {
 		if os.Getenv("ATLAS_PERF_STRICT") != "" {
 			t.Fatalf("1000-ticket board query exceeded target: %s", elapsed)
 		}
@@ -122,7 +125,9 @@ func TestBoardThousandTicketPerformanceTarget(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("render board status = %d", res.Code)
 	}
-	if elapsed := time.Since(renderStarted); elapsed > 500*time.Millisecond {
+	if elapsed := time.Since(renderStarted); elapsed > 4*time.Second {
+		t.Fatalf("1000-ticket board render blew the 4s sanity cap: %s", elapsed)
+	} else if elapsed > 500*time.Millisecond {
 		if os.Getenv("ATLAS_PERF_STRICT") != "" {
 			t.Fatalf("1000-ticket board render exceeded target: %s", elapsed)
 		}

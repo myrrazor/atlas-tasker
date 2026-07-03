@@ -84,7 +84,7 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	if err := webui.WriteRuntimeState(workspace.root, state); err != nil {
 		return err
 	}
-	defer func() { _ = webui.ClearRuntimeState(workspace.root) }()
+	defer func() { _ = webui.ClearRuntimeStateOwnedBy(workspace.root, os.Getpid()) }()
 	sessionURL := server.SessionURL(actualPort)
 	if unsafeHost {
 		fmt.Fprintln(cmd.ErrOrStderr(), "warning: web board is bound to a non-loopback host; use only on trusted networks")

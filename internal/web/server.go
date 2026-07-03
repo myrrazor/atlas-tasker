@@ -175,7 +175,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 
 func (s *Server) security(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestID := randomToken()[:16]
+		requestID := newRequestID()
 		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
 		r = r.WithContext(ctx)
 		s.writeSecurityHeaders(w, r)
@@ -192,11 +192,7 @@ func (s *Server) security(next http.Handler) http.Handler {
 		}
 		if isMutation(r.Method) {
 			if err := s.validateMutation(r); err != nil {
-				if wantsJSON(r) {
-					s.writeError(w, r, err, http.StatusForbidden)
-				} else {
-					s.writeActionError(w, r, err, "")
-				}
+				s.writeActionError(w, r, err, "")
 				return
 			}
 		}
@@ -359,11 +355,22 @@ func secureCompare(left string, right string) bool {
 	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
 }
 
+// randomToken mints session/CSRF secrets at startup only.
 func randomToken() string {
 	var raw [32]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		// never fall back to something guessable — refuse to serve instead
 		panic(fmt.Sprintf("atlas web: crypto/rand unavailable: %v", err))
+	}
+	return hex.EncodeToString(raw[:])
+}
+
+// newRequestID is a correlation id, not a secret — a transient entropy
+// failure at runtime must degrade gracefully, not panic per request.
+func newRequestID() string {
+	var raw [8]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return fmt.Sprintf("req-%d", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(raw[:])
 }

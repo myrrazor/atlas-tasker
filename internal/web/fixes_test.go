@@ -296,6 +296,32 @@ func TestFooterAdvertisesOnlyRealShortcutsAndNoDeadButtons(t *testing.T) {
 	}
 }
 
+// Stopping server A must not delete the runtime state of a newer server B
+// that overwrote the file in the same workspace.
+func TestRuntimeStateClearOwnedOnly(t *testing.T) {
+	root := t.TempDir()
+	other := RuntimeState{Host: "127.0.0.1", Port: 2, URL: "http://127.0.0.1:2/board", PID: 999999, StartedAt: time.Now().UTC()}
+	if err := WriteRuntimeState(root, other); err != nil {
+		t.Fatalf("write runtime state: %v", err)
+	}
+	if err := ClearRuntimeStateOwnedBy(root, 1234); err != nil {
+		t.Fatalf("clear owned: %v", err)
+	}
+	if _, err := ReadRuntimeState(root); err != nil {
+		t.Fatal("state owned by another pid must survive cleanup")
+	}
+	mine := RuntimeState{Host: "127.0.0.1", Port: 3, URL: "http://127.0.0.1:3/board", PID: 1234, StartedAt: time.Now().UTC()}
+	if err := WriteRuntimeState(root, mine); err != nil {
+		t.Fatalf("write runtime state: %v", err)
+	}
+	if err := ClearRuntimeStateOwnedBy(root, 1234); err != nil {
+		t.Fatalf("clear owned: %v", err)
+	}
+	if _, err := ReadRuntimeState(root); err == nil {
+		t.Fatal("own state should be removed on shutdown")
+	}
+}
+
 func TestRuntimeStateClearedHelper(t *testing.T) {
 	root := t.TempDir()
 	state := RuntimeState{Host: "127.0.0.1", Port: 1, URL: "http://127.0.0.1:1/board", PID: 1, StartedAt: time.Now().UTC()}

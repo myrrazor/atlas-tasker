@@ -44,6 +44,23 @@ func ClearRuntimeState(root string) error {
 	return nil
 }
 
+// ClearRuntimeStateOwnedBy removes the runtime state only when it still
+// belongs to pid — a second `web serve` in the same workspace overwrites the
+// file, and the first server's shutdown must not delete the newer record.
+func ClearRuntimeStateOwnedBy(root string, pid int) error {
+	state, err := ReadRuntimeState(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if state.PID != pid {
+		return nil
+	}
+	return ClearRuntimeState(root)
+}
+
 func ReadRuntimeState(root string) (RuntimeState, error) {
 	raw, err := os.ReadFile(RuntimeStatePath(root))
 	if err != nil {

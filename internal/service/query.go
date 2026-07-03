@@ -358,16 +358,8 @@ func (s *QueryService) History(ctx context.Context, ticketID string) (HistoryVie
 }
 
 // CommentCounts returns comment totals per ticket id for board badges.
-// Projections without batch counting yield zeros rather than an error.
 func (s *QueryService) CommentCounts(ctx context.Context, ticketIDs []string) (map[string]int, error) {
-	type commentCounter interface {
-		QueryCommentCounts(ctx context.Context, ticketIDs []string) (map[string]int, error)
-	}
-	counter, ok := s.Projection.(commentCounter)
-	if !ok {
-		return map[string]int{}, nil
-	}
-	return counter.QueryCommentCounts(ctx, ticketIDs)
+	return s.Projection.QueryCommentCounts(ctx, ticketIDs)
 }
 
 func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (TicketDetailView, error) {
