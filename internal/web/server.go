@@ -318,11 +318,18 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 		s.writeError(w, r, err, statusForError(err))
 		return
 	}
-	q := url.Values{}
-	if ticketID != "" {
-		q.Set("ticket", ticketID)
+	// derive the target from the path, not the caller: middleware rejections
+	// (CSRF/origin) have no handler-supplied id, and echoing the form into an
+	// auto-selected ticket would prefill the wrong ticket's edit form
+	target, pathTicketID := actionTarget(r.URL.Path)
+	if pathTicketID == "" {
+		pathTicketID = ticketID
 	}
-	if strings.HasSuffix(r.URL.Path, "/create") {
+	q := url.Values{}
+	if pathTicketID != "" {
+		q.Set("ticket", pathTicketID)
+	}
+	if target == "create" {
 		q.Set("new", "1")
 	}
 	pageReq := r.Clone(r.Context())
@@ -333,7 +340,11 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 		return
 	}
 	page.Error = err.Error()
-	page.Form = r.Form
+	switch target {
+	case "create", "edit", "comment":
+		page.Form = r.Form
+		page.FormTarget = target
+	}
 	var buf bytes.Buffer
 	if renderErr := s.templates.ExecuteTemplate(&buf, "layout", page); renderErr != nil {
 		http.Error(w, err.Error(), statusForError(err))
@@ -342,6 +353,23 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(statusForError(err))
 	_, _ = buf.WriteTo(w)
+}
+
+// actionTarget parses "/actions/tickets/create" and
+// "/actions/tickets/{id}/{action}" into the action name and ticket id.
+func actionTarget(path string) (string, string) {
+	rest := strings.Trim(strings.TrimPrefix(path, "/actions/tickets/"), "/")
+	if rest == path || rest == "" {
+		return "", ""
+	}
+	if rest == "create" {
+		return "create", ""
+	}
+	id, action, ok := strings.Cut(rest, "/")
+	if !ok {
+		return "", ""
+	}
+	return action, id
 }
 
 func requestIDFromContext(ctx context.Context) string {

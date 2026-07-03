@@ -164,6 +164,142 @@ func TestCSRFFailureKeepsErrorStatusForBrowsers(t *testing.T) {
 	}
 }
 
+// A rejected edit must re-render THAT ticket's edit form with the submitted
+// values — echoing them into whatever ticket the board auto-selects would
+// hand the user a prefilled form that saves to the wrong ticket.
+func TestRejectedEditEchoesIntoCorrectTicket(t *testing.T) {
+	h := newWebHarness(t, false)
+	ctx := context.Background()
+	second, err := h.actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project:       "WEB",
+		Title:         "Second ticket",
+		Type:          contracts.TicketTypeTask,
+		Status:        contracts.StatusBacklog,
+		Priority:      contracts.PriorityLow,
+		CreatedAt:     h.now,
+		UpdatedAt:     h.now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}, contracts.Actor("human:owner"), "seed second")
+	if err != nil {
+		t.Fatalf("seed second ticket: %v", err)
+	}
+	// stale CSRF: rejected in the middleware, where no handler supplies an id
+	form := url.Values{"csrf_token": {"stale"}, "title": {"EDIT MEANT FOR SECOND"}}
+	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+second.ID+"/edit", form.Encode(), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+		"Origin":       "http://atlas.local",
+	})
+	if res.code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", res.code)
+	}
+	if !strings.Contains(res.body, "/actions/tickets/"+second.ID+"/edit") {
+		t.Fatalf("expected the rejected ticket's own edit form to render, got:\n%s", excerpt(res.body, "/edit"))
+	}
+	if strings.Contains(res.body, "/actions/tickets/"+h.ticketID+"/edit") && strings.Contains(res.body, "EDIT MEANT FOR SECOND") && !strings.Contains(res.body, "/actions/tickets/"+second.ID+"/edit") {
+		t.Fatalf("submitted values leaked into another ticket's edit form")
+	}
+}
+
+// Echoes are scoped to the form that was submitted: a rejected comment fills
+// the comment box, not the edit form's audit reason.
+func TestFormEchoScopedToSubmittedForm(t *testing.T) {
+	h := newWebHarness(t, false)
+	form := url.Values{
+		"csrf_token": {"test-csrf"},
+		"body":       {""}, // empty comment is rejected by the service
+		"reason":     {"web ticket comment"},
+	}
+	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/comment", form.Encode(), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+		"Origin":       "http://atlas.local",
+	})
+	if res.code == http.StatusOK || res.code == http.StatusSeeOther {
+		t.Fatalf("expected empty comment to be rejected, got %d", res.code)
+	}
+	if !strings.Contains(res.body, `value="web ticket edit"`) {
+		t.Fatalf("edit form reason contaminated by the rejected comment form:\n%s", excerpt(res.body, "reason"))
+	}
+}
+
+// The create re-render echoes the selects too, not just the text inputs.
+func TestCreateEchoIncludesTypeAndPriority(t *testing.T) {
+	h := newWebHarness(t, false)
+	form := url.Values{
+		"csrf_token": {"test-csrf"},
+		"project":    {"WEB"},
+		"title":      {"typed"},
+		"type":       {"bug"},
+		"priority":   {"critical"},
+		"assignee":   {"nope"}, // rejected server-side
+	}
+	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/create", form.Encode(), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+		"Origin":       "http://atlas.local",
+	})
+	if res.code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", res.code)
+	}
+	if !strings.Contains(res.body, `value="bug" selected`) || !strings.Contains(res.body, `value="critical" selected`) {
+		t.Fatalf("expected type/priority selections to survive rejection:\n%s", excerpt(res.body, "option"))
+	}
+}
+
+// A rejected comment must keep the typed body — losing it was the original
+// complaint this mechanism exists to fix.
+func TestRejectedCommentKeepsBody(t *testing.T) {
+	h := newWebHarness(t, false)
+	form := url.Values{
+		"csrf_token": {"stale"}, // middleware rejection, worst case
+		"body":       {"hard-won comment text"},
+	}
+	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/comment", form.Encode(), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+		"Origin":       "http://atlas.local",
+	})
+	if res.code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", res.code)
+	}
+	if !strings.Contains(res.body, "hard-won comment text") {
+		t.Fatalf("rejected comment lost the typed body:\n%s", excerpt(res.body, "comment"))
+	}
+}
+
+// Deliberately cleared fields stay cleared on a rejected edit: the submitted
+// (empty) value wins over the stored one.
+func TestClearedFieldsStayClearedOnRejectedEdit(t *testing.T) {
+	h := newWebHarness(t, false)
+	form := url.Values{
+		"csrf_token":  {"test-csrf"},
+		"title":       {"   "}, // rejected: title is required
+		"description": {""},    // user cleared it on purpose
+	}
+	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/edit", form.Encode(), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+		"Origin":       "http://atlas.local",
+	})
+	if res.code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", res.code)
+	}
+	// the seeded description must NOT be resurrected into the edit textarea
+	if strings.Contains(res.body, `name="description" rows="4">bad `) {
+		t.Fatalf("cleared description was resurrected on rejected edit:\n%s", excerpt(res.body, "description"))
+	}
+}
+
+// The filter form must not convert the server's implicit --project default
+// into an explicit filter that empties saved views on first submit.
+func TestFiltersFormDoesNotExposeImplicitProject(t *testing.T) {
+	h := newWebHarness(t, false)
+	implicit := h.doAuthed(t, http.MethodGet, "/board", "", nil)
+	if !strings.Contains(implicit.body, `name="project" value=""`) {
+		t.Fatalf("filters form should render an empty project input for the implicit default:\n%s", excerpt(implicit.body, `name="project"`))
+	}
+	explicit := h.doAuthed(t, http.MethodGet, "/board?project=WEB", "", nil)
+	if !strings.Contains(explicit.body, `name="project" value="WEB"`) {
+		t.Fatalf("explicit project must render in the filters form:\n%s", excerpt(explicit.body, `name="project"`))
+	}
+}
+
 func TestBoardRendersErrorFlashParam(t *testing.T) {
 	h := newWebHarness(t, false)
 	res := h.doAuthed(t, http.MethodGet, "/board?error_flash=boom-xyz", "", nil)

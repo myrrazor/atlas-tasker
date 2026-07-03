@@ -5,7 +5,9 @@
     {{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
 
     <form class="filters" method="get" action="/board">
-      <label>Project <input name="project" value="{{.Project}}" placeholder="APP"></label>
+      {{/* only echo an explicit project — the server default must not become
+           an explicit filter that empties saved views on the next submit */}}
+      <label>Project <input name="project" value="{{if .ProjectExplicit}}{{.Project}}{{end}}" placeholder="{{if .Project}}{{.Project}}{{else}}APP{{end}}"></label>
       <label>View <input name="view" value="{{.View}}" placeholder="web-board"></label>
       <label>Assignee <input name="assignee" value="{{.Assignee}}" placeholder="agent:builder-1"></label>
       <label>Reviewer <input name="reviewer" value="{{.Reviewer}}" placeholder="agent:reviewer-1"></label>
@@ -119,32 +121,35 @@
 <form class="drawer-form" method="post" action="/actions/tickets/create">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
   <input type="hidden" name="actor" value="{{.Actor}}">
-  <label>Project <input name="project" value="{{formValue .Form "project" .Project}}" required></label>
-  <label>Title <input name="title" value="{{formValue .Form "title" ""}}" placeholder="Ship the web board" required></label>
+  {{$cf := .FormFor "create"}}
+  {{$ctype := formValue $cf "type" "task"}}
+  {{$cprio := formValue $cf "priority" "medium"}}
+  <label>Project <input name="project" value="{{formValue $cf "project" .Project}}" required></label>
+  <label>Title <input name="title" value="{{formValue $cf "title" ""}}" placeholder="Ship the web board" required></label>
   <div class="form-row">
     <label>Type
       <select name="type">
-        <option value="task">Task</option>
-        <option value="bug">Bug</option>
-        <option value="epic">Epic</option>
-        <option value="subtask">Subtask</option>
+        <option value="task" {{if eq $ctype "task"}}selected{{end}}>Task</option>
+        <option value="bug" {{if eq $ctype "bug"}}selected{{end}}>Bug</option>
+        <option value="epic" {{if eq $ctype "epic"}}selected{{end}}>Epic</option>
+        <option value="subtask" {{if eq $ctype "subtask"}}selected{{end}}>Subtask</option>
       </select>
     </label>
     <label>Priority
       <select name="priority">
-        <option value="medium">Medium</option>
-        <option value="high">High</option>
-        <option value="critical">Critical</option>
-        <option value="low">Low</option>
+        <option value="medium" {{if eq $cprio "medium"}}selected{{end}}>Medium</option>
+        <option value="high" {{if eq $cprio "high"}}selected{{end}}>High</option>
+        <option value="critical" {{if eq $cprio "critical"}}selected{{end}}>Critical</option>
+        <option value="low" {{if eq $cprio "low"}}selected{{end}}>Low</option>
       </select>
     </label>
   </div>
-  <label>Assignee <input name="assignee" value="{{formValue .Form "assignee" ""}}" placeholder="agent:builder-1"></label>
-  <label>Reviewer <input name="reviewer" value="{{formValue .Form "reviewer" ""}}" placeholder="agent:reviewer-1"></label>
-  <label>Labels <input name="labels" value="{{formValue .Form "labels" ""}}" placeholder="web, ui"></label>
-  <label>Description <textarea name="description" rows="4">{{formValue .Form "description" ""}}</textarea></label>
-  <label>Acceptance Criteria <textarea name="acceptance" rows="5" placeholder="One item per line">{{formValue .Form "acceptance" ""}}</textarea></label>
-  <label>Reason <input name="reason" value="{{formValue .Form "reason" "web ticket create"}}"></label>
+  <label>Assignee <input name="assignee" value="{{formValue $cf "assignee" ""}}" placeholder="agent:builder-1"></label>
+  <label>Reviewer <input name="reviewer" value="{{formValue $cf "reviewer" ""}}" placeholder="agent:reviewer-1"></label>
+  <label>Labels <input name="labels" value="{{formValue $cf "labels" ""}}" placeholder="web, ui"></label>
+  <label>Description <textarea name="description" rows="4">{{formValue $cf "description" ""}}</textarea></label>
+  <label>Acceptance Criteria <textarea name="acceptance" rows="5" placeholder="One item per line">{{formValue $cf "acceptance" ""}}</textarea></label>
+  <label>Reason <input name="reason" value="{{formValue $cf "reason" "web ticket create"}}"></label>
   <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>Create Ticket</button>
 </form>
 {{end}}
@@ -183,11 +188,12 @@
     <form class="drawer-form compact" method="post" action="/actions/tickets/{{$d.Ticket.ID}}/edit">
       <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
       <input type="hidden" name="actor" value="{{$.Actor}}">
-      <label>Title <input name="title" value="{{formValue $.Form "title" $d.Ticket.Title}}" required></label>
-      <label>Description <textarea name="description" rows="4">{{formValue $.Form "description" $d.Ticket.Description}}</textarea></label>
-      <label>Acceptance <textarea name="acceptance" rows="5">{{formValue $.Form "acceptance" (join $d.Ticket.AcceptanceCriteria "\n")}}</textarea></label>
-      <label>Labels <input name="labels" value="{{formValue $.Form "labels" (join $d.Ticket.Labels ", ")}}"></label>
-      <label>Reason <input name="reason" value="{{formValue $.Form "reason" "web ticket edit"}}"></label>
+      {{$ef := $.FormFor "edit"}}
+      <label>Title <input name="title" value="{{formValue $ef "title" $d.Ticket.Title}}" required></label>
+      <label>Description <textarea name="description" rows="4">{{formValue $ef "description" $d.Ticket.Description}}</textarea></label>
+      <label>Acceptance <textarea name="acceptance" rows="5">{{formValue $ef "acceptance" (join $d.Ticket.AcceptanceCriteria "\n")}}</textarea></label>
+      <label>Labels <input name="labels" value="{{formValue $ef "labels" (join $d.Ticket.Labels ", ")}}"></label>
+      <label>Reason <input name="reason" value="{{formValue $ef "reason" "web ticket edit"}}"></label>
       <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Save changes</button>
     </form>
   </details>
@@ -204,7 +210,7 @@
   <form class="drawer-form compact" method="post" action="/actions/tickets/{{$d.Ticket.ID}}/comment">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">
-    <textarea name="body" rows="3" placeholder="Add a comment"></textarea>
+    <textarea name="body" rows="3" placeholder="Add a comment">{{formValue ($.FormFor "comment") "body" ""}}</textarea>
     <input type="hidden" name="reason" value="web ticket comment">
     <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Add Comment</button>
   </form>

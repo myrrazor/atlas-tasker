@@ -45,12 +45,29 @@
     }
   }
 
+  function boardURL() {
+    // after a rejected form post the address bar can sit on a POST-only
+    // /actions/... URL — reloading that would land on a 405 text page
+    if (window.location.pathname === '/board') {
+      return new URL(window.location.href);
+    }
+    return new URL('/board', window.location.origin);
+  }
+
+  function hasUnsavedInput() {
+    return Array.from(document.querySelectorAll('.detail-drawer textarea, .detail-drawer input:not([type="hidden"])'))
+      .some((el) => el.value !== el.defaultValue && el.value.trim() !== '');
+  }
+
   function resyncWithError(message) {
     // the failed drag may mean our board is stale (e.g. moved from another
     // window) — resync after the user has had a beat to read the error, and
-    // carry it in the URL so the reload doesn't eat it
+    // carry it in the URL so the reload doesn't eat it. Never navigate away
+    // from something the user is typing.
+    if (hasUnsavedInput()) return;
     window.setTimeout(() => {
-      const target = new URL(window.location.href);
+      if (hasUnsavedInput()) return;
+      const target = boardURL();
       target.searchParams.set('error_flash', message);
       target.searchParams.delete('flash');
       window.location.assign(target.toString());
@@ -58,7 +75,7 @@
   }
 
   function reloadWithFlash(message) {
-    const target = new URL(window.location.href);
+    const target = boardURL();
     target.searchParams.set('flash', message);
     target.searchParams.delete('error_flash');
     window.location.assign(target.toString());
@@ -103,9 +120,10 @@
             const data = await response.json().catch(() => ({}));
             reloadWithFlash(data.payload?.flash || `updated ${ticketID}`);
           } catch (err) {
+            // network failure: the server may be gone — navigating would swap
+            // a working board for the browser's connection-error page
             revertCard(event);
             showFlash(err.message || 'Move failed', true);
-            resyncWithError(err.message || 'Move failed');
           }
         }
       });

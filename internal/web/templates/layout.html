@@ -22,7 +22,7 @@
     </div>
     <form class="searchbar" method="get" action="/board" role="search">
       <input type="search" name="q" value="{{.Query}}" placeholder="Search tickets..." aria-label="Search tickets">
-      <input type="hidden" name="project" value="{{.Project}}">
+      <input type="hidden" name="project" value="{{if .ProjectExplicit}}{{.Project}}{{end}}">
       <button type="submit">Search</button>
     </form>
     <a class="new-button" href="/board?new=1{{if .Project}}&project={{.Project}}{{end}}">New Ticket</a>

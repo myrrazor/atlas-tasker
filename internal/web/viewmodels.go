@@ -32,13 +32,25 @@ type BoardPage struct {
 	// rendered into the page for forms/fetch; never exposed via /api/board
 	CSRFToken string `json:"-"`
 	// submitted values of a rejected form, echoed back so typed content
-	// survives server-side validation errors
-	Form    url.Values `json:"-"`
-	Columns []BoardColumn
-	Detail  *TicketDetail
-	Flash   string
-	Error   string
-	ShowNew bool
+	// survives server-side validation errors; FormTarget names the one form
+	// ("create", "edit", "comment") allowed to consume them
+	Form       url.Values `json:"-"`
+	FormTarget string     `json:"-"`
+	Columns    []BoardColumn
+	Detail     *TicketDetail
+	Flash      string
+	Error      string
+	ShowNew    bool
+}
+
+// FormFor hands the rejected form values to exactly the form that was
+// submitted — echoing them anywhere else prefills unrelated forms (worst
+// case: another ticket's edit form) with values meant for something else.
+func (p BoardPage) FormFor(target string) url.Values {
+	if p.Form == nil || p.FormTarget != target {
+		return nil
+	}
+	return p.Form
 }
 
 type BoardColumn struct {

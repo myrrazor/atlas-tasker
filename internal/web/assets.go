@@ -109,13 +109,14 @@ func actorInitials(actor contracts.Actor) string {
 }
 
 // formValue echoes what the user submitted on a rejected form, falling back
-// to the stored value on a fresh render.
+// to the stored value on a fresh render. A submitted-but-empty value wins
+// over the fallback: the user cleared that field on purpose.
 func formValue(form url.Values, key string, fallback string) string {
 	if form == nil {
 		return fallback
 	}
-	if v := strings.TrimSpace(form.Get(key)); v != "" {
-		return v
+	if _, ok := form[key]; ok {
+		return form.Get(key)
 	}
 	return fallback
 }
