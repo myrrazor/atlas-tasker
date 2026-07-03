@@ -446,3 +446,18 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Scripts are found depending on exit code 1 for forbidden transitions, or a surface needs to create terminal-status tickets legitimately (import/export already bypasses this via its own path).
 9. **Affected PRs/Files:** `internal/web/handlers.go`, `internal/web/server.go`, `internal/web/viewmodels.go`, `internal/apperr/errors.go`, `internal/service/query.go`, `internal/service/types.go`, `internal/storage/sqlite/store.go`, `internal/cli/web.go`, web templates/static, docs.
+
+## DEC-032
+
+1. **Decision ID:** DEC-032
+2. **Date:** 2026-07-03
+3. **Question:** How should the web board respond to a rejected non-JS form submission?
+4. **Options Considered:**
+   - Raw `http.Error` text page (original).
+   - Post/Redirect/Get back to `/board` with the error in the query string.
+   - Re-render the board in place with the error status and the submitted values echoed into the originating form.
+5. **Chosen Option:** Re-render in place with scoped echo.
+6. **Why We Chose It:** The raw text page dead-ends the user; PRG destroys typed content (Cache-Control: no-store disables bfcache) and reads as success to redirect-following clients. Render-in-place keeps the true 4xx status for every client and preserves everything typed. Echoed values are scoped via a FormTarget derived from the action path so a rejected mutation can only prefill the form that produced it — never another ticket's edit form. Known residual: refreshing the error page re-posts the form (inherent to render-in-place), and the browser address bar sits on the action URL until the next navigation; app.js resolves reloads against /board to compensate.
+7. **Confidence:** medium
+8. **Revisit Trigger:** Server-side flash/session state is introduced (enabling PRG without data loss), or users report confusion from the POST URL/refresh-repost behavior.
+9. **Affected PRs/Files:** `internal/web/server.go`, `internal/web/viewmodels.go`, `internal/web/assets.go`, `internal/web/templates/*`, `internal/web/static/app.js`, web tests.
