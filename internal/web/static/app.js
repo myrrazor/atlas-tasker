@@ -73,13 +73,24 @@
   }
 
   function drawerSafeToSwap() {
-    // never touch a drawer that is echoing a rejected form or holding
-    // anything the user typed; only sync it when the URL pins the ticket
+    // never touch a drawer that is echoing a rejected form or holding any
+    // user state — typed text, a changed select (the Move dropdown!), a
+    // toggled checkbox, or an expanded panel; only sync when the URL pins
+    // the ticket
     if (!new URL(window.location.href).searchParams.has('ticket')) return false;
     const drawer = document.querySelector('.detail-drawer');
     if (!drawer || drawer.dataset.formEcho) return false;
-    return !Array.from(drawer.querySelectorAll('textarea, input:not([type="hidden"])'))
-      .some((el) => el.value !== el.defaultValue);
+    const fieldsDirty = Array.from(drawer.querySelectorAll('textarea, input:not([type="hidden"])'))
+      .some((el) => (el.type === 'checkbox' || el.type === 'radio')
+        ? el.checked !== el.defaultChecked
+        : el.value !== el.defaultValue);
+    const selectsDirty = Array.from(drawer.querySelectorAll('select')).some((sel) => {
+      let initial = Array.from(sel.options).findIndex((opt) => opt.defaultSelected);
+      if (initial < 0) initial = 0; // browsers select the first option by default
+      return sel.selectedIndex !== initial;
+    });
+    const panelsOpen = Array.from(drawer.querySelectorAll('details')).some((panel) => panel.open);
+    return !fieldsDirty && !selectsDirty && !panelsOpen;
   }
 
   // Sync with the server WITHOUT navigating: fetch the board page and swap
@@ -119,7 +130,9 @@
         if (message) showFlash(message, isError);
         return;
       } catch (err) {
-        await sleep(2000 * (attempt + 1));
+        if (attempt < 5) {
+          await sleep(2000 * (attempt + 1));
+        }
       }
     }
     if (seq === refreshSeq) {
@@ -132,7 +145,11 @@
     // destroy instances bound to grids that replaceWith detached, or every
     // refresh leaks a full board subtree in long-lived tabs
     boundSortables.forEach((instance) => {
-      try { instance.destroy(); } catch (err) { /* already detached */ }
+      try {
+        instance.destroy();
+      } catch (err) {
+        console.debug('sortable destroy during rebind:', err);
+      }
     });
     boundSortables = [];
     document.querySelectorAll('.ticket-list').forEach((list) => {

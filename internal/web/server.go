@@ -144,12 +144,10 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	fileServer := http.StripPrefix("/static/", http.FileServer(http.FS(s.static)))
 	mux.Handle("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// FileServer's ServeContent evaluates If-None-Match (RFC 7232,
+		// including comma lists and weak tags) against a pre-set ETag
 		if etag, ok := s.staticETags[strings.TrimPrefix(r.URL.Path, "/static/")]; ok {
 			w.Header().Set("ETag", etag)
-			if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, etag) {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
 		}
 		fileServer.ServeHTTP(w, r)
 	}))
