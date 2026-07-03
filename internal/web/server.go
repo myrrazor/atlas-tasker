@@ -207,7 +207,12 @@ func (s *Server) writeSecurityHeaders(w http.ResponseWriter, r *http.Request) {
 	// must stay same-origin: no-referrer makes browsers send `Origin: null` on
 	// same-origin form POSTs, which our own origin check then rejects
 	w.Header().Set("Referrer-Policy", "same-origin")
-	if !strings.HasPrefix(r.URL.Path, "/static/") {
+	if strings.HasPrefix(r.URL.Path, "/static/") {
+		// embedded files carry zero modtimes (no Last-Modified/ETag), so
+		// without this browsers heuristically cache app.js/app.css forever
+		// and keep serving stale assets after a tracker upgrade
+		w.Header().Set("Cache-Control", "no-cache")
+	} else {
 		w.Header().Set("Cache-Control", "no-store")
 	}
 	w.Header().Set("X-Atlas-Request-ID", requestIDFromContext(r.Context()))
@@ -357,9 +362,15 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 
 // actionTarget parses "/actions/tickets/create" and
 // "/actions/tickets/{id}/{action}" into the action name and ticket id.
+// Anything outside /actions/tickets/ yields nothing — the middleware calls
+// this for every rejected mutation, whatever its path.
 func actionTarget(path string) (string, string) {
-	rest := strings.Trim(strings.TrimPrefix(path, "/actions/tickets/"), "/")
-	if rest == path || rest == "" {
+	rest, ok := strings.CutPrefix(path, "/actions/tickets/")
+	if !ok {
+		return "", ""
+	}
+	rest = strings.Trim(rest, "/")
+	if rest == "" {
 		return "", ""
 	}
 	if rest == "create" {

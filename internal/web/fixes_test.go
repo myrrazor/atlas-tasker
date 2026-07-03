@@ -195,8 +195,74 @@ func TestRejectedEditEchoesIntoCorrectTicket(t *testing.T) {
 	if !strings.Contains(res.body, "/actions/tickets/"+second.ID+"/edit") {
 		t.Fatalf("expected the rejected ticket's own edit form to render, got:\n%s", excerpt(res.body, "/edit"))
 	}
-	if strings.Contains(res.body, "/actions/tickets/"+h.ticketID+"/edit") && strings.Contains(res.body, "EDIT MEANT FOR SECOND") && !strings.Contains(res.body, "/actions/tickets/"+second.ID+"/edit") {
-		t.Fatalf("submitted values leaked into another ticket's edit form")
+	// the page renders one detail drawer; the auto-selectable first ticket's
+	// edit form must not appear at all, let alone carry the echoed values
+	if strings.Contains(res.body, "/actions/tickets/"+h.ticketID+"/edit") {
+		t.Fatalf("another ticket's edit form rendered on the rejected-edit page")
+	}
+}
+
+// Embedded static files have zero modtimes, so FileServer emits no
+// Last-Modified/ETag — without an explicit Cache-Control browsers
+// heuristically cache app.js forever and users keep stale JS after
+// upgrading the tracker binary.
+func TestStaticAssetsRevalidate(t *testing.T) {
+	h := newWebHarness(t, false)
+	res := doRaw(t, h.handler, http.MethodGet, "/static/app.js", nil)
+	if got := res.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("static assets must force revalidation, got Cache-Control=%q", got)
+	}
+}
+
+func TestActionTargetParsing(t *testing.T) {
+	for _, tt := range []struct {
+		path   string
+		target string
+		id     string
+	}{
+		{"/actions/tickets/create", "create", ""},
+		{"/actions/tickets/WEB-1/edit", "edit", "WEB-1"},
+		{"/actions/tickets/WEB-1/label/add", "label/add", "WEB-1"},
+		{"/tickets/WEB-1", "", ""},
+		{"/board", "", ""},
+		{"/actions/tickets/", "", ""},
+	} {
+		target, id := actionTarget(tt.path)
+		if target != tt.target || id != tt.id {
+			t.Fatalf("actionTarget(%q) = (%q, %q), want (%q, %q)", tt.path, target, id, tt.target, tt.id)
+		}
+	}
+}
+
+// The header's New Ticket link must not promote the implicit --project
+// default into an explicit query param.
+func TestNewTicketLinkOmitsImplicitProject(t *testing.T) {
+	h := newWebHarness(t, false)
+	implicit := h.doAuthed(t, http.MethodGet, "/board", "", nil)
+	if strings.Contains(implicit.body, `href="/board?new=1&project=`) {
+		t.Fatalf("New Ticket link exposes the implicit default project:\n%s", excerpt(implicit.body, "new=1"))
+	}
+	explicit := h.doAuthed(t, http.MethodGet, "/board?project=WEB", "", nil)
+	if !strings.Contains(explicit.body, `href="/board?new=1&project=WEB"`) {
+		t.Fatalf("New Ticket link should keep an explicit project:\n%s", excerpt(explicit.body, "new=1"))
+	}
+}
+
+// When a rejected comment is echoed back, the Activity tab (where the echo
+// lives) must be the active one — preserving text into a hidden tab reads
+// as losing it.
+func TestRejectedCommentActivatesActivityTab(t *testing.T) {
+	h := newWebHarness(t, false)
+	form := url.Values{"csrf_token": {"test-csrf"}, "body": {""}}
+	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/comment", form.Encode(), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+		"Origin":       "http://atlas.local",
+	})
+	if res.code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", res.code)
+	}
+	if !strings.Contains(res.body, `tab-panel active" id="tab-activity"`) {
+		t.Fatalf("expected Activity tab to be active on rejected comment:\n%s", excerpt(res.body, "tab-activity"))
 	}
 }
 

@@ -25,7 +25,7 @@
       <input type="hidden" name="project" value="{{if .ProjectExplicit}}{{.Project}}{{end}}">
       <button type="submit">Search</button>
     </form>
-    <a class="new-button" href="/board?new=1{{if .Project}}&project={{.Project}}{{end}}">New Ticket</a>
+    <a class="new-button" href="/board?new=1{{if .ProjectExplicit}}&project={{.Project}}{{end}}">New Ticket</a>
   </header>
   {{template "content" .}}
   <script src="/static/vendor/sortable.min.js"></script>

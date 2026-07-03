@@ -169,14 +169,17 @@
   <div class="warning" role="alert">⚠ {{.}}</div>
 {{end}}
 
+{{/* a rejected comment echoes into the Activity tab — open it, or the
+     preserved text is hidden exactly when the user is told the submit failed */}}
+{{$activeTab := "overview"}}{{if $.FormFor "comment"}}{{$activeTab = "activity"}}{{end}}
 <nav class="tabs" aria-label="Ticket detail sections">
-  <button class="active" data-tab="overview">Overview</button>
-  <button data-tab="activity">Activity</button>
+  <button class="{{if eq $activeTab "overview"}}active{{end}}" data-tab="overview">Overview</button>
+  <button class="{{if eq $activeTab "activity"}}active{{end}}" data-tab="activity">Activity</button>
   <button data-tab="gates">Policy/Gates</button>
   <button data-tab="evidence">Evidence</button>
 </nav>
 
-<section class="tab-panel active" id="tab-overview">
+<section class="tab-panel {{if eq $activeTab "overview"}}active{{end}}" id="tab-overview">
   <h2>Description</h2>
   <pre class="prose">{{if $d.Ticket.Description}}{{$d.Ticket.Description}}{{else}}No description yet.{{end}}</pre>
   <h2>Acceptance Criteria <span>{{len $d.Ticket.AcceptanceCriteria}}</span></h2>
@@ -199,7 +202,7 @@
   </details>
 </section>
 
-<section class="tab-panel" id="tab-activity">
+<section class="tab-panel {{if eq $activeTab "activity"}}active{{end}}" id="tab-activity">
   <h2>Comments</h2>
   {{range $d.CommentEntries}}
     <div class="comment-block">
