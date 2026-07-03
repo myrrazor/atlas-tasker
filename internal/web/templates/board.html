@@ -44,12 +44,9 @@
       {{end}}
     </div>
     <footer class="keyboard-help" aria-label="Keyboard shortcuts">
-      <span>↑ ↓ Move</span>
-      <span>← → Change column</span>
-      <span>d Details</span>
       <span>n New ticket</span>
       <span>/ Search</span>
-      <span>? Help</span>
+      <span>Drag cards between columns</span>
     </footer>
   </section>
 
@@ -74,7 +71,6 @@
   <header>
     <h2>{{.Label}}</h2>
     <span>{{.Count}}</span>
-    <button aria-label="Column options">⋮</button>
   </header>
   <div class="ticket-list" data-status="{{.Status}}">
     {{range .Tickets}}
@@ -94,7 +90,6 @@
 {{define "card"}}
 <a class="ticket-card" href="/board?ticket={{.Ticket.ID}}" data-ticket-id="{{.Ticket.ID}}">
   <span class="drag-handle" aria-hidden="true">⋮⋮</span>
-  <span class="card-menu" aria-hidden="true">⋮</span>
   <strong>{{.Ticket.ID}}</strong>
   <h3>{{.Ticket.Title}}</h3>
   <div class="card-meta">
@@ -200,7 +195,12 @@
 
 <section class="tab-panel" id="tab-activity">
   <h2>Comments</h2>
-  {{range $d.Comments}}<pre class="comment">{{.}}</pre>{{else}}<p class="muted">No comments yet.</p>{{end}}
+  {{range $d.CommentEntries}}
+    <div class="comment-block">
+      <div class="comment-meta">{{.Actor}} <b>{{actorInitials .Actor}}</b> · {{formatTime .Timestamp}}</div>
+      <pre class="comment">{{.Body}}</pre>
+    </div>
+  {{else}}<p class="muted">No comments yet.</p>{{end}}
   <form class="drawer-form compact" method="post" action="/actions/tickets/{{$d.Ticket.ID}}/comment">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">

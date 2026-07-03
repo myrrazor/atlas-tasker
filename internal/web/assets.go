@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
@@ -69,32 +71,39 @@ func priorityDot(priority contracts.Priority) string {
 
 func actorInitials(actor contracts.Actor) string {
 	raw := strings.TrimSpace(string(actor))
-	if raw == "" {
-		return "--"
-	}
 	if after, ok := strings.CutPrefix(raw, "agent:"); ok {
 		raw = after
 	}
 	if after, ok := strings.CutPrefix(raw, "human:"); ok {
 		raw = after
 	}
+	// a bare "agent:" / "human:" leaves nothing to abbreviate
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "--"
+	}
 	parts := strings.FieldsFunc(raw, func(r rune) bool {
 		return r == '-' || r == '_' || r == ':' || r == '.'
 	})
-	out := ""
+	initials := make([]rune, 0, 2)
 	for _, part := range parts {
-		if part == "" {
+		r, _ := utf8.DecodeRuneInString(part)
+		if r == utf8.RuneError {
 			continue
 		}
-		out += strings.ToUpper(part[:1])
-		if len(out) >= 2 {
+		initials = append(initials, unicode.ToUpper(r))
+		if len(initials) >= 2 {
 			break
 		}
 	}
-	if out == "" {
-		return strings.ToUpper(raw[:1])
+	if len(initials) == 0 {
+		r, _ := utf8.DecodeRuneInString(raw)
+		if r == utf8.RuneError {
+			return "--"
+		}
+		return string(unicode.ToUpper(r))
 	}
-	return out
+	return string(initials)
 }
 
 func formatTime(t time.Time) string {

@@ -296,8 +296,9 @@ func TestTicketDetailAndMissingTicketAPI(t *testing.T) {
 }
 
 type httpResult struct {
-	code int
-	body string
+	code   int
+	body   string
+	header http.Header
 }
 
 func (h webHarness) doAuthed(t *testing.T, method string, target string, body string, headers map[string]string) httpResult {
@@ -313,7 +314,18 @@ func (h webHarness) doAuthed(t *testing.T, method string, target string, body st
 	if err != nil {
 		t.Fatalf("read response body: %v", err)
 	}
-	return httpResult{code: res.Code, body: string(raw)}
+	return httpResult{code: res.Code, body: string(raw), header: res.Header()}
+}
+
+func doRaw(t *testing.T, handler http.Handler, method string, target string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, "http://atlas.local"+target, nil)
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	return res
 }
 
 func withCSRF(values url.Values) url.Values {

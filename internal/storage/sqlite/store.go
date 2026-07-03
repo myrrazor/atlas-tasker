@@ -870,6 +870,43 @@ func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.
 	return events, nil
 }
 
+// QueryCommentCounts returns the number of comment events per ticket, in one
+// pass — board cards need this for every visible ticket at once.
+func (s *Store) QueryCommentCounts(ctx context.Context, ticketIDs []string) (map[string]int, error) {
+	counts := make(map[string]int, len(ticketIDs))
+	if len(ticketIDs) == 0 {
+		return counts, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ticketIDs)), ",")
+	args := make([]any, 0, len(ticketIDs)+1)
+	args = append(args, string(contracts.EventTicketCommented))
+	for _, id := range ticketIDs {
+		args = append(args, id)
+	}
+	rows, err := s.DB.QueryContext(ctx, `
+		SELECT ticket_id, COUNT(*)
+		FROM events
+		WHERE type = ? AND ticket_id IN (`+placeholders+`)
+		GROUP BY ticket_id
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query comment counts: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ticketID string
+		var count int
+		if err := rows.Scan(&ticketID, &count); err != nil {
+			return nil, err
+		}
+		counts[ticketID] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return counts, nil
+}
+
 func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapshot) error {
 	ticket = contracts.NormalizeTicketSnapshot(ticket)
 	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, changeIDsJSON, changeReadyReasonsJSON, permissionProfilesJSON, err := marshalTicketJSON(ticket)

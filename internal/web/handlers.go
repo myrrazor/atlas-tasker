@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -46,10 +47,15 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 			Error:     err.Error(),
 		}
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.templates.ExecuteTemplate(w, "layout", page); err != nil {
+	// render to a buffer first — a template failure mid-stream would otherwise
+	// write half a page with a 200 status and error text appended
+	var buf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&buf, "layout", page); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(buf.Bytes())
 }
 
 func (s *Server) handleBoardAPI(w http.ResponseWriter, r *http.Request) {
@@ -117,18 +123,38 @@ func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.ReadOnly {
-		s.writeError(w, r, apperr.New(apperr.CodePermissionDenied, "web board is read-only"), http.StatusForbidden)
+		s.writeActionError(w, r, apperr.New(apperr.CodePermissionDenied, "web board is read-only"), "")
 		return
 	}
 	actor := s.actorFromForm(r)
 	reason := reasonFromForm(r, "web ticket create")
+	status, err := parseStatusDefault(r.Form.Get("status"), contracts.StatusBacklog)
+	if err != nil {
+		s.writeActionError(w, r, err, "")
+		return
+	}
+	// same invariant the CLI enforces: tickets are not born finished
+	if status == contracts.StatusDone || status == contracts.StatusCanceled {
+		s.writeActionError(w, r, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("status %s is not allowed on ticket create", status)), "")
+		return
+	}
+	ticketType, err := parseTypeDefault(r.Form.Get("type"), contracts.TicketTypeTask)
+	if err != nil {
+		s.writeActionError(w, r, err, "")
+		return
+	}
+	priority, err := parsePriorityDefault(r.Form.Get("priority"), contracts.PriorityMedium)
+	if err != nil {
+		s.writeActionError(w, r, err, "")
+		return
+	}
 	now := s.cfg.Clock().UTC()
 	ticket := contracts.TicketSnapshot{
 		Project:            firstNonEmpty(r.Form.Get("project"), s.cfg.Project),
 		Title:              strings.TrimSpace(r.Form.Get("title")),
-		Type:               parseType(r.Form.Get("type")),
-		Status:             parseStatus(firstNonEmpty(r.Form.Get("status"), string(contracts.StatusBacklog))),
-		Priority:           parsePriority(r.Form.Get("priority")),
+		Type:               ticketType,
+		Status:             status,
+		Priority:           priority,
 		Assignee:           contracts.Actor(strings.TrimSpace(r.Form.Get("assignee"))),
 		Reviewer:           contracts.Actor(strings.TrimSpace(r.Form.Get("reviewer"))),
 		Labels:             splitCSV(r.Form.Get("labels")),
@@ -140,7 +166,7 @@ func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	created, err := s.actions.CreateTrackedTicket(s.mutationContext(r, actor), ticket, actor, reason)
 	if err != nil {
-		s.writeError(w, r, err, statusForError(err))
+		s.writeActionError(w, r, err, "")
 		return
 	}
 	s.actionSuccess(w, r, created.ID, "created "+created.ID)
@@ -152,7 +178,7 @@ func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.cfg.ReadOnly {
-		s.writeError(w, r, apperr.New(apperr.CodePermissionDenied, "web board is read-only"), http.StatusForbidden)
+		s.writeActionError(w, r, apperr.New(apperr.CodePermissionDenied, "web board is read-only"), "")
 		return
 	}
 	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/actions/tickets/"), "/")
@@ -169,20 +195,38 @@ func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 	switch action {
 	case "edit":
 		ticket, err = s.actions.MutateTrackedTicket(ctx, id, actor, reason, "web edit ticket", func(ticket *contracts.TicketSnapshot) error {
+			// the store validates on create but not on update, so the edit
+			// path has to reject what create would have refused
 			if r.Form.Has("title") {
-				ticket.Title = strings.TrimSpace(r.Form.Get("title"))
+				title := strings.TrimSpace(r.Form.Get("title"))
+				if title == "" {
+					return apperr.New(apperr.CodeInvalidInput, "title is required")
+				}
+				ticket.Title = title
 			}
 			if r.Form.Has("description") {
 				ticket.Description = strings.TrimSpace(r.Form.Get("description"))
 			}
 			if r.Form.Has("priority") {
-				ticket.Priority = parsePriority(r.Form.Get("priority"))
+				priority, err := parsePriorityDefault(r.Form.Get("priority"), ticket.Priority)
+				if err != nil {
+					return err
+				}
+				ticket.Priority = priority
 			}
 			if r.Form.Has("assignee") {
-				ticket.Assignee = contracts.Actor(strings.TrimSpace(r.Form.Get("assignee")))
+				assignee := strings.TrimSpace(r.Form.Get("assignee"))
+				if assignee != "" && !contracts.Actor(assignee).IsValid() {
+					return apperr.New(apperr.CodeInvalidInput, "invalid assignee actor: "+assignee)
+				}
+				ticket.Assignee = contracts.Actor(assignee)
 			}
 			if r.Form.Has("reviewer") {
-				ticket.Reviewer = contracts.Actor(strings.TrimSpace(r.Form.Get("reviewer")))
+				reviewer := strings.TrimSpace(r.Form.Get("reviewer"))
+				if reviewer != "" && !contracts.Actor(reviewer).IsValid() {
+					return apperr.New(apperr.CodeInvalidInput, "invalid reviewer actor: "+reviewer)
+				}
+				ticket.Reviewer = contracts.Actor(reviewer)
 			}
 			if r.Form.Has("labels") {
 				ticket.Labels = splitCSV(r.Form.Get("labels"))
@@ -193,7 +237,23 @@ func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 			return nil
 		})
 	case "move":
-		to := parseStatus(r.Form.Get("status"))
+		var to contracts.Status
+		to, err = parseStatusStrict(r.Form.Get("status"))
+		if err != nil {
+			break
+		}
+		var current contracts.TicketSnapshot
+		current, err = s.actions.Tickets.GetTicket(ctx, id)
+		if err != nil {
+			break
+		}
+		// cards can render in a projected column (e.g. Blocked) while the
+		// stored status is something else — dropping a card on its own status
+		// is a no-op, not a forbidden self-transition
+		if current.Status == to {
+			s.actionSuccess(w, r, id, fmt.Sprintf("%s is already %s", id, statusLabel(to)))
+			return
+		}
 		ticket, err = s.moveTicket(ctx, id, to, actor, reason, contracts.Actor(strings.TrimSpace(r.Form.Get("reviewer"))))
 	case "assign":
 		ticket, err = s.actions.AssignTicket(ctx, id, contracts.Actor(strings.TrimSpace(r.Form.Get("assignee"))), actor, reason)
@@ -232,7 +292,7 @@ func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 		err = apperr.New(apperr.CodeInvalidInput, "unknown web ticket action: "+action)
 	}
 	if err != nil {
-		s.writeError(w, r, err, statusForError(err))
+		s.writeActionError(w, r, err, id)
 		return
 	}
 	s.actionSuccess(w, r, ticket.ID, fmt.Sprintf("updated %s", ticket.ID))
@@ -274,28 +334,43 @@ func reasonFromForm(r *http.Request, fallback string) string {
 	return fallback
 }
 
-func parseStatus(raw string) contracts.Status {
+func parseStatusStrict(raw string) (contracts.Status, error) {
 	status := contracts.Status(strings.TrimSpace(raw))
 	if !status.IsValid() {
-		return contracts.StatusBacklog
+		return "", apperr.New(apperr.CodeInvalidInput, "invalid status: "+strings.TrimSpace(raw))
 	}
-	return status
+	return status, nil
 }
 
-func parseType(raw string) contracts.TicketType {
-	value := contracts.TicketType(strings.TrimSpace(raw))
-	if !value.IsValid() {
-		return contracts.TicketTypeTask
+func parseStatusDefault(raw string, fallback contracts.Status) (contracts.Status, error) {
+	if strings.TrimSpace(raw) == "" {
+		return fallback, nil
 	}
-	return value
+	return parseStatusStrict(raw)
 }
 
-func parsePriority(raw string) contracts.Priority {
-	value := contracts.Priority(strings.TrimSpace(raw))
-	if !value.IsValid() {
-		return contracts.PriorityMedium
+func parseTypeDefault(raw string, fallback contracts.TicketType) (contracts.TicketType, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return fallback, nil
 	}
-	return value
+	value := contracts.TicketType(trimmed)
+	if !value.IsValid() {
+		return "", apperr.New(apperr.CodeInvalidInput, "invalid ticket type: "+trimmed)
+	}
+	return value, nil
+}
+
+func parsePriorityDefault(raw string, fallback contracts.Priority) (contracts.Priority, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return fallback, nil
+	}
+	value := contracts.Priority(trimmed)
+	if !value.IsValid() {
+		return "", apperr.New(apperr.CodeInvalidInput, "invalid priority: "+trimmed)
+	}
+	return value, nil
 }
 
 func splitCSV(raw string) []string {

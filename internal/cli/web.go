@@ -84,6 +84,7 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	if err := webui.WriteRuntimeState(workspace.root, state); err != nil {
 		return err
 	}
+	defer func() { _ = webui.ClearRuntimeState(workspace.root) }()
 	sessionURL := server.SessionURL(actualPort)
 	if unsafeHost {
 		fmt.Fprintln(cmd.ErrOrStderr(), "warning: web board is bound to a non-loopback host; use only on trusted networks")
@@ -91,7 +92,7 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "serving Atlas web board at %s\n", state.URL)
 	fmt.Fprintf(cmd.OutOrStdout(), "session URL: %s\n", sessionURL)
 	if openBrowser && !noBrowser {
-		if err := openURL(sessionURL); err != nil {
+		if err := openURLFunc(sessionURL); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "open browser failed: %v\n", err)
 		}
 	}
@@ -136,22 +137,38 @@ func runWebOpen(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if err := openURL(state.URL); err != nil {
+	// stale state outlives crashed/stopped servers; don't open a dead URL
+	if health := webHealth(state.URL); health != "ok" {
+		return fmt.Errorf("web board at %s is not running (health: %s); start it with `tracker web serve --open`", state.URL, health)
+	}
+	if err := openURLFunc(state.URL); err != nil {
 		return err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "opened %s\n", state.URL)
 	return nil
 }
 
+// swappable for tests so they don't launch a real browser
+var openURLFunc = openURL
+
 func openURL(raw string) error {
+	var browser *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		return exec.Command("open", raw).Start()
+		browser = exec.Command("open", raw)
 	case "linux":
-		return exec.Command("xdg-open", raw).Start()
+		browser = exec.Command("xdg-open", raw)
+	case "windows":
+		browser = exec.Command("rundll32", "url.dll,FileProtocolHandler", raw)
 	default:
 		return fmt.Errorf("opening browsers is unsupported on %s", runtime.GOOS)
 	}
+	if err := browser.Start(); err != nil {
+		return err
+	}
+	// reap the child so it doesn't linger as a zombie for the server's lifetime
+	go func() { _ = browser.Wait() }()
+	return nil
 }
 
 func webHealth(rawURL string) string {

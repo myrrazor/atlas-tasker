@@ -36,6 +36,14 @@ func WriteRuntimeState(root string, state RuntimeState) error {
 	return os.WriteFile(path, append(raw, '\n'), 0o600)
 }
 
+func ClearRuntimeState(root string) error {
+	err := os.Remove(RuntimeStatePath(root))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func ReadRuntimeState(root string) (RuntimeState, error) {
 	raw, err := os.ReadFile(RuntimeStatePath(root))
 	if err != nil {

@@ -8,11 +8,14 @@ Defaults:
 - choose a random free port unless `--port` is supplied
 - reject non-loopback hosts unless `--unsafe-host` is explicit
 - require a server token/session for page routes
+- scope the session cookie name to the serving port, so two workspaces served on `127.0.0.1` don't clobber each other's session (browsers ignore ports for cookie storage)
 - require CSRF tokens for mutations
-- reject cross-origin mutations when `Origin` or `Referer` is present
-- send CSP, `X-Content-Type-Options`, `Referrer-Policy`, and `Cache-Control` headers
+- reject cross-origin mutations when `Origin` or `Referer` is present (`Origin: null` is treated as cross-origin)
+- send CSP, `X-Content-Type-Options`, `Referrer-Policy: same-origin`, and `Cache-Control` headers
 - do not set CORS headers
 - escape all untrusted ticket content with `html/template`
+
+The referrer policy must stay `same-origin`, not `no-referrer`: under `no-referrer` the Fetch spec makes browsers serialize the `Origin` header as `null` on same-origin form POSTs, so the board's own origin check would reject its own forms. `same-origin` keeps referrers private cross-origin while preserving `Origin`/`Referer` on the board's own requests. A regression test pins the header value.
 
 Runtime status is written to `.tracker/runtime/web/server.json`, but session tokens and CSRF tokens are not persisted there.
 

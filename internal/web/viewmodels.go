@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 )
@@ -24,8 +25,9 @@ type BoardPage struct {
 	Priority     string
 	Type         string
 	ActiveColumn contracts.Status
-	CSRFToken    string
-	Columns      []BoardColumn
+	// rendered into the page for forms/fetch; never exposed via /api/board
+	CSRFToken string `json:"-"`
+	Columns   []BoardColumn
 	Detail       *TicketDetail
 	Flash        string
 	Error        string
@@ -85,13 +87,14 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		ActiveColumn: activeColumn,
 		CSRFToken:    s.cfg.CSRFToken,
 		Flash:        strings.TrimSpace(query.Get("flash")),
+		Error:        strings.TrimSpace(query.Get("error_flash")),
 		ShowNew:      query.Get("new") == "1",
 	}
 	board, err := s.loadBoard(ctx, page)
 	if err != nil {
 		return page, err
 	}
-	page.Columns = s.columnsFromBoard(board, page)
+	page.Columns = s.columnsFromBoard(ctx, board, page)
 	selected := strings.TrimSpace(query.Get("ticket"))
 	if selected == "" {
 		selected = firstTicketIDForColumn(page.Columns, page.ActiveColumn)
@@ -132,7 +135,18 @@ func (s *Server) loadBoard(ctx context.Context, page BoardPage) (contracts.Board
 	return filterBoard(board, page), nil
 }
 
-func (s *Server) columnsFromBoard(board contracts.BoardView, page BoardPage) []BoardColumn {
+func (s *Server) columnsFromBoard(ctx context.Context, board contracts.BoardView, page BoardPage) []BoardColumn {
+	ids := make([]string, 0, 64)
+	for _, status := range boardStatuses {
+		for _, ticket := range board.Columns[status] {
+			ids = append(ids, ticket.ID)
+		}
+	}
+	// badge data only — a failed count query should not take the board down
+	commentCounts, err := s.queries.CommentCounts(ctx, ids)
+	if err != nil {
+		commentCounts = map[string]int{}
+	}
 	columns := make([]BoardColumn, 0, len(boardStatuses))
 	for _, status := range boardStatuses {
 		tickets := append([]contracts.TicketSnapshot{}, board.Columns[status]...)
@@ -148,6 +162,7 @@ func (s *Server) columnsFromBoard(board contracts.BoardView, page BoardPage) []B
 				Ticket:            ticket,
 				EffectiveReviewer: ticket.Reviewer,
 				Warnings:          cardWarnings(ticket),
+				CommentCount:      commentCounts[ticket.ID],
 			})
 		}
 		columns = append(columns, BoardColumn{
@@ -183,6 +198,17 @@ func filterBoard(board contracts.BoardView, page BoardPage) contracts.BoardView 
 	query := strings.ToLower(page.Query)
 	for _, status := range boardStatuses {
 		for _, ticket := range board.Columns[status] {
+			// saved views load unfiltered, so the form filters have to apply
+			// here for both paths — not just in the direct board query
+			if page.Assignee != "" && string(ticket.Assignee) != page.Assignee {
+				continue
+			}
+			if page.Project != "" && !strings.EqualFold(ticket.Project, page.Project) {
+				continue
+			}
+			if page.Type != "" && string(ticket.Type) != page.Type {
+				continue
+			}
 			if page.Reviewer != "" && string(ticket.Reviewer) != page.Reviewer {
 				continue
 			}
@@ -273,13 +299,5 @@ func firstNonEmpty(values ...string) string {
 }
 
 func errUnsupportedSavedView(name string) error {
-	return &savedViewError{name: name}
-}
-
-type savedViewError struct {
-	name string
-}
-
-func (e *savedViewError) Error() string {
-	return "saved view " + e.name + " is not a board view"
+	return apperr.New(apperr.CodeInvalidInput, "saved view "+name+" is not a board view")
 }

@@ -17,9 +17,9 @@ The board supports:
 - moving tickets through workflow states
 - request-review, approve, and complete actions where policy allows
 - project, actor, saved-view, and search/filter URL state
-- drag/drop where JavaScript is available, plus button/keyboard fallback
+- drag/drop where JavaScript is available, plus button-based fallbacks (keyboard: `n` new ticket, `/` search)
 
-Default serve behavior binds to `127.0.0.1` on a random port and opens a one-time session URL when `--open` is used.
+Default serve behavior binds to `127.0.0.1` on a random port and opens a session URL when `--open` is used. The session token stays valid for the lifetime of that server process and is printed only by `tracker web serve`; it is never written to disk.
 
 ## Screenshots
 

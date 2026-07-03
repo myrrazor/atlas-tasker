@@ -192,7 +192,11 @@ func (s *Server) security(next http.Handler) http.Handler {
 		}
 		if isMutation(r.Method) {
 			if err := s.validateMutation(r); err != nil {
-				s.writeError(w, r, err, http.StatusForbidden)
+				if wantsJSON(r) {
+					s.writeError(w, r, err, http.StatusForbidden)
+				} else {
+					s.writeActionError(w, r, err, "")
+				}
 				return
 			}
 		}
@@ -203,17 +207,29 @@ func (s *Server) security(next http.Handler) http.Handler {
 func (s *Server) writeSecurityHeaders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	// must stay same-origin: no-referrer makes browsers send `Origin: null` on
+	// same-origin form POSTs, which our own origin check then rejects
+	w.Header().Set("Referrer-Policy", "same-origin")
 	if !strings.HasPrefix(r.URL.Path, "/static/") {
 		w.Header().Set("Cache-Control", "no-store")
 	}
 	w.Header().Set("X-Atlas-Request-ID", requestIDFromContext(r.Context()))
 }
 
+// sessionCookieName scopes the cookie to this server's port: browsers ignore
+// ports for cookie storage, so two workspaces served on 127.0.0.1 would
+// otherwise clobber each other's session.
+func (s *Server) sessionCookieName() string {
+	if s.cfg.Port > 0 {
+		return fmt.Sprintf("%s_%d", sessionCookie, s.cfg.Port)
+	}
+	return sessionCookie
+}
+
 func (s *Server) validSession(w http.ResponseWriter, r *http.Request) bool {
 	if token := r.URL.Query().Get("token"); secureCompare(token, s.cfg.Token) {
 		http.SetCookie(w, &http.Cookie{
-			Name:     sessionCookie,
+			Name:     s.sessionCookieName(),
 			Value:    s.cfg.Token,
 			Path:     "/",
 			HttpOnly: true,
@@ -226,7 +242,7 @@ func (s *Server) validSession(w http.ResponseWriter, r *http.Request) bool {
 		http.Redirect(w, r, clean.String(), http.StatusSeeOther)
 		return false
 	}
-	cookie, err := r.Cookie(sessionCookie)
+	cookie, err := r.Cookie(s.sessionCookieName())
 	if err != nil || !secureCompare(cookie.Value, s.cfg.Token) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte("Atlas web session required. Start with `tracker web serve --open` to open a session URL.\n"))
@@ -295,6 +311,22 @@ func (s *Server) writeError(w http.ResponseWriter, r *http.Request, err error, s
 	http.Error(w, err.Error(), status)
 }
 
+// writeActionError reports a failed mutation. Fetch callers get the JSON
+// envelope; plain form posts redirect back to the board (PRG) so the user
+// isn't dead-ended on a text/plain error page.
+func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err error, ticketID string) {
+	if wantsJSON(r) {
+		s.writeError(w, r, err, statusForError(err))
+		return
+	}
+	q := url.Values{}
+	if ticketID != "" {
+		q.Set("ticket", ticketID)
+	}
+	q.Set("error_flash", err.Error())
+	http.Redirect(w, r, "/board?"+q.Encode(), http.StatusSeeOther)
+}
+
 func requestIDFromContext(ctx context.Context) string {
 	value, _ := ctx.Value(requestIDKey).(string)
 	if value == "" {
@@ -330,7 +362,8 @@ func secureCompare(left string, right string) bool {
 func randomToken() string {
 	var raw [32]byte
 	if _, err := rand.Read(raw[:]); err != nil {
-		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
+		// never fall back to something guessable — refuse to serve instead
+		panic(fmt.Sprintf("atlas web: crypto/rand unavailable: %v", err))
 	}
 	return hex.EncodeToString(raw[:])
 }

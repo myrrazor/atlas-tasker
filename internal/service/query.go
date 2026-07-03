@@ -357,6 +357,19 @@ func (s *QueryService) History(ctx context.Context, ticketID string) (HistoryVie
 	return HistoryView{TicketID: ticketID, Events: events}, nil
 }
 
+// CommentCounts returns comment totals per ticket id for board badges.
+// Projections without batch counting yield zeros rather than an error.
+func (s *QueryService) CommentCounts(ctx context.Context, ticketIDs []string) (map[string]int, error) {
+	type commentCounter interface {
+		QueryCommentCounts(ctx context.Context, ticketIDs []string) (map[string]int, error)
+	}
+	counter, ok := s.Projection.(commentCounter)
+	if !ok {
+		return map[string]int{}, nil
+	}
+	return counter.QueryCommentCounts(ctx, ticketIDs)
+}
+
 func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (TicketDetailView, error) {
 	ticket, err := s.Projection.QueryTicket(ctx, ticketID)
 	if err != nil {
@@ -370,6 +383,7 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 		return TicketDetailView{}, err
 	}
 	comments := make([]string, 0)
+	commentEntries := make([]CommentEntry, 0)
 	for _, event := range history.Events {
 		if event.Type != contracts.EventTicketCommented {
 			continue
@@ -377,6 +391,11 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 		if payloadMap, ok := event.Payload.(map[string]any); ok {
 			if body, ok := payloadMap["body"].(string); ok && strings.TrimSpace(body) != "" {
 				comments = append(comments, strings.TrimSpace(body))
+				commentEntries = append(commentEntries, CommentEntry{
+					Body:      strings.TrimSpace(body),
+					Actor:     event.Actor,
+					Timestamp: event.Timestamp,
+				})
 			}
 		}
 	}
@@ -409,7 +428,7 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
-	return TicketDetailView{Ticket: ticket, BoardStatus: boardStatus, EffectiveReviewer: effectiveReviewer(ticket, policy), Comments: comments, Mentions: mentions, History: history.Events, Gates: gates, Changes: changes, Checks: checks, EffectivePolicy: policy, Git: gitView}, nil
+	return TicketDetailView{Ticket: ticket, BoardStatus: boardStatus, EffectiveReviewer: effectiveReviewer(ticket, policy), Comments: comments, CommentEntries: commentEntries, Mentions: mentions, History: history.Events, Gates: gates, Changes: changes, Checks: checks, EffectivePolicy: policy, Git: gitView}, nil
 }
 
 func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor contracts.Actor) (InspectView, error) {

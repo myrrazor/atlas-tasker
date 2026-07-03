@@ -35,6 +35,23 @@
     });
   }
 
+  function revertCard(event) {
+    // put the card back where the drag started; reloading would wipe the flash
+    const siblings = event.from.children;
+    if (event.oldIndex >= siblings.length) {
+      event.from.appendChild(event.item);
+    } else {
+      event.from.insertBefore(event.item, siblings[event.oldIndex]);
+    }
+  }
+
+  function reloadWithFlash(message) {
+    const target = new URL(window.location.href);
+    target.searchParams.set('flash', message);
+    target.searchParams.delete('error_flash');
+    window.location.assign(target.toString());
+  }
+
   function setupSortable() {
     if (!window.Sortable) return;
     document.querySelectorAll('.ticket-list').forEach((list) => {
@@ -66,22 +83,35 @@
             if (!response.ok) {
               const data = await response.json().catch(() => ({}));
               const message = data.error?.message || `Move failed with ${response.status}`;
+              revertCard(event);
               showFlash(message, true);
-              window.setTimeout(() => window.location.reload(), 900);
               return;
             }
-            window.location.reload();
+            const data = await response.json().catch(() => ({}));
+            reloadWithFlash(data.payload?.flash || `updated ${ticketID}`);
           } catch (err) {
+            revertCard(event);
             showFlash(err.message || 'Move failed', true);
-            window.setTimeout(() => window.location.reload(), 900);
           }
         }
       });
     });
   }
 
+  function revealDetailOnMobile() {
+    // on narrow screens the drawer renders below the board; scroll it into
+    // view when a ticket was explicitly selected, otherwise taps look dead
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('ticket') && !params.has('new')) return;
+    // 1180px = the app-shell breakpoint where the drawer stacks below the board
+    if (window.matchMedia('(max-width: 1180px)').matches) {
+      document.querySelector('.detail-drawer')?.scrollIntoView({ behavior: 'instant', block: 'start' });
+    }
+  }
+
   setupTabs();
   setupKeyboardHints();
   setupSortable();
+  revealDetailOnMobile();
 })();
 
