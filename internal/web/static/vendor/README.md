@@ -10,3 +10,21 @@
 
 The web board uses SortableJS only for progressive cross-column drag/drop. Forms and buttons remain the canonical fallback.
 
+## Geist Sans
+
+- Package: `@fontsource/geist-sans`
+- Version: `5.1.0` (font (C) Vercel, in collaboration with basement.studio)
+- License: SIL Open Font License 1.1 (see `geist/LICENSE`)
+- Source: `https://github.com/vercel/geist-font`
+- Vendored files: `geist/geist-400.woff2`, `geist/geist-500.woff2`, `geist/geist-600.woff2` (latin subsets)
+
+The board's CSP blocks external hosts, so the UI font ships with the binary.
+
+## Phosphor Icons
+
+- Package: `@phosphor-icons/core`
+- Version: regular weight, fetched 2026-07
+- License: MIT
+- Source: `https://github.com/phosphor-icons/core`
+- Vendored as: inline SVG path data in `internal/web/templates/icons.html` (warning, target, chat-circle, plus, dots-six-vertical)
+

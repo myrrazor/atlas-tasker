@@ -4,35 +4,38 @@
     {{if .Flash}}<div class="flash" role="status">{{.Flash}}</div>{{end}}
     {{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
 
-    <form class="filters" method="get" action="/board">
-      {{/* only echo an explicit project — the server default must not become
-           an explicit filter that empties saved views on the next submit */}}
-      <label>Project <input name="project" value="{{if .ProjectExplicit}}{{.Project}}{{end}}" placeholder="{{if .Project}}{{.Project}}{{else}}APP{{end}}"></label>
-      <label>View <input name="view" value="{{.View}}" placeholder="web-board"></label>
-      <label>Assignee <input name="assignee" value="{{.Assignee}}" placeholder="agent:builder-1"></label>
-      <label>Reviewer <input name="reviewer" value="{{.Reviewer}}" placeholder="agent:reviewer-1"></label>
-      <label>Label <input name="label" value="{{.Label}}" placeholder="security"></label>
-      <label>Search <input name="q" value="{{.Query}}" placeholder="handoff, release, login"></label>
-      <label>Priority
-        <select name="priority">
-          <option value="">Any</option>
-          <option value="critical" {{if eq .Priority "critical"}}selected{{end}}>Critical</option>
-          <option value="high" {{if eq .Priority "high"}}selected{{end}}>High</option>
-          <option value="medium" {{if eq .Priority "medium"}}selected{{end}}>Medium</option>
-          <option value="low" {{if eq .Priority "low"}}selected{{end}}>Low</option>
-        </select>
-      </label>
-      <label>Type
-        <select name="type">
-          <option value="">Any</option>
-          <option value="task" {{if eq .Type "task"}}selected{{end}}>Task</option>
-          <option value="bug" {{if eq .Type "bug"}}selected{{end}}>Bug</option>
-          <option value="epic" {{if eq .Type "epic"}}selected{{end}}>Epic</option>
-          <option value="subtask" {{if eq .Type "subtask"}}selected{{end}}>Subtask</option>
-        </select>
-      </label>
-      <button type="submit">Filters</button>
-    </form>
+    <details class="filters-shell" open>
+      <summary>Filters</summary>
+      <form class="filters" method="get" action="/board">
+        {{/* only echo an explicit project — the server default must not become
+             an explicit filter that empties saved views on the next submit */}}
+        <label>Project <input name="project" value="{{if .ProjectExplicit}}{{.Project}}{{end}}" placeholder="{{if .Project}}{{.Project}}{{else}}APP{{end}}"></label>
+        <label>View <input name="view" value="{{.View}}" placeholder="web-board"></label>
+        <label>Assignee <input name="assignee" value="{{.Assignee}}" placeholder="agent:builder-1"></label>
+        <label>Reviewer <input name="reviewer" value="{{.Reviewer}}" placeholder="agent:reviewer-1"></label>
+        <label>Label <input name="label" value="{{.Label}}" placeholder="security"></label>
+        <label>Search <input name="q" value="{{.Query}}" placeholder="handoff, release, login"></label>
+        <label>Priority
+          <select name="priority">
+            <option value="">Any</option>
+            <option value="critical" {{if eq .Priority "critical"}}selected{{end}}>Critical</option>
+            <option value="high" {{if eq .Priority "high"}}selected{{end}}>High</option>
+            <option value="medium" {{if eq .Priority "medium"}}selected{{end}}>Medium</option>
+            <option value="low" {{if eq .Priority "low"}}selected{{end}}>Low</option>
+          </select>
+        </label>
+        <label>Type
+          <select name="type">
+            <option value="">Any</option>
+            <option value="task" {{if eq .Type "task"}}selected{{end}}>Task</option>
+            <option value="bug" {{if eq .Type "bug"}}selected{{end}}>Bug</option>
+            <option value="epic" {{if eq .Type "epic"}}selected{{end}}>Epic</option>
+            <option value="subtask" {{if eq .Type "subtask"}}selected{{end}}>Subtask</option>
+          </select>
+        </label>
+        <button type="submit">Apply</button>
+      </form>
+    </details>
 
     <nav class="mobile-columns" aria-label="Board columns">
       {{range .Columns}}
@@ -71,38 +74,42 @@
 {{define "column"}}
 <article class="column {{if .ActiveMobile}}is-active-mobile{{end}}" data-status="{{.Status}}">
   <header>
-    <h2>{{.Label}}</h2>
-    <span>{{.Count}}</span>
+    <h2><i class="col-dash" aria-hidden="true"></i><span class="col-label">{{.Label}}</span><span class="col-count">{{.Count}}</span></h2>
   </header>
   <div class="ticket-list" data-status="{{.Status}}">
     {{range .Tickets}}
       {{template "card" .}}
     {{else}}
       <div class="empty-column">
-        <span class="empty-icon">□</span>
         <strong>No tickets</strong>
         <p>{{if eq (statusKey .Status) "done"}}Completed tickets appear here.{{else}}Drag or create a ticket to get started.{{end}}</p>
       </div>
     {{end}}
   </div>
-  <a class="column-new" href="/board?new=1">＋ New Ticket</a>
 </article>
 {{end}}
 
 {{define "card"}}
 <a class="ticket-card" href="/board?ticket={{.Ticket.ID}}" data-ticket-id="{{.Ticket.ID}}">
-  <span class="drag-handle" aria-hidden="true">⋮⋮</span>
-  <strong>{{.Ticket.ID}}</strong>
+  <span class="drag-handle" aria-hidden="true">{{template "iconGrip"}}</span>
+  <span class="ticket-id">{{.Ticket.ID}}</span>
   <h3>{{.Ticket.Title}}</h3>
-  <div class="card-meta">
-    <span class="priority {{priorityDot .Ticket.Priority}}"><i></i>{{.Ticket.Priority}}</span>
-    {{if .Ticket.Assignee}}<span>{{.Ticket.Assignee}} <b>{{actorInitials .Ticket.Assignee}}</b></span>{{end}}
-    {{if .EffectiveReviewer}}<span>{{.EffectiveReviewer}} <b>{{actorInitials .EffectiveReviewer}}</b></span>{{end}}
+  {{if or .Ticket.Assignee .EffectiveReviewer}}
+  <div class="card-people">
+    <span class="people-label">Assigned</span>
+    <span class="avatars">
+      {{if .Ticket.Assignee}}<span class="avatar" title="Assignee: {{.Ticket.Assignee}}">{{actorInitials .Ticket.Assignee}}</span>{{end}}
+      {{if .EffectiveReviewer}}<span class="avatar reviewer" title="Reviewer: {{.EffectiveReviewer}}">{{actorInitials .EffectiveReviewer}}</span>{{end}}
+    </span>
   </div>
-  <div class="card-stats">
-    <span title="Blockers">⚠ {{len .Ticket.BlockedBy}}</span>
-    <span title="Checks">◎ {{len .Ticket.OpenGateIDs}}</span>
-    <span title="Comments">▱ {{.CommentCount}}</span>
+  {{end}}
+  <div class="card-foot">
+    <span class="card-stats">
+      {{if .Ticket.BlockedBy}}<span class="stat" title="Blockers" data-blockers="{{len .Ticket.BlockedBy}}">{{template "iconWarning"}}{{len .Ticket.BlockedBy}}</span>{{end}}
+      {{if .Ticket.OpenGateIDs}}<span class="stat" title="Open gates" data-gates="{{len .Ticket.OpenGateIDs}}">{{template "iconGate"}}{{len .Ticket.OpenGateIDs}}</span>{{end}}
+      {{if .CommentCount}}<span class="stat" title="Comments" data-comments="{{.CommentCount}}">{{template "iconComment"}}{{.CommentCount}}</span>{{end}}
+    </span>
+    <span class="priority {{priorityDot .Ticket.Priority}}">{{.Ticket.Priority}}</span>
   </div>
   {{if .Ticket.Labels}}
     <div class="labels">{{range .Ticket.Labels}}<span>{{.}}</span>{{end}}</div>
@@ -158,15 +165,15 @@
 {{$d := .Detail.View}}
 <div class="drawer-head">
   <div>
-    <span class="eyeline">{{$d.Ticket.ID}} <span class="priority {{priorityDot $d.Ticket.Priority}}"><i></i>{{$d.Ticket.Priority}}</span></span>
+    <span class="eyeline">{{$d.Ticket.ID}} <span class="priority {{priorityDot $d.Ticket.Priority}}">{{$d.Ticket.Priority}}</span></span>
     <h1>{{$d.Ticket.Title}}</h1>
-    <p><span class="status-pill">{{statusLabel $d.BoardStatus}}</span> Assignee {{$d.Ticket.Assignee}} · Reviewer {{$d.EffectiveReviewer}}</p>
+    <p class="drawer-meta"><span class="status-pill st-{{statusKey $d.BoardStatus}}">{{statusLabel $d.BoardStatus}}</span>{{if $d.Ticket.Assignee}} <span class="meta-pair">Assignee <b>{{$d.Ticket.Assignee}}</b></span>{{end}}{{if $d.EffectiveReviewer}} <span class="meta-pair">Reviewer <b>{{$d.EffectiveReviewer}}</b></span>{{end}}</p>
   </div>
   <a href="/board" class="close-button" aria-label="Close">×</a>
 </div>
 
 {{range .Detail.Warnings}}
-  <div class="warning" role="alert">⚠ {{.}}</div>
+  <div class="warning" role="alert">{{template "iconWarning"}} {{.}}</div>
 {{end}}
 
 {{/* a rejected comment echoes into the Activity tab — open it, or the

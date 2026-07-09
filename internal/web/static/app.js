@@ -200,6 +200,15 @@
     });
   }
 
+  function collapseFiltersOnMobile() {
+    // filters ship expanded (no-JS fallback); on phones they eat the first
+    // screen, so start them collapsed behind the summary pill
+    const shell = document.querySelector('.filters-shell');
+    if (shell && window.matchMedia('(max-width: 760px)').matches) {
+      shell.open = false;
+    }
+  }
+
   function revealDetailOnMobile() {
     // on narrow screens the drawer renders below the board; scroll it into
     // view when a ticket was explicitly selected, otherwise taps look dead
@@ -214,6 +223,7 @@
   setupTabs();
   setupKeyboardHints();
   setupSortable();
+  collapseFiltersOnMobile();
   revealDetailOnMobile();
 
   // programmatic refresh for QA tooling and agent-driven browsers

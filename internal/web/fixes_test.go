@@ -412,8 +412,8 @@ func TestCardCommentCountReflectsComments(t *testing.T) {
 		}
 	}
 	res := h.doAuthed(t, http.MethodGet, "/board", "", nil)
-	if !strings.Contains(res.body, "▱ 2") {
-		t.Fatalf("expected card comment badge ▱ 2 in board HTML, got:\n%s", excerpt(res.body, "▱"))
+	if !strings.Contains(res.body, `data-comments="2"`) {
+		t.Fatalf("expected card comment badge with count 2 in board HTML, got:\n%s", excerpt(res.body, "data-comments"))
 	}
 }
 
