@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Atlas Tasker terminal prompt">
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="#151517" stroke="#3a3a40" stroke-width="4" />
+  <path d="m17 22 12 10-12 10" fill="none" stroke="#6e9df2" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter" />
+  <path d="M33 43h14" stroke="#ececee" stroke-width="5" />
+</svg>

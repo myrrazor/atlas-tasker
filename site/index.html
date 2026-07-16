@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas Tasker — Jira for your terminal</title>
+  <meta name="description" content="Atlas Tasker is Jira for your terminal, built for AI coding agents: local-first Markdown and SQLite tickets with CLI, TUI, web board, and MCP." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/" />
+  <meta property="og:title" content="Atlas Tasker — Jira for your terminal" />
+  <meta property="og:description" content="Local-first tickets, agent queues, evidence, and review gates. One binary. No account." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker terminal task board with local-first tickets for coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Atlas Tasker — Jira for your terminal" />
+  <meta name="twitter:description" content="Local-first tickets, agent queues, evidence, and review gates. One binary. No account." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker terminal task board with local-first tickets for coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Atlas Tasker",
+    "description": "Atlas Tasker is Jira for your terminal, built for AI coding agents: local-first Markdown and SQLite tickets with CLI, TUI, web board, and MCP.",
+    "url": "https://atlas-tasker.vercel.app/",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS, Linux",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "author": {
+      "@type": "Person",
+      "name": "Mayur Darji",
+      "url": "https://mayurdarji.com"
+    },
+    "downloadUrl": "https://github.com/myrrazor/atlas-tasker/releases/latest",
+    "softwareHelp": "https://github.com/myrrazor/atlas-tasker/tree/main/docs",
+    "license": "https://github.com/myrrazor/atlas-tasker/blob/main/LICENSE"
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is Atlas Tasker?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your code repository. Humans and coding agents share tickets, dependencies, queues, evidence, review gates, and audit history without a hosted tracker."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is Atlas Tasker free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Atlas Tasker is MIT licensed, with no hosted service or paid tier required."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Where is my data stored? Does it phone home?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Tickets are Markdown files in your repository. Changes are recorded in an append-only local event log, and SQLite provides a rebuildable query index. Atlas Tasker has no hosted mode, account system, or telemetry service."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What platforms does Atlas Tasker support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "The release installer supports macOS and Linux on arm64 and amd64. Building from source requires Go 1.26.4 or newer."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do coding agents use it?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Run tracker mcp serve to expose typed tracker tools, or install the Codex and Claude integrations. Agents can read queues, claim tickets, dispatch runs, attach evidence, request review, acknowledge wake-ups, and hand off context."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I update Atlas Tasker?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Run the curl installer again to fetch and verify the latest release. Export VERSION before running it if you need to pin a specific release."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Why not just use Jira?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Use Atlas Tasker when work should travel with a codebase and coding agents need a tool-native workflow. Jira is still a better fit when your organization needs a hosted, cross-team system with centralized administration."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I uninstall it?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Remove the tracker binary from your installation directory. Your project data stays in the repository until you choose to remove it."
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="/" aria-label="Atlas Tasker home">
+        <img src="atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#install">Install</a>
+        <a href="#faq">FAQ</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <main id="main">
+    <header class="hero shell">
+      <div class="hero-copy">
+        <p class="kicker">Jira for your terminal, built for AI coding agents.</p>
+        <h1>Keep the work <span>in the repo.</span></h1>
+        <p class="hero-lead">Tickets, dependencies, agent queues, evidence, and review gates. Plain Markdown underneath. A fast SQLite index on top.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#install">Install Atlas Tasker</a>
+          <a class="button button-secondary" href="https://github.com/myrrazor/atlas-tasker">Read the source</a>
+        </div>
+      </div>
+
+      <aside class="hero-command" aria-label="Quick install">
+        <div class="terminal-bar">
+          <span class="terminal-title">~/your-repo</span>
+          <span class="terminal-state">verified release</span>
+        </div>
+        <div class="command-line">
+          <span class="prompt" aria-hidden="true">$</span>
+          <code id="hero-install">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
+        </div>
+        <button class="copy-button" type="button" data-copy="hero-install" aria-label="Copy curl install command">Copy command</button>
+        <p class="command-note">macOS or Linux · arm64 or amd64 · MIT</p>
+      </aside>
+    </header>
+
+    <section class="product-proof shell" aria-labelledby="proof-title">
+      <div class="section-heading proof-heading">
+        <p class="section-label">The actual product</p>
+        <h2 id="proof-title">Your board, without the browser tab.</h2>
+        <p>Open the full-screen TUI when you want the whole delivery loop under your fingertips.</p>
+      </div>
+      <figure class="terminal-shot">
+        <div class="terminal-bar">
+          <span class="terminal-title">tracker tui</span>
+          <span class="terminal-state">local · synced</span>
+        </div>
+        <img src="assets/tui-board.webp" width="1200" height="330" alt="Atlas Tasker TUI board showing ticket IDs, types, statuses, priorities, and titles" />
+        <figcaption>Real Atlas Tasker output. The same tickets are available through the CLI, TUI, local web board, and MCP.</figcaption>
+      </figure>
+    </section>
+
+    <section id="workflow" class="workflow-section">
+      <div class="shell">
+        <div class="section-heading workflow-heading">
+          <p class="section-label">One tracked loop</p>
+          <h2>From ticket to evidence, nothing disappears into chat.</h2>
+        </div>
+        <ol class="workflow" aria-label="Atlas Tasker delivery workflow">
+          <li>
+            <span class="workflow-step">Ticket</span>
+            <code>APP-42</code>
+            <p>Define the work and its dependencies.</p>
+          </li>
+          <li>
+            <span class="workflow-step">Claim</span>
+            <code>agent:builder-1</code>
+            <p>A lease keeps another agent from taking it.</p>
+          </li>
+          <li>
+            <span class="workflow-step">Prove</span>
+            <code>run evidence</code>
+            <p>Attach test output, diffs, logs, and screenshots.</p>
+          </li>
+          <li>
+            <span class="workflow-step">Gate</span>
+            <code>review required</code>
+            <p>Completion waits for the approvals you chose.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="features" class="features-section shell" aria-labelledby="features-title">
+      <div class="section-heading features-heading">
+        <p class="section-label">Built around the repository</p>
+        <h2 id="features-title">A tracker your coding agents can operate.</h2>
+      </div>
+
+      <article class="feature-row feature-agents">
+        <div class="feature-copy">
+          <p class="feature-index">Agent orchestration</p>
+          <h3>MCP tools, queues, wake-ups, and handoffs.</h3>
+          <p>Agents can claim ready work, see exactly what blocks them, attach evidence to a run, and request the next gate. Typed approvals protect high-impact operations.</p>
+          <a class="text-link" href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/guides/mcp-for-agents.md">Read the MCP guide <span aria-hidden="true">→</span></a>
+        </div>
+        <figure class="feature-shot">
+          <img src="assets/agent-queue.webp" width="1200" height="530" alt="Atlas Tasker terminal agent queue showing ready and blocked tickets with reasons" />
+          <figcaption>Each agent gets a queue that explains what is ready and what is blocked.</figcaption>
+        </figure>
+      </article>
+
+      <article class="feature-row feature-storage">
+        <div class="feature-copy">
+          <p class="feature-index">Local-first storage</p>
+          <h3>Markdown is the record. SQLite is the speed.</h3>
+          <p>Tickets live under <code>projects/</code>, changes land in an append-only event log, and the query index can be rebuilt with <code>tracker doctor --repair</code>.</p>
+        </div>
+        <div class="repo-tree" aria-label="Atlas Tasker files in a repository">
+          <div><span>├──</span> projects/APP/tickets/APP-42.md</div>
+          <div><span>├──</span> .tracker/events.jsonl</div>
+          <div><span>└──</span> .tracker/index.db <em>rebuildable</em></div>
+        </div>
+      </article>
+
+      <article class="feature-row feature-surfaces">
+        <div class="feature-copy">
+          <p class="feature-index">CLI + TUI + local web board</p>
+          <h3>Pick the view. Keep the same tracker.</h3>
+          <p>Script with the CLI, work keyboard-first in the TUI, or start the optional Kanban board on <code>127.0.0.1</code>. There is no hosted mode, login system, or second database.</p>
+        </div>
+        <div class="surface-list" aria-label="Atlas Tasker interfaces">
+          <div><span>CLI</span><code>tracker board --project APP</code></div>
+          <div><span>TUI</span><code>tracker tui</code></div>
+          <div><span>WEB</span><code>tracker web serve --open</code></div>
+          <div><span>MCP</span><code>tracker mcp serve</code></div>
+        </div>
+      </article>
+    </section>
+
+    <section id="install" class="install-section">
+      <div class="shell install-layout">
+        <div class="section-heading install-heading">
+          <p class="section-label">Install</p>
+          <h2>One binary. Start in a minute.</h2>
+          <p>The installer fetches the latest release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>.</p>
+          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification.</p>
+        </div>
+
+        <div class="install-options">
+          <div class="install-option">
+            <div class="install-meta">
+              <strong>Release installer</strong>
+              <span>Recommended · macOS / Linux</span>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="curl-install">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
+              <button class="copy-button" type="button" data-copy="curl-install" aria-label="Copy release installer command">Copy</button>
+            </div>
+          </div>
+
+          <div class="install-option">
+            <div class="install-meta">
+              <strong>Build from source</strong>
+              <span>Go 1.26.4+</span>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="go-install">go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>
+              <button class="copy-button" type="button" data-copy="go-install" aria-label="Copy Go install command">Copy</button>
+            </div>
+          </div>
+
+          <a class="release-row" href="https://github.com/myrrazor/atlas-tasker/releases/latest">
+            <span>
+              <strong>Release files</strong>
+              <small>Checksums, attestations, and platform archives</small>
+            </span>
+            <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" class="faq-section shell" aria-labelledby="faq-title">
+      <div class="section-heading faq-heading">
+        <p class="section-label">FAQ</p>
+        <h2 id="faq-title">The sensible questions.</h2>
+      </div>
+      <div class="faq-list">
+        <details>
+          <summary>What is Atlas Tasker?</summary>
+          <p>Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your code repository. Humans and coding agents share tickets, dependencies, queues, evidence, review gates, and audit history without a hosted tracker.</p>
+        </details>
+        <details>
+          <summary>Is Atlas Tasker free?</summary>
+          <p>Yes. Atlas Tasker is MIT licensed, with no hosted service or paid tier required.</p>
+        </details>
+        <details>
+          <summary>Where is my data stored? Does it phone home?</summary>
+          <p>Tickets are Markdown files in your repository. Changes are recorded in an append-only local event log, and SQLite provides a rebuildable query index. Atlas Tasker has no hosted mode, account system, or telemetry service.</p>
+        </details>
+        <details>
+          <summary>What platforms does Atlas Tasker support?</summary>
+          <p>The release installer supports macOS and Linux on arm64 and amd64. Building from source requires Go 1.26.4 or newer.</p>
+        </details>
+        <details>
+          <summary>How do coding agents use it?</summary>
+          <p>Run tracker mcp serve to expose typed tracker tools, or install the Codex and Claude integrations. Agents can read queues, claim tickets, dispatch runs, attach evidence, request review, acknowledge wake-ups, and hand off context.</p>
+        </details>
+        <details>
+          <summary>How do I update Atlas Tasker?</summary>
+          <p>Run the curl installer again to fetch and verify the latest release. Export VERSION before running it if you need to pin a specific release.</p>
+        </details>
+        <details>
+          <summary>Why not just use Jira?</summary>
+          <p>Use Atlas Tasker when work should travel with a codebase and coding agents need a tool-native workflow. Jira is still a better fit when your organization needs a hosted, cross-team system with centralized administration.</p>
+        </details>
+        <details>
+          <summary>How do I uninstall it?</summary>
+          <p>Remove the tracker binary from your installation directory. Your project data stays in the repository until you choose to remove it.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="support-section shell" aria-labelledby="support-title">
+      <div class="support-copy">
+        <p class="section-label">Open source, no account</p>
+        <h2 id="support-title">Useful? Give the repo a star.</h2>
+        <p>Atlas Tasker is free and MIT licensed. A star helps other terminal people find it. Issues and practical pull requests are welcome too.</p>
+      </div>
+      <div class="support-actions">
+        <a class="button button-primary" href="https://github.com/myrrazor/atlas-tasker">Star on GitHub</a>
+        <a class="button button-secondary" href="https://mayurdarji.com">Built by Mayur</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">Docs</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="https://github.com/myrrazor/atlas-tasker/blob/main/LICENSE">License</a>
+        <a href="https://github.com/myrrazor">@myrrazor</a>
+        <a href="https://mayurdarji.com">mayurdarji.com</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Install command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

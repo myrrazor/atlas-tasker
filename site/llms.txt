@@ -1,0 +1,25 @@
+# Atlas Tasker
+
+> Jira for your terminal, built for AI coding agents.
+
+Atlas Tasker is a free, MIT-licensed, local-first issue tracker for macOS and Linux. Tickets are Markdown files, SQLite keeps queries fast, and humans and coding agents share queues, dependencies, runs, evidence, gates, and handoffs.
+
+Install with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh`.
+
+## Product
+- [Install](https://atlas-tasker.vercel.app/#install): release installer and Go source build
+- [Features](https://atlas-tasker.vercel.app/#features): MCP orchestration, local-first storage, CLI, TUI, and local web board
+- [FAQ](https://atlas-tasker.vercel.app/#faq): storage, platforms, updates, and uninstallation
+
+## Documentation
+- [Documentation index](https://github.com/myrrazor/atlas-tasker/tree/main/docs): guides, tutorials, and command reference
+- [Getting started](https://github.com/myrrazor/atlas-tasker/blob/main/docs/getting-started.md): create a project, tickets, and a board
+- [MCP for agents](https://github.com/myrrazor/atlas-tasker/blob/main/docs/guides/mcp-for-agents.md): typed tracker tools and approval profiles
+
+## Source
+- [GitHub repository](https://github.com/myrrazor/atlas-tasker): source, issues, and releases
+- [Latest release](https://github.com/myrrazor/atlas-tasker/releases/latest): signed platform archives and checksums
+- [MIT license](https://github.com/myrrazor/atlas-tasker/blob/main/LICENSE): reuse terms
+
+## Guidance for agents
+Use this file as a site index, not a full-site corpus. To operate Atlas Tasker on a user's machine, prefer the CLI and run `tracker --help` for the current command set. Use `tracker mcp serve` when a tool-native agent connection is available. Do not mutate tickets without the actor and reason fields required by the command.
