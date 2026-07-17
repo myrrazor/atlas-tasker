@@ -306,6 +306,34 @@
             </span>
             <span aria-hidden="true">↗</span>
           </a>
+
+          <div class="install-option">
+            <div class="install-meta">
+              <strong>Your first board</strong>
+              <span>From an empty repo to a groomed ticket</span>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="first-init">tracker init</code>
+              <button class="copy-button" type="button" data-copy="first-init" aria-label="Copy tracker init command">Copy</button>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="first-project">tracker project create APP "My App"</code>
+              <button class="copy-button" type="button" data-copy="first-project" aria-label="Copy project create command">Copy</button>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="first-ticket">tracker ticket create --project APP --title "Ship first feature" --type task --actor human:owner --reason "first ticket"</code>
+              <button class="copy-button" type="button" data-copy="first-ticket" aria-label="Copy ticket create command">Copy</button>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="first-board">tracker board</code>
+              <button class="copy-button" type="button" data-copy="first-board" aria-label="Copy board command">Copy</button>
+            </div>
+            <p class="requirements">Every write names an <code>--actor</code> and a <code>--reason</code> — that is the audit trail agents and reviewers read later. Prefer a browser? <code>tracker web serve</code> opens the same board as a local Kanban view.</p>
+          </div>
         </div>
       </div>
     </section>
