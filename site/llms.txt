@@ -10,6 +10,8 @@ Install with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker
 - [Install](https://atlas-tasker.vercel.app/#install): release installer and Go source build
 - [Features](https://atlas-tasker.vercel.app/#features): MCP orchestration, local-first storage, CLI, TUI, and local web board
 - [FAQ](https://atlas-tasker.vercel.app/#faq): storage, platforms, updates, and uninstallation
+- [Privacy](https://atlas-tasker.vercel.app/privacy.html): no cookies, tracking, accounts, payments, or hosted project data
+- [Terms](https://atlas-tasker.vercel.app/terms.html): plain-language website terms and the MIT software license boundary
 
 ## Documentation
 - [Documentation index](https://github.com/myrrazor/atlas-tasker/tree/main/docs): guides, tutorials, and command reference

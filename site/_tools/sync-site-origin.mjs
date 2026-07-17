@@ -4,7 +4,16 @@ import { fileURLToPath } from "node:url";
 export const SITE_ORIGIN = "https://atlas-tasker.vercel.app";
 
 const siteRoot = fileURLToPath(new URL("../", import.meta.url));
-const siteFiles = ["index.html", "robots.txt", "sitemap.xml", "llms.txt"];
+
+/** Static outputs whose absolute site origin must stay in sync. */
+export const SITE_FILES = Object.freeze([
+  "index.html",
+  "privacy.html",
+  "terms.html",
+  "robots.txt",
+  "sitemap.xml",
+  "llms.txt",
+]);
 
 /**
  * Return a validated HTTPS origin with no trailing slash.
@@ -55,13 +64,13 @@ export async function syncSiteOrigin(root = siteRoot) {
   const currentOrigin = findCurrentOrigin(indexHtml);
   const nextOrigin = normalizeOrigin(SITE_ORIGIN);
 
-  for (const file of siteFiles) {
+  for (const file of SITE_FILES) {
     const path = new URL(file, `file://${root}`);
     const contents = await readFile(path, "utf8");
     await writeFile(path, replaceOrigin(contents, currentOrigin, nextOrigin));
   }
 
-  return { currentOrigin, nextOrigin, files: siteFiles.length };
+  return { currentOrigin, nextOrigin, files: SITE_FILES.length };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

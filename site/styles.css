@@ -57,7 +57,6 @@ html {
 body {
   min-width: 320px;
   margin: 0;
-  overflow-x: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
@@ -91,7 +90,8 @@ code {
 
 a:focus-visible,
 button:focus-visible,
-summary:focus-visible {
+summary:focus-visible,
+code[tabindex]:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 4px;
 }
@@ -140,6 +140,9 @@ summary:focus-visible {
 }
 
 .brand {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
   flex: 0 0 auto;
 }
 
@@ -163,6 +166,12 @@ summary:focus-visible {
   transition: color 150ms var(--ease);
 }
 
+.nav-links a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+}
+
 .nav-links a:hover,
 .nav-github:hover,
 .footer a:hover {
@@ -171,7 +180,7 @@ summary:focus-visible {
 
 .nav-github {
   display: inline-flex;
-  min-height: 40px;
+  min-height: 44px;
   align-items: center;
   gap: 7px;
   padding-left: 26px;
@@ -344,10 +353,32 @@ summary:focus-visible {
 
 .command-line code,
 .install-command code {
-  overflow-wrap: anywhere;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding-bottom: 7px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
   color: var(--text);
   font-size: 0.83rem;
   line-height: 1.65;
+  overflow-wrap: normal;
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
+  white-space: nowrap;
+}
+
+.command-line code::-webkit-scrollbar,
+.install-command code::-webkit-scrollbar {
+  height: 5px;
+}
+
+.command-line code::-webkit-scrollbar-thumb,
+.install-command code::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--line-strong);
 }
 
 .prompt {
@@ -358,7 +389,7 @@ summary:focus-visible {
 
 .copy-button {
   min-width: 44px;
-  min-height: 40px;
+  min-height: 44px;
   border: 1px solid var(--line-strong);
   border-radius: 7px;
   background: var(--surface-2);
@@ -684,7 +715,6 @@ figcaption {
 }
 
 .install-command .copy-button {
-  min-height: 34px;
   padding-inline: 10px;
 }
 
@@ -761,6 +791,19 @@ figcaption {
   font-size: 0.95rem;
 }
 
+.faq-list p a,
+.legal-content a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.faq-list p a:hover,
+.legal-content a:hover {
+  text-decoration-color: var(--accent);
+}
+
 .support-section {
   display: grid;
   margin-bottom: 112px;
@@ -803,8 +846,91 @@ figcaption {
 }
 
 .footer a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
   font-family: var(--sans);
   font-size: 0.78rem;
+}
+
+.legal-main {
+  min-height: calc(100vh - 160px);
+}
+
+.legal-hero {
+  padding-block: 96px 52px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.legal-hero h1 {
+  max-width: 17ch;
+  margin: 18px 0 0;
+  font-size: clamp(2.7rem, 6vw, 4.4rem);
+  font-weight: 600;
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+
+.legal-summary {
+  max-width: 680px;
+  margin: 28px 0 0;
+  color: var(--text-2);
+  font-size: 1.16rem;
+  line-height: 1.65;
+}
+
+.legal-updated {
+  margin: 26px 0 0;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 0.76rem;
+}
+
+.legal-content {
+  width: min(100% - 48px, 760px);
+  margin-inline: auto;
+  padding-block: 56px 104px;
+}
+
+.legal-content section + section {
+  margin-top: 48px;
+}
+
+.legal-content h2 {
+  margin: 0;
+  font-size: 1.38rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.legal-content p,
+.legal-content li {
+  color: var(--text-2);
+  font-size: 1rem;
+  line-height: 1.72;
+}
+
+.legal-content p {
+  margin: 14px 0 0;
+}
+
+.legal-content ul {
+  margin: 14px 0 0;
+  padding-left: 1.25rem;
+}
+
+.legal-content code {
+  color: var(--text);
+}
+
+.legal-launch-note {
+  margin-top: 64px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line-strong);
+}
+
+.legal-launch-note strong {
+  color: var(--text);
 }
 
 .copy-status {
@@ -831,11 +957,28 @@ figcaption {
 }
 
 @media (max-width: 940px) {
+  .nav-inner {
+    padding-top: 8px;
+    flex-wrap: wrap;
+    column-gap: 24px;
+  }
+
   .nav-links {
-    display: none;
+    display: grid;
+    width: 100%;
+    margin-left: 0;
+    border-top: 1px solid var(--line);
+    order: 3;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .nav-links a {
+    justify-content: center;
   }
 
   .nav-github {
+    min-height: 44px;
     margin-left: auto;
   }
 
@@ -879,6 +1022,12 @@ figcaption {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .workflow p,
+  .faq-list p,
+  .install-heading .requirements {
+    font-size: 1rem;
+  }
+
   .workflow li:nth-child(3) {
     padding-left: 0;
     border-left: 0;
@@ -909,7 +1058,7 @@ figcaption {
 
   .nav-inner {
     min-height: 60px;
-    gap: 18px;
+    column-gap: 18px;
   }
 
   .brand img {
@@ -917,9 +1066,13 @@ figcaption {
   }
 
   .nav-github {
-    min-height: 38px;
+    min-height: 44px;
     padding-left: 16px;
     font-size: 0.82rem;
+  }
+
+  .nav-links a {
+    font-size: 0.78rem;
   }
 
   .hero {
@@ -957,7 +1110,7 @@ figcaption {
   }
 
   .command-line {
-    min-height: 172px;
+    min-height: 0;
     padding: 22px 18px;
   }
 
@@ -1085,6 +1238,29 @@ figcaption {
   .footer-links {
     justify-content: flex-start;
     row-gap: 10px;
+  }
+
+  .legal-hero {
+    padding-block: 58px 40px;
+  }
+
+  .legal-hero h1 {
+    max-width: 20ch;
+    font-size: clamp(2.25rem, 10vw, 2.75rem);
+  }
+
+  .legal-summary {
+    margin-top: 22px;
+    font-size: 1.04rem;
+  }
+
+  .legal-content {
+    width: min(100% - 32px, 760px);
+    padding-block: 44px 76px;
+  }
+
+  .legal-content section + section {
+    margin-top: 40px;
   }
 }
 

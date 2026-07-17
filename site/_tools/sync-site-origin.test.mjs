@@ -2,10 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  SITE_FILES,
   findCurrentOrigin,
   normalizeOrigin,
   replaceOrigin,
 } from "./sync-site-origin.mjs";
+
+test("keeps every public SEO output on the same origin", () => {
+  assert.deepEqual(SITE_FILES, [
+    "index.html",
+    "privacy.html",
+    "terms.html",
+    "robots.txt",
+    "sitemap.xml",
+    "llms.txt",
+  ]);
+});
 
 test("normalizes a canonical origin", () => {
   assert.equal(normalizeOrigin("https://atlas-tasker.vercel.app/"), "https://atlas-tasker.vercel.app");
