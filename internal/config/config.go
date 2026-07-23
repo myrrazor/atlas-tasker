@@ -25,6 +25,7 @@ type fileConfig struct {
 	} `toml:"actor"`
 	Web struct {
 		OwnerName   string            `toml:"owner_name"`
+		Lang        string            `toml:"lang"`
 		AgentColors map[string]string `toml:"agent_colors"`
 	} `toml:"web"`
 	Notifications struct {
@@ -103,6 +104,7 @@ func applyNotificationDefaults(root string, cfg *contracts.TrackerConfig) {
 }
 
 func applyWebDefaults(cfg *contracts.TrackerConfig) {
+	cfg.Web.Lang = strings.ToLower(strings.TrimSpace(cfg.Web.Lang))
 	colors := map[string]string{
 		"claude": "orange",
 		"codex":  "blue",
@@ -140,6 +142,7 @@ func Load(root string) (contracts.TrackerConfig, error) {
 		},
 		Web: contracts.WebConfig{
 			OwnerName:   strings.TrimSpace(parsed.Web.OwnerName),
+			Lang:        strings.ToLower(strings.TrimSpace(parsed.Web.Lang)),
 			AgentColors: parsed.Web.AgentColors,
 		},
 		Notifications: contracts.NotificationsConfig{
@@ -218,6 +221,7 @@ func Save(root string, cfg contracts.TrackerConfig) error {
 	out.Workflow.CompletionMode = string(cfg.Workflow.CompletionMode)
 	out.Actor.Default = string(cfg.Actor.Default)
 	out.Web.OwnerName = strings.TrimSpace(cfg.Web.OwnerName)
+	out.Web.Lang = strings.ToLower(strings.TrimSpace(cfg.Web.Lang))
 	out.Web.AgentColors = cfg.Web.AgentColors
 	out.Notifications.Terminal = &cfg.Notifications.Terminal
 	out.Notifications.FileEnabled = cfg.Notifications.FileEnabled
@@ -267,6 +271,8 @@ func Get(root string, key string) (string, error) {
 		return string(cfg.Actor.Default), nil
 	case "web.owner_name":
 		return cfg.Web.OwnerName, nil
+	case "web.lang":
+		return cfg.Web.Lang, nil
 	case "notifications.terminal":
 		if cfg.Notifications.Terminal {
 			return "true", nil
@@ -350,6 +356,8 @@ func Set(root string, key string, value string) error {
 		cfg.Actor.Default = contracts.Actor(strings.TrimSpace(value))
 	case "web.owner_name":
 		cfg.Web.OwnerName = strings.TrimSpace(value)
+	case "web.lang":
+		cfg.Web.Lang = strings.ToLower(strings.TrimSpace(value))
 	case "notifications.terminal":
 		cfg.Notifications.Terminal = strings.EqualFold(strings.TrimSpace(value), "true")
 	case "notifications.file_enabled":

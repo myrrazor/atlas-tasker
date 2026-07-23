@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -390,14 +389,7 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 		page.Form = r.Form
 		page.FormTarget = target
 	}
-	var buf bytes.Buffer
-	if renderErr := s.templates.ExecuteTemplate(&buf, "layout", page); renderErr != nil {
-		http.Error(w, err.Error(), statusForError(err))
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(statusForError(err))
-	_, _ = buf.WriteTo(w)
+	s.renderPage(w, pageReq, page, statusForError(err))
 }
 
 func (s *Server) writeProjectActionError(w http.ResponseWriter, r *http.Request, err error) {
@@ -415,7 +407,7 @@ func (s *Server) writeProjectActionError(w http.ResponseWriter, r *http.Request,
 	page.Error = err.Error()
 	page.ShowNew = true
 	page.Form = r.Form
-	s.renderPage(w, page, statusForError(err))
+	s.renderPage(w, pageReq, page, statusForError(err))
 }
 
 // actionTarget parses "/actions/tickets/create" and

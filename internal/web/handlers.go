@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/url"
 	"strings"
@@ -26,7 +27,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		page.Error = err.Error()
 	}
-	s.renderPage(w, page, http.StatusOK)
+	s.renderPage(w, r, page, http.StatusOK)
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +39,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		page.Error = err.Error()
 	}
-	s.renderPage(w, page, http.StatusOK)
+	s.renderPage(w, r, page, http.StatusOK)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -68,20 +69,40 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 			Error:     err.Error(),
 		}
 	}
-	s.renderPage(w, page, http.StatusOK)
+	s.renderPage(w, r, page, http.StatusOK)
 }
 
-func (s *Server) renderPage(w http.ResponseWriter, page any, status int) {
+func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, page any, status int) {
 	// Render to a buffer first. A template failure mid-stream would otherwise
 	// write half a page with a success status and error text appended.
 	var buf bytes.Buffer
-	if err := s.templates.ExecuteTemplate(&buf, "layout", page); err != nil {
+	templates, err := s.templatesForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := templates.ExecuteTemplate(&buf, "layout", page); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_, _ = w.Write(buf.Bytes())
+}
+
+func (s *Server) templatesForRequest(r *http.Request) (*template.Template, error) {
+	lang := s.requestLanguage(r)
+	t := translator(lang)
+	templates, err := s.templates.Clone()
+	if err != nil {
+		return nil, err
+	}
+	return templates.Funcs(template.FuncMap{
+		"lang":              func() string { return lang },
+		"langURL":           func(next string) string { return languageURL(r.URL, next) },
+		"recentDescription": func(change RecentChange) string { return recentDescription(t, change) },
+		"t":                 t,
+	}), nil
 }
 
 func (s *Server) handleBoardAPI(w http.ResponseWriter, r *http.Request) {

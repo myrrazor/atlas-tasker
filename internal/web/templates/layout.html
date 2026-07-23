@@ -1,38 +1,38 @@
 {{define "layout"}}
 <!doctype html>
-<html lang="en">
+<html lang="{{lang}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="atlas-csrf-token" content="{{.CSRFToken}}">
-  <title>{{if eq .Page "welcome"}}Atlas Tasker{{else if eq .Page "settings"}}Atlas Tasker Settings{{else}}Atlas Tasker Web Board{{end}}</title>
+  <title>{{if eq .Page "welcome"}}Atlas Tasker{{else if eq .Page "settings"}}{{t "page.settings.title"}}{{else}}{{t "page.board.title"}}{{end}}</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body data-page="{{.Page}}">
   <header class="topbar topbar--{{.Page}}">
     <div class="topbar-primary">
-      <a class="brand" href="/" aria-label="Atlas Tasker welcome">
+      <a class="brand" href="/" aria-label="{{t "nav.welcome.aria"}}">
         <img src="/static/brand/atlas-tasker-wordmark.png" alt="Atlas Tasker">
       </a>
-      <nav class="primary-nav" aria-label="Primary">
-        <a href="/" {{if eq .Page "welcome"}}aria-current="page"{{end}}>Overview</a>
-        <a href="/board" {{if eq .Page "board"}}aria-current="page"{{end}}>Board</a>
+      <nav class="primary-nav" aria-label="{{t "nav.primary"}}">
+        <a href="/" {{if eq .Page "welcome"}}aria-current="page"{{end}}>{{t "nav.overview"}}</a>
+        <a href="/board" {{if eq .Page "board"}}aria-current="page"{{end}}>{{t "nav.board"}}</a>
       </nav>
     </div>
     <div class="top-meta">
-      <span class="meta-block"><span class="meta-label">Workspace</span><strong>{{.Workspace}}</strong></span>
-      <span class="meta-block"><span class="meta-label">Local</span><strong><span class="status-dot online"></span>{{.Host}}</strong></span>
-      <span class="meta-block"><span class="meta-label">Actor</span><strong>{{.Actor}}</strong></span>
-      {{if .ReadOnly}}<span class="mode-chip readonly">Read only</span>{{else}}<span class="mode-chip">Read/write</span>{{end}}
+      <span class="meta-block"><span class="meta-label">{{t "meta.workspace"}}</span><strong>{{.Workspace}}</strong></span>
+      <span class="meta-block"><span class="meta-label">{{t "meta.local"}}</span><strong><span class="status-dot online"></span>{{.Host}}</strong></span>
+      <span class="meta-block"><span class="meta-label">{{t "meta.actor"}}</span><strong>{{.Actor}}</strong></span>
+      {{if .ReadOnly}}<span class="mode-chip readonly">{{t "mode.read_only"}}</span>{{else}}<span class="mode-chip">{{t "mode.read_write"}}</span>{{end}}
     </div>
     {{if eq .Page "board"}}
     <form class="searchbar" method="get" action="/board" role="search">
-      <input type="search" name="q" value="{{.Query}}" placeholder="Search tickets..." aria-label="Search tickets">
+      <input type="search" name="q" value="{{.Query}}" placeholder="{{t "board.search.placeholder"}}" aria-label="{{t "board.field.search"}}">
       <input type="hidden" name="project" value="{{if .ProjectExplicit}}{{.Project}}{{end}}">
-      <button type="submit">Search</button>
+      <button type="submit">{{t "action.search"}}</button>
     </form>
-    <a class="new-button" href="/board?new=1{{if .ProjectExplicit}}&project={{.Project}}{{end}}">New Ticket</a>
+    <a class="new-button" href="/board?new=1{{if .ProjectExplicit}}&project={{.Project}}{{end}}">{{t "action.new_ticket"}}</a>
     {{end}}
   </header>
   {{if eq .Page "welcome"}}
@@ -42,8 +42,36 @@
   {{else}}
     {{template "boardContent" .}}
   {{end}}
+  <div id="atlas-i18n" hidden
+    data-none="{{t "common.none"}}"
+    data-unknown-status="{{t "board.preview.unknown_status"}}"
+    data-unassigned="{{t "board.preview.unassigned"}}"
+    data-assignee="{{t "board.field.assignee"}}"
+    data-reviewer="{{t "board.field.reviewer"}}"
+    data-priority="{{t "board.field.priority"}}"
+    data-labels="{{t "board.field.labels"}}"
+    data-blocker-one="{{t "board.count.blocker.one"}}"
+    data-blocker-other="{{t "board.count.blocker.other"}}"
+    data-gate-one="{{t "board.count.gate.one"}}"
+    data-gate-other="{{t "board.count.gate.other"}}"
+    data-comment-one="{{t "board.count.comment.one"}}"
+    data-comment-other="{{t "board.count.comment.other"}}"
+    data-session-expired="{{t "board.flash.session_expired"}}"
+    data-stale="{{t "board.flash.stale"}}"
+    data-move-failed-status="{{t "board.flash.move_failed_status"}}"
+    data-move-failed="{{t "board.flash.move_failed"}}"
+    data-updated="{{t "board.flash.updated"}}"></div>
   {{if eq .Page "board"}}<script src="/static/vendor/sortable.min.js"></script>{{end}}
   <script src="/static/app.js"></script>
 </body>
 </html>
+{{end}}
+
+{{define "languageSwitcher"}}
+<nav class="language-switcher" aria-label="{{t "language.switcher.aria"}}">
+  <span>{{t "common.language"}}</span>
+  <a href="{{langURL "en"}}" lang="en" {{if eq (lang) "en"}}aria-current="true"{{end}}>{{t "language.english"}}</a>
+  <a href="{{langURL "es"}}" lang="es" {{if eq (lang) "es"}}aria-current="true"{{end}}>{{t "language.spanish"}}</a>
+  <a href="{{langURL "id"}}" lang="id" {{if eq (lang) "id"}}aria-current="true"{{end}}>{{t "language.indonesian"}}</a>
+</nav>
 {{end}}

@@ -1,5 +1,12 @@
 (function () {
   const csrf = document.querySelector('meta[name="atlas-csrf-token"]')?.content || '';
+  const messages = document.querySelector('#atlas-i18n')?.dataset || {};
+
+  function message(name, fallback, values) {
+    const raw = messages[name] || fallback;
+    if (!values) return raw;
+    return raw.replace(/\{(\w+)\}/g, (match, key) => values[key] ?? match);
+  }
 
   function showFlash(message, isError) {
     let flash = document.querySelector('.flash');
@@ -138,13 +145,16 @@
     const term = document.createElement('dt');
     term.textContent = label;
     const detail = document.createElement('dd');
-    detail.textContent = value || 'None';
+    detail.textContent = value || message('none', 'None');
     list.append(term, detail);
   }
 
-  function countLabel(value, singular) {
+  function countLabel(value, singularKey, pluralKey, singular, plural) {
     const count = Number.parseInt(value || '0', 10) || 0;
-    return `${count} ${singular}${count === 1 ? '' : 's'}`;
+    const label = count === 1
+      ? message(singularKey, singular)
+      : message(pluralKey, plural);
+    return `${count} ${label}`;
   }
 
   function showCardPreview(card) {
@@ -157,18 +167,18 @@
     title.textContent = data.title || data.ticketId;
     const status = document.createElement('p');
     status.className = 'card-preview-status';
-    status.textContent = data.status || 'Unknown status';
+    status.textContent = data.status || message('unknownStatus', 'Unknown status');
     const details = document.createElement('dl');
-    addPreviewRow(details, 'Assignee', data.assignee || 'Unassigned');
-    addPreviewRow(details, 'Reviewer', data.reviewer || 'None');
-    addPreviewRow(details, 'Priority', data.priority || 'None');
-    addPreviewRow(details, 'Labels', data.labels || 'None');
+    addPreviewRow(details, message('assignee', 'Assignee'), data.assignee || message('unassigned', 'Unassigned'));
+    addPreviewRow(details, message('reviewer', 'Reviewer'), data.reviewer || message('none', 'None'));
+    addPreviewRow(details, message('priority', 'Priority'), data.priorityLabel || data.priority || message('none', 'None'));
+    addPreviewRow(details, message('labels', 'Labels'), data.labels || message('none', 'None'));
     const counts = document.createElement('p');
     counts.className = 'card-preview-counts';
     counts.textContent = [
-      countLabel(data.blockers, 'blocker'),
-      countLabel(data.gates, 'gate'),
-      countLabel(data.comments, 'comment')
+      countLabel(data.blockers, 'blockerOne', 'blockerOther', 'blocker', 'blockers'),
+      countLabel(data.gates, 'gateOne', 'gateOther', 'gate', 'gates'),
+      countLabel(data.comments, 'commentOne', 'commentOther', 'comment', 'comments')
     ].join(' · ');
     preview.append(title, status, details, counts);
 
@@ -275,7 +285,7 @@
       try {
         const response = await fetch(boardURL().toString(), { headers: { 'Accept': 'text/html' } });
         if (response.status === 401) {
-          showFlash('Session expired — run `tracker web serve --open` and use the new session URL', true);
+          showFlash(message('sessionExpired', 'Session expired — run `tracker web serve --open` and use the new session URL'), true);
           return;
         }
         if (!response.ok) throw new Error(`board refresh got ${response.status}`);
@@ -313,7 +323,7 @@
       }
     }
     if (seq === refreshSeq) {
-      showFlash('Board may be out of date — could not reach the server', true);
+      showFlash(message('stale', 'Board may be out of date — could not reach the server'), true);
     }
   }
 
@@ -366,15 +376,15 @@
             if (!response.ok) {
               // feedback first — the resync may take a while or fail
               revertCard(event);
-              showFlash(data.error?.message || `Move failed with ${response.status}`, true);
+              showFlash(data.error?.message || message('moveFailedStatus', 'Move failed with {status}', { status: response.status }), true);
               refreshBoard();
               return;
             }
-            showFlash(data.payload?.flash || `updated ${ticketID}`, false);
+            showFlash(data.payload?.flash || message('updated', 'updated {id}', { id: ticketID }), false);
             refreshBoard();
           } catch (err) {
             revertCard(event);
-            showFlash(err.message || 'Move failed', true);
+            showFlash(err.message || message('moveFailed', 'Move failed'), true);
             refreshBoard();
           }
         }

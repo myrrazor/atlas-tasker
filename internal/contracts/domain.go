@@ -275,10 +275,16 @@ func (c ActorConfig) Validate() error {
 // WebConfig controls local-only presentation preferences for the web UI.
 type WebConfig struct {
 	OwnerName   string            `json:"owner_name,omitempty"`
+	Lang        string            `json:"lang,omitempty"`
 	AgentColors map[string]string `json:"agent_colors,omitempty"`
 }
 
 func (c WebConfig) Validate() error {
+	switch c.Lang {
+	case "", "en", "es", "id":
+	default:
+		return fmt.Errorf("invalid web.lang: %s (supported: en, es, id)", c.Lang)
+	}
 	for agent := range c.AgentColors {
 		if strings.TrimSpace(agent) == "" {
 			return fmt.Errorf("web.agent_colors agent name is required")

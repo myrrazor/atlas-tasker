@@ -41,6 +41,7 @@ func TestSaveAndLoadV15ConfigRoundTrip(t *testing.T) {
 	cfg.Release.BaseMarker = "v1.5-base-4f1782e"
 	cfg.Release.BaseSHA = "4f1782e3ef2eaeed06ae0724bd6dc0162a18d940"
 	cfg.Web.OwnerName = "Master Hit"
+	cfg.Web.Lang = "es"
 	cfg.Web.AgentColors["merlin"] = "orange"
 
 	if err := Save(root, cfg); err != nil {
@@ -68,7 +69,7 @@ func TestSaveAndLoadV15ConfigRoundTrip(t *testing.T) {
 	if loaded.Release.BaseSHA != "4f1782e3ef2eaeed06ae0724bd6dc0162a18d940" {
 		t.Fatalf("expected base sha to round-trip, got %s", loaded.Release.BaseSHA)
 	}
-	if loaded.Web.OwnerName != "Master Hit" || loaded.Web.AgentColors["merlin"] != "orange" {
+	if loaded.Web.OwnerName != "Master Hit" || loaded.Web.Lang != "es" || loaded.Web.AgentColors["merlin"] != "orange" {
 		t.Fatalf("expected web config to round-trip, got %#v", loaded.Web)
 	}
 }
@@ -82,6 +83,9 @@ func TestGetAndSetWebConfig(t *testing.T) {
 	if err := Set(root, "web.agent_colors.Merlin", " Orange "); err != nil {
 		t.Fatalf("set agent color: %v", err)
 	}
+	if err := Set(root, "web.lang", " ES "); err != nil {
+		t.Fatalf("set web language: %v", err)
+	}
 	owner, err := Get(root, "web.owner_name")
 	if err != nil {
 		t.Fatalf("get owner name: %v", err)
@@ -90,7 +94,14 @@ func TestGetAndSetWebConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get agent color: %v", err)
 	}
-	if owner != "Atlas Owner" || color != "orange" {
-		t.Fatalf("unexpected web config values owner=%q color=%q", owner, color)
+	lang, err := Get(root, "web.lang")
+	if err != nil {
+		t.Fatalf("get web language: %v", err)
+	}
+	if owner != "Atlas Owner" || color != "orange" || lang != "es" {
+		t.Fatalf("unexpected web config values owner=%q color=%q lang=%q", owner, color, lang)
+	}
+	if err := Set(root, "web.lang", "fr"); err == nil {
+		t.Fatal("expected unsupported web language to be rejected")
 	}
 }

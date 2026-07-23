@@ -506,3 +506,18 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Owners consistently miss urgent work without face-level priority, the hover delay creates excess drawer opens, or keyboard users need an equivalent non-navigation summary.
 9. **Affected PRs/Files:** `internal/web/viewmodels.go`, `internal/web/templates/board.html`, `internal/web/static/app.css`, `internal/web/static/app.js`, `internal/web/card_interactions_test.go`, `PRODUCT.md`, `DESIGN.md`, `docs/web-board-screen-brief.md`.
+
+## DEC-036
+
+1. **Decision ID:** DEC-036
+2. **Date:** 2026-07-23
+3. **Question:** How should Atlas pilot multilingual browser chrome without adding a localization dependency or changing stored ticket content?
+4. **Options Considered:**
+   - Add `golang.org/x/text` and locale-aware routing.
+   - Keep strings in templates and duplicate localized pages.
+   - Bind a small in-process message catalog to cloned templates per request.
+5. **Chosen Option:** Use flat English, Spanish, and Indonesian catalogs with a request-bound `t` template function; resolve language from `?lang=`, then `web.lang`, then `Accept-Language`, then English.
+6. **Why We Chose It:** The browser remains server-rendered, dependency-free, and easy to extend. Cloning the parsed template before binding request functions keeps concurrent requests isolated. Ticket text, comments, labels, actors, event payloads, and audit reasons remain canonical data rather than translation input. A catalog key-set test makes missing translations fail in CI.
+7. **Confidence:** high
+8. **Revisit Trigger:** Atlas adds locale-aware dates/numbers, plural rules beyond the pilot, RTL support, or enough languages that maintaining literal maps becomes error-prone.
+9. **Affected PRs/Files:** `internal/contracts/domain.go`, `internal/config/config.go`, `internal/web/i18n.go`, `internal/web/templates/*`, `internal/web/static/*`, web/config tests, `docs/i18n-notes.md`, web/config docs.

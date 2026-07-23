@@ -8,7 +8,9 @@ tracker web serve --open
 
 The web UI runs from the current workspace and uses the same canonical services as the CLI and TUI. It is a browser view over local Markdown snapshots, append-only JSONL events, and the SQLite projection; it is not a hosted server or separate database.
 
-The root page is a workspace welcome view with per-project active, backlog, done, and blocked counts plus the latest ticket changes. Project links open `/board?project=KEY`; `/board` remains the canonical Kanban route. The settings link shows `web.owner_name`, `actor.default`, and agent color preferences read-only.
+The root page is a workspace welcome view with per-project active, backlog, done, and blocked counts plus the latest ticket changes. Project links open `/board?project=KEY`; `/board` remains the canonical Kanban route. The settings link shows `web.owner_name`, `web.lang`, `actor.default`, and agent color preferences read-only.
+
+The welcome page, settings, and board chrome support English, Spanish, and Indonesian. Choose a page language with the footer links or set a workspace default with `tracker config set web.lang es`. A `?lang=` query takes precedence over workspace config, then Atlas checks `Accept-Language` and falls back to English. Ticket content is never translated.
 
 The board supports:
 

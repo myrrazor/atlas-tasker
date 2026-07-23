@@ -96,6 +96,7 @@ type SettingsPage struct {
 	Actor        contracts.Actor
 	OwnerName    string
 	ActorDefault contracts.Actor
+	Language     string
 	AgentColors  []AgentColorSetting
 	CSRFToken    string
 	ReadOnly     bool
@@ -133,9 +134,10 @@ type TicketCard struct {
 	EffectiveReviewer contracts.Actor
 	Warnings          []string
 	CommentCount      int
-	StatusLabel       string `json:"-"`
-	AgentName         string `json:"-"`
-	AgentColorClass   string `json:"-"`
+	BoardStatus       contracts.Status `json:"-"`
+	StatusLabel       string           `json:"-"`
+	AgentName         string           `json:"-"`
+	AgentColorClass   string           `json:"-"`
 }
 
 type TicketDetail struct {
@@ -261,6 +263,7 @@ func (s *Server) buildSettingsPage() (SettingsPage, error) {
 	}
 	page.OwnerName = cfg.Web.OwnerName
 	page.ActorDefault = cfg.Actor.Default
+	page.Language = cfg.Web.Lang
 	agents := make([]string, 0, len(cfg.Web.AgentColors))
 	for agent := range cfg.Web.AgentColors {
 		agents = append(agents, agent)
@@ -403,6 +406,7 @@ func (s *Server) columnsFromBoard(ctx context.Context, board contracts.BoardView
 				EffectiveReviewer: ticket.Reviewer,
 				Warnings:          cardWarnings(ticket),
 				CommentCount:      commentCounts[ticket.ID],
+				BoardStatus:       status,
 				StatusLabel:       statusLabel(status),
 				AgentName:         agentName,
 				AgentColorClass:   colorClass,
