@@ -15,6 +15,14 @@ Rejected:
 - Stat-card dashboard: equal-weight tiles would fragment one comparison task and repeat generic dashboard structure.
 - Marketing-style welcome hero: large empty space and product claims would slow a high-frequency operational screen.
 
+## Board
+
+The Kanban board uses narrow, quiet cards so all six workflow columns fit more often. A card face shows a monospace ticket ID and title; when the assignee is an agent with a supported configured color, a small rectangular mark appears in the top-right. The mark never colors the card and never replaces ownership text in the preview or drawer. `[S]`
+
+Secondary metadata lives in the ticket drawer and in one reusable hover preview populated from escaped `data-*` values. The two-second delay keeps normal pointer travel calm. The preview is non-interactive, does not enter the tab order, clamps to the viewport, and disappears on leave, drag, scroll, or Escape.
+
+Drawer motion preserves spatial continuity for an explicitly selected ticket: two animation frames establish the off-screen state, then a 200ms transform brings the drawer into place. Drag reordering uses a 150ms positional animation with restrained chosen and ghost states. Both are causal, short, and disabled by `prefers-reduced-motion`. `[P]` `[S]`
+
 ## System
 
 - Background `#151517`; primary surface `#1b1b1e`; text `#ececee`; muted text `#9d9ea6`; action `#5b8def`.

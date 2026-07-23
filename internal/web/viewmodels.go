@@ -133,6 +133,9 @@ type TicketCard struct {
 	EffectiveReviewer contracts.Actor
 	Warnings          []string
 	CommentCount      int
+	StatusLabel       string `json:"-"`
+	AgentName         string `json:"-"`
+	AgentColorClass   string `json:"-"`
 }
 
 type TicketDetail struct {
@@ -182,7 +185,11 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 	if err != nil {
 		return page, err
 	}
-	page.Columns = s.columnsFromBoard(ctx, board, page)
+	cfg, err := config.Load(s.cfg.Root)
+	if err != nil {
+		return page, err
+	}
+	page.Columns = s.columnsFromBoard(ctx, board, page, cfg.Web.AgentColors)
 	selected := strings.TrimSpace(query.Get("ticket"))
 	if selected == "" {
 		selected = firstTicketIDForColumn(page.Columns, page.ActiveColumn)
@@ -367,7 +374,7 @@ func (s *Server) loadBoard(ctx context.Context, page BoardPage) (contracts.Board
 	return filterBoard(board, page), nil
 }
 
-func (s *Server) columnsFromBoard(ctx context.Context, board contracts.BoardView, page BoardPage) []BoardColumn {
+func (s *Server) columnsFromBoard(ctx context.Context, board contracts.BoardView, page BoardPage, agentColors map[string]string) []BoardColumn {
 	ids := make([]string, 0, 64)
 	for _, status := range boardStatuses {
 		for _, ticket := range board.Columns[status] {
@@ -390,11 +397,15 @@ func (s *Server) columnsFromBoard(ctx context.Context, board contracts.BoardView
 		})
 		cards := make([]TicketCard, 0, len(tickets))
 		for _, ticket := range tickets {
+			agentName, colorClass := agentChipForAssignee(ticket.Assignee, agentColors)
 			cards = append(cards, TicketCard{
 				Ticket:            ticket,
 				EffectiveReviewer: ticket.Reviewer,
 				Warnings:          cardWarnings(ticket),
 				CommentCount:      commentCounts[ticket.ID],
+				StatusLabel:       statusLabel(status),
+				AgentName:         agentName,
+				AgentColorClass:   colorClass,
 			})
 		}
 		columns = append(columns, BoardColumn{
@@ -406,6 +417,23 @@ func (s *Server) columnsFromBoard(ctx context.Context, board contracts.BoardView
 		})
 	}
 	return columns
+}
+
+func agentChipForAssignee(assignee contracts.Actor, colors map[string]string) (string, string) {
+	raw := strings.ToLower(strings.TrimSpace(string(assignee)))
+	agent, ok := strings.CutPrefix(raw, "agent:")
+	if !ok || strings.TrimSpace(agent) == "" {
+		return "", ""
+	}
+	color, ok := colors[agent]
+	if !ok {
+		return "", ""
+	}
+	class := agentColorClass(color)
+	if class == "chip--plain" {
+		return "", ""
+	}
+	return agent, class
 }
 
 func (s *Server) ticketDetail(ctx context.Context, ticketID string) (TicketDetail, error) {

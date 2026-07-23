@@ -90,30 +90,20 @@
 {{end}}
 
 {{define "card"}}
-<a class="ticket-card" href="/board?ticket={{.Ticket.ID}}" data-ticket-id="{{.Ticket.ID}}">
-  <span class="drag-handle" aria-hidden="true">{{template "iconGrip"}}</span>
+<a class="ticket-card" href="/board?ticket={{.Ticket.ID}}"
+  data-ticket-id="{{.Ticket.ID}}"
+  data-title="{{.Ticket.Title}}"
+  data-status="{{.StatusLabel}}"
+  data-assignee="{{.Ticket.Assignee}}"
+  data-reviewer="{{.EffectiveReviewer}}"
+  data-priority="{{.Ticket.Priority}}"
+  data-labels="{{join .Ticket.Labels ", "}}"
+  data-blockers="{{len .Ticket.BlockedBy}}"
+  data-gates="{{len .Ticket.OpenGateIDs}}"
+  data-comments="{{.CommentCount}}">
   <span class="ticket-id">{{.Ticket.ID}}</span>
   <h3>{{.Ticket.Title}}</h3>
-  {{if or .Ticket.Assignee .EffectiveReviewer}}
-  <div class="card-people">
-    <span class="people-label">Assigned</span>
-    <span class="avatars">
-      {{if .Ticket.Assignee}}<span class="avatar" title="Assignee: {{.Ticket.Assignee}}">{{actorInitials .Ticket.Assignee}}</span>{{end}}
-      {{if .EffectiveReviewer}}<span class="avatar reviewer" title="Reviewer: {{.EffectiveReviewer}}">{{actorInitials .EffectiveReviewer}}</span>{{end}}
-    </span>
-  </div>
-  {{end}}
-  <div class="card-foot">
-    <span class="card-stats">
-      {{if .Ticket.BlockedBy}}<span class="stat" title="Blockers" data-blockers="{{len .Ticket.BlockedBy}}">{{template "iconWarning"}}{{len .Ticket.BlockedBy}}</span>{{end}}
-      {{if .Ticket.OpenGateIDs}}<span class="stat" title="Open gates" data-gates="{{len .Ticket.OpenGateIDs}}">{{template "iconGate"}}{{len .Ticket.OpenGateIDs}}</span>{{end}}
-      {{if .CommentCount}}<span class="stat" title="Comments" data-comments="{{.CommentCount}}">{{template "iconComment"}}{{.CommentCount}}</span>{{end}}
-    </span>
-    <span class="priority {{priorityDot .Ticket.Priority}}">{{.Ticket.Priority}}</span>
-  </div>
-  {{if .Ticket.Labels}}
-    <div class="labels">{{range .Ticket.Labels}}<span>{{.}}</span>{{end}}</div>
-  {{end}}
+  {{if .AgentColorClass}}<span class="card-agent-chip {{.AgentColorClass}}" title="Assigned to agent:{{.AgentName}}" aria-hidden="true"></span>{{end}}
 </a>
 {{end}}
 
@@ -168,6 +158,7 @@
     <span class="eyeline">{{$d.Ticket.ID}} <span class="priority {{priorityDot $d.Ticket.Priority}}">{{$d.Ticket.Priority}}</span></span>
     <h1>{{$d.Ticket.Title}}</h1>
     <p class="drawer-meta"><span class="status-pill st-{{statusKey $d.BoardStatus}}">{{statusLabel $d.BoardStatus}}</span>{{if $d.Ticket.Assignee}} <span class="meta-pair">Assignee <b>{{$d.Ticket.Assignee}}</b></span>{{end}}{{if $d.EffectiveReviewer}} <span class="meta-pair">Reviewer <b>{{$d.EffectiveReviewer}}</b></span>{{end}}</p>
+    {{if $d.Ticket.Labels}}<div class="drawer-labels" aria-label="Labels">{{range $d.Ticket.Labels}}<span>{{.}}</span>{{end}}</div>{{end}}
   </div>
   <a href="/board" class="close-button" aria-label="Close">×</a>
 </div>
@@ -181,7 +172,7 @@
 {{$activeTab := "overview"}}{{if $.FormFor "comment"}}{{$activeTab = "activity"}}{{end}}
 <nav class="tabs" aria-label="Ticket detail sections">
   <button class="{{if eq $activeTab "overview"}}active{{end}}" data-tab="overview">Overview</button>
-  <button class="{{if eq $activeTab "activity"}}active{{end}}" data-tab="activity">Activity</button>
+  <button class="{{if eq $activeTab "activity"}}active{{end}}" data-tab="activity">Notes &amp; activity</button>
   <button data-tab="gates">Policy/Gates</button>
   <button data-tab="evidence">Evidence</button>
 </nav>
@@ -210,7 +201,7 @@
 </section>
 
 <section class="tab-panel {{if eq $activeTab "activity"}}active{{end}}" id="tab-activity">
-  <h2>Comments</h2>
+  <h2>Notes &amp; comments</h2>
   {{range $d.CommentEntries}}
     <div class="comment-block">
       <div class="comment-meta">{{.Actor}} <b>{{actorInitials .Actor}}</b> · {{formatTime .Timestamp}}</div>

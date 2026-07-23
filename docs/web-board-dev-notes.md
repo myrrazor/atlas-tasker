@@ -13,3 +13,4 @@ Do not add CDN references. Do not mutate storage directly from handlers. Route r
 
 For UI fidelity, compare the implementation against the committed reference screenshots in `docs/assets/web-board-desktop.png` and `docs/assets/web-board-mobile.png`.
 The welcome-page intent and responsive/state coverage are recorded in `docs/web-welcome-screen-brief.md`.
+The minimal-card interaction contract is recorded in `docs/web-board-screen-brief.md`.

@@ -491,3 +491,18 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Usage shows owners always bypass the overview, settings become editable in-browser, or the web surface adds a shared indexed activity API.
 9. **Affected PRs/Files:** `internal/contracts/domain.go`, `internal/config/config.go`, `internal/web/*`, `PRODUCT.md`, `DESIGN.md`, `docs/web-welcome-screen-brief.md`, web/config tests.
+
+## DEC-035
+
+1. **Decision ID:** DEC-035
+2. **Date:** 2026-07-23
+3. **Question:** How much information should Kanban cards expose, and how should secondary detail and movement feel?
+4. **Options Considered:**
+   - Keep assignee avatars, priority and label pills, and counters on every card.
+   - Reduce the face to ID/title plus an optional configured agent color mark, with delayed local preview and full drawer detail.
+   - Fetch a richer server preview on every hover.
+5. **Chosen Option:** Use the minimal face, one two-second `data-*` preview, a 200ms drawer transform, and SortableJS's 150ms position animation.
+6. **Why We Chose It:** The board is a high-frequency scan surface, so repeated badges and icon rows made each ticket harder to compare and forced wider columns. Escaped metadata already rendered with the card can power one viewport-clamped preview without network work or a new API. The drawer remains the authoritative detail/edit surface, agent color stays a scarce ownership hint rather than a card fill, and reduced-motion users get immediate state changes.
+7. **Confidence:** high
+8. **Revisit Trigger:** Owners consistently miss urgent work without face-level priority, the hover delay creates excess drawer opens, or keyboard users need an equivalent non-navigation summary.
+9. **Affected PRs/Files:** `internal/web/viewmodels.go`, `internal/web/templates/board.html`, `internal/web/static/app.css`, `internal/web/static/app.js`, `internal/web/card_interactions_test.go`, `PRODUCT.md`, `DESIGN.md`, `docs/web-board-screen-brief.md`.

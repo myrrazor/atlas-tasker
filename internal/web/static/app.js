@@ -98,6 +98,10 @@
   let refreshSeq = 0;
   let dragsInFlight = 0;
   let boundSortables = [];
+  let previewTimer = 0;
+  let previewCard = null;
+  let cardPreview = null;
+  const previewBoundCards = new WeakSet();
 
   function sleep(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -107,6 +111,136 @@
     while (dragsInFlight > 0) {
       await sleep(150);
     }
+  }
+
+  function ensureCardPreview() {
+    if (cardPreview) return cardPreview;
+    cardPreview = document.createElement('aside');
+    cardPreview.className = 'card-preview';
+    cardPreview.setAttribute('role', 'tooltip');
+    cardPreview.setAttribute('aria-hidden', 'true');
+    cardPreview.hidden = true;
+    document.body.appendChild(cardPreview);
+    return cardPreview;
+  }
+
+  function dismissCardPreview() {
+    window.clearTimeout(previewTimer);
+    previewTimer = 0;
+    previewCard = null;
+    if (!cardPreview) return;
+    cardPreview.classList.remove('is-visible');
+    cardPreview.hidden = true;
+    cardPreview.setAttribute('aria-hidden', 'true');
+  }
+
+  function addPreviewRow(list, label, value) {
+    const term = document.createElement('dt');
+    term.textContent = label;
+    const detail = document.createElement('dd');
+    detail.textContent = value || 'None';
+    list.append(term, detail);
+  }
+
+  function countLabel(value, singular) {
+    const count = Number.parseInt(value || '0', 10) || 0;
+    return `${count} ${singular}${count === 1 ? '' : 's'}`;
+  }
+
+  function showCardPreview(card) {
+    if (!document.contains(card) || card.classList.contains('sortable-chosen')) return;
+    const preview = ensureCardPreview();
+    const data = card.dataset;
+    preview.textContent = '';
+
+    const title = document.createElement('h2');
+    title.textContent = data.title || data.ticketId;
+    const status = document.createElement('p');
+    status.className = 'card-preview-status';
+    status.textContent = data.status || 'Unknown status';
+    const details = document.createElement('dl');
+    addPreviewRow(details, 'Assignee', data.assignee || 'Unassigned');
+    addPreviewRow(details, 'Reviewer', data.reviewer || 'None');
+    addPreviewRow(details, 'Priority', data.priority || 'None');
+    addPreviewRow(details, 'Labels', data.labels || 'None');
+    const counts = document.createElement('p');
+    counts.className = 'card-preview-counts';
+    counts.textContent = [
+      countLabel(data.blockers, 'blocker'),
+      countLabel(data.gates, 'gate'),
+      countLabel(data.comments, 'comment')
+    ].join(' · ');
+    preview.append(title, status, details, counts);
+
+    preview.hidden = false;
+    preview.setAttribute('aria-hidden', 'false');
+    preview.style.left = '0px';
+    preview.style.top = '0px';
+    const cardRect = card.getBoundingClientRect();
+    const previewRect = preview.getBoundingClientRect();
+    const margin = 12;
+    const gap = 10;
+    let left = cardRect.right + gap;
+    if (left + previewRect.width > window.innerWidth - margin) {
+      left = cardRect.left - previewRect.width - gap;
+    }
+    left = Math.min(Math.max(margin, left), window.innerWidth - previewRect.width - margin);
+    const top = Math.min(
+      Math.max(margin, cardRect.top),
+      window.innerHeight - previewRect.height - margin
+    );
+    preview.style.left = `${Math.round(left)}px`;
+    preview.style.top = `${Math.round(Math.max(margin, top))}px`;
+    preview.classList.add('is-visible');
+  }
+
+  function setupCardPreviews() {
+    document.querySelectorAll('.ticket-card').forEach((card) => {
+      if (previewBoundCards.has(card)) return;
+      previewBoundCards.add(card);
+      card.addEventListener('mouseenter', () => {
+        dismissCardPreview();
+        previewCard = card;
+        previewTimer = window.setTimeout(() => {
+          if (previewCard === card) showCardPreview(card);
+        }, 2000);
+      });
+      card.addEventListener('mouseleave', dismissCardPreview);
+    });
+  }
+
+  function setupDrawerMotion(animateIn) {
+    const drawer = document.querySelector('.detail-drawer');
+    if (!drawer || drawer.dataset.motionBound) return;
+    drawer.dataset.motionBound = 'true';
+    drawer.classList.add('drawer--motion-ready');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!animateIn || reduceMotion) {
+      drawer.classList.add('drawer--open');
+    } else {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => drawer.classList.add('drawer--open'));
+      });
+    }
+
+    drawer.querySelectorAll('.close-button').forEach((closer) => {
+      closer.addEventListener('click', (event) => {
+        if (reduceMotion) return;
+        event.preventDefault();
+        dismissCardPreview();
+        drawer.classList.remove('drawer--open');
+        let navigated = false;
+        const navigate = () => {
+          if (navigated) return;
+          navigated = true;
+          window.location.assign(closer.href);
+        };
+        drawer.addEventListener('transitionend', (transitionEvent) => {
+          if (transitionEvent.propertyName === 'transform') navigate();
+        }, { once: true });
+        window.setTimeout(navigate, 260);
+      });
+    });
   }
 
   function drawerSafeToSwap() {
@@ -162,8 +296,14 @@
             if (selector === '.detail-drawer') sweptDrawer = true;
           }
         });
-        if (sweptGrid) setupSortable();
-        if (sweptDrawer) setupTabs();
+        if (sweptGrid) {
+          setupSortable();
+          setupCardPreviews();
+        }
+        if (sweptDrawer) {
+          setupTabs();
+          setupDrawerMotion(false);
+        }
         if (message) showFlash(message, isError);
         return;
       } catch (err) {
@@ -192,11 +332,16 @@
     document.querySelectorAll('.ticket-list').forEach((list) => {
       boundSortables.push(window.Sortable.create(list, {
         group: 'atlas-board',
-        handle: '.drag-handle',
-        animation: 120,
+        draggable: '.ticket-card',
+        animation: 150,
         sort: false,
         ghostClass: 'sortable-ghost',
-        onStart: () => { dragsInFlight++; },
+        chosenClass: 'sortable-chosen',
+        dragClass: 'sortable-dragging',
+        onStart: () => {
+          dismissCardPreview();
+          dragsInFlight++;
+        },
         onEnd: () => { dragsInFlight = Math.max(0, dragsInFlight - 1); },
         onAdd: async (event) => {
           const card = event.item;
@@ -261,9 +406,19 @@
   setupKeyboardHints();
   setupDialogs();
   setupSortable();
+  setupCardPreviews();
+  const drawerParams = new URLSearchParams(window.location.search);
+  setupDrawerMotion(drawerParams.has('ticket') || drawerParams.has('new'));
   collapseFiltersOnMobile();
   revealDetailOnMobile();
 
+  document.addEventListener('dragstart', dismissCardPreview, true);
+  document.addEventListener('scroll', dismissCardPreview, true);
+  window.addEventListener('resize', dismissCardPreview);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') dismissCardPreview();
+  });
+
   // programmatic refresh for QA tooling and agent-driven browsers
-  window.atlasBoard = { refresh: refreshBoard };
+  window.atlasBoard = { refresh: refreshBoard, dismissPreview: dismissCardPreview };
 })();

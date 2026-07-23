@@ -11,6 +11,8 @@ Atlas Tasker is a local-first, terminal-first issue tracker for people coordinat
 
 Projects are ticket namespaces such as `APP` or `OPS`. A board is a filtered status view, not a separate persisted object. Recent changes are append-only ticket events.
 
+On the board, the job shifts from orientation to rapid queue scanning. Card faces carry only the ticket ID, title, and an optional configured agent color mark. Hover reveals secondary metadata after a deliberate pause; the linked drawer remains the complete reading and editing surface.
+
 ## Behavior and constraints
 
 - Reads go through `QueryService`; writes go through `ActionService`.
@@ -28,3 +30,4 @@ The product should feel exact, calm, and candid. Use Atlas terms and real counts
 
 - `[H]` A project ledger plus recent changes is enough context for the first browser screen. Validate by watching whether owners still jump straight to `/board`.
 - `[H]` The JSONL full scan remains acceptable for a 20-item local feed. Revisit when project/event volume makes root-page latency noticeable.
+- `[H]` A two-second hover delay exposes card context without making ordinary pointer travel noisy. Revisit if owners repeatedly open the drawer just to recover priority or ownership.
