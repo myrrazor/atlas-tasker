@@ -461,3 +461,33 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** medium
 8. **Revisit Trigger:** Server-side flash/session state is introduced (enabling PRG without data loss), or users report confusion from the POST URL/refresh-repost behavior.
 9. **Affected PRs/Files:** `internal/web/server.go`, `internal/web/viewmodels.go`, `internal/web/assets.go`, `internal/web/templates/*`, `internal/web/static/app.js`, web tests.
+
+## DEC-033
+
+1. **Decision ID:** DEC-033
+2. **Date:** 2026-07-23
+3. **Question:** How should the local welcome page compute cross-project status and recent activity?
+4. **Options Considered:**
+   - Add a new persisted dashboard projection.
+   - Derive project counts from per-project board queries and merge the existing per-project event streams at request time.
+   - Read Markdown and JSONL files directly from the web handlers.
+5. **Chosen Option:** Derive counts through `QueryService` board queries and merge filtered event streams in `QueryService`, capped at 20.
+6. **Why We Chose It:** The welcome page stays a read model over the same contracts as CLI/TUI instead of adding a second source of truth. Canonical snapshots supply the Done count because DEC-026 intentionally folds canceled tickets into the board's Done column while this overview excludes canceled work. The event scan is cached per project for one request and its full-scan tradeoff is explicit.
+7. **Confidence:** high
+8. **Revisit Trigger:** Root-page latency becomes noticeable in workspaces with large event logs, or a shared indexed activity query is introduced.
+9. **Affected PRs/Files:** `internal/service/rollups.go`, `internal/service/rollups_test.go`, `internal/web/viewmodels.go`, welcome web tests.
+
+## DEC-034
+
+1. **Decision ID:** DEC-034
+2. **Date:** 2026-07-23
+3. **Question:** What should the browser root route and welcome-page interaction model be?
+4. **Options Considered:**
+   - Keep redirecting `/` to the board.
+   - Add a stat-card dashboard.
+   - Render a borderless project ledger with a recent-change rail, native project-creation dialog, and a read-only settings page.
+5. **Chosen Option:** Render the project ledger/activity rail at `/`; keep `/board` canonical and link both directions.
+6. **Why We Chose It:** Owners need cross-project orientation before card-level manipulation. A plain ledger compares real counts without card/grid noise, while the activity rail answers what changed. Project creation reuses `ActionService` plus the existing origin/CSRF/read-only gates; rejected forms keep the exact error and submitted values. Web identity falls back from `web.owner_name` to `actor.default` to the OS username, and agent color names are mapped to a small server-side CSS class allowlist so CSP stays strict.
+7. **Confidence:** high
+8. **Revisit Trigger:** Usage shows owners always bypass the overview, settings become editable in-browser, or the web surface adds a shared indexed activity API.
+9. **Affected PRs/Files:** `internal/contracts/domain.go`, `internal/config/config.go`, `internal/web/*`, `PRODUCT.md`, `DESIGN.md`, `docs/web-welcome-screen-brief.md`, web/config tests.

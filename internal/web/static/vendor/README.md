@@ -26,5 +26,4 @@ The board's CSP blocks external hosts, so the UI font ships with the binary.
 - Version: regular weight, fetched 2026-07
 - License: MIT
 - Source: `https://github.com/phosphor-icons/core`
-- Vendored as: inline SVG path data in `internal/web/templates/icons.html` (warning, target, chat-circle, plus, dots-six-vertical)
-
+- Vendored as: inline SVG path data in `internal/web/templates/icons.html` (warning, target, chat-circle, plus, dots-six-vertical, gear)

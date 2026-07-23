@@ -1,0 +1,131 @@
+{{define "welcomeContent"}}
+<main class="welcome-shell">
+  <section class="welcome-main" aria-labelledby="welcome-title">
+    <div class="welcome-heading">
+      <div>
+        <p class="section-kicker">Workspace overview</p>
+        <h1 id="welcome-title">Welcome{{if .OwnerName}}, {{.OwnerName}}{{end}}</h1>
+      </div>
+      {{if not .ReadOnly}}
+        <a class="new-button" href="/?new_project=1" data-dialog-open="new-project-dialog">{{template "iconPlus"}} New project</a>
+      {{end}}
+    </div>
+
+    {{if .Flash}}<div class="flash" role="status">{{.Flash}}</div>{{end}}
+    {{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
+
+    <div class="project-table-wrap">
+      <table class="project-table">
+        <thead>
+          <tr>
+            <th scope="col">Project</th>
+            <th scope="col">Status</th>
+            <th scope="col">Blockers</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Projects}}
+            <tr>
+              <th scope="row">
+                <a class="project-link" href="/board?project={{.Project.Key}}">
+                  <span>{{.Project.Name}}</span>
+                  <small>{{.Project.Key}}</small>
+                </a>
+              </th>
+              <td>
+                <div class="rollup-links">
+                  <a href="/board?project={{.Project.Key}}"><strong>{{.Active}}</strong> active</a>
+                  <span aria-hidden="true">·</span>
+                  <a href="/board?project={{.Project.Key}}"><strong>{{.Backlog}}</strong> backlog</a>
+                  <span aria-hidden="true">·</span>
+                  <a href="/board?project={{.Project.Key}}"><strong>{{.Done}}</strong> done</a>
+                </div>
+              </td>
+              <td class="blocker-cell {{if .Blocked}}has-blockers{{end}}">
+                <a href="/board?project={{.Project.Key}}"><strong>{{.Blocked}}</strong> blocked</a>
+              </td>
+            </tr>
+          {{else}}
+            <tr class="empty-projects">
+              <td colspan="3">No projects yet. Create one here or run <code>tracker project create &lt;KEY&gt; &lt;NAME&gt;</code>.</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <aside class="recent-rail" aria-labelledby="recent-title">
+    <div class="rail-heading">
+      <p class="section-kicker">Activity</p>
+      <h2 id="recent-title">Latest changes</h2>
+    </div>
+    <ol class="recent-list">
+      {{range .Recent}}
+        <li>
+          <a href="/board?project={{.Project}}&ticket={{.TicketID}}">{{.Describe}}</a>
+          <time datetime="{{.At.Format "2006-01-02T15:04:05Z07:00"}}">{{formatTime .At}}</time>
+        </li>
+      {{else}}
+        <li class="recent-empty">Ticket changes will appear here.</li>
+      {{end}}
+    </ol>
+  </aside>
+
+  <footer class="welcome-footer">
+    <a class="settings-link" href="/settings" aria-label="Web settings">{{template "iconGear"}} <span>Settings</span></a>
+  </footer>
+</main>
+
+<dialog class="project-dialog" id="new-project-dialog" {{if .ShowNew}}open{{end}} aria-labelledby="new-project-title">
+  <div class="dialog-head">
+    <div>
+      <p class="section-kicker">Workspace</p>
+      <h2 id="new-project-title">New project</h2>
+    </div>
+    <a class="close-button" href="/" data-dialog-close aria-label="Close">×</a>
+  </div>
+  <form class="project-form" method="post" action="/actions/projects/create" data-confirm="Create this project?">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="actor" value="{{.Actor}}">
+    <label>Project key <input name="key" value="{{formValue .Form "key" ""}}" placeholder="APP" autocomplete="off" required></label>
+    <label>Project name <input name="name" value="{{formValue .Form "name" ""}}" placeholder="App Project" autocomplete="off" required></label>
+    <p class="form-help">Keys use uppercase letters, numbers, underscores, or hyphens.</p>
+    <div class="dialog-actions">
+      <a class="secondary-action" href="/" data-dialog-close>Cancel</a>
+      <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>Create project</button>
+    </div>
+  </form>
+</dialog>
+{{end}}
+
+{{define "settingsContent"}}
+<main class="settings-shell">
+  <div class="settings-head">
+    <div>
+      <p class="section-kicker">Local web preferences</p>
+      <h1>Settings</h1>
+    </div>
+    <a class="secondary-action" href="/">Back to overview</a>
+  </div>
+  {{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
+  <section class="settings-section" aria-labelledby="identity-settings">
+    <h2 id="identity-settings">Identity</h2>
+    <dl class="settings-list">
+      <div><dt>Owner name</dt><dd>{{if .OwnerName}}{{.OwnerName}}{{else}}Not set{{end}}</dd></div>
+      <div><dt>Default actor</dt><dd>{{if .ActorDefault}}{{.ActorDefault}}{{else}}Not set{{end}}</dd></div>
+    </dl>
+  </section>
+  <section class="settings-section" aria-labelledby="agent-colors">
+    <h2 id="agent-colors">Agent colors</h2>
+    <dl class="settings-list">
+      {{range .AgentColors}}
+        <div><dt>{{.Agent}}</dt><dd><span class="agent-chip {{.Class}}">{{if .Color}}{{.Color}}{{else}}uncolored{{end}}</span></dd></div>
+      {{else}}
+        <div><dt>Agents</dt><dd>Uncolored</dd></div>
+      {{end}}
+    </dl>
+  </section>
+  <p class="settings-note">Read only in the browser. Change these with <code>tracker config set web.owner_name "Name"</code> or <code>tracker config set web.agent_colors.&lt;agent&gt; &lt;color&gt;</code>.</p>
+</main>
+{{end}}

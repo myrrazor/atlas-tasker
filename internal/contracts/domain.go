@@ -231,6 +231,7 @@ func (w WorkflowConfig) Validate() error {
 type TrackerConfig struct {
 	Workflow      WorkflowConfig      `json:"workflow"`
 	Actor         ActorConfig         `json:"actor"`
+	Web           WebConfig           `json:"web,omitempty"`
 	Notifications NotificationsConfig `json:"notifications"`
 	Provider      ProviderConfig      `json:"provider,omitempty"`
 	ImportExport  ImportExportConfig  `json:"import_export,omitempty"`
@@ -242,6 +243,9 @@ func (c TrackerConfig) Validate() error {
 		return err
 	}
 	if err := c.Actor.Validate(); err != nil {
+		return err
+	}
+	if err := c.Web.Validate(); err != nil {
 		return err
 	}
 	if err := c.Notifications.Validate(); err != nil {
@@ -264,6 +268,21 @@ type ActorConfig struct {
 func (c ActorConfig) Validate() error {
 	if c.Default != "" && !c.Default.IsValid() {
 		return fmt.Errorf("invalid default actor: %s", c.Default)
+	}
+	return nil
+}
+
+// WebConfig controls local-only presentation preferences for the web UI.
+type WebConfig struct {
+	OwnerName   string            `json:"owner_name,omitempty"`
+	AgentColors map[string]string `json:"agent_colors,omitempty"`
+}
+
+func (c WebConfig) Validate() error {
+	for agent := range c.AgentColors {
+		if strings.TrimSpace(agent) == "" {
+			return fmt.Errorf("web.agent_colors agent name is required")
+		}
 	}
 	return nil
 }

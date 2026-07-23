@@ -25,13 +25,50 @@
 
   function setupKeyboardHints() {
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'n' && !event.metaKey && !event.ctrlKey && event.target === document.body) {
+      const onBoard = document.body.dataset.page === 'board';
+      if (onBoard && event.key === 'n' && !event.metaKey && !event.ctrlKey && event.target === document.body) {
         window.location.href = '/board?new=1';
       }
-      if (event.key === '/' && event.target === document.body) {
+      if (onBoard && event.key === '/' && event.target === document.body) {
         event.preventDefault();
         document.querySelector('input[type="search"]')?.focus();
       }
+    });
+  }
+
+  function setupDialogs() {
+    document.querySelectorAll('[data-dialog-open]').forEach((opener) => {
+      opener.addEventListener('click', (event) => {
+        const dialog = document.getElementById(opener.dataset.dialogOpen);
+        if (!dialog?.showModal) return;
+        event.preventDefault();
+        dialog.showModal();
+        dialog.querySelector('input:not([type="hidden"])')?.focus();
+      });
+    });
+    document.querySelectorAll('[data-dialog-close]').forEach((closer) => {
+      closer.addEventListener('click', (event) => {
+        const dialog = closer.closest('dialog');
+        if (!dialog) return;
+        event.preventDefault();
+        dialog.close();
+        if (window.location.search.includes('new_project=')) {
+          window.history.replaceState({}, '', '/');
+        }
+      });
+    });
+    document.querySelectorAll('dialog[open]').forEach((dialog) => {
+      if (!dialog.showModal) return;
+      dialog.close();
+      dialog.showModal();
+      dialog.querySelector('input:not([type="hidden"])')?.focus();
+    });
+    document.querySelectorAll('form[data-confirm]').forEach((form) => {
+      form.addEventListener('submit', (event) => {
+        if (!window.confirm(form.dataset.confirm)) {
+          event.preventDefault();
+        }
+      });
     });
   }
 
@@ -222,6 +259,7 @@
 
   setupTabs();
   setupKeyboardHints();
+  setupDialogs();
   setupSortable();
   collapseFiltersOnMobile();
   revealDetailOnMobile();
@@ -229,4 +267,3 @@
   // programmatic refresh for QA tooling and agent-driven browsers
   window.atlasBoard = { refresh: refreshBoard };
 })();
-

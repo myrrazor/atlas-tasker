@@ -4,15 +4,20 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"os/user"
 	"sort"
 	"strings"
+	"time"
+	"unicode"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
+	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 )
 
 type BoardPage struct {
+	Page      string
 	Workspace string
 	Host      string
 	Actor     contracts.Actor
@@ -42,6 +47,68 @@ type BoardPage struct {
 	Error      string
 	ShowNew    bool
 }
+
+type WelcomePage struct {
+	Page      string
+	Workspace string
+	Host      string
+	Actor     contracts.Actor
+	OwnerName string
+	Projects  []ProjectRow
+	Recent    []RecentChange
+	CSRFToken string
+	ReadOnly  bool
+	Error     string
+	Flash     string
+	ShowNew   bool
+	Form      url.Values
+}
+
+type ProjectRow struct {
+	Project contracts.Project
+	Active  int
+	Backlog int
+	Done    int
+	Blocked int
+}
+
+type RecentChange struct {
+	Project  string
+	TicketID string
+	Verb     string
+	From     string
+	To       string
+	At       time.Time
+}
+
+// Describe turns a recent event into the short sentence used by the feed.
+func (c RecentChange) Describe() string {
+	if c.Verb == "moved" && c.From != "" && c.To != "" {
+		return c.TicketID + " moved " + c.From + " → " + c.To
+	}
+	return strings.TrimSpace(c.TicketID + " " + c.Verb)
+}
+
+type SettingsPage struct {
+	Page         string
+	Workspace    string
+	Host         string
+	Actor        contracts.Actor
+	OwnerName    string
+	ActorDefault contracts.Actor
+	AgentColors  []AgentColorSetting
+	CSRFToken    string
+	ReadOnly     bool
+	Error        string
+}
+
+type AgentColorSetting struct {
+	Agent string
+	Color string
+	Class string
+}
+
+var currentOSUser = user.Current
 
 // FormFor hands the rejected form values to exactly the form that was
 // submitted — echoing them anywhere else prefills unrelated forms (worst
@@ -91,6 +158,7 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		activeColumn = contracts.StatusReady
 	}
 	page := BoardPage{
+		Page:            "board",
 		Workspace:       s.cfg.Workspace,
 		Host:            s.cfg.Host,
 		Actor:           s.cfg.Actor,
@@ -128,6 +196,152 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		}
 	}
 	return page, nil
+}
+
+func (s *Server) buildWelcomePage(ctx context.Context, r *http.Request) (WelcomePage, error) {
+	page := WelcomePage{
+		Page:      "welcome",
+		Workspace: s.cfg.Workspace,
+		Host:      s.cfg.Host,
+		Actor:     s.cfg.Actor,
+		CSRFToken: s.cfg.CSRFToken,
+		ReadOnly:  s.cfg.ReadOnly,
+		Flash:     strings.TrimSpace(r.URL.Query().Get("flash")),
+		ShowNew:   r.URL.Query().Get("new_project") == "1",
+	}
+	cfg, err := config.Load(s.cfg.Root)
+	if err != nil {
+		return page, err
+	}
+	page.OwnerName = resolveOwnerName(cfg)
+	rollups, err := s.queries.ProjectRollups(ctx)
+	if err != nil {
+		return page, err
+	}
+	page.Projects = make([]ProjectRow, 0, len(rollups))
+	for _, rollup := range rollups {
+		page.Projects = append(page.Projects, ProjectRow{
+			Project: rollup.Project,
+			Active:  rollup.Active,
+			Backlog: rollup.Backlog,
+			Done:    rollup.Done,
+			Blocked: rollup.Blocked,
+		})
+	}
+	events, err := s.queries.RecentEvents(ctx, 20)
+	if err != nil {
+		return page, err
+	}
+	page.Recent = make([]RecentChange, 0, len(events))
+	for _, event := range events {
+		page.Recent = append(page.Recent, recentChangeFromEvent(event))
+	}
+	return page, nil
+}
+
+func (s *Server) buildSettingsPage() (SettingsPage, error) {
+	page := SettingsPage{
+		Page:      "settings",
+		Workspace: s.cfg.Workspace,
+		Host:      s.cfg.Host,
+		Actor:     s.cfg.Actor,
+		CSRFToken: s.cfg.CSRFToken,
+		ReadOnly:  s.cfg.ReadOnly,
+	}
+	cfg, err := config.Load(s.cfg.Root)
+	if err != nil {
+		return page, err
+	}
+	page.OwnerName = cfg.Web.OwnerName
+	page.ActorDefault = cfg.Actor.Default
+	agents := make([]string, 0, len(cfg.Web.AgentColors))
+	for agent := range cfg.Web.AgentColors {
+		agents = append(agents, agent)
+	}
+	sort.Strings(agents)
+	page.AgentColors = make([]AgentColorSetting, 0, len(agents))
+	for _, agent := range agents {
+		color := cfg.Web.AgentColors[agent]
+		page.AgentColors = append(page.AgentColors, AgentColorSetting{
+			Agent: agent,
+			Color: color,
+			Class: agentColorClass(color),
+		})
+	}
+	return page, nil
+}
+
+func resolveOwnerName(cfg contracts.TrackerConfig) string {
+	if name := strings.TrimSpace(cfg.Web.OwnerName); name != "" {
+		return name
+	}
+	if actor := strings.TrimSpace(string(cfg.Actor.Default)); actor != "" {
+		return humanizeName(strings.TrimPrefix(actor, "human:"))
+	}
+	current, err := currentOSUser()
+	if err != nil || current == nil {
+		return ""
+	}
+	return humanizeName(current.Username)
+}
+
+func humanizeName(value string) string {
+	parts := strings.FieldsFunc(strings.TrimSpace(value), func(r rune) bool {
+		return r == '-' || r == '_' || r == '.' || r == ':' || unicode.IsSpace(r)
+	})
+	for i, part := range parts {
+		runes := []rune(strings.ToLower(part))
+		if len(runes) > 0 {
+			runes[0] = unicode.ToUpper(runes[0])
+			parts[i] = string(runes)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func recentChangeFromEvent(event contracts.Event) RecentChange {
+	change := RecentChange{
+		Project:  event.Project,
+		TicketID: event.TicketID,
+		At:       event.Timestamp,
+	}
+	switch event.Type {
+	case contracts.EventTicketCreated:
+		change.Verb = "created"
+	case contracts.EventTicketMoved:
+		change.Verb = "moved"
+		if payload, ok := event.Payload.(map[string]any); ok {
+			change.From = eventPayloadText(payload["from"])
+			change.To = eventPayloadText(payload["to"])
+		}
+	case contracts.EventTicketCommented:
+		change.Verb = "commented"
+	case contracts.EventTicketUpdated:
+		change.Verb = "updated"
+	}
+	return change
+}
+
+func eventPayloadText(value any) string {
+	switch value := value.(type) {
+	case string:
+		return strings.TrimSpace(value)
+	case contracts.Status:
+		return strings.TrimSpace(string(value))
+	default:
+		return ""
+	}
+}
+
+func agentColorClass(color string) string {
+	switch strings.ToLower(strings.TrimSpace(color)) {
+	case "orange":
+		return "chip--orange"
+	case "blue":
+		return "chip--blue"
+	default:
+		return "chip--plain"
+	}
 }
 
 func (s *Server) loadBoard(ctx context.Context, page BoardPage) (contracts.BoardView, error) {

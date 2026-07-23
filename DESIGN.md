@@ -1,0 +1,39 @@
+# Web product design
+
+## Thesis
+
+Atlas uses a restrained charcoal operator console: dense enough for daily scanning, quiet enough that blocked work and recent changes carry the signal. The signature element is a borderless project ledger with soft row separators, not a collection of dashboard cards.
+
+The product keeps the existing Geist type, charcoal tokens, blue action accent, semantic workflow colors, and inline Phosphor icons. Elevation is reserved for the project-creation dialog.
+
+## Direction
+
+Chosen: ledger plus activity rail. It answers “where does attention go?” with real project counts and an append-only change feed. `[P]` Alignment, proximity, and weak dividers do the grouping before borders or shadows.
+
+Rejected:
+
+- Stat-card dashboard: equal-weight tiles would fragment one comparison task and repeat generic dashboard structure.
+- Marketing-style welcome hero: large empty space and product claims would slow a high-frequency operational screen.
+
+## System
+
+- Background `#151517`; primary surface `#1b1b1e`; text `#ececee`; muted text `#9d9ea6`; action `#5b8def`.
+- Geist 400/500/600 is vendored. Changing counts use tabular numerals.
+- Controls use the existing 10px radius. The dialog uses the 14px overlay radius and named modal shadow.
+- Known agent colors are mapped server-side to `chip--blue` and `chip--orange`; unknown names remain uncolored. Color never replaces the agent label. `[S]`
+- Table rows have soft bottom dividers only. There are no vertical rules or cell boxes.
+- Compact layouts stack the activity rail below the project ledger; fixed table columns wrap names and status segments so blockers stay visible.
+- Native `<dialog>` supplies modal focus/escape behavior, with an ordinary linked fallback when JavaScript is unavailable. Visible focus remains on every control. `[S]`
+- Motion is limited to existing control feedback and disappears under `prefers-reduced-motion`. `[S]`
+
+## States
+
+- Empty: explains both browser and CLI project creation.
+- Error: renders the exact service/validation message with the original form values.
+- Read-only: hides project creation and keeps the workspace fully inspectable.
+- Success: returns to the ledger with a persistent inline confirmation.
+- Long content: project keys stay secondary; status links wrap without changing meaning.
+
+## Performance
+
+The welcome page adds no dependency or external request. SortableJS is no longer loaded outside the board. Recent activity is capped at 20 events; the service documents the current per-project JSONL scan tradeoff.

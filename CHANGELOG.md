@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added a local welcome dashboard at `/` with per-project rollups, a recent ticket-change feed, direct project-board links, guarded project creation, owner-name fallback, and a read-only web settings view. The project ledger uses soft row separators only; no new frontend dependencies or external assets were added.
 - Added the v1.10 local web Kanban board work-in-progress: `tracker web serve/open/status`, embedded server-rendered board assets, local session/CSRF protections, docs, and focused web tests.
 - Fixed the web board rejecting its own forms in real browsers: `Referrer-Policy` is now `same-origin` (under `no-referrer`, browsers send `Origin: null` on same-origin form POSTs, which the origin check treated as cross-origin). Create, edit, comment, review, approve, complete, and the move dropdown work again outside of drag-and-drop.
 - Web mutations now enforce CLI-grade validation: no tickets born `done`/`canceled`, invalid status/type/priority values return 400 instead of being silently coerced, and edits reject blank titles and malformed actors (a bare `agent:` assignee used to crash every board render).

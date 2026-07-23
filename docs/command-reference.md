@@ -848,6 +848,8 @@ Useful config keys:
 
 - `workflow.completion_mode`
 - `actor.default`
+- `web.owner_name`
+- `web.agent_colors.<agent>` (`claude=orange` and `codex=blue` by default; unknown color names render uncolored)
 - `notifications.terminal`
 - `notifications.file_enabled`
 - `notifications.file_path`
