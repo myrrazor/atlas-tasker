@@ -43,10 +43,6 @@ func AgentsDir(root string) string {
 	return filepath.Join(TrackerDir(root), "agents")
 }
 
-func AgentFile(root string, agentID string) string {
-	return filepath.Join(AgentsDir(root), agentID+".toml")
-}
-
 func CollaboratorsDir(root string) string {
 	return filepath.Join(TrackerDir(root), "collaborators")
 }
@@ -73,10 +69,6 @@ func MentionFile(root string, mentionUID string) string {
 
 func RunbooksDir(root string) string {
 	return filepath.Join(TrackerDir(root), "runbooks")
-}
-
-func RunbookFile(root string, name string) string {
-	return filepath.Join(RunbooksDir(root), name+".toml")
 }
 
 func RunsDir(root string) string {
@@ -145,10 +137,6 @@ func CheckFile(root string, checkID string) string {
 
 func PermissionProfilesDir(root string) string {
 	return filepath.Join(TrackerDir(root), "permission-profiles")
-}
-
-func PermissionProfileFile(root string, profileID string) string {
-	return filepath.Join(PermissionProfilesDir(root), profileID+".toml")
 }
 
 func ImportsDir(root string) string {
@@ -305,10 +293,6 @@ func SyncConflictFile(root string, conflictID string) string {
 
 func SyncBundlesDir(root string) string {
 	return filepath.Join(SyncDir(root), "bundles")
-}
-
-func SyncBundleFile(root string, bundleID string) string {
-	return filepath.Join(SyncBundlesDir(root), bundleID+".md")
 }
 
 func SyncMirrorDir(root string) string {
