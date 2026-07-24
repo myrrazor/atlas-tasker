@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 656 128" role="img" aria-label="Atlas Tasker">
+  <defs>
+    <linearGradient id="frame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#101b33"/>
+      <stop offset="1" stop-color="#0a1224"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8fc0ff"/>
+      <stop offset="0.55" stop-color="#5d9bff"/>
+      <stop offset="1" stop-color="#3f7ef5"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="6" width="650" height="116" rx="18" fill="url(#frame)" stroke="#2f5CB8" stroke-width="3"/>
+  <rect x="3" y="6" width="650" height="116" rx="18" fill="none" stroke="#7fb2ff" stroke-opacity="0.14" stroke-width="1" transform="translate(0 -1.5)"/>
+  <circle cx="34" cy="30" r="4.5" fill="#3f7ef5" fill-opacity="0.55"/>
+  <circle cx="52" cy="30" r="4.5" fill="#3f7ef5" fill-opacity="0.35"/>
+  <circle cx="70" cy="30" r="4.5" fill="#3f7ef5" fill-opacity="0.2"/>
+  <g font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-weight="700">
+    <text x="30" y="92" font-size="56" fill="#5d9bff">&gt;</text>
+    <text x="72" y="92" font-size="54" letter-spacing="2" fill="url(#ink)">ATLAS</text>
+    <text x="272" y="92" font-size="54" letter-spacing="2" fill="#dcE9ff">TASKER</text>
+    <rect x="510" y="52" width="26" height="46" fill="#5d9bff">
+      <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.5;0.5;0.95;1" dur="1.6s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+</svg>
