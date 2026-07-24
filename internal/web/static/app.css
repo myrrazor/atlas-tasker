@@ -4,6 +4,14 @@
    Single accent (--accent); every other hue is semantic (status, priority). */
 
 @font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/static/vendor/inter/inter-latin-wght.woff2") format("woff2");
+}
+
+@font-face {
   font-family: "Geist";
   font-style: normal;
   font-weight: 400;
@@ -58,7 +66,7 @@
   --shadow-pop: 0 24px 60px rgba(0, 0, 0, 0.5);
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
 
-  font-family: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Inter", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 * {
@@ -942,8 +950,9 @@ button:active,
   margin: 0;
   line-height: 1.32;
   font-size: 13.5px;
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  /* 510, not 600 — Inter's variable axis gives the crispness without the shout */
+  font-weight: 510;
+  letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 

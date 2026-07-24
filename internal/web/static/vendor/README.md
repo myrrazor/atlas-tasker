@@ -27,3 +27,14 @@ The board's CSP blocks external hosts, so the UI font ships with the binary.
 - License: MIT
 - Source: `https://github.com/phosphor-icons/core`
 - Vendored as: inline SVG path data in `internal/web/templates/icons.html` (warning, target, chat-circle, plus, dots-six-vertical, gear)
+
+## Inter
+
+- Package: `@fontsource-variable/inter`
+- Version: `5.2.8`
+- License: SIL OFL 1.1 (see `inter/LICENSE`)
+- Source: `https://github.com/rsms/inter`
+- Vendored file: `inter/inter-latin-wght.woff2` (latin subset, variable weight axis)
+
+Primary UI face for the board. The variable axis is what allows the 510-weight
+card titles; Geist stays vendored as the fallback face.
