@@ -115,7 +115,7 @@
     <dl class="settings-list">
       <div><dt>{{t "settings.owner_name"}}</dt><dd>{{if .OwnerName}}{{.OwnerName}}{{else}}{{t "common.not_set"}}{{end}}</dd></div>
       <div><dt>{{t "settings.default_actor"}}</dt><dd>{{if .ActorDefault}}{{.ActorDefault}}{{else}}{{t "common.not_set"}}{{end}}</dd></div>
-      <div><dt>{{t "settings.web_language"}}</dt><dd>{{if eq .Language "en"}}{{t "language.english"}}{{else if eq .Language "es"}}{{t "language.spanish"}}{{else if eq .Language "id"}}{{t "language.indonesian"}}{{else}}{{t "common.automatic"}}{{end}}</dd></div>
+      <div><dt>{{t "settings.web_language"}}</dt><dd>{{if eq .Language "en"}}{{t "language.english"}}{{else if eq .Language "es"}}{{t "language.spanish"}}{{else if eq .Language "id"}}{{t "language.indonesian"}}{{else if eq .Language "zh"}}{{t "language.chinese"}}{{else if eq .Language "ja"}}{{t "language.japanese"}}{{else if eq .Language "ko"}}{{t "language.korean"}}{{else}}{{t "common.automatic"}}{{end}}</dd></div>
     </dl>
   </section>
   <section class="settings-section" aria-labelledby="agent-colors">

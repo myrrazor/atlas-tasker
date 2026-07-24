@@ -73,6 +73,11 @@
   box-sizing: border-box;
 }
 
+/* CJK labels are wide — buttons should never wrap mid-word */
+button {
+  white-space: nowrap;
+}
+
 html,
 body {
   min-height: 100%;
