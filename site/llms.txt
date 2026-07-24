@@ -6,6 +6,10 @@ Atlas Tasker is a free, MIT-licensed, local-first issue tracker for macOS and Li
 
 Install with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh`.
 
+## Guide and changelog
+- [Guide](https://atlas-tasker.vercel.app/guide.html): install, first board, agent handoff, and audit trail in one page
+- [Changelog](https://atlas-tasker.vercel.app/changelog.html): release-by-release highlights
+
 ## Product
 - [Install](https://atlas-tasker.vercel.app/#install): release installer and Go source build
 - [Features](https://atlas-tasker.vercel.app/#features): MCP orchestration, local-first storage, CLI, TUI, and local web board

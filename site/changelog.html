@@ -1,0 +1,131 @@
+<!-- review with counsel before charging money -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas Tasker Changelog — release highlights</title>
+  <meta name="description" content="Release-by-release highlights for Atlas Tasker: the stable 1.9 line, terminal table system, agent team presets, GitHub CLI commands, and web board work." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/changelog.html" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/changelog.html" />
+  <meta property="og:title" content="Atlas Tasker Changelog — release highlights" />
+  <meta property="og:description" content="Release-by-release highlights for Atlas Tasker: the stable 1.9 line, terminal table system, agent team presets, GitHub CLI commands, and web board work." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker terminal task board with local-first tickets for coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Atlas Tasker Changelog — release highlights" />
+  <meta name="twitter:description" content="Release-by-release highlights for Atlas Tasker: the stable 1.9 line, terminal table system, agent team presets, GitHub CLI commands, and web board work." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker terminal task board with local-first tickets for coding agents" />
+
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Atlas Tasker Changelog",
+  "description": "Release-by-release highlights for Atlas Tasker: the stable 1.9 line, terminal table system, agent team presets, GitHub CLI commands, and web board work.",
+  "url": "https://atlas-tasker.vercel.app/changelog.html",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "Atlas Tasker",
+    "url": "https://atlas-tasker.vercel.app/"
+  }
+}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="./" aria-label="Atlas Tasker home">
+        <img src="atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="./#features">Features</a>
+        <a href="./#workflow">Workflow</a>
+        <a href="./#install">Install</a>
+        <a href="./#faq">FAQ</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <main id="main" class="legal-main">
+    <header class="legal-hero shell">
+      <p class="eyebrow">Changelog</p>
+      <h1>What shipped, release by release.</h1>
+      <p class="legal-summary">Highlights from the repository's changelog. The <a href="https://github.com/myrrazor/atlas-tasker/blob/main/CHANGELOG.md">full history</a> lives with the source.</p>
+    </header>
+    <div class="legal-content">
+      <section class="shell">
+        <h2>v1.9.1 - Agent Loop README And Table Polish (2026-06-16)</h2>
+        <ul>
+          <li>README now shows how to hand tickets to Claude Code, Codex, or OpenClaw-style agents through an Atlas-tracked agentic loop.</li>
+          <li>List output across the CLI and TUI moved to real terminal tables: rounded muted borders (ASCII under `NO_COLOR`), bold accent headers, and content-hugged columns that only clamp when the terminal is narrower than the data. Cells keep their semantic badge colors, the board groups each workflow column once and omits empty ones, and the TUI highlights the selected row.</li>
+          <li>No storage, schema, or command behavior changes.</li>
+        </ul>
+      </section>
+      <section class="shell">
+        <h2>v1.9.0 - First Stable Release (2026-06-10)</h2>
+        <p>Everything from both release candidates, finalized. The hosted proof for `v1.9.0-rc2` (checksum + attestation verification, clean-directory install from published assets, version metadata match, packaged smoke) is recorded in `docs/release/v1.9.0-release-evidence.md` along with the owner ship decision.</p>
+        <ul>
+          <li>The TUI opens with a branded splash (chrome-blue ATLAS TASKER art, any key skips, degrades cleanly on narrow and NO_COLOR terminals).</li>
+          <li>All terminal colors now come from one brand palette (`internal/theme`): electric-blue primary, adaptive light/dark pairs, semantic status hues, and a real priority scale (critical/high/low) instead of uniform gray badges.</li>
+          <li>Brand assets are committed under `assets/brand/` and the README wordmark is served from the repo.</li>
+          <li>New `tracker gh` command family wraps the GitHub CLI: `status`, `prs`, `view`, `checks`, `create-pr`, `request-review`, and `import-url`. `create-pr` opens the pull request and links it as a ticket change in one audited mutation; everything degrades to a clear "install GitHub CLI" repair message when `gh` is missing.</li>
+          <li>CLI color output now reaches the terminal intact: the display sanitizer preserves the SGR styling Atlas emits itself while still stripping every other escape sequence, so `tracker board` no longer prints `[90m` residue in color-capable terminals. Truncation drops styling cleanly instead of slicing escapes in half.</li>
+          <li>README rewritten around the published release candidate: one-line verified install, terminal screenshots, demo GIF, and the agent workflow story.</li>
+        </ul>
+      </section>
+      <section class="shell">
+        <h2>v1.9.0-rc1 - First Public Release Candidate (2026-06-10)</h2>
+        <ul>
+          <li>Published GitHub prerelease with archives for darwin/linux on amd64/arm64, `checksums.txt`, a CycloneDX SBOM, build attestations, and the installer script.</li>
+          <li>Hosted release proof is green: checksum + attestation verification, clean-directory install from published assets, version metadata match, and packaged smoke.</li>
+          <li>Go toolchain moved to 1.26.4 to clear stdlib govulncheck findings (GO-2026-5037, GO-2026-5039).</li>
+          <li>Agent wake-ups now fire for `backlog` and `blocked` tickets when their last dependency completes; failed wake-up recording leaves a visible `failed` record instead of disappearing.</li>
+          <li>A corrupted projection index now exits `repair_needed` with `tracker doctor --repair` guidance instead of leaking the raw sqlite error, and read-only `doctor` diagnoses it.</li>
+          <li>Local planning docs and variant scratch trees are gitignored so they cannot ride along in a public push.</li>
+        </ul>
+      </section>
+      <section class="shell">
+        <h2>v1.8.0-rc1 - Local RC Proof Complete</h2>
+        <ul>
+          <li>Rewrote the public README and OSS metadata for first-time GitHub readers.</li>
+          <li>Added public docs for installation, quickstart, tutorials, concepts, command references, troubleshooting, doctor/repair, release verification, and agent workflows.</li>
+          <li>Polished terminal, Markdown, and TUI output with width-aware layouts, render tokens, `NO_COLOR`, plain output, ASCII fallback, and better empty states.</li>
+          <li>Added Codex, Codex `/goal`, Claude Code, generic agent, and MCP workflow guides.</li>
+          <li>Added demo workspace scripts, prompt packs, terminal transcripts, and screenshot-friendly examples.</li>
+          <li>Added release preflight, `tracker version`, packaged rehearsal, SBOM/vulnerability proof hooks, and offline RC validation.</li>
+        </ul>
+      </section>
+    </div>
+  </main>
+<footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="./">Home</a>
+        <a href="privacy.html" aria-current="page">Privacy</a>
+        <a href="terms.html">Terms</a>
+        <a href="https://github.com/myrrazor/atlas-tasker/blob/main/LICENSE">License</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

@@ -7,6 +7,8 @@ import { SITE_ORIGIN } from "./sync-site-origin.mjs";
 const siteRoot = new URL("../", import.meta.url);
 const pageCanonicals = new Map([
   ["index.html", `${SITE_ORIGIN}/`],
+  ["changelog.html", `${SITE_ORIGIN}/changelog.html`],
+  ["guide.html", `${SITE_ORIGIN}/guide.html`],
   ["privacy.html", `${SITE_ORIGIN}/privacy.html`],
   ["terms.html", `${SITE_ORIGIN}/terms.html`],
 ]);

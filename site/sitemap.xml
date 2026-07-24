@@ -18,4 +18,6 @@
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
+  <url><loc>https://atlas-tasker.vercel.app/guide.html</loc></url>
+  <url><loc>https://atlas-tasker.vercel.app/changelog.html</loc></url>
 </urlset>

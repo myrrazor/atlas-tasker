@@ -8,6 +8,8 @@ const siteRoot = fileURLToPath(new URL("../", import.meta.url));
 /** Static outputs whose absolute site origin must stay in sync. */
 export const SITE_FILES = Object.freeze([
   "index.html",
+  "changelog.html",
+  "guide.html",
   "privacy.html",
   "terms.html",
   "robots.txt",
