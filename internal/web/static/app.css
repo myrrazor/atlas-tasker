@@ -127,7 +127,7 @@ a {
 
 .brand img {
   display: block;
-  width: 156px;
+  width: 232px;
   max-height: 38px;
   object-fit: contain;
 }
@@ -1592,7 +1592,7 @@ button:disabled {
   }
 
   .brand img {
-    width: 132px;
+    width: 168px;
   }
 
   .topbar-primary {
