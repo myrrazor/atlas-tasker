@@ -346,7 +346,7 @@
   // in the fresh grid (and drawer, when provably safe). Typed input, filter
   // fields, and the flash survive; unreachable servers are retried with
   // backoff so a committed-but-unacknowledged move still converges.
-  async function refreshBoard(message, isError) {
+  async function refreshBoard() {
     const seq = ++refreshSeq;
     for (let attempt = 0; attempt < 6; attempt++) {
       if (seq !== refreshSeq) return;
@@ -360,7 +360,7 @@
         const html = await response.text();
         await waitForDragEnd();
         if (seq !== refreshSeq) return;
-        const boardMotion = captureBoardMotion(document.querySelector('.board-grid'));
+        const boardMotion = prefersReducedMotion() ? null : captureBoardMotion(document.querySelector('.board-grid'));
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const selectors = ['.board-grid', '.mobile-columns'];
         if (drawerSafeToSwap()) selectors.push('.detail-drawer');
