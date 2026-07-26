@@ -120,6 +120,74 @@
     }
   }
 
+  function prefersReducedMotion() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function restartMotionClass(element, className) {
+    if (!element || prefersReducedMotion()) return;
+    element.classList.remove(className);
+    window.requestAnimationFrame(() => {
+      if (!document.contains(element)) return;
+      const clear = () => {
+        element.classList.remove(className);
+        element.removeEventListener('animationend', clear);
+        element.removeEventListener('animationcancel', clear);
+      };
+      element.addEventListener('animationend', clear);
+      element.addEventListener('animationcancel', clear);
+      element.classList.add(className);
+    });
+  }
+
+  function captureBoardMotion(grid) {
+    const cardRects = new Map();
+    const columnCounts = new Map();
+    grid?.querySelectorAll('.ticket-card[data-ticket-id]').forEach((card) => {
+      const rect = card.getBoundingClientRect();
+      cardRects.set(card.dataset.ticketId, { left: rect.left, top: rect.top });
+    });
+    grid?.querySelectorAll('.column[data-status]').forEach((column) => {
+      const count = column.querySelector('.col-count');
+      if (count) columnCounts.set(column.dataset.status, count.textContent.trim());
+    });
+    return { cardRects, columnCounts };
+  }
+
+  function playBoardSwapMotion(previous, grid) {
+    if (!previous || !grid || dragsInFlight > 0 || prefersReducedMotion()) return;
+    const easing = window.getComputedStyle(document.documentElement)
+      .getPropertyValue('--ease').trim() || 'ease-out';
+
+    grid.querySelectorAll('.ticket-card[data-ticket-id]').forEach((card) => {
+      const first = previous.cardRects.get(card.dataset.ticketId);
+      if (!first || typeof card.animate !== 'function') return;
+      const last = card.getBoundingClientRect();
+      const x = first.left - last.left;
+      const y = first.top - last.top;
+      if (Math.abs(x) < 1 && Math.abs(y) < 1) return;
+      card.animate(
+        [
+          { transform: `translate(${x}px, ${y}px)` },
+          { transform: 'translate(0, 0)' }
+        ],
+        { duration: 180, easing }
+      );
+    });
+
+    grid.querySelectorAll('.column[data-status]').forEach((column) => {
+      const count = column.querySelector('.col-count');
+      const oldCount = previous.columnCounts.get(column.dataset.status);
+      if (count && oldCount !== undefined && oldCount !== count.textContent.trim()) {
+        restartMotionClass(count, 'is-count-pulsing');
+      }
+    });
+  }
+
+  function settleDroppedCard(card) {
+    restartMotionClass(card, 'is-drop-settling');
+  }
+
   function ensureCardPreview() {
     if (cardPreview) return cardPreview;
     cardPreview = document.createElement('aside');
@@ -224,7 +292,7 @@
     if (!drawer || drawer.dataset.motionBound) return;
     drawer.dataset.motionBound = 'true';
     drawer.classList.add('drawer--motion-ready');
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduceMotion = prefersReducedMotion();
     if (!animateIn || reduceMotion) {
       drawer.classList.add('drawer--open');
     } else {
@@ -292,6 +360,7 @@
         const html = await response.text();
         await waitForDragEnd();
         if (seq !== refreshSeq) return;
+        const boardMotion = captureBoardMotion(document.querySelector('.board-grid'));
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const selectors = ['.board-grid', '.mobile-columns'];
         if (drawerSafeToSwap()) selectors.push('.detail-drawer');
@@ -307,6 +376,7 @@
           }
         });
         if (sweptGrid) {
+          playBoardSwapMotion(boardMotion, document.querySelector('.board-grid'));
           setupSortable();
           setupCardPreviews();
         }
@@ -352,7 +422,10 @@
           dismissCardPreview();
           dragsInFlight++;
         },
-        onEnd: () => { dragsInFlight = Math.max(0, dragsInFlight - 1); },
+        onEnd: (event) => {
+          dragsInFlight = Math.max(0, dragsInFlight - 1);
+          settleDroppedCard(event.item);
+        },
         onAdd: async (event) => {
           const card = event.item;
           const ticketID = card.dataset.ticketId;

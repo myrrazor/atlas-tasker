@@ -23,8 +23,10 @@ The card itself stays neutral. Status belongs to the column, ownership color is 
 | Keyboard | Cards remain ordinary focused links; the preview never enters the tab order |
 | Open drawer | Explicit `?ticket=` selection slides in after two animation frames |
 | Close drawer | Reverse the transform before following the close link |
-| Drag | Animate position for 150ms; preserve optimistic commit, revert, and journal behavior |
-| Reduced motion | Remove drawer, card, preview, and drag animation without hiding state |
+| Drag | Animate position for 150ms, then settle the dropped card; preserve optimistic commit, revert, and journal behavior |
+| Server sync | Wait for any active drag, then glide cards that changed position for 180ms using their stable ticket IDs |
+| Count change | Pulse only the column counts whose values changed during sync |
+| Reduced motion | Remove drawer, card, preview, drag, sync, and count animation without hiding state |
 
 ## Responsive coverage
 
@@ -39,4 +41,5 @@ The card itself stays neutral. Status belongs to the column, ownership color is 
 - The preview makes no request and uses `textContent` for user-controlled values.
 - Assignee, reviewer, priority, labels, blockers, gates, and comments remain available in the preview and drawer.
 - Drag success journals a web move; failure returns the card to its original column.
+- Grid replacement never animates during an active drag.
 - CSP stays self-only with vendored assets and no new dependency.

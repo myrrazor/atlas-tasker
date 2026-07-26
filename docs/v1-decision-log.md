@@ -521,3 +521,18 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Atlas adds locale-aware dates/numbers, plural rules beyond the pilot, RTL support, or enough languages that maintaining literal maps becomes error-prone.
 9. **Affected PRs/Files:** `internal/contracts/domain.go`, `internal/config/config.go`, `internal/web/i18n.go`, `internal/web/templates/*`, `internal/web/static/*`, web/config tests, `docs/i18n-notes.md`, web/config docs.
+
+## DEC-037
+
+1. **Decision ID:** DEC-037
+2. **Date:** 2026-07-25
+3. **Question:** How should a live board sync communicate card and count movement without weakening strict CSP or pulling the grid out from under an active drag?
+4. **Options Considered:**
+   - Keep replacing the board grid instantly.
+   - Vendor Motion Mini and use its animation helper for FLIP.
+   - Record ticket rectangles and column counts locally, then use the browser's Web Animations API for FLIP plus CSS classes for drop/count feedback.
+5. **Chosen Option:** Use a small native FLIP implementation and CSS feedback classes.
+6. **Why We Chose It:** Ticket IDs already provide stable keys across the server-rendered grid swap. Capturing rectangles only after `waitForDragEnd`, checking the drag counter again before playback, and animating transforms for 180ms preserves spatial continuity without changing the mutation or refresh contracts. Native animation needs no module loader, package metadata, inline style, external request, or additional vendored code; the same path skips all effects when reduced motion is requested.
+7. **Confidence:** high
+8. **Revisit Trigger:** Supported browsers no longer provide the Web Animations API, sync expands beyond simple card movement, or a shared animation runtime becomes justified by several independent interactions.
+9. **Affected PRs/Files:** `internal/web/static/app.js`, `internal/web/static/app.css`, `internal/web/card_interactions_test.go`, `DESIGN.md`, `docs/web-board-screen-brief.md`.

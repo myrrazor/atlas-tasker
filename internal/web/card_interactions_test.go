@@ -101,6 +101,12 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 		"animation: 150",
 		"ghostClass: 'sortable-ghost'",
 		"chosenClass: 'sortable-chosen'",
+		"function captureBoardMotion(grid)",
+		"function playBoardSwapMotion(previous, grid)",
+		"dragsInFlight > 0 || prefersReducedMotion()",
+		"{ duration: 180, easing }",
+		"settleDroppedCard(event.item)",
+		"'is-count-pulsing'",
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("app.js missing interaction contract %q", want)
@@ -114,6 +120,22 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 	if strings.Contains(js[previewStart:previewStart+previewEnd], "fetch(") {
 		t.Fatal("hover preview must use card data attributes without fetching")
 	}
+	refreshStart := strings.Index(js, "async function refreshBoard")
+	if refreshStart < 0 {
+		t.Fatal("could not find board refresh implementation")
+	}
+	refreshEnd := strings.Index(js[refreshStart:], "function setupSortable")
+	if refreshEnd < 0 {
+		t.Fatal("could not isolate board refresh implementation")
+	}
+	refresh := js[refreshStart : refreshStart+refreshEnd]
+	wait := strings.Index(refresh, "await waitForDragEnd()")
+	capture := strings.Index(refresh, "captureBoardMotion(")
+	swap := strings.Index(refresh, "current.replaceWith(next)")
+	play := strings.Index(refresh, "playBoardSwapMotion(")
+	if wait < 0 || capture < wait || swap < capture || play < swap {
+		t.Fatalf("board refresh must wait for drag end, capture before swap, and animate after swap")
+	}
 
 	cssRaw, err := embeddedFiles.ReadFile("static/app.css")
 	if err != nil {
@@ -126,6 +148,10 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 		"@media (prefers-reduced-motion: reduce)",
 		".card-preview",
 		".topbar--board .meta-block",
+		"animation: ticket-drop-settle 150ms var(--ease)",
+		"animation: column-count-pulse 300ms var(--ease)",
+		".ticket-card.is-drop-settling,",
+		".col-count.is-count-pulsing::after",
 	} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("app.css missing interaction contract %q", want)

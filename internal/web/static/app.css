@@ -882,10 +882,44 @@ button:active,
 
 .col-count {
   flex: none;
+  position: relative;
+  isolation: isolate;
   margin-left: auto;
   color: var(--text-3);
   font-weight: 500;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.col-count::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -4px -6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.84);
+}
+
+.col-count.is-count-pulsing::after {
+  animation: column-count-pulse 300ms var(--ease);
+}
+
+@keyframes column-count-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.84);
+  }
+  38% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
 }
 
 .ticket-list {
@@ -940,6 +974,22 @@ button:active,
 
 .sortable-dragging {
   box-shadow: var(--shadow-lift);
+}
+
+.ticket-card.is-drop-settling {
+  animation: ticket-drop-settle 150ms var(--ease);
+}
+
+@keyframes ticket-drop-settle {
+  0% {
+    transform: scale(0.985);
+  }
+  58% {
+    transform: scale(1.012);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .ticket-id {
@@ -1811,5 +1861,10 @@ button:disabled {
 
   .detail-drawer.drawer--motion-ready {
     transform: none;
+  }
+
+  .ticket-card.is-drop-settling,
+  .col-count.is-count-pulsing::after {
+    animation: none !important;
   }
 }

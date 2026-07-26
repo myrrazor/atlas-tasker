@@ -21,7 +21,7 @@ The Kanban board uses narrow, quiet cards so all six workflow columns fit more o
 
 Secondary metadata lives in the ticket drawer and in one reusable hover preview populated from escaped `data-*` values. The two-second delay keeps normal pointer travel calm. The preview is non-interactive, does not enter the tab order, clamps to the viewport, and disappears on leave, drag, scroll, or Escape.
 
-Drawer motion preserves spatial continuity for an explicitly selected ticket: two animation frames establish the off-screen state, then a 200ms transform brings the drawer into place. Drag reordering uses a 150ms positional animation with restrained chosen and ghost states. Both are causal, short, and disabled by `prefers-reduced-motion`. `[P]` `[S]`
+Drawer motion preserves spatial continuity for an explicitly selected ticket: two animation frames establish the off-screen state, then a 200ms transform brings the drawer into place. Drag reordering uses a 150ms positional animation with restrained chosen and ghost states, followed by a short scale settle. Server sync records ticket positions by ID before replacing the grid, then uses a 180ms native FLIP transform to carry moved cards to their new positions; changed column counts receive one 300ms pulse. These effects are causal, short, dependency-free, and disabled by `prefers-reduced-motion`. `[P]` `[S]`
 
 ## System
 
