@@ -144,7 +144,14 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 	css := string(cssRaw)
 	for _, want := range []string{
 		".detail-drawer.drawer--motion-ready",
-		"transition: transform 0.2s var(--ease)",
+		"transition: transform 160ms var(--ease)",
+		".detail-drawer.drawer--motion-ready.drawer--open",
+		"transition-duration: 240ms",
+		"transition-timing-function: var(--ease-spring)",
+		"will-change: transform",
+		"transform 0.22s var(--ease-spring)",
+		".ticket-card:active",
+		"transition: transform 90ms var(--ease)",
 		"@media (prefers-reduced-motion: reduce)",
 		".card-preview",
 		".topbar--board .meta-block",
@@ -155,6 +162,22 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 	} {
 		if !strings.Contains(css, want) {
 			t.Fatalf("app.css missing interaction contract %q", want)
+		}
+	}
+	reducedStart := strings.LastIndex(css, "@media (prefers-reduced-motion: reduce)")
+	if reducedStart < 0 {
+		t.Fatal("could not isolate reduced-motion styles")
+	}
+	reduced := css[reducedStart:]
+	for _, want := range []string{
+		"button:active",
+		".ticket-card:focus-visible",
+		".ticket-card:active",
+		".ticket-card.is-drop-settling",
+		".col-count.is-count-pulsing::after",
+	} {
+		if !strings.Contains(reduced, want) {
+			t.Fatalf("reduced-motion styles missing %q", want)
 		}
 	}
 }

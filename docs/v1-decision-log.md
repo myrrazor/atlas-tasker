@@ -494,6 +494,8 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 
 ## DEC-035
 
+**Status:** Superseded by DEC-038 for motion timing and feedback; the card information model remains current.
+
 1. **Decision ID:** DEC-035
 2. **Date:** 2026-07-23
 3. **Question:** How much information should Kanban cards expose, and how should secondary detail and movement feel?
@@ -536,3 +538,18 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Supported browsers no longer provide the Web Animations API, sync expands beyond simple card movement, or a shared animation runtime becomes justified by several independent interactions.
 9. **Affected PRs/Files:** `internal/web/static/app.js`, `internal/web/static/app.css`, `internal/web/card_interactions_test.go`, `DESIGN.md`, `docs/web-board-screen-brief.md`.
+
+## DEC-038
+
+1. **Decision ID:** DEC-038
+2. **Date:** 2026-07-25
+3. **Question:** How should the board's drawer, hover, and press feedback change now that DEC-035's uniform 200ms drawer motion feels too linear?
+4. **Options Considered:**
+   - Keep the existing 200ms standard ease for every drawer direction and card lift.
+   - Use CSS cubic-bezier springs for entry/lift, with shorter standard ease-out timing for close/press.
+   - Add JavaScript spring physics for every interaction.
+5. **Chosen Option:** Use transform-only CSS curves: 240ms restrained overshoot on drawer open, 160ms standard ease-out on close, 220ms spring lift on card hover/focus, and 90ms compression on press.
+6. **Why We Chose It:** Entry benefits from a small amount of continuity while exit and direct press feedback should get out of the way. CSS keeps these frequent interactions compositor-friendly and interruptible without adding a runtime. The existing surface colors, layout, and `--ease` curve remain unchanged; one spring easing token handles the causal entry/lift cases, and the reduced-motion block removes every transform and animation.
+7. **Confidence:** high
+8. **Revisit Trigger:** Runtime inspection shows visible overshoot at large drawer widths, interaction latency rises on lower-performance hardware, or users report that frequent card feedback feels busy.
+9. **Affected PRs/Files:** Supersedes the motion timing/feedback portion of DEC-035; `internal/web/static/app.css`, `internal/web/card_interactions_test.go`, `DESIGN.md`, `docs/web-board-screen-brief.md`.

@@ -21,8 +21,10 @@ The card itself stays neutral. Status belongs to the column, ownership color is 
 | Hover | Wait 2 seconds, then show one viewport-clamped preview from card `data-*` values |
 | Leave, scroll, drag, Escape | Cancel the timer and dismiss the preview |
 | Keyboard | Cards remain ordinary focused links; the preview never enters the tab order |
-| Open drawer | Explicit `?ticket=` selection slides in after two animation frames |
-| Close drawer | Reverse the transform before following the close link |
+| Card hover/focus | Lift two pixels with a restrained spring curve |
+| Card press | Compress for 90ms, then spring back without moving layout |
+| Open drawer | Explicit `?ticket=` selection slides in after two animation frames with a 240ms slight overshoot |
+| Close drawer | Ease out cleanly for 160ms before following the close link |
 | Drag | Animate position for 150ms, then settle the dropped card; preserve optimistic commit, revert, and journal behavior |
 | Server sync | Wait for any active drag, then glide cards that changed position for 180ms using their stable ticket IDs |
 | Count change | Pulse only the column counts whose values changed during sync |
