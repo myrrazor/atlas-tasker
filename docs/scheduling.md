@@ -54,3 +54,9 @@ tracker schedule history --project APP --json
 ```
 
 Completion history is derived from ticket transitions to `done` in the append-only event log. There is no parallel history database to drift from ticket truth.
+
+## Browser schedule
+
+`tracker web serve --open` exposes the same operations at `/schedule`: a seven-day strip, a local-time hourly rail, and completion history for the visible week. Schedule forms use the server's displayed local timezone and preserve submitted values when validation fails. Read-only mode leaves the timeline and history available while disabling every write.
+
+The ticket drawer on `/board` can set or clear the selected ticket's schedule directly. Both browser paths use the same action service, event metadata, CSRF checks, and owner-only rule for agent runners as the CLI.

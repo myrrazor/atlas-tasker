@@ -17,12 +17,13 @@ import (
 )
 
 type BoardPage struct {
-	Page      string
-	Workspace string
-	Host      string
-	Actor     contracts.Actor
-	ReadOnly  bool
-	Project   string
+	Page         string
+	Workspace    string
+	Host         string
+	Actor        contracts.Actor
+	ReadOnly     bool
+	Project      string
+	LocationName string
 	// true when the project came from the request, not the server default —
 	// saved views must not be narrowed by an implicit --project
 	ProjectExplicit bool `json:"-"`
@@ -141,10 +142,12 @@ type TicketCard struct {
 }
 
 type TicketDetail struct {
-	View       service.TicketDetailView
-	Warnings   []string
-	Recent     []contracts.Event
-	CheckCount int
+	View            service.TicketDetailView
+	Warnings        []string
+	Recent          []contracts.Event
+	CheckCount      int
+	ScheduleAtInput string
+	ScheduleAtLabel string
 }
 
 var boardStatuses = []contracts.Status{
@@ -182,6 +185,7 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		Flash:           strings.TrimSpace(query.Get("flash")),
 		Error:           strings.TrimSpace(query.Get("error_flash")),
 		ShowNew:         query.Get("new") == "1",
+		LocationName:    locationName(s.cfg.Location, s.cfg.Clock()),
 	}
 	board, err := s.loadBoard(ctx, page)
 	if err != nil {
@@ -449,12 +453,18 @@ func (s *Server) ticketDetail(ctx context.Context, ticketID string) (TicketDetai
 	if len(recent) > 6 {
 		recent = recent[len(recent)-6:]
 	}
-	return TicketDetail{
+	detail := TicketDetail{
 		View:       view,
 		Warnings:   detailWarnings(view),
 		Recent:     recent,
 		CheckCount: len(view.Checks),
-	}, nil
+	}
+	if view.Ticket.Schedule != nil {
+		local := view.Ticket.Schedule.At.In(s.cfg.Location)
+		detail.ScheduleAtInput = local.Format("2006-01-02T15:04")
+		detail.ScheduleAtLabel = local.Format("Mon, Jan 2 at 3:04 PM")
+	}
+	return detail, nil
 }
 
 func filterBoard(board contracts.BoardView, page BoardPage) contracts.BoardView {

@@ -485,6 +485,12 @@
     }
   }
 
+  function revealSelectedScheduleDay() {
+    if (!window.matchMedia('(max-width: 760px)').matches) return;
+    const selected = document.querySelector('.schedule-day[aria-current="date"]');
+    selected?.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'center' });
+  }
+
   setupTabs();
   setupKeyboardHints();
   setupDialogs();
@@ -494,6 +500,7 @@
   setupDrawerMotion(drawerParams.has('ticket') || drawerParams.has('new'));
   collapseFiltersOnMobile();
   revealDetailOnMobile();
+  revealSelectedScheduleDay();
 
   document.addEventListener('dragstart', dismissCardPreview, true);
   document.addEventListener('scroll', dismissCardPreview, true);

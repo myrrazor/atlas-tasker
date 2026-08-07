@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -59,14 +60,15 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	page, err := s.buildBoardPage(r.Context(), r)
 	if err != nil {
 		page = BoardPage{
-			Page:      "board",
-			Workspace: s.cfg.Workspace,
-			Host:      s.cfg.Host,
-			Actor:     s.cfg.Actor,
-			ReadOnly:  s.cfg.ReadOnly,
-			Project:   s.cfg.Project,
-			CSRFToken: s.cfg.CSRFToken,
-			Error:     err.Error(),
+			Page:         "board",
+			Workspace:    s.cfg.Workspace,
+			Host:         s.cfg.Host,
+			Actor:        s.cfg.Actor,
+			ReadOnly:     s.cfg.ReadOnly,
+			Project:      s.cfg.Project,
+			CSRFToken:    s.cfg.CSRFToken,
+			LocationName: locationName(s.cfg.Location, s.cfg.Clock()),
+			Error:        err.Error(),
 		}
 	}
 	s.renderPage(w, r, page, http.StatusOK)
@@ -116,6 +118,31 @@ func (s *Server) handleBoardAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, "atlas_web_board", page)
+}
+
+func (s *Server) handleSchedule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+	page, err := s.buildSchedulePage(r.Context(), r)
+	if err != nil {
+		page.Error = err.Error()
+	}
+	s.renderPage(w, r, page, http.StatusOK)
+}
+
+func (s *Server) handleScheduleAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+	page, err := s.buildSchedulePage(r.Context(), r)
+	if err != nil {
+		s.writeError(w, r, err, statusForError(err))
+		return
+	}
+	s.writeJSON(w, "atlas_web_schedule", page)
 }
 
 func (s *Server) handleTicketAPI(w http.ResponseWriter, r *http.Request) {
@@ -292,6 +319,14 @@ func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 		ticket, err = s.actions.ApproveTicket(ctx, id, actor, reason)
 	case "complete":
 		ticket, err = s.actions.CompleteTicket(ctx, id, actor, reason)
+	case "schedule":
+		var at time.Time
+		at, err = s.parseScheduleLocal(r.Form.Get("at"))
+		if err == nil {
+			ticket, err = s.actions.SetTicketSchedule(ctx, id, at, contracts.Actor(strings.TrimSpace(r.Form.Get("runner"))), actor, reason)
+		}
+	case "schedule/clear":
+		ticket, err = s.actions.ClearTicketSchedule(ctx, id, actor, reason)
 	case "label/add":
 		label := strings.TrimSpace(r.Form.Get("label"))
 		ticket, err = s.actions.MutateTrackedTicket(ctx, id, actor, reason, "web add label", func(ticket *contracts.TicketSnapshot) error {
@@ -320,6 +355,69 @@ func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.actionSuccess(w, r, ticket.ID, fmt.Sprintf("updated %s", ticket.ID))
+}
+
+func (s *Server) handleScheduleAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+	if s.cfg.ReadOnly {
+		s.writeActionError(w, r, apperr.New(apperr.CodePermissionDenied, "web schedule is read-only"), "")
+		return
+	}
+	action := strings.Trim(strings.TrimPrefix(r.URL.Path, "/actions/schedule/"), "/")
+	actor := s.actorFromForm(r)
+	ctx := s.mutationContext(r, actor)
+	switch action {
+	case "set":
+		at, err := s.parseScheduleLocal(r.Form.Get("at"))
+		if err != nil {
+			s.writeActionError(w, r, err, "")
+			return
+		}
+		ticketID := strings.TrimSpace(r.Form.Get("ticket_id"))
+		if ticketID == "" {
+			s.writeActionError(w, r, apperr.New(apperr.CodeInvalidInput, "ticket id is required"), "")
+			return
+		}
+		ticket, err := s.actions.SetTicketSchedule(ctx, ticketID, at, contracts.Actor(strings.TrimSpace(r.Form.Get("runner"))), actor, reasonFromForm(r, "web schedule ticket"))
+		if err != nil {
+			s.writeActionError(w, r, err, ticketID)
+			return
+		}
+		s.actionSuccess(w, r, ticket.ID, "scheduled "+ticket.ID)
+	case "tick":
+		result, err := s.actions.TickSchedules(ctx, time.Time{}, actor, reasonFromForm(r, "web schedule tick"))
+		if err != nil {
+			s.writeActionError(w, r, err, "")
+			return
+		}
+		if wantsJSON(r) {
+			s.writeJSON(w, "atlas_web_schedule_tick", result)
+			return
+		}
+		s.actionSuccess(w, r, "", fmt.Sprintf("processed %d due schedule(s)", len(result.Entries)))
+	default:
+		s.writeActionError(w, r, apperr.New(apperr.CodeInvalidInput, "unknown web schedule action: "+action), "")
+	}
+}
+
+func (s *Server) parseScheduleLocal(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, apperr.New(apperr.CodeInvalidInput, "schedule time is required")
+	}
+	for _, layout := range []string{"2006-01-02T15:04", "2006-01-02T15:04:05"} {
+		at, err := time.ParseInLocation(layout, raw, s.cfg.Location)
+		if err == nil {
+			if at.In(s.cfg.Location).Format(layout) != raw {
+				return time.Time{}, apperr.New(apperr.CodeInvalidInput, "schedule time does not exist in "+locationName(s.cfg.Location, s.cfg.Clock()))
+			}
+			return at.UTC(), nil
+		}
+	}
+	return time.Time{}, apperr.New(apperr.CodeInvalidInput, "schedule time must be a local date and time in "+locationName(s.cfg.Location, s.cfg.Clock()))
 }
 
 // editMutatorFromForm applies only the submitted fields; the store validates
@@ -406,6 +504,12 @@ func (s *Server) actionSuccess(w http.ResponseWriter, r *http.Request, ticketID 
 		return
 	}
 	q := r.URL.Query()
+	if q.Get("return") == "schedule" {
+		q.Del("return")
+		q.Set("flash", flash)
+		http.Redirect(w, r, "/schedule?"+q.Encode(), http.StatusSeeOther)
+		return
+	}
 	q.Set("ticket", ticketID)
 	q.Set("flash", flash)
 	http.Redirect(w, r, "/board?"+q.Encode(), http.StatusSeeOther)

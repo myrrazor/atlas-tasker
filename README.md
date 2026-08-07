@@ -49,7 +49,7 @@ Prefer a full-screen view? `tracker tui` opens the interactive console — board
 
 ![Ticket detail with runs, evidence, and timeline](docs/assets/tui-detail.png)
 
-Prefer a browser without giving up local-first storage? `tracker web serve --open` starts the optional local Kanban board on `127.0.0.1` with a session token, CSRF checks, and the same `QueryService`/`ActionService` paths as the CLI. It is still just your repo: no hosted mode, no login system, and no second database.
+Prefer a browser without giving up local-first storage? `tracker web serve --open` starts the optional local Kanban board and schedule timeline on `127.0.0.1` with a session token, CSRF checks, and the same `QueryService`/`ActionService` paths as the CLI. It is still just your repo: no hosted mode, no login system, and no second database.
 
 ## Built for agents, not just humans
 
