@@ -74,6 +74,16 @@ tracker agent auto set builder-1 --mode command \
   --actor human:owner --reason "auto pickup"
 ```
 
+Tickets can also carry a one-time schedule. A human runner gets a durable due/overdue reminder through the normal notification sinks; an agent runner gets an Atlas wakeup, and command mode launches the configured worker at the tick:
+
+```bash
+tracker schedule set APP-2 --at 2026-08-10T09:00:00-04:00 --runner agent:builder-1 \
+  --actor human:owner --reason "run the Monday check"
+tracker schedule tick --actor human:owner --reason "scheduled tick"
+```
+
+Run `schedule tick` from cron, launchd, or whichever scheduler already owns cadence on your machine. Atlas keeps the ticket, wakeup, audit event, and completion history local; it does not add a hidden daemon. See [scheduled work](docs/scheduling.md) for the exact behavior.
+
 Around that core, agents get the full delivery loop:
 
 - **Leases** stop two agents from grabbing the same ticket; stale claims expire on their own.
@@ -122,7 +132,7 @@ For the paranoid (complimentary): signed artifacts and trust keys, governance po
 
 ## Docs
 
-Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [getting started](docs/getting-started.md), [your first agent workflow](docs/first-agent-workflow.md), [the local web board](docs/web-board.md), [MCP for agents](docs/guides/mcp-for-agents.md), [the command reference](docs/reference/commands.md), or [troubleshooting](docs/troubleshooting.md).
+Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [getting started](docs/getting-started.md), [your first agent workflow](docs/first-agent-workflow.md), [scheduled work](docs/scheduling.md), [the local web board](docs/web-board.md), [MCP for agents](docs/guides/mcp-for-agents.md), [the command reference](docs/reference/commands.md), or [troubleshooting](docs/troubleshooting.md).
 
 ## Status
 

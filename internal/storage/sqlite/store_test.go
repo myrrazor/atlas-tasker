@@ -57,6 +57,11 @@ func TestApplyEventQueryHistoryBoardAndSearch(t *testing.T) {
 		SchemaVersion: contracts.CurrentSchemaVersion,
 		Summary:       "Parser summary",
 		Description:   "CLI parser implementation",
+		Schedule: &contracts.TicketSchedule{
+			At:        now.Add(90 * time.Minute),
+			CreatedAt: now,
+			CreatedBy: contracts.Actor("human:owner"),
+		},
 	}
 	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
 		t.Fatalf("create ticket markdown: %v", err)
@@ -101,6 +106,13 @@ func TestApplyEventQueryHistoryBoardAndSearch(t *testing.T) {
 	}
 	if len(search) != 1 || search[0].ID != "APP-1" {
 		t.Fatalf("unexpected search results: %#v", search)
+	}
+	projected, err := store.QueryTicket(ctx, ticket.ID)
+	if err != nil {
+		t.Fatalf("query ticket: %v", err)
+	}
+	if projected.Schedule == nil || !projected.Schedule.At.Equal(ticket.Schedule.At) || projected.Schedule.CreatedBy != ticket.Schedule.CreatedBy {
+		t.Fatalf("schedule did not round trip through sqlite: %#v", projected.Schedule)
 	}
 }
 
@@ -329,6 +341,12 @@ func TestRebuildFromMarkdownAndEvents(t *testing.T) {
 		UpdatedAt:     now,
 		SchemaVersion: contracts.CurrentSchemaVersion,
 		Description:   "Reindex projection test",
+		Assignee:      contracts.Actor("human:owner"),
+		Schedule: &contracts.TicketSchedule{
+			At:        now.Add(24 * time.Hour),
+			CreatedAt: now,
+			CreatedBy: contracts.Actor("human:owner"),
+		},
 	}
 	if err := ticketStore.CreateTicket(ctx, ticket); err != nil {
 		t.Fatalf("create ticket markdown: %v", err)
@@ -365,6 +383,9 @@ func TestRebuildFromMarkdownAndEvents(t *testing.T) {
 	}
 	if len(board.Columns[contracts.StatusBlocked]) != 1 {
 		t.Fatalf("rebuild board mismatch: %#v", board.Columns)
+	}
+	if got := board.Columns[contracts.StatusBlocked][0].Schedule; got == nil || !got.At.Equal(ticket.Schedule.At) {
+		t.Fatalf("rebuild lost schedule: %#v", got)
 	}
 
 	history, err := store.QueryHistory(ctx, "APP-2")

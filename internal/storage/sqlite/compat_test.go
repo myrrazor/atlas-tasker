@@ -45,6 +45,9 @@ func TestRebuildFromV1FixtureWorkspace(t *testing.T) {
 	if len(ticket.ChangeIDs) != 0 || len(ticket.PermissionProfiles) != 0 || len(ticket.ChangeReadyReasons) != 0 {
 		t.Fatalf("expected v1.5 defaults to round-trip through projection: %#v", ticket)
 	}
+	if ticket.Schedule != nil {
+		t.Fatalf("expected legacy ticket to default to no schedule: %#v", ticket.Schedule)
+	}
 	history, err := store.QueryHistory(ctx, "APP-1")
 	if err != nil {
 		t.Fatalf("query history: %v", err)

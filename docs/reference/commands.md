@@ -19,6 +19,9 @@ Core write commands:
 - `tracker ticket create --project <KEY> --title <TITLE> --type task --actor <ACTOR> --reason <TEXT>`
 - `tracker ticket move <TICKET-ID> <STATUS> --actor <ACTOR> --reason <TEXT>`
 - `tracker ticket comment <TICKET-ID> --body <TEXT> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule set <TICKET-ID> --at <RFC3339> --runner <ACTOR> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule tick --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule history [--project <KEY>] --json`
 
 Agent workflow commands:
 

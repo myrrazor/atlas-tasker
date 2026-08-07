@@ -23,7 +23,7 @@ const ticketSelectColumns = `
 	required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
 	latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at,
 	change_ids_json, change_ready_state, change_ready_reasons_json, permission_profiles_json,
-	protected, sensitive
+	protected, sensitive, schedule_json
 `
 
 // Store is a SQLite-backed projection and query engine.
@@ -128,7 +128,8 @@ func (s *Store) migrate() error {
 			latest_run_id TEXT,
 			latest_handoff_id TEXT,
 			open_gate_ids_json TEXT NOT NULL DEFAULT '[]',
-			last_dispatch_at TEXT
+			last_dispatch_at TEXT,
+			schedule_json TEXT NOT NULL DEFAULT 'null'
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_project_status ON tickets(project, status);`,
 		`CREATE INDEX IF NOT EXISTS idx_tickets_project_updated ON tickets(project, updated_at);`,
@@ -361,6 +362,7 @@ func (s *Store) migrate() error {
 		{name: "permission_profiles_json", definition: `TEXT NOT NULL DEFAULT '[]'`},
 		{name: "protected", definition: `INTEGER NOT NULL DEFAULT 0`},
 		{name: "sensitive", definition: `INTEGER NOT NULL DEFAULT 0`},
+		{name: "schedule_json", definition: `TEXT NOT NULL DEFAULT 'null'`},
 	}
 	for _, column := range columns {
 		if err := s.ensureTicketColumn(column.name, column.definition); err != nil {
@@ -917,7 +919,7 @@ func (s *Store) QueryCommentCounts(ctx context.Context, ticketIDs []string) (map
 
 func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapshot) error {
 	ticket = contracts.NormalizeTicketSnapshot(ticket)
-	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, changeIDsJSON, changeReadyReasonsJSON, permissionProfilesJSON, err := marshalTicketJSON(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, changeIDsJSON, changeReadyReasonsJSON, permissionProfilesJSON, scheduleJSON, err := marshalTicketJSON(ticket)
 	if err != nil {
 		return err
 	}
@@ -931,8 +933,8 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 			required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
 			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at,
 			change_ids_json, change_ready_state, change_ready_reasons_json, permission_profiles_json,
-			protected, sensitive
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			protected, sensitive, schedule_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title=excluded.title,
 			type=excluded.type,
@@ -975,7 +977,8 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 			change_ready_reasons_json=excluded.change_ready_reasons_json,
 			permission_profiles_json=excluded.permission_profiles_json,
 			protected=excluded.protected,
-			sensitive=excluded.sensitive
+			sensitive=excluded.sensitive,
+			schedule_json=excluded.schedule_json
 	`,
 		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
 		labelsJSON, nullable(string(ticket.Assignee)), nullable(string(ticket.Reviewer)), blockedByJSON, blocksJSON,
@@ -986,7 +989,7 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 		requiredCapabilitiesJSON, string(ticket.DispatchMode), boolToInt(ticket.AllowParallelRuns), nullable(ticket.Runbook),
 		nullable(ticket.LatestRunID), nullable(ticket.LatestHandoffID), openGateIDsJSON, nullableTime(ticket.LastDispatchAt),
 		changeIDsJSON, nullable(string(ticket.ChangeReadyState)), changeReadyReasonsJSON, permissionProfilesJSON,
-		boolToInt(ticket.Protected), boolToInt(ticket.Sensitive),
+		boolToInt(ticket.Protected), boolToInt(ticket.Sensitive), scheduleJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert ticket %s: %w", ticket.ID, err)
@@ -996,7 +999,7 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 
 func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.TicketSnapshot) error {
 	ticket = contracts.NormalizeTicketSnapshot(ticket)
-	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, changeIDsJSON, changeReadyReasonsJSON, permissionProfilesJSON, err := marshalTicketJSON(ticket)
+	labelsJSON, blockedByJSON, blocksJSON, acceptanceJSON, policyJSON, progressJSON, requiredCapabilitiesJSON, openGateIDsJSON, changeIDsJSON, changeReadyReasonsJSON, permissionProfilesJSON, scheduleJSON, err := marshalTicketJSON(ticket)
 	if err != nil {
 		return err
 	}
@@ -1010,8 +1013,8 @@ func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.Tick
 			required_capabilities_json, dispatch_mode, allow_parallel_runs, runbook,
 			latest_run_id, latest_handoff_id, open_gate_ids_json, last_dispatch_at,
 			change_ids_json, change_ready_state, change_ready_reasons_json, permission_profiles_json,
-			protected, sensitive
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			protected, sensitive, schedule_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
 	`,
 		ticket.ID, ticket.Project, ticket.Title, string(ticket.Type), string(ticket.Status), string(ticket.Priority), nullable(ticket.Parent),
@@ -1023,7 +1026,7 @@ func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.Tick
 		requiredCapabilitiesJSON, string(ticket.DispatchMode), boolToInt(ticket.AllowParallelRuns), nullable(ticket.Runbook),
 		nullable(ticket.LatestRunID), nullable(ticket.LatestHandoffID), openGateIDsJSON, nullableTime(ticket.LastDispatchAt),
 		changeIDsJSON, nullable(string(ticket.ChangeReadyState)), changeReadyReasonsJSON, permissionProfilesJSON,
-		boolToInt(ticket.Protected), boolToInt(ticket.Sensitive),
+		boolToInt(ticket.Protected), boolToInt(ticket.Sensitive), scheduleJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("insert missing ticket %s: %w", ticket.ID, err)
@@ -1426,6 +1429,7 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 		changeReadyState         sql.NullString
 		changeReadyReasonsJSON   string
 		permissionProfilesJSON   string
+		scheduleJSON             string
 		protected                int
 		sensitive                int
 		parent                   sql.NullString
@@ -1490,6 +1494,7 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 		&permissionProfilesJSON,
 		&protected,
 		&sensitive,
+		&scheduleJSON,
 	); err != nil {
 		return contracts.TicketSnapshot{}, err
 	}
@@ -1554,6 +1559,13 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 	}
 	if err := json.Unmarshal([]byte(permissionProfilesJSON), &ticket.PermissionProfiles); err != nil {
 		return contracts.TicketSnapshot{}, err
+	}
+	if strings.TrimSpace(scheduleJSON) != "" && strings.TrimSpace(scheduleJSON) != "null" {
+		var schedule contracts.TicketSchedule
+		if err := json.Unmarshal([]byte(scheduleJSON), &schedule); err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		ticket.Schedule = &schedule
 	}
 	ticket.Type = contracts.TicketType(typeValue)
 	ticket.Status = contracts.Status(statusValue)
@@ -1642,52 +1654,56 @@ func scanTicket(scanner ticketScanner) (contracts.TicketSnapshot, error) {
 	return contracts.NormalizeTicketSnapshot(ticket), nil
 }
 
-func marshalTicketJSON(ticket contracts.TicketSnapshot) (labelsJSON string, blockedByJSON string, blocksJSON string, acceptanceJSON string, policyJSON string, progressJSON string, requiredCapabilitiesJSON string, openGateIDsJSON string, changeIDsJSON string, changeReadyReasonsJSON string, permissionProfilesJSON string, err error) {
+func marshalTicketJSON(ticket contracts.TicketSnapshot) (labelsJSON string, blockedByJSON string, blocksJSON string, acceptanceJSON string, policyJSON string, progressJSON string, requiredCapabilitiesJSON string, openGateIDsJSON string, changeIDsJSON string, changeReadyReasonsJSON string, permissionProfilesJSON string, scheduleJSON string, err error) {
 	labelsRaw, err := json.Marshal(ticket.Labels)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal labels: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal labels: %w", err)
 	}
 	blockedByRaw, err := json.Marshal(ticket.BlockedBy)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocked_by: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocked_by: %w", err)
 	}
 	blocksRaw, err := json.Marshal(ticket.Blocks)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocks: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal blocks: %w", err)
 	}
 	acceptanceRaw, err := json.Marshal(ticket.AcceptanceCriteria)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal acceptance criteria: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal acceptance criteria: %w", err)
 	}
 	policyRaw, err := json.Marshal(ticket.Policy)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal policy: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal policy: %w", err)
 	}
 	progressRaw, err := json.Marshal(ticket.Progress)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal progress: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal progress: %w", err)
 	}
 	requiredCapabilitiesRaw, err := json.Marshal(ticket.RequiredCapabilities)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal required capabilities: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal required capabilities: %w", err)
 	}
 	openGateIDsRaw, err := json.Marshal(ticket.OpenGateIDs)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal open gate ids: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal open gate ids: %w", err)
 	}
 	changeIDsRaw, err := json.Marshal(ticket.ChangeIDs)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal change ids: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal change ids: %w", err)
 	}
 	changeReadyReasonsRaw, err := json.Marshal(ticket.ChangeReadyReasons)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal change ready reasons: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal change ready reasons: %w", err)
 	}
 	permissionProfilesRaw, err := json.Marshal(ticket.PermissionProfiles)
 	if err != nil {
-		return "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal permission profiles: %w", err)
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal permission profiles: %w", err)
 	}
-	return string(labelsRaw), string(blockedByRaw), string(blocksRaw), string(acceptanceRaw), string(policyRaw), string(progressRaw), string(requiredCapabilitiesRaw), string(openGateIDsRaw), string(changeIDsRaw), string(changeReadyReasonsRaw), string(permissionProfilesRaw), nil
+	scheduleRaw, err := json.Marshal(ticket.Schedule)
+	if err != nil {
+		return "", "", "", "", "", "", "", "", "", "", "", "", fmt.Errorf("marshal schedule: %w", err)
+	}
+	return string(labelsRaw), string(blockedByRaw), string(blocksRaw), string(acceptanceRaw), string(policyRaw), string(progressRaw), string(requiredCapabilitiesRaw), string(openGateIDsRaw), string(changeIDsRaw), string(changeReadyReasonsRaw), string(permissionProfilesRaw), string(scheduleRaw), nil
 }
 
 func extractTicketSnapshots(payload any) []contracts.TicketSnapshot {

@@ -48,6 +48,7 @@ type ticketFrontmatter struct {
 	PermissionProfiles   []string                   `yaml:"permission_profiles,omitempty"`
 	Protected            bool                       `yaml:"protected,omitempty"`
 	Sensitive            bool                       `yaml:"sensitive,omitempty"`
+	Schedule             *contracts.TicketSchedule  `yaml:"schedule,omitempty"`
 }
 
 func EncodeTicketMarkdown(ticket contracts.TicketSnapshot) (string, error) {
@@ -91,6 +92,7 @@ func EncodeTicketMarkdown(ticket contracts.TicketSnapshot) (string, error) {
 		PermissionProfiles:   ticket.PermissionProfiles,
 		Protected:            ticket.Protected,
 		Sensitive:            ticket.Sensitive,
+		Schedule:             ticket.Schedule,
 	}
 	rawFM, err := yaml.Marshal(fm)
 	if err != nil {
@@ -185,6 +187,7 @@ func DecodeTicketMarkdown(doc string) (contracts.TicketSnapshot, error) {
 		PermissionProfiles:   fm.PermissionProfiles,
 		Protected:            fm.Protected,
 		Sensitive:            fm.Sensitive,
+		Schedule:             fm.Schedule,
 		Summary:              summary,
 		Description:          description,
 		AcceptanceCriteria:   acceptance,

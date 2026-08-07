@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -27,6 +28,8 @@ func ToolSpecs() []ToolSpec {
 		readTool("atlas.ticket.view", "Read one ticket detail view.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID.")}), "QueryService.TicketDetail", ticketViewTool),
 		readTool("atlas.ticket.history", "Read ticket event history.", readProfiles, objectSchema([]string{"ticket_id"}, mergeProps(commonReadProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "QueryService.History", ticketHistoryTool),
 		readTool("atlas.ticket.inspect", "Inspect a ticket, policy, links, and git context.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID."), "actor": stringProp("Optional actor for policy context.")}), "QueryService.InspectTicket", ticketInspectTool),
+		readTool("atlas.schedule.list", "Read one-time ticket schedules.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"project": stringProp("Optional project key."), "from": stringProp("Optional inclusive RFC3339 start."), "to": stringProp("Optional exclusive RFC3339 end.")})), "QueryService.Schedule", scheduleListTool),
+		readTool("atlas.schedule.history", "Read ticket completion history for a time range.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"project": stringProp("Optional project key."), "from": stringProp("Optional inclusive RFC3339 start."), "to": stringProp("Optional exclusive RFC3339 end.")})), "QueryService.CompletionHistory", scheduleHistoryTool),
 		readTool("atlas.dashboard", "Read the delivery dashboard summary.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_section", "Optional per-dashboard-section cursors keyed by section name."), map[string]any{"collaborator": stringProp("Optional collaborator filter.")})), "QueryService.Dashboard", dashboardTool),
 		readTool("atlas.timeline", "Read a ticket timeline.", readProfiles, objectSchema([]string{"ticket_id"}, mergeProps(commonReadProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "collaborator": stringProp("Optional collaborator filter.")})), "QueryService.Timeline", timelineTool),
 		readTool("atlas.run.view", "Read one run detail view.", readProfiles, objectSchema([]string{"run_id"}, map[string]any{"run_id": stringProp("Run ID.")}), "QueryService.RunDetail", runViewTool),
@@ -55,6 +58,8 @@ func ToolSpecs() []ToolSpec {
 		writeTool("atlas.ticket.claim", ClassWorkflow, workflowProfiles, false, "Claim a ticket lease.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.ClaimTicket", "ticket_id", ticketClaimTool),
 		writeTool("atlas.ticket.release", ClassWorkflow, workflowProfiles, false, "Release a ticket lease.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.ReleaseTicket", "ticket_id", ticketReleaseTool),
 		writeTool("atlas.ticket.move", ClassWorkflow, workflowProfiles, false, "Move a ticket among non-terminal workflow statuses.", objectSchema([]string{"ticket_id", "status", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "status": stringProp("Target status."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.MoveTicket", "ticket_id", ticketMoveTool),
+		writeTool("atlas.schedule.set", ClassWorkflow, workflowProfiles, false, "Set or replace a one-time ticket schedule.", objectSchema([]string{"ticket_id", "at", "runner", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "at": stringProp("RFC3339 schedule instant."), "runner": stringProp("Human or agent actor that will own the ticket.")})), "ActionService.SetTicketSchedule", "ticket_id", scheduleSetTool),
+		writeTool("atlas.schedule.clear", ClassWorkflow, workflowProfiles, false, "Remove a ticket schedule without changing its assignee.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.ClearTicketSchedule", "ticket_id", scheduleClearTool),
 		writeTool("atlas.ticket.request_review", ClassWorkflow, workflowProfiles, false, "Request review for a ticket.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "reviewer": stringProp("Optional reviewer actor."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.RequestReviewWithReviewer", "ticket_id", ticketRequestReviewTool),
 		writeTool("atlas.gate.approve", ClassWorkflow, workflowProfiles, false, "Approve a normal approval gate.", objectSchema([]string{"gate_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"gate_id": stringProp("Gate ID.")})), "ActionService.ApproveGate", "gate_id", gateApproveTool),
 		writeTool("atlas.gate.reject", ClassWorkflow, workflowProfiles, false, "Reject a normal approval gate.", objectSchema([]string{"gate_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"gate_id": stringProp("Gate ID.")})), "ActionService.RejectGate", "gate_id", gateRejectTool),
@@ -206,6 +211,31 @@ func ticketHistoryTool(tc ToolContext, args map[string]any) (any, error) {
 
 func ticketInspectTool(tc ToolContext, args map[string]any) (any, error) {
 	return tc.Server.Workspace.Queries.InspectTicket(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(stringArg(args, "actor")))
+}
+
+func scheduleListTool(tc ToolContext, args map[string]any) (any, error) {
+	query, err := scheduleQueryArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	view, err := tc.Server.Workspace.Queries.Schedule(tc.Context, query)
+	if err != nil {
+		return nil, err
+	}
+	page := paginateSlice(view.Entries, args, tc.Server.Options.MaxItems, tc.Server.Options.MaxItems)
+	return map[string]any{"schedule": page.Items, "generated_at": view.GeneratedAt, "total": page.Total, "next_cursor": page.NextCursor}, nil
+}
+
+func scheduleHistoryTool(tc ToolContext, args map[string]any) (any, error) {
+	query, err := scheduleQueryArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	items, err := tc.Server.Workspace.Queries.CompletionHistory(tc.Context, query)
+	if err != nil {
+		return nil, err
+	}
+	return paginateSlice(items, args, tc.Server.Options.MaxItems, tc.Server.Options.MaxItems), nil
 }
 
 func dashboardTool(tc ToolContext, args map[string]any) (any, error) {
@@ -379,6 +409,18 @@ func ticketMoveTool(tc ToolContext, args map[string]any) (any, error) {
 	return tc.Server.Workspace.Actions.MoveTicket(ctx, stringArg(args, "ticket_id"), status, contracts.Actor(tc.Actor), tc.Reason)
 }
 
+func scheduleSetTool(tc ToolContext, args map[string]any) (any, error) {
+	at, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(stringArg(args, "at")))
+	if err != nil {
+		return nil, apperr.New(apperr.CodeInvalidInput, "at must be an RFC3339 instant with a timezone")
+	}
+	return tc.Server.Workspace.Actions.SetTicketSchedule(tc.Context, stringArg(args, "ticket_id"), at, contracts.Actor(stringArg(args, "runner")), contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func scheduleClearTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Actions.ClearTicketSchedule(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(tc.Actor), tc.Reason)
+}
+
 func ticketRequestReviewTool(tc ToolContext, args map[string]any) (any, error) {
 	ctx, err := mcpContextWithDependencyOverride(tc, args)
 	if err != nil {
@@ -524,6 +566,22 @@ func stringSliceArg(args map[string]any, key string) []string {
 		}
 		return []string{text}
 	}
+}
+
+func scheduleQueryArgs(args map[string]any) (service.ScheduleQuery, error) {
+	query := service.ScheduleQuery{Project: strings.TrimSpace(stringArg(args, "project"))}
+	for key, target := range map[string]*time.Time{"from": &query.From, "to": &query.To} {
+		raw := strings.TrimSpace(stringArg(args, key))
+		if raw == "" {
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			return service.ScheduleQuery{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s must be an RFC3339 instant with a timezone", key))
+		}
+		*target = parsed.UTC()
+	}
+	return query, nil
 }
 
 func paginateBoard(view service.BoardViewModel, args map[string]any, maxItems int) map[string]any {

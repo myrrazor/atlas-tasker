@@ -54,3 +54,25 @@ func TestNormalizeEventBackfillsStableLegacyEventUIDAfterSchemaHydration(t *test
 		t.Fatalf("expected normalized event uid to match canonical legacy digest, got %q want %q", event.EventUID, LegacyEventUID(event))
 	}
 }
+
+func TestScheduleEventTypesValidate(t *testing.T) {
+	for _, eventType := range []EventType{
+		EventTicketScheduleSet,
+		EventTicketScheduleCleared,
+		EventTicketScheduleTriggered,
+		EventTicketScheduleFailed,
+	} {
+		event := Event{
+			EventID:       1,
+			Timestamp:     time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),
+			Actor:         Actor("human:owner"),
+			Type:          eventType,
+			Project:       "APP",
+			TicketID:      "APP-1",
+			SchemaVersion: CurrentSchemaVersion,
+		}
+		if err := event.Validate(); err != nil {
+			t.Fatalf("expected %s to validate: %v", eventType, err)
+		}
+	}
+}

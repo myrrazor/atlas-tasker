@@ -36,8 +36,14 @@ func TestInventoryProfilesGateHighImpactTools(t *testing.T) {
 	if !toolEnabled(read, "atlas.ticket.view") {
 		t.Fatalf("expected read profile to enable atlas.ticket.view")
 	}
+	if !toolEnabled(read, "atlas.schedule.list") || !toolEnabled(read, "atlas.schedule.history") {
+		t.Fatalf("expected read profile to expose schedule reads")
+	}
 	if toolEnabled(read, "atlas.ticket.comment") {
 		t.Fatalf("read profile must not enable workflow writes")
+	}
+	if toolEnabled(read, "atlas.schedule.set") {
+		t.Fatalf("read profile must not enable schedule writes")
 	}
 	if toolEnabled(read, "atlas.change.merge") {
 		t.Fatalf("read profile must not enable high-impact writes")
@@ -54,6 +60,65 @@ func TestInventoryProfilesGateHighImpactTools(t *testing.T) {
 	}
 	if !toolProviderSideEffect(danger, "atlas.import.preview") {
 		t.Fatalf("import preview writes an import job and must be marked as a live side effect")
+	}
+}
+
+func TestScheduleToolsSetListAndClear(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 8, 7, 15, 0, 0, 0, time.UTC)
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	workspace, err := OpenWorkspace(root, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("open workspace: %v", err)
+	}
+	defer workspace.Close()
+	ctx := context.Background()
+	if err := workspace.Actions.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket, err := workspace.Actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project: "APP", Title: "Schedule over MCP", Type: contracts.TicketTypeTask,
+		Status: contracts.StatusReady, Priority: contracts.PriorityMedium,
+		CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}, contracts.Actor("human:owner"), "seed")
+	if err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	workflow := NewServer(workspace, Options{Profile: ProfileWorkflow, Now: func() time.Time { return now }}.Normalized())
+	dueAt := now.Add(2 * time.Hour)
+	if _, err := workflow.CallTool(ctx, "atlas.schedule.set", map[string]any{
+		"ticket_id": ticket.ID,
+		"at":        dueAt.Format(time.RFC3339),
+		"runner":    "human:alex",
+		"actor":     "human:owner",
+		"reason":    "MCP reminder",
+	}); err != nil {
+		t.Fatalf("set schedule: %v", err)
+	}
+	read := NewServer(workspace, Options{Profile: ProfileRead, Now: func() time.Time { return now }}.Normalized())
+	payload, err := read.CallTool(ctx, "atlas.schedule.list", map[string]any{"project": "APP"})
+	if err != nil {
+		t.Fatalf("list schedule: %v", err)
+	}
+	body, ok := payload["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("schedule response missing payload: %#v", payload)
+	}
+	if total, ok := body["total"].(int); !ok || total != 1 {
+		t.Fatalf("unexpected schedule payload: %#v", payload)
+	}
+	if _, err := workflow.CallTool(ctx, "atlas.schedule.clear", map[string]any{
+		"ticket_id": ticket.ID,
+		"actor":     "human:owner",
+		"reason":    "remove reminder",
+	}); err != nil {
+		t.Fatalf("clear schedule: %v", err)
+	}
+	updated, err := workspace.Actions.Tickets.GetTicket(ctx, ticket.ID)
+	if err != nil || updated.Schedule != nil || updated.Assignee != contracts.Actor("human:alex") {
+		t.Fatalf("unexpected cleared ticket: %#v err=%v", updated, err)
 	}
 }
 
