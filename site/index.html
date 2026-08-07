@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Atlas Tasker — Jira for your terminal</title>
-  <meta name="description" content="Atlas Tasker is Jira for your terminal, built for AI coding agents: local-first Markdown and SQLite tickets with CLI, TUI, web board, and MCP." />
+  <title>Atlas Tasker: ticketing for you and your AI agents</title>
+  <meta name="description" content="Atlas Tasker is a lightweight local-first ticketing system: terminal tickets, a web kanban board, and MCP tools your AI coding agents can safely operate." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
@@ -17,25 +17,25 @@
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://atlas-tasker.vercel.app/" />
-  <meta property="og:title" content="Atlas Tasker — Jira for your terminal" />
-  <meta property="og:description" content="Local-first tickets, agent queues, evidence, and review gates. One binary. No account." />
+  <meta property="og:title" content="Atlas Tasker: ticketing for you and your AI agents" />
+  <meta property="og:description" content="Local-first tickets in your terminal and browser, with MCP tools for AI agents. One binary. No account." />
   <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="Atlas Tasker terminal task board with local-first tickets for coding agents" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Atlas Tasker — Jira for your terminal" />
-  <meta name="twitter:description" content="Local-first tickets, agent queues, evidence, and review gates. One binary. No account." />
+  <meta name="twitter:title" content="Atlas Tasker: ticketing for you and your AI agents" />
+  <meta name="twitter:description" content="Local-first tickets in your terminal and browser, with MCP tools for AI agents. One binary. No account." />
   <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
-  <meta name="twitter:image:alt" content="Atlas Tasker terminal task board with local-first tickets for coding agents" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Atlas Tasker",
-    "description": "Atlas Tasker is Jira for your terminal, built for AI coding agents: local-first Markdown and SQLite tickets with CLI, TUI, web board, and MCP.",
+    "description": "Atlas Tasker is a lightweight, local-first ticketing system with a terminal CLI, TUI, local web kanban board, and MCP tools built for AI coding agents.",
     "url": "https://atlas-tasker.vercel.app/",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Linux",
@@ -50,7 +50,7 @@
       "url": "https://mayurdarji.com"
     },
     "downloadUrl": "https://github.com/myrrazor/atlas-tasker/releases/latest",
-    "softwareHelp": "https://github.com/myrrazor/atlas-tasker/tree/main/docs",
+    "softwareHelp": "https://atlas-tasker.vercel.app/docs/",
     "license": "https://github.com/myrrazor/atlas-tasker/blob/main/LICENSE"
   }
   </script>
@@ -64,7 +64,7 @@
         "name": "What is Atlas Tasker?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your code repository. Humans and coding agents share tickets, dependencies, queues, evidence, review gates, and audit history without a hosted tracker."
+          "text": "Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your code repository. Humans plan on the web board or in the terminal, and AI coding agents work the same tickets through the CLI and MCP, with dependencies, evidence, review gates, and audit history."
         }
       },
       {
@@ -80,7 +80,7 @@
         "name": "Where is my data stored? Does it phone home?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Tickets are Markdown files in your repository. Changes are recorded in an append-only local event log, and SQLite provides a rebuildable query index. Atlas Tasker has no hosted mode, account system, or telemetry service."
+          "text": "Tickets are Markdown files in your repository, and changes are recorded in an append-only local event log. A small disposable index keeps queries fast and can be rebuilt at any time. Atlas Tasker has no hosted mode, account system, or telemetry service."
         }
       },
       {
@@ -96,7 +96,7 @@
         "name": "How do coding agents use it?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Run tracker mcp serve to expose typed tracker tools, or install the Codex and Claude integrations. Agents can read queues, claim tickets, dispatch runs, attach evidence, request review, acknowledge wake-ups, and hand off context."
+          "text": "Run tracker mcp serve to expose typed tracker tools over MCP, or let agents drive the CLI with --json output and stable exit codes. Agents can read queues, claim tickets, attach evidence, request review, and hand off context. The For agents page has setup for OpenClaw, Codex, and Claude Code."
         }
       },
       {
@@ -151,13 +151,13 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="/" aria-label="Atlas Tasker home">
-        <img src="atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+        <img src="atlas-tasker-wordmark.webp" width="640" height="108" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#workflow">Workflow</a>
+        <a href="cli.html">CLI</a>
+        <a href="mcp.html">For agents</a>
+        <a href="docs/">Docs</a>
         <a href="#install">Install</a>
-        <a href="#faq">FAQ</a>
       </div>
       <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
     </div>
@@ -166,12 +166,12 @@
   <main id="main">
     <header class="hero shell">
       <div class="hero-copy">
-        <p class="kicker">Jira for your terminal, built for AI coding agents.</p>
+        <p class="kicker">Terminal ticketing · Web dashboard · Built for AI agents</p>
         <h1>Keep the work <span>in the repo.</span></h1>
-        <p class="hero-lead">Tickets, dependencies, agent queues, evidence, and review gates. Plain Markdown underneath. A fast SQLite index on top.</p>
+        <p class="hero-lead">Atlas Tasker is a lightweight ticketing system that lives in your repository. Plan on a real kanban board in your browser, ship from the terminal, and hand tickets to AI agents that operate the same tracker through safe, typed tools.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="#install">Install Atlas Tasker</a>
-          <a class="button button-secondary" href="https://github.com/myrrazor/atlas-tasker">Read the source</a>
+          <a class="button button-secondary" href="mcp.html">Set up your agents</a>
         </div>
       </div>
 
@@ -189,20 +189,44 @@
       </aside>
     </header>
 
-    <section class="product-proof shell" aria-labelledby="proof-title">
-      <div class="section-heading proof-heading">
+    <section id="surfaces" class="surfaces-section shell" aria-labelledby="surfaces-title">
+      <div class="section-heading surfaces-heading">
         <p class="section-label">The actual product</p>
-        <h2 id="proof-title">Your board, without the browser tab.</h2>
-        <p>Open the full-screen TUI when you want the whole delivery loop under your fingertips.</p>
+        <h2 id="surfaces-title">A board in your browser. A board in your terminal.</h2>
+        <p>Same tickets, same rules, same audit trail. Use whichever front end fits the moment and switch whenever you like.</p>
       </div>
-      <figure class="terminal-shot">
-        <div class="terminal-bar">
-          <span class="terminal-title">tracker tui</span>
-          <span class="terminal-state">local · synced</span>
+      <div class="surfaces-grid">
+        <figure class="terminal-shot">
+          <div class="terminal-bar">
+            <span class="terminal-title">tracker web serve</span>
+            <span class="terminal-state">127.0.0.1 · local only</span>
+          </div>
+          <img src="assets/web-board.webp" width="2880" height="1800" loading="lazy" decoding="async" alt="Atlas Tasker web board with six workflow columns and a ticket drawer open on Overview, Activity, Policy/Gates, and Evidence tabs" />
+          <figcaption>The local web board: drag cards between columns, open a ticket drawer with activity, gates, and evidence, and search or filter without leaving the page.</figcaption>
+        </figure>
+        <div class="surface-stack">
+          <figure class="terminal-shot">
+            <div class="terminal-bar">
+              <span class="terminal-title">tracker tui</span>
+              <span class="terminal-state">local · synced</span>
+            </div>
+            <img src="assets/tui-board.webp" width="1200" height="330" loading="lazy" decoding="async" alt="Atlas Tasker TUI board showing ticket IDs, types, statuses, priorities, and titles" />
+            <figcaption>The terminal side: a scriptable CLI, a full-screen TUI, and a REPL-style shell for rapid ticket work.</figcaption>
+          </figure>
+          <figure class="terminal-shot">
+            <div class="terminal-bar">
+              <span class="terminal-title">tracker agent available builder-1</span>
+              <span class="terminal-state">agent queue</span>
+            </div>
+            <img src="assets/agent-queue.webp" width="1200" height="530" loading="lazy" decoding="async" alt="Atlas Tasker terminal agent queue showing ready and blocked tickets with reasons" />
+            <figcaption>Each agent gets a queue that explains what is ready and what is blocked, with the exact next commands.</figcaption>
+          </figure>
         </div>
-        <img src="assets/tui-board.webp" width="1200" height="330" loading="lazy" decoding="async" alt="Atlas Tasker TUI board showing ticket IDs, types, statuses, priorities, and titles" />
-        <figcaption>Real Atlas Tasker output. The same tickets are available through the CLI, TUI, local web board, and MCP.</figcaption>
-      </figure>
+      </div>
+      <div class="surfaces-agents">
+        <p><strong>And a third surface for your AI agents.</strong> Every command speaks JSON, and an MCP server exposes typed tracker tools to OpenClaw, Codex, Claude Code, and anything else that speaks MCP.</p>
+        <a class="button button-secondary" href="mcp.html">For AI agents</a>
+      </div>
     </section>
 
     <section id="workflow" class="workflow-section">
@@ -239,46 +263,47 @@
     <section id="features" class="features-section shell" aria-labelledby="features-title">
       <div class="section-heading features-heading">
         <p class="section-label">Built around the repository</p>
-        <h2 id="features-title">A tracker your coding agents can operate.</h2>
+        <h2 id="features-title">The ticketing system your AI agents can actually operate.</h2>
       </div>
 
       <article class="feature-row feature-agents">
         <div class="feature-copy">
-          <p class="feature-index">Agent orchestration</p>
-          <h3>MCP tools, queues, wake-ups, and handoffs.</h3>
-          <p>Agents can claim ready work, see exactly what blocks them, attach evidence to a run, and request the next gate. Typed approvals protect high-impact operations.</p>
-          <a class="text-link" href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/guides/mcp-for-agents.md">Read the MCP guide <span aria-hidden="true">→</span></a>
+          <p class="feature-index">Built for AI agents</p>
+          <h3>Queues, gates, and typed tools agents respect.</h3>
+          <p>Agents see exactly what is ready and why the rest is blocked, with stable reason codes instead of guesswork. Every write names an actor and a reason, review gates guard completion, and the MCP server exposes typed tools behind escalating permission profiles.</p>
+          <a class="text-link" href="mcp.html">Meet the agent surface <span aria-hidden="true">→</span></a>
         </div>
         <figure class="feature-shot">
-          <img src="assets/agent-queue.webp" width="1200" height="530" loading="lazy" decoding="async" alt="Atlas Tasker terminal agent queue showing ready and blocked tickets with reasons" />
-          <figcaption>Each agent gets a queue that explains what is ready and what is blocked.</figcaption>
+          <img src="assets/agent-queue.webp" width="1200" height="530" loading="lazy" decoding="async" alt="Atlas Tasker agent queue output listing ready work and blocked tickets with reason codes" />
+          <figcaption>tracker agent available answers with tickets, reasons, and suggested next commands.</figcaption>
         </figure>
       </article>
 
       <article class="feature-row feature-storage">
         <div class="feature-copy">
-          <p class="feature-index">Local-first storage</p>
-          <h3>Markdown is the record. SQLite is the speed.</h3>
-          <p>Tickets live under <code>projects/</code>, changes land in an append-only event log, and the query index can be rebuilt with <code>tracker doctor --repair</code>.</p>
+          <p class="feature-index">Lightweight by design</p>
+          <h3>Markdown is the record. Everything else is disposable.</h3>
+          <p>Tickets live under <code>projects/</code> as plain files you can open in any editor. Changes land in an append-only event log, a small local index keeps queries instant, and <code>tracker doctor --repair</code> rebuilds that index from the files whenever you want.</p>
         </div>
         <div class="repo-tree" aria-label="Atlas Tasker files in a repository">
           <div><span>├──</span> projects/APP/tickets/APP-42.md</div>
-          <div><span>├──</span> .tracker/events.jsonl</div>
-          <div><span>└──</span> .tracker/index.db <em>rebuildable</em></div>
+          <div><span>├──</span> .tracker/events/ <em>append-only</em></div>
+          <div><span>└──</span> .tracker/index.sqlite <em>disposable</em></div>
         </div>
       </article>
 
       <article class="feature-row feature-surfaces">
         <div class="feature-copy">
-          <p class="feature-index">CLI + TUI + local web board</p>
+          <p class="feature-index">CLI + TUI + web board + MCP</p>
           <h3>Pick the view. Keep the same tracker.</h3>
-          <p>Script with the CLI, work keyboard-first in the TUI, or start the optional Kanban board on <code>127.0.0.1</code>. There is no hosted mode, login system, or second database.</p>
+          <p>Script with the CLI, work keyboard-first in the TUI, or drag cards on the local kanban board bound to <code>127.0.0.1</code>. There is no hosted mode, login system, or background service. One binary does all of it.</p>
+          <a class="text-link" href="cli.html">Tour the CLI <span aria-hidden="true">→</span></a>
         </div>
         <div class="surface-list" aria-label="Atlas Tasker interfaces">
           <div><span>CLI</span><code>tracker board --project APP</code></div>
           <div><span>TUI</span><code>tracker tui</code></div>
           <div><span>WEB</span><code>tracker web serve --open</code></div>
-          <div><span>MCP</span><code>tracker mcp serve</code></div>
+          <div><span>MCP</span><code>tracker mcp serve --tool-profile read</code></div>
         </div>
       </article>
     </section>
@@ -350,7 +375,7 @@
               <code id="first-board" tabindex="0">tracker board</code>
               <button class="copy-button" type="button" data-copy="first-board" aria-label="Copy board command">Copy</button>
             </div>
-            <p class="requirements">Every write names an <code>--actor</code> and a <code>--reason</code> — that is the audit trail agents and reviewers read later. Prefer a browser? <code>tracker web serve</code> opens the same board as a local Kanban view.</p>
+            <p class="requirements">Every write names an <code>--actor</code> and a <code>--reason</code>. That pair is the audit trail agents and reviewers read later. Prefer a browser? <code>tracker web serve --open</code> puts the same board on a local kanban. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
           </div>
         </div>
       </div>
@@ -364,7 +389,7 @@
       <div class="faq-list">
         <details>
           <summary>What is Atlas Tasker?</summary>
-          <p>Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your code repository. Humans and coding agents share tickets, dependencies, queues, evidence, review gates, and audit history without a hosted tracker.</p>
+          <p>Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your code repository. Humans plan on the web board or in the terminal, and AI coding agents work the same tickets through the CLI and MCP, with dependencies, evidence, review gates, and audit history.</p>
         </details>
         <details>
           <summary>What does Atlas Tasker cost?</summary>
@@ -372,7 +397,7 @@
         </details>
         <details>
           <summary>Where is my data stored? Does it phone home?</summary>
-          <p>Tickets are Markdown files in your repository. Changes are recorded in an append-only local event log, and SQLite provides a rebuildable query index. Atlas Tasker has no hosted mode, account system, or telemetry service.</p>
+          <p>Tickets are Markdown files in your repository, and changes are recorded in an append-only local event log. A small disposable index keeps queries fast and can be rebuilt at any time. Atlas Tasker has no hosted mode, account system, or telemetry service.</p>
         </details>
         <details>
           <summary>What platforms does Atlas Tasker support?</summary>
@@ -380,7 +405,7 @@
         </details>
         <details>
           <summary>How do coding agents use it?</summary>
-          <p>Run tracker mcp serve to expose typed tracker tools, or install the Codex and Claude integrations. Agents can read queues, claim tickets, dispatch runs, attach evidence, request review, acknowledge wake-ups, and hand off context.</p>
+          <p>Run tracker mcp serve to expose typed tracker tools over MCP, or let agents drive the CLI with --json output and stable exit codes. Agents can read queues, claim tickets, attach evidence, request review, and hand off context. The <a href="mcp.html">For agents</a> page has setup for OpenClaw, Codex, and Claude Code.</p>
         </details>
         <details>
           <summary>How do I get support?</summary>
@@ -422,10 +447,12 @@
     <div class="shell footer-inner">
       <span>Atlas Tasker · MIT</span>
       <div class="footer-links">
-        <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">Docs</a>
-        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="docs/">Docs</a>
+        <a href="cli.html">CLI</a>
+        <a href="mcp.html">For agents</a>
         <a href="guide.html">Guide</a>
         <a href="changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
         <a href="privacy.html">Privacy</a>
         <a href="terms.html">Terms</a>
         <a href="https://github.com/myrrazor/atlas-tasker/blob/main/LICENSE">License</a>

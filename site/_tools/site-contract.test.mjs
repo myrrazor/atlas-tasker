@@ -7,6 +7,18 @@ import { SITE_ORIGIN } from "./sync-site-origin.mjs";
 const siteRoot = new URL("../", import.meta.url);
 const pageCanonicals = new Map([
   ["index.html", `${SITE_ORIGIN}/`],
+  ["cli.html", `${SITE_ORIGIN}/cli.html`],
+  ["mcp.html", `${SITE_ORIGIN}/mcp.html`],
+  ["docs/index.html", `${SITE_ORIGIN}/docs/`],
+  ["docs/getting-started.html", `${SITE_ORIGIN}/docs/getting-started.html`],
+  ["docs/tickets-and-workflow.html", `${SITE_ORIGIN}/docs/tickets-and-workflow.html`],
+  ["docs/views-and-search.html", `${SITE_ORIGIN}/docs/views-and-search.html`],
+  ["docs/web-board.html", `${SITE_ORIGIN}/docs/web-board.html`],
+  ["docs/agents-and-dispatch.html", `${SITE_ORIGIN}/docs/agents-and-dispatch.html`],
+  ["docs/mcp-setup.html", `${SITE_ORIGIN}/docs/mcp-setup.html`],
+  ["docs/mcp-security.html", `${SITE_ORIGIN}/docs/mcp-security.html`],
+  ["docs/json-and-exit-codes.html", `${SITE_ORIGIN}/docs/json-and-exit-codes.html`],
+  ["docs/faq.html", `${SITE_ORIGIN}/docs/faq.html`],
   ["changelog.html", `${SITE_ORIGIN}/changelog.html`],
   ["guide.html", `${SITE_ORIGIN}/guide.html`],
   ["privacy.html", `${SITE_ORIGIN}/privacy.html`],

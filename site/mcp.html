@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas Tasker for AI agents: MCP and JSON</title>
+  <meta name="description" content="Plug Atlas Tasker into OpenClaw, Codex, Claude Code, or any MCP client: 59 typed tools in four permission profiles, with human approval on the big red buttons." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/mcp.html" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/mcp.html" />
+  <meta property="og:title" content="Atlas Tasker for AI agents: MCP and JSON" />
+  <meta property="og:description" content="59 typed MCP tools in four permission profiles, plus a JSON CLI. The ticketing system your AI agents can actually operate." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Atlas Tasker for AI agents: MCP and JSON" />
+  <meta name="twitter:description" content="59 typed MCP tools in four permission profiles, plus a JSON CLI. The ticketing system your AI agents can actually operate." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Atlas Tasker for AI agents",
+    "description": "Plug Atlas Tasker into OpenClaw, Codex, Claude Code, or any MCP client: 59 typed tools in four permission profiles, with human approval on the big red buttons.",
+    "url": "https://atlas-tasker.vercel.app/mcp.html",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="./" aria-label="Atlas Tasker home">
+        <img src="atlas-tasker-wordmark.webp" width="640" height="108" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="cli.html">CLI</a>
+        <a href="mcp.html" aria-current="page">For agents</a>
+        <a href="docs/">Docs</a>
+        <a href="./#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <main id="main">
+    <header class="page-hero shell">
+      <p class="kicker">For AI agents</p>
+      <h1>Give every agent a real seat.</h1>
+      <p class="lead">Atlas Tasker is the ticketing system for your entire life and your AI agents. OpenClaw, Codex, Claude Code, Hermes: if it speaks MCP or can run a shell, it can read the board, claim work, attach evidence, and request review. Humans keep the approvals that matter.</p>
+      <div class="page-hero-actions">
+        <a class="button button-primary" href="#hookup">Connect your agent</a>
+        <a class="button button-secondary" href="docs/mcp-setup.html">MCP setup docs</a>
+      </div>
+    </header>
+
+    <section class="page-section shell" aria-labelledby="doors-title">
+      <div class="section-heading">
+        <p class="section-label">Two doors in</p>
+        <h2 id="doors-title">A JSON CLI and a typed MCP server.</h2>
+        <p class="section-note">Both doors call the same service layer, so neither is a second source of truth. Shell-capable agents get the full CLI. Clients without a shell get MCP.</p>
+      </div>
+      <ul class="fact-list">
+        <li>
+          <span class="fact-term">CLI + --json</span>
+          <p>Every command emits exactly one JSON document on stdout, errors go to stderr as JSON, and exit codes 0 through 7 are stable. Nothing prompts, ever. <a href="cli.html">The CLI page</a> has the contract.</p>
+        </li>
+        <li>
+          <span class="fact-term">MCP server</span>
+          <p><code>tracker mcp serve</code> exposes 59 typed tools over local stdio. No HTTP server, no remote clients, no shell strings built from tool input. Every mutation still runs Atlas permission checks, the write lock, and event metadata.</p>
+        </li>
+        <li>
+          <span class="fact-term">Self-describing</span>
+          <p>Every tool declares its <code>underlying_atlas_action</code> and a <code>json_schema_hash</code>, and calls are validated against the schema before they touch the tracker. Unknown arguments are rejected at the boundary.</p>
+        </li>
+        <li>
+          <span class="fact-term">Context budgets</span>
+          <p>Responses are capped by default at 128 KB, 50 items per list, and a rough 4,000-token estimate. Paged tools take <code>limit</code> and <code>cursor</code>, and oversized results come back truncated with a hint to narrow the call.</p>
+        </li>
+      </ul>
+    </section>
+
+    <section class="page-section shell" aria-labelledby="ladder-title">
+      <div class="section-heading">
+        <p class="section-label">Permission profiles</p>
+        <h2 id="ladder-title">59 tools on an escalating ladder.</h2>
+        <p class="section-note">Start the server with the smallest profile that does the job. Each rung adds tools on top of the previous one, and the dangerous rung stays invisible until a human turns two separate keys.</p>
+      </div>
+      <ol class="ladder">
+        <li>
+          <h3>read</h3>
+          <span class="ladder-count">32 tools · the default</span>
+          <p>Boards, queues, tickets, history, runs, evidence, handoffs, sync status, and every plan/dry-run tool. No writes at all.</p>
+        </li>
+        <li>
+          <h3>workflow</h3>
+          <span class="ladder-count">+11 tools · actor + reason required</span>
+          <p>Safe mutations: comment, claim, release, move, request review, approve or reject gates, checkpoints, evidence, handoffs, import preview.</p>
+        </li>
+        <li>
+          <h3>delivery</h3>
+          <span class="ladder-count">+4 tools · live side effects</span>
+          <p>Dispatch a run, create a change, and sync provider-backed change and check status into the tracker.</p>
+        </li>
+        <li class="ladder-danger">
+          <h3>admin</h3>
+          <span class="ladder-count">+12 tools · hidden by default</span>
+          <p>Merges, gate waivers, ticket completion, sync push and pull, imports, archive, compact, worktree cleanup. Requires the flag and a one-time human approval per call.</p>
+        </li>
+      </ol>
+      <p class="section-note ladder-note">Inspect what any profile actually exposes before you trust it: <code>tracker mcp tools --json --tool-profile read</code></p>
+    </section>
+
+    <section class="page-section shell" aria-labelledby="safety-title">
+      <div class="section-heading">
+        <p class="section-label">The safety model</p>
+        <h2 id="safety-title">Agents can do everything. Except quietly.</h2>
+        <p class="section-note">The point is not to keep agents out. It is to make every risky action explicit, attributable, and approved by a human before it lands.</p>
+      </div>
+      <ul class="fact-list">
+        <li>
+          <span class="fact-term">Hidden by default</span>
+          <p>High-impact tools are not just denied, they are invisible unless the server was started with <code>--dangerously-allow-high-impact-tools</code> and a profile that includes them. Agents cannot ask for what they cannot see.</p>
+        </li>
+        <li>
+          <span class="fact-term">One-time approvals</span>
+          <p>Each high-impact call needs an approval a human created outside MCP with <code>tracker mcp approve-operation</code>, scoped to one operation, one target, one actor, with a TTL. The call must echo the approval id and its exact <code>confirm_text</code>.</p>
+        </li>
+        <li>
+          <span class="fact-term">Single use</span>
+          <p>Approvals are consumed on execution and never replayed. Expired, mismatched, or already-used approvals fail closed, and Atlas rechecks normal policy immediately before running the action.</p>
+        </li>
+        <li>
+          <span class="fact-term">Attributed writes</span>
+          <p>Every mutation names an actor and a reason, which land in the append-only event log. When a ticket moved, you can always answer who, when, and why.</p>
+        </li>
+        <li>
+          <span class="fact-term">Audited denials</span>
+          <p>Denied high-impact attempts are recorded to a local security audit log under <code>.tracker/runtime/mcp/</code>, so a curious agent leaves a paper trail instead of a mystery.</p>
+        </li>
+        <li>
+          <span class="fact-term">Boring config</span>
+          <p>Local stdio only, pinned to an absolute binary path. No <code>sh -c</code>, no <code>npx</code>, no curl pipes, no config snippets from untrusted repos. <a href="docs/mcp-security.html">The security docs</a> spell out the rules.</p>
+        </li>
+      </ul>
+    </section>
+
+    <section id="hookup" class="page-section shell" aria-labelledby="hookup-title">
+      <div class="section-heading">
+        <p class="section-label">Hook it up</p>
+        <h2 id="hookup-title">Three clients, one line each.</h2>
+        <p class="section-note">Use an absolute path to the <code>tracker</code> binary, and always pin <code>--workspace</code> for user-scoped or global registrations. The client picks the working directory, not you, and <code>--workspace</code> is what stops the server from answering against the wrong repo.</p>
+      </div>
+      <div class="code-block">
+        <div class="snippet-title"><span>Claude Code · user scope</span><button class="copy-button" type="button" data-copy="snippet-claude" aria-label="Copy Claude Code setup command">Copy</button></div>
+        <pre id="snippet-claude">claude mcp add --transport stdio --scope user atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/repo --tool-profile read</pre>
+      </div>
+      <div class="code-block">
+        <div class="snippet-title"><span>Codex</span><button class="copy-button" type="button" data-copy="snippet-codex" aria-label="Copy Codex setup command">Copy</button></div>
+        <pre id="snippet-codex">codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/repo --tool-profile read</pre>
+      </div>
+      <div class="code-block">
+        <div class="snippet-title"><span>OpenClaw · --cwd pins the directory</span><button class="copy-button" type="button" data-copy="snippet-openclaw" aria-label="Copy OpenClaw setup command">Copy</button></div>
+        <pre id="snippet-openclaw">openclaw mcp add atlas --command /usr/local/bin/tracker --arg mcp --arg serve --cwd /path/to/repo</pre>
+      </div>
+      <p class="section-note">Other MCP clients follow the same shape: absolute binary, <code>mcp serve</code>, a pinned workspace, and the <code>read</code> profile until a human asks for writes.</p>
+    </section>
+
+    <section class="page-section shell" aria-labelledby="skill-title">
+      <div class="section-heading">
+        <p class="section-label">Teach the loop</p>
+        <h2 id="skill-title">One installer writes the playbook.</h2>
+        <p class="section-note">Agents work best when the workflow is written down where they read. Atlas ships an installer that drops an <code>atlas-worker</code> skill and instruction block into the right place for each runtime.</p>
+      </div>
+      <div class="code-block">
+        <div class="snippet-title"><span>pick your runtime</span><button class="copy-button" type="button" data-copy="snippet-integrations" aria-label="Copy integrations install command">Copy</button></div>
+        <pre id="snippet-integrations">tracker integrations install claude     <span class="c"># .claude/skills/</span>
+tracker integrations install codex      <span class="c"># .codex/skills/</span>
+tracker integrations install openclaw   <span class="c"># .agents/skills/</span>
+tracker integrations install generic    <span class="c"># .tracker/integrations/</span></pre>
+      </div>
+      <p class="section-note">Re-running is safe. Only the Atlas-managed block between markers changes, and whole-file replacement is opt-in behind <code>--force</code>.</p>
+      <ul class="fact-list">
+        <li>
+          <span class="fact-term">The working loop</span>
+          <p>Ask <code>tracker agent available &lt;id&gt; --json</code> for what is ready. Claim it, move it to in progress, comment as you go, request review when done. A reviewer approves and completes. Every step is one command.</p>
+        </li>
+        <li>
+          <span class="fact-term">Suggested commands</span>
+          <p>The queue does the thinking: each available item includes <code>suggested_commands</code>, the exact claim-and-move invocations for that agent, ready to execute verbatim.</p>
+        </li>
+        <li>
+          <span class="fact-term">Reason codes</span>
+          <p>When nothing is available, <code>tracker agent pending</code> says why with stable codes: <code>dependency_blocked</code>, <code>waiting_for_review</code>, <code>waiting_for_owner</code>, <code>not_ready_status</code>, <code>claimed_by_other</code>, <code>policy_blocked</code>, <code>agent_at_capacity</code>, <code>missing_capability</code>. No guessing, no polling loops that spiral.</p>
+        </li>
+        <li>
+          <span class="fact-term">Wrong moves fail fast</span>
+          <p>Illegal status transitions exit 4. Claiming a ticket someone else holds exits 4. That is the workflow enforcing itself, and the agent simply picks the next available item.</p>
+        </li>
+      </ul>
+      <div class="code-block">
+        <div class="snippet-title"><span>tracker agent available builder-1 --json</span><button class="copy-button" type="button" data-copy="snippet-available" aria-label="Copy agent available output">Copy</button></div>
+        <pre id="snippet-available">{
+  "format_version": "v1",
+  "kind": "agent_work",
+  "payload": {
+    "actor": "agent:builder-1",
+    "available": [
+      {
+        "action": "start",
+        "reason": "ready for this agent",
+        "suggested_commands": [
+          "tracker ticket claim APP-12 --actor agent:builder-1 --reason \"start work\"",
+          "tracker ticket move APP-12 in_progress --actor agent:builder-1 --reason \"start work\""
+        ],
+        "ticket": { "id": "APP-12", "status": "ready" }
+      }
+    ]
+  }
+}</pre>
+      </div>
+    </section>
+
+    <section class="page-section shell" aria-labelledby="humans-title">
+      <div class="section-heading">
+        <p class="section-label">One boundary</p>
+        <h2 id="humans-title">The web board is for humans.</h2>
+        <p class="section-note">The browser board mints a random session token per process and never persists it. There is no API key and no headless mode, on purpose. Agents get the CLI and MCP, which are better interfaces for them anyway. Point people at the board and agents at the tools, and everyone works the same tickets.</p>
+      </div>
+      <div class="support-actions" style="justify-content: flex-start">
+        <a class="button button-primary" href="docs/agents-and-dispatch.html">Agent workflow docs</a>
+        <a class="button button-secondary" href="docs/mcp-security.html">MCP security model</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="./">Home</a>
+        <a href="docs/">Docs</a>
+        <a href="cli.html">CLI</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

@@ -8,6 +8,18 @@ const siteRoot = fileURLToPath(new URL("../", import.meta.url));
 /** Static outputs whose absolute site origin must stay in sync. */
 export const SITE_FILES = Object.freeze([
   "index.html",
+  "cli.html",
+  "mcp.html",
+  "docs/index.html",
+  "docs/getting-started.html",
+  "docs/tickets-and-workflow.html",
+  "docs/views-and-search.html",
+  "docs/web-board.html",
+  "docs/agents-and-dispatch.html",
+  "docs/mcp-setup.html",
+  "docs/mcp-security.html",
+  "docs/json-and-exit-codes.html",
+  "docs/faq.html",
   "changelog.html",
   "guide.html",
   "privacy.html",

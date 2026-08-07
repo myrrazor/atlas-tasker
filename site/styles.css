@@ -921,6 +921,7 @@ figcaption {
 
 .legal-content code {
   color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 .legal-launch-note {
@@ -954,6 +955,411 @@ figcaption {
 .copy-status:not(:empty) {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* --- surfaces: web board + terminal, side by side --- */
+
+.surfaces-section {
+  padding-block: 88px 96px;
+  border-top: 1px solid var(--line);
+}
+
+.surfaces-heading {
+  display: grid;
+  padding-bottom: 56px;
+  align-items: end;
+  grid-template-columns: 0.35fr 0.65fr;
+  gap: 64px;
+}
+
+.surfaces-heading h2 {
+  margin-top: 0;
+}
+
+.surfaces-grid {
+  display: grid;
+  align-items: start;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+  gap: 28px;
+}
+
+.surface-stack {
+  display: grid;
+  gap: 28px;
+}
+
+.surfaces-agents {
+  display: flex;
+  margin-top: 34px;
+  padding: 22px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--surface-1);
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.surfaces-agents p {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.95rem;
+}
+
+.surfaces-agents strong {
+  color: var(--text);
+}
+
+/* --- subpage hero (cli, mcp, docs landing) --- */
+
+.page-hero {
+  padding-block: 92px 64px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.page-hero h1 {
+  max-width: 17ch;
+  margin: 20px 0 0;
+  font-size: clamp(2.6rem, 5vw, 3.9rem);
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.page-hero .lead {
+  max-width: 660px;
+  margin: 26px 0 0;
+  color: var(--text-2);
+  font-size: 1.12rem;
+  line-height: 1.65;
+}
+
+.page-hero .lead code,
+.page-section p code,
+.page-section li code {
+  color: var(--text);
+}
+
+.page-hero-actions {
+  display: flex;
+  margin-top: 32px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.page-section {
+  padding-block: 72px;
+}
+
+.page-section + .page-section {
+  border-top: 1px solid var(--line);
+}
+
+.page-section > .section-heading {
+  padding-bottom: 44px;
+}
+
+.page-section .section-heading h2 {
+  max-width: 24ch;
+}
+
+.section-note {
+  max-width: var(--prose);
+  margin: 18px 0 0;
+  color: var(--text-2);
+}
+
+/* command group cards on the CLI page */
+
+.cmd-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cmd-group {
+  padding: 22px 22px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface-1);
+}
+
+.cmd-group h3 {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.cmd-group .cmd-count {
+  float: right;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+}
+
+.cmd-group p {
+  margin: 10px 0 0;
+  color: var(--text-2);
+  font-size: 0.88rem;
+}
+
+.cmd-chips {
+  display: flex;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cmd-chips code {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 0.72rem;
+}
+
+/* terminal-style code blocks used on subpages */
+
+.code-block {
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: #111114;
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 20px 22px;
+  overflow-x: auto;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.7;
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.code-block pre .c {
+  color: var(--text-3);
+}
+
+.code-block pre .p {
+  color: var(--accent);
+}
+
+.code-block + .code-block,
+.code-block + .section-note,
+.section-note + .code-block {
+  margin-top: 18px;
+}
+
+.snippet-title {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.snippet-title .copy-button {
+  min-height: 30px;
+  padding-inline: 10px;
+}
+
+/* profile ladder on the MCP page */
+
+.ladder {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  counter-reset: rung;
+}
+
+.ladder li {
+  position: relative;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface-1);
+  list-style: none;
+  counter-increment: rung;
+}
+
+.ladder li::before {
+  color: var(--text-3);
+  content: "0" counter(rung);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+
+.ladder li.ladder-danger {
+  border-color: rgba(240, 138, 118, 0.35);
+}
+
+.ladder h3 {
+  margin: 12px 0 0;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.ladder .ladder-count {
+  display: block;
+  margin-top: 4px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.ladder li.ladder-danger .ladder-count {
+  color: #f08a76;
+}
+
+.ladder p {
+  margin: 12px 0 0;
+  color: var(--text-2);
+  font-size: 0.86rem;
+}
+
+.ladder-note {
+  margin-top: 18px;
+}
+
+/* small data tables (exit codes, tool classes) */
+
+.data-table {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+}
+
+.data-table th,
+.data-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.88rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  background: var(--surface-1);
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.data-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table td:first-child {
+  white-space: nowrap;
+}
+
+.data-table code {
+  color: var(--text);
+}
+
+.data-table td {
+  color: var(--text-2);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* checklist rows reused on subpages */
+
+.fact-list {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line-strong);
+  list-style: none;
+}
+
+.fact-list li {
+  display: grid;
+  padding: 18px 4px;
+  border-bottom: 1px solid var(--line);
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 24px;
+}
+
+.fact-list .fact-term {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fact-list p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.93rem;
+}
+
+.fact-list p code {
+  color: var(--text);
+}
+
+@media (max-width: 940px) {
+  .surfaces-heading {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+
+  .surfaces-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cmd-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ladder {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .surfaces-section,
+  .page-section {
+    padding-block: 64px;
+  }
+
+  .page-hero {
+    padding-block: 60px 48px;
+  }
+
+  .cmd-groups,
+  .ladder {
+    grid-template-columns: 1fr;
+  }
+
+  .fact-list li {
+    padding: 16px 0;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
 }
 
 @media (max-width: 940px) {
