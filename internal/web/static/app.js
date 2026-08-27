@@ -384,7 +384,6 @@
           setupTabs();
           setupDrawerMotion(false);
         }
-        if (message) showFlash(message, isError);
         return;
       } catch (err) {
         if (attempt < 5) {
