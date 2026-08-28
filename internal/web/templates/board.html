@@ -184,7 +184,7 @@
 <section class="tab-panel {{if eq $activeTab "overview"}}active{{end}}" id="tab-overview">
   <h2>{{t "board.section.description"}}</h2>
   <pre class="prose">{{if $d.Ticket.Description}}{{$d.Ticket.Description}}{{else}}{{t "board.section.no_description"}}{{end}}</pre>
-  <h2>{{t "board.section.acceptance"}} <span>{{len $d.Ticket.AcceptanceCriteria}}</span></h2>
+  <h2>{{t "board.section.acceptance"}}{{if $d.Ticket.AcceptanceCriteria}} <span>{{len $d.Ticket.AcceptanceCriteria}}</span>{{end}}</h2>
   <ul class="check-list">
     {{range $d.Ticket.AcceptanceCriteria}}<li>{{.}}</li>{{else}}<li>{{t "board.section.no_acceptance"}}</li>{{end}}
   </ul>
@@ -199,7 +199,7 @@
     </div>
     {{if $d.Ticket.Schedule}}
       <p class="ticket-schedule-status">
-        <strong>{{$d.Ticket.Assignee}}</strong>
+        <strong>{{$d.Ticket.Assignee}}</strong> ·
         {{if $d.Ticket.Schedule.Error}}<span class="danger">Failed</span>{{else if not $d.Ticket.Schedule.TriggeredAt.IsZero}}<span class="active">Triggered</span>{{else}}<span>Scheduled</span>{{end}}
         · {{$.LocationName}}
       </p>

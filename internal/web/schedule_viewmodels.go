@@ -208,7 +208,7 @@ func (s *Server) scheduleHours(selected time.Time, entries []service.ScheduleEnt
 	for hour := firstHour; hour <= lastHour; hour++ {
 		at := time.Date(selected.Year(), selected.Month(), selected.Day(), hour, 0, 0, 0, s.cfg.Location)
 		hours = append(hours, ScheduleHour{
-			Label:   at.Format("3 PM"),
+			Label:   at.Format("15:04"),
 			ID:      fmt.Sprintf("hour-%02d", hour),
 			Current: sameScheduleDate(selected, now) && now.Hour() == hour,
 			Entries: grouped[hour],
@@ -237,7 +237,7 @@ func (s *Server) scheduleCard(entry service.ScheduleEntry, project string, expli
 	}
 	return ScheduleCard{
 		Entry:       entry,
-		Time:        local.Format("3:04 PM"),
+		Time:        local.Format("15:04"),
 		AtRFC3339:   entry.Ticket.Schedule.At.UTC().Format(time.RFC3339),
 		RunnerLabel: string(entry.Runner),
 		RunnerMeta:  runnerMeta,
@@ -253,7 +253,7 @@ func (s *Server) scheduleHistory(entries []service.CompletionEntry, project stri
 		local := entry.CompletedAt.In(s.cfg.Location)
 		items = append(items, ScheduleHistoryItem{
 			Entry:     entry,
-			Time:      local.Format("3:04 PM"),
+			Time:      local.Format("15:04"),
 			Day:       local.Format("Mon, Jan 2"),
 			TicketURL: boardTicketURL(entry.Ticket.ID, project, explicit),
 		})

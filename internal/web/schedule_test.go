@@ -102,7 +102,7 @@ func TestScheduleSetUsesLocalTimezoneAndPreservesRejectedForm(t *testing.T) {
 		t.Fatalf("schedule = %#v, want %s", ticket.Schedule, wantUTC)
 	}
 	board := h.doAuthed(t, http.MethodGet, "/board?ticket="+h.ticketID+"&project=WEB", "", nil)
-	for _, wanted := range []string{"Tue, Jun 16 at 9:30 AM", "Clear schedule", "America/New_York"} {
+	for _, wanted := range []string{"Tue, Jun 16 · 09:30", "Clear schedule", "America/New_York"} {
 		if !strings.Contains(board.body, wanted) {
 			t.Fatalf("ticket drawer missing schedule value %q:\n%s", wanted, board.body)
 		}

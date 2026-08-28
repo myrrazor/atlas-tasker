@@ -462,7 +462,7 @@ func (s *Server) ticketDetail(ctx context.Context, ticketID string) (TicketDetai
 	if view.Ticket.Schedule != nil {
 		local := view.Ticket.Schedule.At.In(s.cfg.Location)
 		detail.ScheduleAtInput = local.Format("2006-01-02T15:04")
-		detail.ScheduleAtLabel = local.Format("Mon, Jan 2 at 3:04 PM")
+		detail.ScheduleAtLabel = local.Format("Mon, Jan 2 · 15:04")
 	}
 	return detail, nil
 }
