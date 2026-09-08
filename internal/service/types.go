@@ -27,6 +27,7 @@ type QueueCategory string
 
 const (
 	QueueReadyForMe       QueueCategory = "ready_for_me"
+	QueueUnblockedForMe   QueueCategory = "unblocked_for_me"
 	QueueClaimedByMe      QueueCategory = "claimed_by_me"
 	QueueBlockedForMe     QueueCategory = "blocked_for_me"
 	QueueNeedsReview      QueueCategory = "needs_review"

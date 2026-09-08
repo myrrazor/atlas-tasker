@@ -703,3 +703,22 @@ func gitMustRun(t *testing.T, root string, args ...string) {
 		t.Fatalf("git %v failed: %v\n%s", args, err, string(out))
 	}
 }
+
+func TestQueueItemsKeepUnblockedBetweenReadyAndClaimed(t *testing.T) {
+	// the category list here is hand-maintained; a category missing from it
+	// silently vanishes from the TUI
+	queue := service.QueueView{
+		Categories: map[service.QueueCategory][]service.QueueEntry{
+			service.QueueClaimedByMe:    {{Ticket: contracts.TicketSnapshot{ID: "APP-3"}}},
+			service.QueueUnblockedForMe: {{Ticket: contracts.TicketSnapshot{ID: "APP-2"}}},
+			service.QueueReadyForMe:     {{Ticket: contracts.TicketSnapshot{ID: "APP-1"}}},
+		},
+	}
+	ids := make([]string, 0, 3)
+	for _, item := range queueItems(queue) {
+		ids = append(ids, item.ID)
+	}
+	if strings.Join(ids, ",") != "APP-1,APP-2,APP-3" {
+		t.Fatalf("expected ready, unblocked, claimed in that order, got %v", ids)
+	}
+}

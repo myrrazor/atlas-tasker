@@ -703,6 +703,38 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 8. **Revisit Trigger:** The don'ts list stops matching real agent failures, or the web board grows a non-interactive auth path.
 9. **Affected PRs/Files:** `AGENTS.md`, `CLAUDE.md`, `docs/v1-agents-archive.md`, `README.md`, `docs/README.md`.
 
+## DEC-049
+
+1. **Decision ID:** DEC-049
+2. **Date:** 2026-09-01
+3. **Question:** When the last blocker of a dependent ticket reaches `done`, should Atlas promote the dependent to `ready` itself, or keep promotion as the woken agent's first move?
+4. **Options Considered:**
+   - Keep the wakeup-only behavior and rely on the agent to promote the ticket.
+   - Promote the dependent automatically when its last blocker completes.
+   - Leave status alone but make the queues show unblocked backlog tickets.
+5. **Chosen Option:** Both. Atlas promotes an agent-assigned `backlog` dependent to `ready` under the system actor `agent:atlas`, with an audited reason naming the completed blocker and who completed it, as a best-effort step after the completion commits — and `queue`/`next` gain an `unblocked_for_me` category while `agent available` reports a `promote` action, so human-assigned and unassigned dependents surface without being moved.
+6. **Why We Chose It:** The wakeup pointed at a ticket no query would show. `agent.work_available` fired, the notifier printed it, and then `tracker next`, `agent available`, and `queue` all came back empty for the woken agent, because every one of them keyed on persisted status `ready` and the dependent was still `backlog`. Telling the agent "promoting is your first move" in a code comment does nothing when its own tooling never hands it the ticket. Promotion alone would have fixed the agent case and left humans in the same hole; the read-path change alone would have left agents doing a status dance on every wakeup. Doing both keeps the audit trail honest (`agent:atlas`, not the human who completed the blocker, moves the dependent) and keeps human backlog grooming manual. Plain backlog that never had blockers is deliberately excluded from the new category so the whole backlog does not pour into every agent's `next`, and a hand-set `blocked` status is never overridden. Nesting the promotion inside the completion's post-commit hook exposed a latent journal weakness: a write that dies after its canonical file keeps its event id, and the very next write (here, the wakeup) used to overwrite its journal entry, so `journal.Begin` now refuses a pending entry and points at `doctor --repair` instead of letting the half-applied move vanish.
+7. **Confidence:** high
+8. **Revisit Trigger:** A workspace that needs backlog grooming to stay manual even for agent-assigned tickets; that would need a config switch rather than a code comment.
+9. **Affected PRs/Files:** `internal/service/agent_wakeup.go`, `internal/service/journal.go`, `internal/service/agent_work.go`, `internal/service/query.go`, `internal/service/types.go`, `internal/cli/root.go`, `internal/tui/app.go`, `internal/integrations/agent_skill.go`, `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/v1.9-agent-workflow.md`, `docs/command-reference.md`, `docs/KNOWN_LIMITATIONS.md`, `site/mcp.html`, `site/changelog.html`, `site/docs/agents-and-dispatch.html`, `site/docs/json-and-exit-codes.html`, `site/docs/views-and-search.html`.
+
+## DEC-050
+
+Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. The count-based on-open policy remains; DEC-052 records why live readers require a different commit strategy.
+
+1. **Decision ID:** DEC-050
+2. **Date:** 2026-09-01
+3. **Question:** When the derived SQLite index is missing or stale relative to the markdown and event log, should a command error, warn, or rebuild it on its own?
+4. **Options Considered:**
+   - Loud error everywhere: any fingerprint mismatch is `repair_needed` (exit 7) until the operator runs `doctor --repair`.
+   - Leave it as it was: `CREATE TABLE IF NOT EXISTS` on open, an empty or behind index answers as if it were the truth, and only a byte-corrupt file is detected.
+   - Self-heal on open, with `doctor` as the honest reporter: rebuild under the write lock when the stamped fingerprint disagrees with the sources, print one notice, and have read-only `doctor` report drift as exit 7 instead of `ok`.
+5. **Chosen Option:** Self-heal on open plus a single stderr notice; `doctor` reports drift with both fingerprints; a byte-corrupt file stays loud everywhere except `reindex`, which removes and rebuilds it.
+6. **Why We Chose It:** A derived artifact that lies is worse than one that rebuilds. A deleted `index.sqlite` printed an empty board with exit 0, `ticket view` silently fell back to markdown so two surfaces disagreed, and `doctor` printed `doctor ok` from markdown counts it never compared to the projection. The fingerprint is deliberately just counts — event-log newline bytes plus ticket files — because a rebuild replays every event and then inserts only the tickets the projection is missing, so count and ID-set drift is exactly the drift a rebuild is guaranteed to clear, and every append grows one file by one line. A missing stamp is treated as the zero fingerprint, which makes a workspace fresh from `tracker init` read as fresh and an index from before the stamp existed rebuild once. The rebuild swaps files under `index.sqlite`, and reads take no lock today, so the check takes the workspace write lock and re-checks inside it. Corruption stays loud because a long-running server should never have a damaged file thrown away underneath it; `reindex` is the explicit way out and could not previously open the very file it exists to replace.
+7. **Confidence:** high
+8. **Revisit Trigger:** Workspaces large enough that a rebuild stops being a fraction of a second, or the per-command fingerprint stat over `.tracker/events/*.jsonl` and `projects/*/tickets/*.md` becomes visible in command latency.
+9. **Affected PRs/Files:** `internal/storage/fingerprint.go`, `internal/storage/sqlite/store.go`, `internal/service/projection_freshness.go`, `internal/cli/actions.go`, `internal/cli/execute.go`, `internal/cli/root.go`, `internal/mcp/workspace.go`, `internal/tui/app.go`, `docs/invariants.md`, `docs/guides/doctor-and-repair.md`, `docs/troubleshooting.md`, `docs/operator-manual.md`, `docs/json-contracts.md`, `docs/errors.md`, `README.md`, `AGENTS.md`, `site/cli.html`, `site/docs/json-and-exit-codes.html`, `site/docs/faq.html`, `CHANGELOG.md`.
+
 ## DEC-051
 
 1. **Decision ID:** DEC-051
@@ -715,6 +747,18 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 8. **Revisit Trigger:** A future explicitly approved remote web mode or shared integration installer requires a separate trust model.
 9. **Affected PRs/Files:** PRs #121, #122, #127; internal/service/workspace.go, internal/cli, internal/mcp/workspace.go, internal/tui/app.go, internal/web/listener.go, internal/integrations/install.go, AGENTS.md
 
+## DEC-052
+
+1. **Decision ID:** DEC-052
+2. **Date:** 2026-09-08
+3. **Question:** How can projection rebuilds and recovery preserve live readers and truthful freshness?
+4. **Options Considered:** Continue replacing the index file; reopen every live consumer on file changes; commit rebuilds in the existing SQLite database.
+5. **Chosen Option:** Commit full and project rebuilds, event application, and schema initialization in SQLite transactions. Use immediate write transactions and configure the driver busy timeout on every pooled connection. WAL setup uses the existing workspace lock wait and polling interval (five seconds and 50ms) because SQLite can bypass its busy handler during simultaneous conversion. Hold the canonical workspace lock before corrupt-index reset and through rebuilding. Read-only doctor reports pending journals as repair_needed. Advance an incremental source watermark only when it accounts for at most the next appended event; a complete replay can stamp the complete source count.
+6. **Why We Chose It:** This supersedes the file-swap portion of DEC-050 and V13-005: inode replacement stranded already-open MCP/web/TUI pools, and failed project rebuilds could erase rows. A later successful apply could also hide an earlier skipped event. Transactions preserve rollback and reader continuity. Counting projected rows is insufficient because imported duplicate source events can share projection IDs. The retained source-count policy reads complete event files and still does not detect same-count manual content edits; authoritative events remain necessary to recover edited state.
+7. **Confidence:** high
+8. **Revisit Trigger:** Measured event-log scan or replay latency requires a new watermark contract, or support is added for replacing a healthy database underneath a live process.
+9. **Affected PRs/Files:** PR #123; internal/storage/sqlite/store.go, internal/service/projection_freshness.go, internal/cli/root.go, internal/cli/actions.go, docs/storage-transaction-model.md, docs/v1.3-decision-log.md
+
 ## DEC-053
 
 1. **Decision ID:** DEC-053
@@ -726,6 +770,18 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** The supported platforms, release version, public output contracts, or required CI policy change.
 9. **Affected PRs/Files:** PRs #117, #121, #126; .github/workflows, scripts/check-workflow-security.sh, scripts/validate_rc.py, scripts/*release*.sh, scripts/validate-rc.sh, docs/release/public-release-gates.md
+
+## DEC-054
+
+1. **Decision ID:** DEC-054
+2. **Date:** 2026-09-08
+3. **Question:** May a reviewer promote another assignee's unblocked backlog ticket?
+4. **Options Considered:** Offer promotion to every relevant actor including reviewers; offer it only to the assigned worker, unassigned claimable work, or the owner.
+5. **Chosen Option:** Limit the new promote action to the ticket assignee, unassigned claimable work, and human:owner. Keep reviewer visibility and the existing in_review action. Preserve existing action authorization; this correction narrows the new work recommendation.
+6. **Why We Chose It:** Review showed that relevance through reviewer assignment could recommend a successful claim/start sequence on human-owned backlog work. DEC-049 keeps human backlog grooming manual. Denied policy, lease, disabled-agent, and missing-capability cases also need regression coverage proving no promotion event or wakeup occurs.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner introduces explicit reviewer authority to take over assigned backlog work.
+9. **Affected PRs/Files:** PR #123; internal/service/agent_work.go, internal/service/agent_work_test.go, internal/service/agent_wakeup_policy_test.go
 
 ## DEC-055
 

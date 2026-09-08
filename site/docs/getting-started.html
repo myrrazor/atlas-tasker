@@ -154,7 +154,7 @@ tracker web serve --open <span class="c"># local kanban in your browser</span></
 .tracker/events/                <span class="c"># append-only event log: who did what, when, why</span>
 .tracker/index.sqlite           <span class="c"># disposable query index. safe to delete</span></pre>
         </div>
-        <p>The Markdown files and the event log are the record. The index is a projection: if it is ever missing or wrong, <code>tracker doctor --repair</code> rebuilds it from the files. Do not edit <code>.tracker/</code> or ticket Markdown by hand; go through the CLI, web board, or MCP so the log, index, and lease state stay in agreement.</p>
+        <p>The Markdown files and the event log are the record. The index is a projection: if it is ever missing or behind, the next command rebuilds it from the files and says so once on stderr; <code>tracker doctor --repair</code> does the same on demand. Do not edit <code>.tracker/</code> or ticket Markdown by hand; go through the CLI, web board, or MCP so the log, index, and lease state stay in agreement.</p>
         <div class="docs-note">
           <p>Something looks off? <code>tracker doctor</code> audits the workspace and <code>tracker doctor --repair</code> fixes projection problems. It never destroys ticket Markdown or event history.</p>
         </div>

@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
@@ -279,5 +281,48 @@ func TestRepairWorkspaceDoesNotDuplicateReplayOnlyEvents(t *testing.T) {
 	}
 	if commentCount != 1 || reviewCount != 1 {
 		t.Fatalf("expected single replayed comment and review request, got %#v", history)
+	}
+}
+
+func TestJournalBeginRefusesToOverwritePendingEntry(t *testing.T) {
+	// a write that died between the canonical file and the event log leaves
+	// its entry behind. The next write gets the same event id (nothing landed),
+	// so reusing the file would quietly erase the only record doctor has of
+	// the half-applied one
+	root := t.TempDir()
+	now := time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC)
+	journal := MutationJournal{Root: root, Clock: func() time.Time { return now }}
+	moved := contracts.Event{
+		EventID:       2,
+		Timestamp:     now,
+		Actor:         contracts.ActorAtlasSystem,
+		Reason:        "unblocked: APP-1 completed by human:owner",
+		Type:          contracts.EventTicketMoved,
+		Project:       "APP",
+		TicketID:      "APP-2",
+		Payload:       map[string]any{"from": "backlog", "to": "ready"},
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	entry, err := journal.Begin("promote dependent", "ticket_snapshot", moved)
+	if err != nil {
+		t.Fatalf("begin promotion journal: %v", err)
+	}
+	if _, err := journal.Mark(entry, MutationStageCanonicalWritten, "event log unavailable"); err != nil {
+		t.Fatalf("mark canonical written: %v", err)
+	}
+
+	wakeup := moved
+	wakeup.Type = contracts.EventAgentWorkAvailable
+	wakeup.Reason = "dependency completed; assigned work is available"
+	wakeup.Payload = map[string]any{"wakeup": "w"}
+	if _, err := journal.Begin("agent work wakeup", "agent_wakeup", wakeup); apperr.CodeOf(err) != apperr.CodeRepairNeeded || !strings.Contains(err.Error(), "doctor --repair") {
+		t.Fatalf("expected repair_needed pointing at doctor --repair, got %v", err)
+	}
+	entries, err := journal.List()
+	if err != nil {
+		t.Fatalf("list journal: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Purpose != "promote dependent" || entries[0].Stage != MutationStageCanonicalWritten || entries[0].Event.Type != contracts.EventTicketMoved {
+		t.Fatalf("pending entry should survive untouched, got %#v", entries)
 	}
 }

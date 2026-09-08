@@ -81,6 +81,7 @@
           <li>Security: the web board is strictly loopback-only (the `--unsafe-host` escape hatch is gone — breaking), exports and backups fail closed on symlinked inputs, the CI and release workflows pin every action to a reviewed commit, and the toolchain moved to Go 1.26.6.</li>
           <li>Breaking: `tracker board --json` now returns `columns` (lowercase), and forbidden workflow transitions exit 4 in the CLI (previously 1) and 409 on the web.</li>
           <li>CLI first-run polish: running tracker outside an initialized workspace is a clear exit-2 error instead of silently scaffolding a stray `.tracker` (from a subdirectory the error names the workspace root), `invalid status` errors enumerate the legal values, and `tracker --help` walks `init` → `project create` → `ticket create` → `board`.</li>
+          <li>Wake-ups point at work you can see: when the last blocker of an agent-assigned ticket completes, Atlas promotes the dependent from `backlog` to `ready` (audited as `agent:atlas`) before waking the agent, and `queue`/`next` gain an `unblocked_for_me` category for backlog tickets whose blockers are all done but that nobody moved, while `agent available` reports a `promote` action for the unassigned (claimable) ones, or for the agent's own ticket when the automatic move failed. A write that dies after its canonical file no longer has its mutation journal overwritten by the next write; that write is refused with `repair_needed` until `tracker doctor --repair` replays it.</li>
         </ul>
       </section>
       <section class="shell">

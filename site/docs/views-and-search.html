@@ -114,8 +114,8 @@
               <tr><td><code>tracker board</code></td><td>The kanban, grouped by status. <code>--view</code> replays a saved board.</td></tr>
               <tr><td><code>tracker backlog</code></td><td>Everything not yet groomed to ready.</td></tr>
               <tr><td><code>tracker blocked</code></td><td>Tickets whose blockers are unresolved right now, derived from live status.</td></tr>
-              <tr><td><code>tracker next</code></td><td>The single best next ticket for an actor.</td></tr>
-              <tr><td><code>tracker queue</code></td><td>An actor's ordered work queue.</td></tr>
+              <tr><td><code>tracker next</code></td><td>The single best next ticket for an actor: ready work first, then backlog whose blockers are all done (<code>unblocked_for_me</code>), then the rest of the queue.</td></tr>
+              <tr><td><code>tracker queue</code></td><td>An actor's work queue grouped by category, printed in this order: <code>ready_for_me</code>, <code>unblocked_for_me</code> (backlog whose blockers are all done), <code>claimed_by_me</code>, <code>blocked_for_me</code>, <code>needs_review</code>, <code>awaiting_owner</code>, <code>stale_claims</code>, <code>policy_violations</code>. <code>--json</code> keys the same groups by name.</td></tr>
               <tr><td><code>tracker review-queue</code></td><td>What is waiting on review, per reviewer.</td></tr>
               <tr><td><code>tracker owner-queue</code></td><td>Decisions only a human owner can make.</td></tr>
               <tr><td><code>tracker who</code></td><td>Who holds what, across the workspace.</td></tr>

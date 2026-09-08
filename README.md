@@ -45,7 +45,7 @@ tracker board
 
 ![Kanban board in the terminal](docs/assets/board.png)
 
-Every ticket is a markdown file under `projects/`, every change is an append-only event in `.tracker/`, and a SQLite projection keeps queries instant. Your tracker ships with your repo: branch it, diff it, `git blame` a status change. If the index ever gets corrupted, `tracker doctor --repair` rebuilds it from the event log.
+Every ticket is a markdown file under `projects/`, every change is an append-only event in `.tracker/`, and a SQLite projection keeps queries instant. Your tracker ships with your repo: branch it, diff it, `git blame` a status change. If the index goes missing or falls behind, the next command rebuilds it from the files and says so once on stderr; if it ever gets corrupted, `tracker reindex` or `tracker doctor --repair` rebuilds it from the event log.
 
 Prefer a full-screen view? `tracker tui` opens the interactive console — board, work queues, ticket detail with timeline, search, review and owner queues, inbox, and an ops dashboard, all keyboard-driven.
 
@@ -80,7 +80,7 @@ Each agent has its own work queue — what's ready for it, what it has claimed, 
 
 ![Agent work queue](docs/assets/agent-queue.png)
 
-When `APP-1` lands, Atlas notices that `APP-2` just became unblocked and wakes the assigned agent: it emits an `agent.work_available` event, records a wakeup you can inspect with `tracker agent wakeups list`, and — if you've opted in — launches a command of your choosing, no shell involved:
+When `APP-1` lands, Atlas notices that `APP-2` just became unblocked, moves it from `backlog` to `ready` on the agent's behalf (audited as `agent:atlas`), and wakes the assigned agent: it emits an `agent.work_available` event, records a wakeup you can inspect with `tracker agent wakeups list`, and — if you've opted in — launches a command of your choosing, no shell involved:
 
 ```bash
 tracker agent auto set builder-1 --mode command \
@@ -154,7 +154,7 @@ Start at the [docs landing page](docs/README.md), or jump to [installation](docs
 
 ## Status
 
-`v1.10.0` is the latest tagged release, and what the installer and `go install ...@latest` give you. It is the first release with the local web UI (`tracker web serve`: welcome dashboard, Kanban board, schedule timeline, six languages), one-time ticket schedules (`tracker schedule`, with matching MCP tools), and the agent-facing round: `--json` on every command agents run, `tracker mcp serve --workspace`, and the OpenClaw integration target. It also lands a security batch: the web server is strictly loopback-only, exports and backups fail closed on symlinked inputs, and the CI and release workflows pin every action to a reviewed commit. [CHANGELOG.md](CHANGELOG.md) has the full list, breaking changes included.
+`v1.10.0` is the latest tagged release, and what the installer and `go install ...@latest` give you. It is the first release with the local web UI (`tracker web serve`: welcome dashboard, Kanban board, schedule timeline, six languages), one-time ticket schedules (`tracker schedule`, with matching MCP tools), and the agent-facing round: `--json` on every command agents run, `tracker mcp serve --workspace`, and the OpenClaw integration target. It also lands a security batch: the web server is strictly loopback-only, exports and backups fail closed on symlinked inputs, and the CI and release workflows pin every action to a reviewed commit. It also closes the two footguns an outside review found in v1.9.1: a missing or stale `index.sqlite` now rebuilds itself on the next command instead of rendering an empty board, and an agent-assigned ticket is promoted to `ready` the moment its last blocker completes. [CHANGELOG.md](CHANGELOG.md) has the full list, breaking changes included.
 
 `v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 
