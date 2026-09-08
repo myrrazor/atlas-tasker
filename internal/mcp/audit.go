@@ -28,7 +28,7 @@ func AppendSecurityAudit(root string, record SecurityAuditRecord) error {
 		record.Timestamp = time.Now().UTC()
 	}
 	dir := filepath.Join(storage.TrackerDir(root), "runtime", "mcp")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	raw, err := json.Marshal(record)

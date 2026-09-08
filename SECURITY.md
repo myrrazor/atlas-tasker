@@ -37,11 +37,13 @@ Atlas may claim:
 - signed audit packets
 - side-effect-safe restore planning
 - a strictly loopback-only local web board (non-loopback hosts are refused, sessions are per-process random tokens, mutations require CSRF, no CORS headers)
-- fail-closed rejection of symlinked inputs in exports, bundles, and backups
+- fail-closed rejection of symlinked inputs in exports, bundles, backups, archive restore/compact, and integration installs (workspace and OpenClaw `--global`)
 
 Atlas does not claim OS sandboxing, SaaS-grade identity proof, encrypted-at-rest storage, protection from malicious local filesystem users, formal DLP, full provider-rule enforcement, or full MCP client safety.
 
 ## Handling Sensitive Attachments
+
+Do not store credentials in ticket markdown or comments; prefer environment variables or a secret store. Soft CLI/MCP warnings may flag secret-like text, but they are not a control boundary.
 
 Before sharing output, redact:
 

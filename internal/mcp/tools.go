@@ -439,10 +439,15 @@ func worktreeCleanupPlanTool(tc ToolContext, args map[string]any) (any, error) {
 }
 
 func ticketCommentTool(tc ToolContext, args map[string]any) (any, error) {
-	if err := tc.Server.Workspace.Actions.CommentTicket(tc.Context, stringArg(args, "ticket_id"), stringArg(args, "body"), contracts.Actor(tc.Actor), tc.Reason); err != nil {
+	body := stringArg(args, "body")
+	if err := tc.Server.Workspace.Actions.CommentTicket(tc.Context, stringArg(args, "ticket_id"), body, contracts.Actor(tc.Actor), tc.Reason); err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true}, nil
+	out := map[string]any{"ok": true}
+	if findings := service.SecretLikeFindings(body); len(findings) > 0 {
+		out["warnings"] = []string{"secret_like_content:" + strings.Join(findings, ",")}
+	}
+	return out, nil
 }
 
 func ticketClaimTool(tc ToolContext, args map[string]any) (any, error) {
@@ -498,7 +503,20 @@ func ticketCreateTool(tc ToolContext, args map[string]any) (any, error) {
 		Protected:          boolArg(args, "protected"),
 		Sensitive:          boolArg(args, "sensitive"),
 	}
-	return tc.Server.Workspace.Actions.CreateTrackedTicket(tc.Context, ticket, contracts.Actor(tc.Actor), tc.Reason)
+	created, err := tc.Server.Workspace.Actions.CreateTrackedTicket(tc.Context, ticket, contracts.Actor(tc.Actor), tc.Reason)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{"ticket": created}
+	findings := service.SecretLikeFindings(strings.Join([]string{
+		ticket.Title,
+		ticket.Description,
+		strings.Join(ticket.AcceptanceCriteria, "\n"),
+	}, "\n"))
+	if len(findings) > 0 {
+		out["warnings"] = []string{"secret_like_content:" + strings.Join(findings, ",")}
+	}
+	return out, nil
 }
 
 func ticketAssignTool(tc ToolContext, args map[string]any) (any, error) {

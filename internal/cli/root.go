@@ -1007,6 +1007,25 @@ func commandContext(cmd *cobra.Command) context.Context {
 	return context.Background()
 }
 
+func warnSecretLikeContent(cmd *cobra.Command, fields ...string) {
+	findings := map[string]struct{}{}
+	labels := make([]string, 0)
+	for _, field := range fields {
+		for _, item := range service.SecretLikeFindings(field) {
+			if _, ok := findings[item]; ok {
+				continue
+			}
+			findings[item] = struct{}{}
+			labels = append(labels, item)
+		}
+	}
+	if len(labels) == 0 {
+		return
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "warning: ticket text looks like it may contain secrets (%s); prefer env vars or a secret store — ticket markdown and events are not confidential storage\n", strings.Join(labels, ", "))
+}
+
+
 func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
@@ -1129,6 +1148,7 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	warnSecretLikeContent(cmd, ticket.Title, ticket.Description, strings.Join(ticket.AcceptanceCriteria, "\n"))
 	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s", ticket.ID, ticket.Title), fmt.Sprintf("created %s", ticket.ID))
 }
 
@@ -1473,6 +1493,7 @@ func runTicketComment(cmd *cobra.Command, args []string) error {
 	if err := workspace.actions.CommentTicket(ctx, args[0], body, normalizeActor(actorRaw), reason); err != nil {
 		return err
 	}
+	warnSecretLikeContent(cmd, body)
 	return writeCommandOutput(cmd, map[string]any{"ticket_id": args[0], "body": strings.TrimSpace(body)}, body, fmt.Sprintf("comment added to %s", args[0]))
 }
 

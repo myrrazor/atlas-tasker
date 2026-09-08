@@ -247,8 +247,13 @@ func Save(root string, cfg contracts.TrackerConfig) error {
 	if err != nil {
 		return fmt.Errorf("encode config: %w", err)
 	}
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		return fmt.Errorf("write config: %w", err)
+	}
+	// WriteFile does not tighten mode on an existing file; chmod so re-saves
+	// pick up the private mode on upgraded workspaces.
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("chmod config: %w", err)
 	}
 	return nil
 }

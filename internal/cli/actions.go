@@ -244,6 +244,14 @@ func ensureInitArtifacts(root string) (initResult, error) {
 	}
 	result := initResult{Kind: "workspace_init", Workspace: root, Created: []string{}}
 	trackerDir := storage.TrackerDir(root)
+	privateDirs := map[string]struct{}{
+		trackerDir: {},
+		storage.ImportsDir(root): {},
+		storage.ExportsDir(root): {},
+		storage.ArchivesDir(root): {},
+		filepath.Join(trackerDir, "evidence"): {},
+		filepath.Join(trackerDir, "runtime"): {},
+	}
 	for _, dir := range []string{
 		trackerDir,
 		storage.EventsDir(root),
@@ -271,8 +279,17 @@ func ensureInitArtifacts(root string) (initResult, error) {
 		if err != nil {
 			return initResult{}, err
 		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		mode := os.FileMode(0o755)
+		if _, ok := privateDirs[dir]; ok {
+			mode = 0o700
+		}
+		if err := os.MkdirAll(dir, mode); err != nil {
 			return initResult{}, err
+		}
+		if _, ok := privateDirs[dir]; ok {
+			if err := os.Chmod(dir, 0o700); err != nil {
+				return initResult{}, err
+			}
 		}
 		if missing {
 			result.Created = append(result.Created, relativeToRoot(root, dir))
@@ -472,6 +489,11 @@ Time-boxed investigation with explicit follow-up output.
 		}
 		result.Created = append(result.Created, relativeToRoot(root, path))
 	}
+	if updated, err := ensureWorkspaceGitignore(root); err != nil {
+		return initResult{}, err
+	} else if updated {
+		result.Created = append(result.Created, relativeToRoot(root, filepath.Join(root, ".gitignore")))
+	}
 	return result, nil
 }
 
@@ -482,6 +504,82 @@ func isMissing(path string) (bool, error) {
 	}
 	return false, err
 }
+
+const (
+	workspaceGitignoreBegin = "# atlas-tasker:begin-local-ignore"
+	workspaceGitignoreEnd   = "# atlas-tasker:end-local-ignore"
+)
+
+func workspaceGitignoreBlock() string {
+	return strings.Join([]string{
+		workspaceGitignoreBegin,
+		"# Local-only Atlas paths (not ticket markdown under projects/).",
+		"/.tracker/mutations/",
+		"/.tracker/runtime/",
+		"/.tracker/*.log",
+		"/.tracker/sync/mirror/",
+		"/.tracker/sync/staging/",
+		"/.tracker/sync/bundles/",
+		"/.tracker/archives/*",
+		"!/.tracker/archives/*.md",
+		"/.tracker/exports/*",
+		"!/.tracker/exports/*.md",
+		"/.tracker/security/keys/private/",
+		"/.tracker/security/trust/",
+		"/.tracker/redaction/previews/",
+		"/.tracker/backups/snapshots/",
+		"/.tracker/goal/",
+		"/.tracker/evidence/**",
+		"!/.tracker/evidence/",
+		"!/.tracker/evidence/*/",
+		"!/.tracker/evidence/**/*.md",
+		"/.tracker/index.sqlite",
+		"/.tracker/index.sqlite-*",
+		"/.tracker/write.lock",
+		workspaceGitignoreEnd,
+		"",
+	}, "\n")
+}
+
+// ensureWorkspaceGitignore writes or refreshes the managed local-ignore block.
+// Returns true when the file was created or the managed block changed.
+func ensureWorkspaceGitignore(root string) (bool, error) {
+	path := filepath.Join(root, ".gitignore")
+	block := workspaceGitignoreBlock()
+	current, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	body := string(current)
+	begin := strings.Index(body, workspaceGitignoreBegin)
+	end := strings.Index(body, workspaceGitignoreEnd)
+	if begin >= 0 && end > begin {
+		end += len(workspaceGitignoreEnd)
+		if end < len(body) && body[end] == '\n' {
+			end++
+		}
+		updated := body[:begin] + block + body[end:]
+		if updated == body {
+			return false, nil
+		}
+		if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	if body != "" && !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	if body != "" {
+		body += "\n"
+	}
+	body += block
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 
 func relativeToRoot(root string, path string) string {
 	rel, err := filepath.Rel(root, path)
