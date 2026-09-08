@@ -131,7 +131,8 @@ func newInitCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := ensureInitArtifacts(root); err != nil {
+			result, err := ensureInitArtifacts(root)
+			if err != nil {
 				return err
 			}
 			workspace, err := openWorkspace()
@@ -139,10 +140,14 @@ func newInitCommand() *cobra.Command {
 				return err
 			}
 			workspace.close()
-			fmt.Fprintln(cmd.OutOrStdout(), "initialized")
-			return nil
+			md := fmt.Sprintf("# Workspace\n\n- Root: %s\n- Created: %d\n", result.Workspace, len(result.Created))
+			for _, path := range result.Created {
+				md += "- " + path + "\n"
+			}
+			return writeCommandOutput(cmd, result, md, "initialized")
 		},
 	}
+	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
@@ -163,6 +168,7 @@ func newReindexCommand() *cobra.Command {
 		Short: "Rebuild SQLite projection from markdown and events",
 		RunE:  runReindex,
 	}
+	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
@@ -180,11 +186,11 @@ func newInspectCommand() *cobra.Command {
 
 func newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "config", Short: "Read or update tracker config"}
-	cmd.AddCommand(&cobra.Command{
+	get := &cobra.Command{
 		Use:   "get [KEY]",
 		Args:  cobra.MaximumNArgs(1),
 		Short: "Get config values",
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(command *cobra.Command, args []string) error {
 			key := ""
 			if len(args) == 1 {
 				key = args[0]
@@ -201,15 +207,16 @@ func newConfigCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stdout, "%s\n", value)
-			return nil
+			return writeCommandOutput(command, map[string]any{"key": key, "value": value}, value, value)
 		},
-	})
-	cmd.AddCommand(&cobra.Command{
+	}
+	addReadOutputFlags(get, &outputFlags{})
+	cmd.AddCommand(get)
+	set := &cobra.Command{
 		Use:   "set <KEY> <VALUE>",
 		Args:  cobra.ExactArgs(2),
 		Short: "Set config values",
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(command *cobra.Command, args []string) error {
 			workspace, err := openWorkspace()
 			if err != nil {
 				return err
@@ -220,17 +227,18 @@ func newConfigCommand() *cobra.Command {
 			}); err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stdout, "ok\n")
-			return nil
+			return writeCommandOutput(command, map[string]any{"key": args[0], "value": config.MaskSensitiveConfigValue(args[0], args[1])}, "ok", "ok")
 		},
-	})
+	}
+	addReadOutputFlags(set, &outputFlags{})
+	cmd.AddCommand(set)
 	return cmd
 }
 
 func newIntegrationsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "integrations", Short: "Install agent guidance for Atlas Tasker"}
 	install := &cobra.Command{Use: "install", Short: "Install Atlas Tasker guidance into agent files"}
-	for _, target := range []string{"codex", "claude", "generic"} {
+	for _, target := range []string{"codex", "claude", "openclaw", "generic"} {
 		target := target
 		targetCmd := &cobra.Command{
 			Use:   target,
@@ -240,7 +248,7 @@ func newIntegrationsCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if err := ensureInitArtifacts(rootDir); err != nil {
+				if _, err := ensureInitArtifacts(rootDir); err != nil {
 					return err
 				}
 				force, _ := command.Flags().GetBool("force")
@@ -400,10 +408,11 @@ func newGitCommand() *cobra.Command {
 
 func newProjectCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "project", Short: "Project management commands"}
-	cmd.AddCommand(&cobra.Command{
+	create := &cobra.Command{
 		Use:   "create <KEY> <NAME>",
 		Args:  cobra.ExactArgs(2),
 		Short: "Create a project",
+		Long:  "Create a project. Projects are containers, not tracked mutations, so this takes no --actor or --reason.",
 		RunE: func(command *cobra.Command, args []string) error {
 			ctx := context.Background()
 			workspace, err := openWorkspace()
@@ -422,7 +431,9 @@ func newProjectCommand() *cobra.Command {
 			}
 			return writeCommandOutput(command, project, fmt.Sprintf("# %s\n\n%s", project.Key, project.Name), fmt.Sprintf("created project %s", project.Key))
 		},
-	})
+	}
+	addReadOutputFlags(create, &outputFlags{})
+	cmd.AddCommand(create)
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List projects",
@@ -478,6 +489,7 @@ func newProjectCommand() *cobra.Command {
 	policySet.Flags().String("required-reviewer", "", "Default required reviewer actor")
 	policySet.Flags().StringArray("retention-policy", nil, "Bound retention policy ID; repeat to set multiple")
 	addMutationFlags(policySet, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(policySet, &outputFlags{})
 	policy.AddCommand(policySet)
 	cmd.AddCommand(policy)
 	cmd.AddCommand(newProjectCodeownersCommand())
@@ -635,6 +647,12 @@ func newTicketCommand() *cobra.Command {
 	addMutationFlags(ticketPolicySet, &mutationFlags{Actor: "human:owner"})
 	policy.AddCommand(ticketPolicySet)
 	cmd.AddCommand(policy)
+
+	// every mutation already prints through writeCommandOutput, so they all get
+	// --json/--md; the workflow ones above registered theirs at declaration time
+	for _, sub := range []*cobra.Command{create, edit, archiveCmd, assign, priority, labelAdd, labelRemove, link, unlink, comment, claim, release, heartbeat, ticketPolicySet} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
 
 	return cmd
 }

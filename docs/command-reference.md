@@ -48,6 +48,7 @@
 - `tracker templates view <NAME>`
 - `tracker integrations install codex [--force]`
 - `tracker integrations install claude [--force]`
+- `tracker integrations install openclaw [--force]`
 - `tracker integrations install generic [--force]`
 - `tracker web serve [--host 127.0.0.1] [--port 0] [--project <KEY>] [--actor <ACTOR>] [--open|--no-browser] [--read-only]`
 - `tracker web open`

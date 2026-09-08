@@ -3,8 +3,12 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
+	"github.com/spf13/cobra"
 )
 
 func TestMCPSchemaAndToolsReflectProfiles(t *testing.T) {
@@ -74,6 +78,53 @@ func TestMCPApproveOperationCreatesBoundApproval(t *testing.T) {
 	}
 	if !strings.Contains(listOut, "atlas.change.merge") || !strings.Contains(listOut, "CHG-1") {
 		t.Fatalf("approval list missing created approval:\n%s", listOut)
+	}
+}
+
+func TestMCPServeWorkspaceFlagIsChecked(t *testing.T) {
+	withTempWorkspace(t)
+	serve, _, err := NewRootCommand().Find([]string{"mcp", "serve"})
+	if err != nil {
+		t.Fatalf("find mcp serve: %v", err)
+	}
+	if serve.Flag("workspace") == nil {
+		t.Fatalf("expected mcp serve to expose --workspace")
+	}
+
+	initialized := t.TempDir()
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	resolve := func(path string) (string, error) {
+		cmd := &cobra.Command{}
+		cmd.Flags().String("workspace", "", "")
+		if err := cmd.Flags().Set("workspace", path); err != nil {
+			t.Fatalf("set workspace flag: %v", err)
+		}
+		return requestedWorkspaceRoot(cmd)
+	}
+
+	root, err := resolve(cwd)
+	if err != nil {
+		t.Fatalf("initialized workspace should resolve: %v", err)
+	}
+	if root == "" {
+		t.Fatalf("expected an explicit root for %s", cwd)
+	}
+
+	if _, err := resolve(initialized); err == nil {
+		t.Fatalf("expected an uninitialized directory to be rejected")
+	} else if !strings.Contains(err.Error(), "tracker init") {
+		t.Fatalf("rejection should point at tracker init, got: %v", err)
+	}
+	if _, err := resolve(filepath.Join(initialized, "nope")); err == nil {
+		t.Fatalf("expected a missing directory to be rejected")
+	} else if apperr.CodeOf(err) != apperr.CodeNotFound {
+		t.Fatalf("missing workspace should be not_found, got %s", apperr.CodeOf(err))
 	}
 }
 

@@ -24,7 +24,7 @@ Re-running `apply` is safe: existing agents, runbooks, and profiles are skipped,
 
 ## After applying
 
-1. Install the skill for your agent runtime: `tracker integrations install claude` (or `codex`, or `generic`). The skill teaches agents to bootstrap, claim, build, attach evidence, request review, and acknowledge wake-ups without hand-holding.
+1. Install the skill for your agent runtime: `tracker integrations install claude` (or `codex`, `openclaw`, or `generic`). The skill teaches agents to bootstrap, claim, build, attach evidence, request review, and acknowledge wake-ups without hand-holding.
 2. File tickets and assign them: `tracker ticket assign APP-1 agent:builder-1 --actor human:owner --reason "agent work"`.
 3. Wire dependencies with `tracker ticket link` — when a blocker lands, Atlas wakes the assigned agent (`agent.work_available`), and with `tracker agent auto set` it can launch your agent command automatically with the ticket id substituted in.
 

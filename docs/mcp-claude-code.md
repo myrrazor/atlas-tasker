@@ -2,17 +2,19 @@
 
 Claude Code manages MCP servers with `/mcp` and `claude mcp` commands. Use an absolute `tracker` binary path and avoid shell wrappers.
 
-Example:
+A user-scoped server starts wherever Claude Code happens to be, so pin the workspace with `--workspace`:
 
 ```bash
-claude mcp add --transport stdio --scope user atlas -- /Users/you/bin/tracker mcp serve --tool-profile read
+claude mcp add --transport stdio --scope user atlas -- /Users/you/bin/tracker mcp serve --workspace /Users/you/code/my-repo --tool-profile read
 ```
 
-For a project-scoped workflow profile:
+For a project-scoped workflow profile, Claude Code already launches the server in the project directory, so `--workspace` is optional:
 
 ```bash
 claude mcp add --transport stdio --scope project atlas-workflow -- /Users/you/bin/tracker mcp serve --tool-profile workflow --max-items 30
 ```
+
+Without `--workspace` the server reads whatever workspace it was started in — usually the reason a tool answers `not_found` for a ticket you can see in the terminal. A `--workspace` that does not exist or has no `.tracker/` directory fails at startup with the path it tried.
 
 Check status in Claude Code:
 

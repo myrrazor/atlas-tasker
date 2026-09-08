@@ -7,15 +7,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	atlasmcp "github.com/myrrazor/atlas-tasker/internal/mcp"
 	"github.com/myrrazor/atlas-tasker/internal/service"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
 	"github.com/spf13/cobra"
 )
 
 func newMCPCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "mcp", Short: "Serve and inspect the Atlas MCP adapter"}
 
-	serve := &cobra.Command{Use: "serve", Short: "Serve Atlas MCP tools over stdio", RunE: runMCPServe}
+	serve := &cobra.Command{
+		Use:   "serve",
+		Short: "Serve Atlas MCP tools over stdio",
+		Long:  "Serve Atlas MCP tools over stdio. MCP clients launch the server from their own working directory, so pass --workspace to pin it to a repo instead of wherever the client happened to start.",
+		RunE:  runMCPServe,
+	}
+	serve.Flags().String("workspace", "", "Atlas workspace root to serve; defaults to the current directory")
 	addMCPRuntimeFlags(serve)
 
 	schema := &cobra.Command{Use: "schema", Short: "Print enabled MCP tool schemas", RunE: runMCPSchema}
@@ -85,7 +93,11 @@ func runMCPServe(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	workspace, err := atlasmcp.OpenWorkspace("", cmd.ErrOrStderr(), defaultNow)
+	root, err := requestedWorkspaceRoot(cmd)
+	if err != nil {
+		return err
+	}
+	workspace, err := atlasmcp.OpenWorkspace(root, cmd.ErrOrStderr(), defaultNow)
 	if err != nil {
 		return err
 	}
@@ -189,6 +201,31 @@ func currentWorkspaceRoot() (string, error) {
 		return "", err
 	}
 	return service.CanonicalWorkspaceRoot(root)
+}
+
+// Empty means "use the process working directory", which is what OpenWorkspace
+// already does. Anything else has to be a real workspace before we hand it to a
+// client that has no terminal to show a stack trace in.
+func requestedWorkspaceRoot(cmd *cobra.Command) (string, error) {
+	raw, _ := cmd.Flags().GetString("workspace")
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+	root, err := service.CanonicalWorkspaceRoot(raw)
+	if err != nil {
+		return "", apperr.Wrap(apperr.CodeInvalidInput, err, "resolve --workspace %q", raw)
+	}
+	info, err := os.Stat(root)
+	if err != nil {
+		return "", apperr.Wrap(apperr.CodeNotFound, err, "--workspace %s does not exist", root)
+	}
+	if !info.IsDir() {
+		return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("--workspace %s is not a directory", root))
+	}
+	if _, err := os.Stat(storage.TrackerDir(root)); err != nil {
+		return "", apperr.Wrap(apperr.CodeInvalidInput, err, "%s is not an Atlas workspace; run 'tracker init' there first", root)
+	}
+	return root, nil
 }
 
 func formatMCPTools(tools []atlasmcp.ToolInfo) string {

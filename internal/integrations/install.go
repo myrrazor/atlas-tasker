@@ -12,12 +12,26 @@ const (
 	managedEnd   = "<!-- atlas-tasker:end -->"
 )
 
+// Codex and OpenClaw both read AGENTS.md, so they get separate marker pairs and
+// each install rewrites only its own block. The unprefixed pair predates the
+// openclaw target and stays as-is so existing AGENTS.md files keep working.
+type blockMarkers struct {
+	begin string
+	end   string
+}
+
+var (
+	defaultMarkers  = blockMarkers{begin: managedBegin, end: managedEnd}
+	openclawMarkers = blockMarkers{begin: "<!-- atlas-tasker:openclaw:begin -->", end: "<!-- atlas-tasker:openclaw:end -->"}
+)
+
 type Target string
 
 const (
-	TargetCodex   Target = "codex"
-	TargetClaude  Target = "claude"
-	TargetGeneric Target = "generic"
+	TargetCodex    Target = "codex"
+	TargetClaude   Target = "claude"
+	TargetOpenClaw Target = "openclaw"
+	TargetGeneric  Target = "generic"
 )
 
 type InstallResult struct {
@@ -35,14 +49,34 @@ type Installer struct {
 }
 
 func (i Installer) Install(target Target, force bool) (InstallResult, error) {
+	root, err := filepath.Abs(i.Root)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	i.Root = root
 	spec, err := i.spec(target)
 	if err != nil {
 		return InstallResult{}, err
 	}
+	paths := []string{spec.instructionPath, spec.guidePath}
+	for _, file := range spec.extraFiles {
+		paths = append(paths, file.path)
+	}
+	// Validate the entire plan before writing even the first managed file.
+	for _, path := range paths {
+		if err := validateInstallPath(root, path); err != nil {
+			return InstallResult{}, err
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(spec.guidePath), 0o755); err != nil {
 		return InstallResult{}, err
 	}
-	result := InstallResult{Target: target, InstructionFile: spec.instructionPath, GuideFile: spec.guidePath}
+	// empty slices, not nil -- these land in --json and a null array is a papercut
+	result := InstallResult{Target: target, InstructionFile: spec.instructionPath, GuideFile: spec.guidePath, Created: []string{}, Updated: []string{}}
 	if changed, err := writeManagedFile(spec.guidePath, spec.guideBody); err != nil {
 		return InstallResult{}, err
 	} else if changed == createdState {
@@ -50,7 +84,7 @@ func (i Installer) Install(target Target, force bool) (InstallResult, error) {
 	} else if changed == updatedState {
 		result.Updated = append(result.Updated, spec.guidePath)
 	}
-	if changed, err := writeInstructionFile(spec.instructionPath, spec.blockBody, force); err != nil {
+	if changed, err := writeInstructionFile(spec.instructionPath, spec.blockBody, spec.markers, force); err != nil {
 		return InstallResult{}, err
 	} else if changed == createdState {
 		result.Created = append(result.Created, spec.instructionPath)
@@ -78,6 +112,35 @@ func (i Installer) Install(target Target, force bool) (InstallResult, error) {
 	return result, nil
 }
 
+func validateInstallPath(root, path string) error {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return fmt.Errorf("integration destination is outside workspace: %s", path)
+	}
+	current := root
+	parts := strings.Split(rel, string(filepath.Separator))
+	for index, part := range parts {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("integration destination contains a symlink: %s", current)
+		}
+		if index < len(parts)-1 && !info.IsDir() || index == len(parts)-1 && !info.Mode().IsRegular() {
+			return fmt.Errorf("invalid integration destination: %s", current)
+		}
+	}
+	return nil
+}
+
 type fileChange int
 
 const (
@@ -91,6 +154,7 @@ type installSpec struct {
 	guidePath       string
 	blockBody       string
 	guideBody       string
+	markers         blockMarkers
 	extraFiles      []managedInstallFile
 }
 
@@ -110,6 +174,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 			guidePath:       guidePath,
 			blockBody:       codexBlock(guidePath),
 			guideBody:       codexGuide(),
+			markers:         defaultMarkers,
 			extraFiles: []managedInstallFile{
 				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("codex"), kind: "skill"},
 				{path: filepath.Join(skillDir, "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
@@ -128,6 +193,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 			guidePath:       guidePath,
 			blockBody:       claudeBlock(guidePath),
 			guideBody:       claudeGuide(),
+			markers:         defaultMarkers,
 			extraFiles: []managedInstallFile{
 				// modern Claude Code skill layout; the old
 				// .tracker/integrations copy retired with v1.9
@@ -138,6 +204,25 @@ func (i Installer) spec(target Target) (installSpec, error) {
 				{path: filepath.Join(commandDir, "atlas-review.md"), body: atlasReviewCommandTemplate(), kind: "command"},
 			},
 		}, nil
+	case TargetOpenClaw:
+		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "openclaw-guide.md")
+		// .agents/skills is OpenClaw's repo-local skill root; ~/.openclaw/skills is
+		// the shared one, and that copy is the user's to install, not ours to write
+		skillDir := filepath.Join(i.Root, ".agents", "skills", "atlas-worker")
+		return installSpec{
+			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
+			guidePath:       guidePath,
+			blockBody:       openclawBlock(guidePath),
+			guideBody:       openclawGuide(skillDir),
+			markers:         openclawMarkers,
+			extraFiles: []managedInstallFile{
+				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("openclaw"), kind: "skill"},
+				{path: filepath.Join(skillDir, "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
+				{path: filepath.Join(skillDir, "commands", "atlas-next.md"), body: atlasNextCommandTemplate(), kind: "command"},
+				{path: filepath.Join(skillDir, "commands", "atlas-take.md"), body: atlasTakeCommandTemplate(), kind: "command"},
+				{path: filepath.Join(skillDir, "commands", "atlas-review.md"), body: atlasReviewCommandTemplate(), kind: "command"},
+			},
+		}, nil
 	case TargetGeneric:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "generic-agent-guide.md")
 		skillDir := filepath.Join(i.Root, ".tracker", "integrations", "atlas-agent-skill")
@@ -146,6 +231,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 			guidePath:       guidePath,
 			blockBody:       genericBlock(guidePath),
 			guideBody:       genericGuide(),
+			markers:         defaultMarkers,
 			extraFiles: []managedInstallFile{
 				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("generic"), kind: "skill"},
 				{path: filepath.Join(skillDir, "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
@@ -177,8 +263,11 @@ func writeManagedFile(path string, body string) (fileChange, error) {
 	return createdState, nil
 }
 
-func writeInstructionFile(path string, block string, force bool) (fileChange, error) {
-	managed := managedBegin + "\n" + block + "\n" + managedEnd + "\n"
+func writeInstructionFile(path string, block string, markers blockMarkers, force bool) (fileChange, error) {
+	if markers.begin == "" {
+		markers = defaultMarkers
+	}
+	managed := markers.begin + "\n" + block + "\n" + markers.end + "\n"
 	current, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		if err := os.WriteFile(path, []byte(managed), 0o644); err != nil {
@@ -199,8 +288,8 @@ func writeInstructionFile(path string, block string, force bool) (fileChange, er
 		return updatedState, nil
 	}
 	body := string(current)
-	if strings.Contains(body, managedBegin) && strings.Contains(body, managedEnd) {
-		updated, changed := replaceManagedBlock(body, managed)
+	if strings.Contains(body, markers.begin) && strings.Contains(body, markers.end) {
+		updated, changed := replaceManagedBlock(body, managed, markers)
 		if !changed {
 			return unchangedState, nil
 		}
@@ -219,13 +308,13 @@ func writeInstructionFile(path string, block string, force bool) (fileChange, er
 	return updatedState, nil
 }
 
-func replaceManagedBlock(body string, managed string) (string, bool) {
-	start := strings.Index(body, managedBegin)
-	end := strings.Index(body, managedEnd)
+func replaceManagedBlock(body string, managed string, markers blockMarkers) (string, bool) {
+	start := strings.Index(body, markers.begin)
+	end := strings.Index(body, markers.end)
 	if start == -1 || end == -1 || end < start {
 		return body, false
 	}
-	end += len(managedEnd)
+	end += len(markers.end)
 	if end < len(body) && body[end] == '\n' {
 		end++
 	}

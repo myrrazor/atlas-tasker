@@ -118,12 +118,14 @@ func applyWebDefaults(cfg *contracts.TrackerConfig) {
 	cfg.Web.AgentColors = colors
 }
 
-func configPath(root string) string {
+// Path is where the workspace config lives; callers outside the package need it
+// to report what a bootstrap actually wrote.
+func Path(root string) string {
 	return filepath.Join(storage.TrackerDir(root), "config.toml")
 }
 
 func Load(root string) (contracts.TrackerConfig, error) {
-	path := configPath(root)
+	path := Path(root)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -213,7 +215,7 @@ func Save(root string, cfg contracts.TrackerConfig) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	path := configPath(root)
+	path := Path(root)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}

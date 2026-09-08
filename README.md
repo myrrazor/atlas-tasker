@@ -20,7 +20,13 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 
 That's it. The installer downloads the latest release for your platform, verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release).
 
-Building from source works too:
+With a Go toolchain:
+
+```bash
+go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest
+```
+
+Or from source:
 
 ```bash
 git clone https://github.com/myrrazor/atlas-tasker && cd atlas-tasker
@@ -98,14 +104,18 @@ To hand work off, install the Atlas worker skill and give the ticket to Claude C
 
 ```bash
 tracker team apply crossfire --actor human:owner --reason "agentic loop"
-tracker integrations install codex
-tracker integrations install claude
+tracker integrations install codex     # or claude, openclaw, generic
 tracker ticket assign APP-2 agent:builder-1 --actor human:owner --reason "agent work"
 tracker run dispatch APP-2 --agent agent:builder-1 --actor human:owner --reason "start tracked run"
 tracker goal brief APP-2 --md
 ```
 
-The [Claude Code guide](docs/guides/claude-code.md), [Codex guide](docs/guides/codex.md), and [generic agent guide](docs/guides/generic-agent.md) walk through real setups.
+**[AGENTS.md](AGENTS.md) is the file to hand an agent.** It leads with the things that trip
+them up — every write needs `--actor` and `--reason`, `project create` needs neither, a
+forbidden transition is a deliberate exit 4 — then the loop, the exit-code table, and the MCP
+registration one-liners. `CLAUDE.md` imports it, so Claude Code picks it up too.
+
+For humans setting things up, the [Claude Code guide](docs/guides/claude-code.md), [Codex guide](docs/guides/codex.md), and [generic agent guide](docs/guides/generic-agent.md) walk through real setups.
 
 ### Pick your team
 
@@ -122,7 +132,7 @@ tracker team apply crossfire --actor human:owner --reason "team setup"
 | `swarm` | Three builders pulling by routing weight, QA gate, owner delegate |
 | `crossfire` | Codex builds, Claude reviews (flip it with `--provider claude`) — two different models keeping each other honest |
 
-`tracker team show <preset>` previews the roster, `--dry-run` applies nothing, and re-running is always safe — existing agents are never overwritten. Then install the matching skill (`tracker integrations install claude` or `codex`), file your tickets, and the agents handle claiming, building, review handoffs, and wake-ups on their own. The [team presets guide](docs/guides/team-presets.md) has the full walkthrough.
+`tracker team show <preset>` previews the roster, `--dry-run` applies nothing, and re-running is always safe — existing agents are never overwritten. Then install the matching skill (`tracker integrations install claude`, `codex`, `openclaw`, or `generic`), file your tickets, and the agents handle claiming, building, review handoffs, and wake-ups on their own. The [team presets guide](docs/guides/team-presets.md) has the full walkthrough.
 
 ## Everything else you'd expect from a real tracker
 
@@ -136,7 +146,9 @@ Start at the [docs landing page](docs/README.md), or jump to [installation](docs
 
 ## Status
 
-`v1.9.1` is the current stable release; `v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
+`v1.9.1` is the latest tagged release, and what the installer and `go install ...@latest` give you. `main` is ahead of it: the local web board (`tracker web serve`) and this round of agent-facing work — `--json` on every command, `tracker mcp serve --workspace`, the OpenClaw integration target — are merged and unreleased. Build from source or `go install github.com/myrrazor/atlas-tasker/cmd/tracker@main` to get them before v1.10 ships.
+
+`v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 
 ## Contributing
 
