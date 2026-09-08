@@ -47,6 +47,7 @@ type Config struct {
 	Token      string
 	CSRFToken  string
 	Clock      func() time.Time
+	Location   *time.Location
 }
 
 type Server struct {
@@ -84,6 +85,9 @@ func NewServer(services Services, cfg Config) (*Server, error) {
 	}
 	if cfg.Clock == nil {
 		cfg.Clock = func() time.Time { return time.Now().UTC() }
+	}
+	if cfg.Location == nil {
+		cfg.Location = time.Local
 	}
 	if cfg.TokenMode != "random" {
 		return nil, apperr.New(apperr.CodeInvalidInput, "only token-mode=random is supported")
@@ -153,14 +157,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/favicon.ico", s.handleFavicon)
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/board", s.handleBoardAPI)
+	mux.HandleFunc("/api/schedule", s.handleScheduleAPI)
 	mux.HandleFunc("/api/tickets/", s.handleTicketAPI)
 	mux.HandleFunc("/actions/projects/create", s.handleCreateProject)
 	mux.HandleFunc("/actions/tickets/create", s.handleCreateTicket)
 	mux.HandleFunc("/actions/tickets/", s.handleTicketAction)
+	mux.HandleFunc("/actions/schedule/", s.handleScheduleAction)
 	mux.HandleFunc("/new-ticket", s.handleNewTicket)
 	mux.HandleFunc("/tickets/", s.handleTicketPage)
 	mux.HandleFunc("/settings", s.handleSettings)
 	mux.HandleFunc("/board", s.handleBoard)
+	mux.HandleFunc("/schedule", s.handleSchedule)
 	mux.HandleFunc("/", s.handleRoot)
 	return s.security(mux)
 }
@@ -358,6 +365,10 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 		s.writeError(w, r, err, statusForError(err))
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/actions/schedule/") || r.URL.Query().Get("return") == "schedule" {
+		s.writeScheduleActionError(w, r, err)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/actions/projects/") {
 		s.writeProjectActionError(w, r, err)
 		return
@@ -385,7 +396,7 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 	}
 	page.Error = err.Error()
 	switch target {
-	case "create", "edit", "comment":
+	case "create", "edit", "comment", "schedule":
 		page.Form = r.Form
 		page.FormTarget = target
 	}
@@ -408,6 +419,21 @@ func (s *Server) writeProjectActionError(w http.ResponseWriter, r *http.Request,
 	page.ShowNew = true
 	page.Form = r.Form
 	s.renderPage(w, pageReq, page, statusForError(err))
+}
+
+func (s *Server) writeScheduleActionError(w http.ResponseWriter, r *http.Request, actionErr error) {
+	q := r.URL.Query()
+	q.Del("return")
+	pageReq := r.Clone(r.Context())
+	pageReq.URL = &url.URL{Path: "/schedule", RawQuery: q.Encode()}
+	page, buildErr := s.buildSchedulePage(r.Context(), pageReq)
+	if buildErr != nil {
+		http.Error(w, actionErr.Error(), statusForError(actionErr))
+		return
+	}
+	page.Error = actionErr.Error()
+	page.Form = r.Form
+	s.renderPage(w, pageReq, page, statusForError(actionErr))
 }
 
 // actionTarget parses "/actions/tickets/create" and

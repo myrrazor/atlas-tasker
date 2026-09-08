@@ -12,7 +12,7 @@ The root page is a workspace welcome view with per-project active, backlog, done
 
 The welcome page, settings, and board chrome support English, Spanish, and Indonesian. Choose a page language with the footer links or set a workspace default with `tracker config set web.lang es`. A `?lang=` query takes precedence over workspace config, then Atlas checks `Accept-Language` and falls back to English. Ticket content is never translated.
 
-The board supports:
+The browser workspace supports:
 
 - viewing workflow columns
 - opening ticket detail
@@ -23,6 +23,13 @@ The board supports:
 - project, actor, saved-view, and search/filter URL state
 - drag/drop where JavaScript is available, plus button-based fallbacks (keyboard: `n` new ticket, `/` search)
 - creating projects from the welcome page through the same `ActionService` and browser security gates
+- a `/schedule` week strip and hourly timeline for one-time human reminders and agent wakeups
+- setting, replacing, clearing, and ticking schedules through the same audited action service as the CLI
+- weekly completion history derived from ticket workflow events
+
+Schedule times are entered and displayed in the web server's named local timezone, then stored as UTC instants. Every block names its runner and current state. `Agent ready` means notify mode created a pending wakeup; `Agent launched` is shown only after command mode starts its configured process.
+
+The “Run due now” action is the browser equivalent of `tracker schedule tick`. Atlas still does not run a hidden daemon, so use cron, launchd, or another trusted scheduler when due work must be processed without a person opening the page.
 
 Default serve behavior binds to `127.0.0.1` on a random port and opens a session URL when `--open` is used. The session token stays valid for the lifetime of that server process and is printed only by `tracker web serve`; it is never written to disk.
 
@@ -35,3 +42,11 @@ Desktop:
 Mobile:
 
 ![Atlas web board mobile](assets/web-board-mobile.png)
+
+Schedule desktop:
+
+![Atlas schedule desktop](assets/web-schedule-desktop.png)
+
+Schedule mobile:
+
+![Atlas schedule mobile](assets/web-schedule-mobile.png)

@@ -12,13 +12,25 @@ The web board uses SortableJS only for progressive cross-column drag/drop. Forms
 
 ## Geist Sans
 
-- Package: `@fontsource/geist-sans`
-- Version: `5.1.0` (font (C) Vercel, in collaboration with basement.studio)
+- Package: `geist` (npm)
+- Version: `1.3.1` (font (C) Vercel, in collaboration with basement.studio)
 - License: SIL Open Font License 1.1 (see `geist/LICENSE`)
 - Source: `https://github.com/vercel/geist-font`
-- Vendored files: `geist/geist-400.woff2`, `geist/geist-500.woff2`, `geist/geist-600.woff2` (latin subsets)
+- Vendored file: `geist/geist-variable.woff2` (variable weight axis)
 
 The board's CSP blocks external hosts, so the UI font ships with the binary.
+The variable axis is what allows the 650/750-weight headings and column titles.
+
+## Geist Mono
+
+- Package: `geist` (npm)
+- Version: `1.3.1`
+- License: SIL Open Font License 1.1 (see `geist-mono/LICENSE`)
+- Source: `https://github.com/vercel/geist-font`
+- Vendored file: `geist-mono/geist-mono-variable.woff2` (variable weight axis)
+
+Ticket keys, timestamps, counts, and uppercase kickers render in the mono face
+per the atlas.pen spec.
 
 ## Phosphor Icons
 

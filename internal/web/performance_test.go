@@ -123,7 +123,7 @@ func TestBoardThousandTicketPerformanceTarget(t *testing.T) {
 	renderStarted := time.Now()
 	srv.Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
-		t.Fatalf("render board status = %d", res.Code)
+		t.Fatalf("render board status = %d body=%s", res.Code, res.Body.String())
 	}
 	if elapsed := time.Since(renderStarted); elapsed > 4*time.Second {
 		t.Fatalf("1000-ticket board render blew the 4s sanity cap: %s", elapsed)

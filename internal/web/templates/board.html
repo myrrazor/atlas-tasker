@@ -184,10 +184,52 @@
 <section class="tab-panel {{if eq $activeTab "overview"}}active{{end}}" id="tab-overview">
   <h2>{{t "board.section.description"}}</h2>
   <pre class="prose">{{if $d.Ticket.Description}}{{$d.Ticket.Description}}{{else}}{{t "board.section.no_description"}}{{end}}</pre>
-  <h2>{{t "board.section.acceptance"}} <span>{{len $d.Ticket.AcceptanceCriteria}}</span></h2>
+  <h2>{{t "board.section.acceptance"}}{{if $d.Ticket.AcceptanceCriteria}} <span>{{len $d.Ticket.AcceptanceCriteria}}</span>{{end}}</h2>
   <ul class="check-list">
     {{range $d.Ticket.AcceptanceCriteria}}<li>{{.}}</li>{{else}}<li>{{t "board.section.no_acceptance"}}</li>{{end}}
   </ul>
+  {{$sf := $.FormFor "schedule"}}
+  <section class="ticket-schedule-box" aria-labelledby="ticket-schedule-title">
+    <div class="ticket-schedule-head">
+      <div>
+        <span class="eyeline">Schedule</span>
+        <h2 id="ticket-schedule-title">{{if $d.Ticket.Schedule}}{{$.Detail.ScheduleAtLabel}}{{else}}No time set{{end}}</h2>
+      </div>
+      <a href="/schedule{{if $.ProjectExplicit}}?project={{$.Project}}{{end}}">Open timeline</a>
+    </div>
+    {{if $d.Ticket.Schedule}}
+      <p class="ticket-schedule-status">
+        <strong>{{$d.Ticket.Assignee}}</strong> ·
+        {{if $d.Ticket.Schedule.Error}}<span class="danger">Failed</span>{{else if not $d.Ticket.Schedule.TriggeredAt.IsZero}}<span class="active">Triggered</span>{{else}}<span>Scheduled</span>{{end}}
+        · {{$.LocationName}}
+      </p>
+      {{if $d.Ticket.Schedule.Error}}<p class="schedule-error" role="alert">{{$d.Ticket.Schedule.Error}}</p>{{end}}
+    {{else}}
+      <p class="ticket-schedule-status">Set a human reminder or wake an enabled Atlas agent at a specific time.</p>
+    {{end}}
+    <form class="drawer-form compact" method="post" action="/actions/tickets/{{$d.Ticket.ID}}/schedule">
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="actor" value="{{$.Actor}}">
+      <div class="form-row">
+        <label>Local date and time
+          <input type="datetime-local" name="at" value="{{formValue $sf "at" $.Detail.ScheduleAtInput}}" required>
+        </label>
+        <label>Runner
+          <input name="runner" value="{{if $d.Ticket.Assignee}}{{formValue $sf "runner" (printf "%s" $d.Ticket.Assignee)}}{{else}}{{formValue $sf "runner" "human:owner"}}{{end}}" placeholder="human:owner or agent:builder-1" required>
+        </label>
+      </div>
+      <label>Reason <input name="reason" value="{{formValue $sf "reason" "web schedule ticket"}}" required></label>
+      <button type="submit" {{if $.ReadOnly}}disabled{{end}}>{{if $d.Ticket.Schedule}}Update schedule{{else}}Schedule ticket{{end}}</button>
+    </form>
+    {{if $d.Ticket.Schedule}}
+    <form class="ticket-schedule-clear" method="post" action="/actions/tickets/{{$d.Ticket.ID}}/schedule/clear">
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="actor" value="{{$.Actor}}">
+      <input type="hidden" name="reason" value="web clear ticket schedule">
+      <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Clear schedule</button>
+    </form>
+    {{end}}
+  </section>
   <details class="edit-box">
     <summary>{{t "board.section.edit"}}</summary>
     <form class="drawer-form compact" method="post" action="/actions/tickets/{{$d.Ticket.ID}}/edit">
