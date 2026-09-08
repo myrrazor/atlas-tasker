@@ -133,7 +133,7 @@ func TestSecurityHeadersSessionAndNoCORS(t *testing.T) {
 	if health.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatalf("CORS header should not be set")
 	}
-	if health.Header().Get("Content-Security-Policy") == "" {
+	if csp := health.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") || !strings.Contains(csp, "style-src 'self'") {
 		t.Fatalf("CSP header missing: %#v", health.Header())
 	}
 	if health.Header().Get("X-Content-Type-Options") != "nosniff" {

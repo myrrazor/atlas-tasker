@@ -461,3 +461,95 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** medium
 8. **Revisit Trigger:** Server-side flash/session state is introduced (enabling PRG without data loss), or users report confusion from the POST URL/refresh-repost behavior.
 9. **Affected PRs/Files:** `internal/web/server.go`, `internal/web/viewmodels.go`, `internal/web/assets.go`, `internal/web/templates/*`, `internal/web/static/app.js`, web tests.
+
+## DEC-033
+
+1. **Decision ID:** DEC-033
+2. **Date:** 2026-07-23
+3. **Question:** How should the local welcome page compute cross-project status and recent activity?
+4. **Options Considered:**
+   - Add a new persisted dashboard projection.
+   - Derive project counts from per-project board queries and merge the existing per-project event streams at request time.
+   - Read Markdown and JSONL files directly from the web handlers.
+5. **Chosen Option:** Derive counts through `QueryService` board queries and merge filtered event streams in `QueryService`, capped at 20.
+6. **Why We Chose It:** The welcome page stays a read model over the same contracts as CLI/TUI instead of adding a second source of truth. Canonical snapshots supply the Done count because DEC-026 intentionally folds canceled tickets into the board's Done column while this overview excludes canceled work. The event scan is cached per project for one request and its full-scan tradeoff is explicit.
+7. **Confidence:** high
+8. **Revisit Trigger:** Root-page latency becomes noticeable in workspaces with large event logs, or a shared indexed activity query is introduced.
+9. **Affected PRs/Files:** `internal/service/rollups.go`, `internal/service/rollups_test.go`, `internal/web/viewmodels.go`, welcome web tests.
+
+## DEC-034
+
+1. **Decision ID:** DEC-034
+2. **Date:** 2026-07-23
+3. **Question:** What should the browser root route and welcome-page interaction model be?
+4. **Options Considered:**
+   - Keep redirecting `/` to the board.
+   - Add a stat-card dashboard.
+   - Render a borderless project ledger with a recent-change rail, native project-creation dialog, and a read-only settings page.
+5. **Chosen Option:** Render the project ledger/activity rail at `/`; keep `/board` canonical and link both directions.
+6. **Why We Chose It:** Owners need cross-project orientation before card-level manipulation. A plain ledger compares real counts without card/grid noise, while the activity rail answers what changed. Project creation reuses `ActionService` plus the existing origin/CSRF/read-only gates; rejected forms keep the exact error and submitted values. Web identity falls back from `web.owner_name` to `actor.default` to the OS username, and agent color names are mapped to a small server-side CSS class allowlist so CSP stays strict.
+7. **Confidence:** high
+8. **Revisit Trigger:** Usage shows owners always bypass the overview, settings become editable in-browser, or the web surface adds a shared indexed activity API.
+9. **Affected PRs/Files:** `internal/contracts/domain.go`, `internal/config/config.go`, `internal/web/*`, `PRODUCT.md`, `DESIGN.md`, `docs/web-welcome-screen-brief.md`, web/config tests.
+
+## DEC-035
+
+**Status:** Superseded by DEC-038 for motion timing and feedback; the card information model remains current.
+
+1. **Decision ID:** DEC-035
+2. **Date:** 2026-07-23
+3. **Question:** How much information should Kanban cards expose, and how should secondary detail and movement feel?
+4. **Options Considered:**
+   - Keep assignee avatars, priority and label pills, and counters on every card.
+   - Reduce the face to ID/title plus an optional configured agent color mark, with delayed local preview and full drawer detail.
+   - Fetch a richer server preview on every hover.
+5. **Chosen Option:** Use the minimal face, one two-second `data-*` preview, a 200ms drawer transform, and SortableJS's 150ms position animation.
+6. **Why We Chose It:** The board is a high-frequency scan surface, so repeated badges and icon rows made each ticket harder to compare and forced wider columns. Escaped metadata already rendered with the card can power one viewport-clamped preview without network work or a new API. The drawer remains the authoritative detail/edit surface, agent color stays a scarce ownership hint rather than a card fill, and reduced-motion users get immediate state changes.
+7. **Confidence:** high
+8. **Revisit Trigger:** Owners consistently miss urgent work without face-level priority, the hover delay creates excess drawer opens, or keyboard users need an equivalent non-navigation summary.
+9. **Affected PRs/Files:** `internal/web/viewmodels.go`, `internal/web/templates/board.html`, `internal/web/static/app.css`, `internal/web/static/app.js`, `internal/web/card_interactions_test.go`, `PRODUCT.md`, `DESIGN.md`, `docs/web-board-screen-brief.md`.
+
+## DEC-036
+
+1. **Decision ID:** DEC-036
+2. **Date:** 2026-07-23
+3. **Question:** How should Atlas pilot multilingual browser chrome without adding a localization dependency or changing stored ticket content?
+4. **Options Considered:**
+   - Add `golang.org/x/text` and locale-aware routing.
+   - Keep strings in templates and duplicate localized pages.
+   - Bind a small in-process message catalog to cloned templates per request.
+5. **Chosen Option:** Use flat English, Spanish, and Indonesian catalogs with a request-bound `t` template function; resolve language from `?lang=`, then `web.lang`, then `Accept-Language`, then English.
+6. **Why We Chose It:** The browser remains server-rendered, dependency-free, and easy to extend. Cloning the parsed template before binding request functions keeps concurrent requests isolated. Ticket text, comments, labels, actors, event payloads, and audit reasons remain canonical data rather than translation input. A catalog key-set test makes missing translations fail in CI.
+7. **Confidence:** high
+8. **Revisit Trigger:** Atlas adds locale-aware dates/numbers, plural rules beyond the pilot, RTL support, or enough languages that maintaining literal maps becomes error-prone.
+9. **Affected PRs/Files:** `internal/contracts/domain.go`, `internal/config/config.go`, `internal/web/i18n.go`, `internal/web/templates/*`, `internal/web/static/*`, web/config tests, `docs/i18n-notes.md`, web/config docs.
+
+## DEC-037
+
+1. **Decision ID:** DEC-037
+2. **Date:** 2026-07-25
+3. **Question:** How should a live board sync communicate card and count movement without weakening strict CSP or pulling the grid out from under an active drag?
+4. **Options Considered:**
+   - Keep replacing the board grid instantly.
+   - Vendor Motion Mini and use its animation helper for FLIP.
+   - Record ticket rectangles and column counts locally, then use the browser's Web Animations API for FLIP plus CSS classes for drop/count feedback.
+5. **Chosen Option:** Use a small native FLIP implementation and CSS feedback classes.
+6. **Why We Chose It:** Ticket IDs already provide stable keys across the server-rendered grid swap. Capturing rectangles only after `waitForDragEnd`, checking the drag counter again before playback, and animating transforms for 180ms preserves spatial continuity without changing the mutation or refresh contracts. Native animation needs no module loader, package metadata, inline style, external request, or additional vendored code; the same path skips all effects when reduced motion is requested.
+7. **Confidence:** high
+8. **Revisit Trigger:** Supported browsers no longer provide the Web Animations API, sync expands beyond simple card movement, or a shared animation runtime becomes justified by several independent interactions.
+9. **Affected PRs/Files:** `internal/web/static/app.js`, `internal/web/static/app.css`, `internal/web/card_interactions_test.go`, `DESIGN.md`, `docs/web-board-screen-brief.md`.
+
+## DEC-038
+
+1. **Decision ID:** DEC-038
+2. **Date:** 2026-07-25
+3. **Question:** How should the board's drawer, hover, and press feedback change now that DEC-035's uniform 200ms drawer motion feels too linear?
+4. **Options Considered:**
+   - Keep the existing 200ms standard ease for every drawer direction and card lift.
+   - Use CSS cubic-bezier springs for entry/lift, with shorter standard ease-out timing for close/press.
+   - Add JavaScript spring physics for every interaction.
+5. **Chosen Option:** Use transform-only CSS curves: 240ms restrained overshoot on drawer open, 160ms standard ease-out on close, 220ms spring lift on card hover/focus, and 90ms compression on press.
+6. **Why We Chose It:** Entry benefits from a small amount of continuity while exit and direct press feedback should get out of the way. CSS keeps these frequent interactions compositor-friendly and interruptible without adding a runtime. The existing surface colors, layout, and `--ease` curve remain unchanged; one spring easing token handles the causal entry/lift cases, and the reduced-motion block removes every transform and animation.
+7. **Confidence:** high
+8. **Revisit Trigger:** Runtime inspection shows visible overshoot at large drawer widths, interaction latency rises on lower-performance hardware, or users report that frequent card feedback feels busy.
+9. **Affected PRs/Files:** Supersedes the motion timing/feedback portion of DEC-035; `internal/web/static/app.css`, `internal/web/card_interactions_test.go`, `DESIGN.md`, `docs/web-board-screen-brief.md`.

@@ -40,10 +40,6 @@ func ParseToolProfile(raw string) (ToolProfile, error) {
 	return profile, nil
 }
 
-func ToolProfiles() []ToolProfile {
-	return []ToolProfile{ProfileRead, ProfileWorkflow, ProfileDelivery, ProfileAdmin}
-}
-
 type ToolClass string
 
 const (

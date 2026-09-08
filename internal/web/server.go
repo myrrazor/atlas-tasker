@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -155,10 +154,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/api/board", s.handleBoardAPI)
 	mux.HandleFunc("/api/tickets/", s.handleTicketAPI)
+	mux.HandleFunc("/actions/projects/create", s.handleCreateProject)
 	mux.HandleFunc("/actions/tickets/create", s.handleCreateTicket)
 	mux.HandleFunc("/actions/tickets/", s.handleTicketAction)
 	mux.HandleFunc("/new-ticket", s.handleNewTicket)
 	mux.HandleFunc("/tickets/", s.handleTicketPage)
+	mux.HandleFunc("/settings", s.handleSettings)
 	mux.HandleFunc("/board", s.handleBoard)
 	mux.HandleFunc("/", s.handleRoot)
 	return s.security(mux)
@@ -357,6 +358,10 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 		s.writeError(w, r, err, statusForError(err))
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/actions/projects/") {
+		s.writeProjectActionError(w, r, err)
+		return
+	}
 	// derive the target from the path, not the caller: middleware rejections
 	// (CSRF/origin) have no handler-supplied id, and echoing the form into an
 	// auto-selected ticket would prefill the wrong ticket's edit form
@@ -384,14 +389,25 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 		page.Form = r.Form
 		page.FormTarget = target
 	}
-	var buf bytes.Buffer
-	if renderErr := s.templates.ExecuteTemplate(&buf, "layout", page); renderErr != nil {
+	s.renderPage(w, pageReq, page, statusForError(err))
+}
+
+func (s *Server) writeProjectActionError(w http.ResponseWriter, r *http.Request, err error) {
+	if wantsJSON(r) {
+		s.writeError(w, r, err, statusForError(err))
+		return
+	}
+	pageReq := r.Clone(r.Context())
+	pageReq.URL = &url.URL{Path: "/", RawQuery: "new_project=1"}
+	page, buildErr := s.buildWelcomePage(r.Context(), pageReq)
+	if buildErr != nil {
 		http.Error(w, err.Error(), statusForError(err))
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(statusForError(err))
-	_, _ = buf.WriteTo(w)
+	page.Error = err.Error()
+	page.ShowNew = true
+	page.Form = r.Form
+	s.renderPage(w, pageReq, page, statusForError(err))
 }
 
 // actionTarget parses "/actions/tickets/create" and

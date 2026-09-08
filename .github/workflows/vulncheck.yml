@@ -1,0 +1,17 @@
+name: vulncheck
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch: {}
+  pull_request:
+    paths: ["go.mod", "go.sum"]
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...

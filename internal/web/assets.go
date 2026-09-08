@@ -18,13 +18,19 @@ var embeddedFiles embed.FS
 
 func parseTemplates() (*template.Template, error) {
 	funcs := template.FuncMap{
-		"actorInitials": actorInitials,
-		"formValue":     formValue,
-		"formatTime":    formatTime,
-		"join":          strings.Join,
-		"priorityDot":   priorityDot,
-		"statusKey":     statusKey,
-		"statusLabel":   statusLabel,
+		"actorInitials":      actorInitials,
+		"formValue":          formValue,
+		"formatTime":         formatTime,
+		"join":               strings.Join,
+		"lang":               func() string { return defaultLanguage },
+		"langURL":            func(value string) string { return "?lang=" + value },
+		"priorityDot":        priorityDot,
+		"priorityMessageKey": priorityMessageKey,
+		"recentDescription":  func(change RecentChange) string { return change.Describe() },
+		"statusKey":          statusKey,
+		"statusLabel":        statusLabel,
+		"statusMessageKey":   statusMessageKey,
+		"t":                  translator(defaultLanguage),
 	}
 	return template.New("atlas-web").Funcs(funcs).ParseFS(embeddedFiles, "templates/*.html")
 }

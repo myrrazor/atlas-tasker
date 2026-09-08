@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,7 +19,27 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, apperr.New(apperr.CodeNotFound, "page not found"), http.StatusNotFound)
 		return
 	}
-	http.Redirect(w, r, "/board", http.StatusSeeOther)
+	if r.Method != http.MethodGet {
+		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+	page, err := s.buildWelcomePage(r.Context(), r)
+	if err != nil {
+		page.Error = err.Error()
+	}
+	s.renderPage(w, r, page, http.StatusOK)
+}
+
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+	page, err := s.buildSettingsPage()
+	if err != nil {
+		page.Error = err.Error()
+	}
+	s.renderPage(w, r, page, http.StatusOK)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -38,6 +59,7 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 	page, err := s.buildBoardPage(r.Context(), r)
 	if err != nil {
 		page = BoardPage{
+			Page:      "board",
 			Workspace: s.cfg.Workspace,
 			Host:      s.cfg.Host,
 			Actor:     s.cfg.Actor,
@@ -47,15 +69,40 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 			Error:     err.Error(),
 		}
 	}
-	// render to a buffer first — a template failure mid-stream would otherwise
-	// write half a page with a 200 status and error text appended
+	s.renderPage(w, r, page, http.StatusOK)
+}
+
+func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, page any, status int) {
+	// Render to a buffer first. A template failure mid-stream would otherwise
+	// write half a page with a success status and error text appended.
 	var buf bytes.Buffer
-	if err := s.templates.ExecuteTemplate(&buf, "layout", page); err != nil {
+	templates, err := s.templatesForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := templates.ExecuteTemplate(&buf, "layout", page); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
 	_, _ = w.Write(buf.Bytes())
+}
+
+func (s *Server) templatesForRequest(r *http.Request) (*template.Template, error) {
+	lang := s.requestLanguage(r)
+	t := translator(lang)
+	templates, err := s.templates.Clone()
+	if err != nil {
+		return nil, err
+	}
+	return templates.Funcs(template.FuncMap{
+		"lang":              func() string { return lang },
+		"langURL":           func(next string) string { return languageURL(r.URL, next) },
+		"recentDescription": func(change RecentChange) string { return recentDescription(t, change) },
+		"t":                 t,
+	}), nil
 }
 
 func (s *Server) handleBoardAPI(w http.ResponseWriter, r *http.Request) {
@@ -170,6 +217,37 @@ func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.actionSuccess(w, r, created.ID, "created "+created.ID)
+}
+
+func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+	if s.cfg.ReadOnly {
+		s.writeProjectActionError(w, r, apperr.New(apperr.CodePermissionDenied, "web board is read-only"))
+		return
+	}
+	project := contracts.Project{
+		Key:           strings.TrimSpace(r.Form.Get("key")),
+		Name:          strings.TrimSpace(r.Form.Get("name")),
+		CreatedAt:     s.cfg.Clock().UTC(),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	project = contracts.NormalizeProject(project)
+	if err := project.Validate(); err != nil {
+		s.writeProjectActionError(w, r, apperr.New(apperr.CodeInvalidInput, err.Error()))
+		return
+	}
+	if err := s.actions.CreateProject(s.mutationContext(r, s.actorFromForm(r)), project); err != nil {
+		s.writeProjectActionError(w, r, err)
+		return
+	}
+	if wantsJSON(r) {
+		s.writeJSON(w, "atlas_web_project_action", map[string]any{"ok": true, "project": project.Key})
+		return
+	}
+	http.Redirect(w, r, "/?flash="+url.QueryEscape("created project "+project.Key), http.StatusSeeOther)
 }
 
 func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
