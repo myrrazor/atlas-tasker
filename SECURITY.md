@@ -4,7 +4,7 @@ Atlas stores local task state, agent evidence, sync artifacts, signatures, gover
 
 ## Supported Versions
 
-`v1.8.0-rc1` is planned, not shipped. Until hosted release proof passes, security reports should reference the commit SHA, branch, or PR where the issue appears.
+`v1.9.1` is the current stable release. Security reports should name the affected release and include the commit SHA, branch, or PR when the issue is not present in a published tag.
 
 ## Reporting A Vulnerability
 

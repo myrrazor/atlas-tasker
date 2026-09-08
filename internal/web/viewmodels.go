@@ -197,7 +197,7 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 	}
 	page.Columns = s.columnsFromBoard(ctx, board, page, cfg.Web.AgentColors)
 	selected := strings.TrimSpace(query.Get("ticket"))
-	if selected == "" {
+	if selected == "" && !query.Has("ticket") {
 		selected = firstTicketIDForColumn(page.Columns, page.ActiveColumn)
 	}
 	if selected != "" {

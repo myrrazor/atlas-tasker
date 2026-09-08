@@ -103,7 +103,7 @@ func newWebHarness(t *testing.T, readOnly bool) webHarness {
 	}
 }
 
-func TestNewServerRejectsUnsafeHostUnlessExplicit(t *testing.T) {
+func TestNewServerRejectsNonLoopbackHost(t *testing.T) {
 	h := newWebHarness(t, false)
 	cfg := Config{
 		Root:      h.root,
@@ -115,11 +115,7 @@ func TestNewServerRejectsUnsafeHostUnlessExplicit(t *testing.T) {
 		Clock:     func() time.Time { return h.now },
 	}
 	if _, err := NewServer(Services{Actions: h.actions, Queries: h.queries}, cfg); err == nil {
-		t.Fatal("expected non-loopback host to require --unsafe-host")
-	}
-	cfg.UnsafeHost = true
-	if _, err := NewServer(Services{Actions: h.actions, Queries: h.queries}, cfg); err != nil {
-		t.Fatalf("expected unsafe host opt-in to pass: %v", err)
+		t.Fatal("expected non-loopback host to be rejected")
 	}
 }
 

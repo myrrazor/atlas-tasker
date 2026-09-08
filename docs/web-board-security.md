@@ -6,7 +6,7 @@ Defaults:
 
 - bind to `127.0.0.1`
 - choose a random free port unless `--port` is supplied
-- reject non-loopback hosts unless `--unsafe-host` is explicit
+- reject every non-loopback host; the local board has no remote-serving escape hatch
 - require a server token/session for page routes
 - scope the session cookie name to the serving port, so two workspaces served on `127.0.0.1` don't clobber each other's session (browsers ignore ports for cookie storage)
 - require CSRF tokens for mutations
@@ -20,4 +20,3 @@ The referrer policy must stay `same-origin`, not `no-referrer`: under `no-referr
 Runtime status is written to `.tracker/runtime/web/server.json`, but session tokens and CSRF tokens are not persisted there.
 
 Descriptions and comments render as escaped text with whitespace preserved. v1.10 intentionally does not render arbitrary Markdown to raw HTML.
-

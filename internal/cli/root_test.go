@@ -44,7 +44,7 @@ func TestWebCommandContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find web serve: %v", err)
 	}
-	for _, flag := range []string{"host", "port", "project", "actor", "open", "no-browser", "read-only", "token-mode", "unsafe-host"} {
+	for _, flag := range []string{"host", "port", "project", "actor", "open", "no-browser", "read-only", "token-mode"} {
 		if serve.Flag(flag) == nil {
 			t.Fatalf("expected web serve to expose --%s", flag)
 		}

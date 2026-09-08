@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -22,7 +21,7 @@ import (
 func newWebCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "web", Short: "Run the local browser Kanban board"}
 	serve := &cobra.Command{Use: "serve", Short: "Serve the local browser Kanban board", RunE: runWebServe}
-	serve.Flags().String("host", "127.0.0.1", "Host to bind; non-loopback requires --unsafe-host")
+	serve.Flags().String("host", "127.0.0.1", "Loopback host to bind")
 	serve.Flags().Int("port", 0, "Port to bind; 0 chooses a random free port")
 	serve.Flags().String("project", "", "Default project filter")
 	serve.Flags().String("actor", "human:owner", "Default mutation actor")
@@ -30,7 +29,6 @@ func newWebCommand() *cobra.Command {
 	serve.Flags().Bool("no-browser", false, "Do not open a browser")
 	serve.Flags().Bool("read-only", false, "Disable all web mutations")
 	serve.Flags().String("token-mode", "random", "Session token mode; random is the only supported mode")
-	serve.Flags().Bool("unsafe-host", false, "Allow binding to a non-loopback host")
 
 	openCmd := &cobra.Command{Use: "open", Short: "Open the last recorded local web board URL", RunE: runWebOpen}
 	status := &cobra.Command{Use: "status", Short: "Show the last recorded local web board server", RunE: runWebStatus}
@@ -54,28 +52,26 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	noBrowser, _ := cmd.Flags().GetBool("no-browser")
 	readOnly, _ := cmd.Flags().GetBool("read-only")
 	tokenMode, _ := cmd.Flags().GetString("token-mode")
-	unsafeHost, _ := cmd.Flags().GetBool("unsafe-host")
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
 	if err != nil {
 		return err
 	}
-	listener, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	listener, host, err := webui.ListenLoopback(host, port)
 	if err != nil {
 		return err
 	}
 	defer listener.Close()
 	actualPort := listener.Addr().(*net.TCPAddr).Port
 	server, err := webui.NewServer(webui.Services{Actions: workspace.actions, Queries: workspace.queries}, webui.Config{
-		Root:       workspace.root,
-		Workspace:  filepath.Base(workspace.root),
-		Host:       host,
-		Port:       actualPort,
-		Project:    project,
-		Actor:      actor,
-		ReadOnly:   readOnly,
-		UnsafeHost: unsafeHost,
-		TokenMode:  tokenMode,
-		Clock:      defaultNow,
+		Root:      workspace.root,
+		Workspace: filepath.Base(workspace.root),
+		Host:      host,
+		Port:      actualPort,
+		Project:   project,
+		Actor:     actor,
+		ReadOnly:  readOnly,
+		TokenMode: tokenMode,
+		Clock:     defaultNow,
 	})
 	if err != nil {
 		return err
@@ -86,9 +82,6 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	}
 	defer func() { _ = webui.ClearRuntimeStateOwnedBy(workspace.root, os.Getpid()) }()
 	sessionURL := server.SessionURL(actualPort)
-	if unsafeHost {
-		fmt.Fprintln(cmd.ErrOrStderr(), "warning: web board is bound to a non-loopback host; use only on trusted networks")
-	}
 	fmt.Fprintf(cmd.OutOrStdout(), "serving Atlas web board at %s\n", state.URL)
 	fmt.Fprintf(cmd.OutOrStdout(), "session URL: %s\n", sessionURL)
 	if openBrowser && !noBrowser {
