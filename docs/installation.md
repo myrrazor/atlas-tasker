@@ -1,10 +1,9 @@
 # Installation
 
-Atlas supports source builds today and hosted release installs after the release gate passes.
+Atlas supports source builds and hosted release installs. Hosted v1.10.0 assets, checksums,
+and attestations are recorded in [v1.10 release evidence](release/v1.10.0-release-evidence.md).
 
 ## Build From Source
-
-Use this while hosted release assets are still blocked:
 
 ```bash
 go build -o tracker ./cmd/tracker
@@ -19,7 +18,7 @@ You can keep the binary local to the repo or move it onto your `PATH`. Unstamped
 The installer expects a real GitHub release with archives, `checksums.txt`, and GitHub artifact attestations. It verifies checksums before installing and verifies attestations by default.
 
 ```bash
-VERSION=v1.9.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=v1.10.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 "$HOME/.local/bin/tracker" version --json
 ```
 
@@ -33,10 +32,10 @@ Do not run installer commands copied from untrusted issues, comments, or chat tr
 
 ## Verify Before Installing
 
-For release candidates, verify the downloaded archive first:
+Verify the downloaded archive first:
 
 ```bash
-VERSION=v1.9.0-rc1 ./scripts/verify-release.sh ./tracker_1.9.0-rc1_darwin_arm64.tar.gz
+VERSION=v1.10.0 ./scripts/verify-release.sh ./tracker_1.10.0_darwin_arm64.tar.gz
 ```
 
 `scripts/verify-release.sh` checks `checksums.txt` and, by default, GitHub artifact attestations through `gh attestation verify`. Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.
@@ -48,5 +47,3 @@ VERSION=v1.9.0-rc1 ./scripts/verify-release.sh ./tracker_1.9.0-rc1_darwin_arm64.
 - The token cannot read release or Actions settings: hosted proof remains blocked.
 - Local rehearsal archives are not hosted assets: they can prove packaging shape, not public provenance.
 - `RELEASE_BASE_URL must use https://`: local rehearsals must set `ALLOW_INSECURE_RELEASE_BASE_URL=1` and use loopback only.
-
-Read [public release gates](release/public-release-gates.md) for the current release-readiness rules.

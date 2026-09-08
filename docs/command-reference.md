@@ -600,8 +600,8 @@ Template names are path-derived identifiers under `.tracker/templates/` and must
 
 ## Ticket CRUD
 
-- `tracker ticket create --project <KEY> --title <TEXT> [--type <epic|task|bug|subtask>] [--template <NAME>] [flags]`
-- `tracker ticket view <ID>`
+- `tracker ticket create --project <KEY> --title <TEXT> --type <epic|task|bug|subtask> [--template <NAME>] [flags]`
+- `tracker ticket view <ID>` (alias: `show`)
 - `tracker ticket edit <ID> [flags]`
 - `tracker ticket archive <ID>` (`ticket delete` is kept as a compatibility alias)
 - `tracker ticket list [--project <KEY>] [--status <STATUS>] [--assignee <ACTOR>] [--type <TYPE>]`
@@ -888,7 +888,7 @@ Useful config keys:
 `tracker version` prints release metadata in text form:
 
 ```text
-tracker v1.10.0-rc1
+tracker v1.10.0
 commit: abc123
 build date: 2026-08-27T04:00:00Z
 go: go1.26.6
@@ -901,7 +901,7 @@ platform: darwin/arm64
 {
   "format_version": "v1",
   "kind": "tracker_version",
-  "version": "v1.10.0-rc1",
+  "version": "v1.10.0",
   "commit": "abc123",
   "build_date": "2026-08-27T04:00:00Z",
   "go_version": "go1.26.6",

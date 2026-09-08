@@ -155,7 +155,11 @@ func newInitCommand() *cobra.Command {
 			for _, path := range result.Created {
 				md += "- " + path + "\n"
 			}
-			return writeCommandOutput(cmd, result, md, "initialized")
+			pretty := "initialized"
+			if len(result.Created) == 0 {
+				pretty = "already bootstrapped"
+			}
+			return writeCommandOutput(cmd, result, md, pretty)
 		},
 	}
 	addReadOutputFlags(cmd, &outputFlags{})
@@ -247,9 +251,9 @@ func newConfigCommand() *cobra.Command {
 }
 
 func newIntegrationsCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "integrations", Short: "Install agent guidance for Atlas Tasker"}
-	install := &cobra.Command{Use: "install", Short: "Install Atlas Tasker guidance into agent files"}
-	for _, target := range []string{"codex", "claude", "openclaw", "generic"} {
+	cmd := &cobra.Command{Use: "integrations", Short: "Install agent guidance for Atlas Tasker", RunE: requireKnownSubcommand}
+	install := &cobra.Command{Use: "install", Short: "Install Atlas Tasker guidance into agent files", RunE: requireKnownSubcommand}
+	for _, target := range []string{"codex", "claude", "openclaw", "generic", "cursor", "grok"} {
 		target := target
 		targetCmd := &cobra.Command{
 			Use:   target,
@@ -263,7 +267,8 @@ func newIntegrationsCommand() *cobra.Command {
 					return err
 				}
 				force, _ := command.Flags().GetBool("force")
-				result, err := integrations.Installer{Root: rootDir}.Install(integrations.Target(target), force)
+				global, _ := command.Flags().GetBool("global")
+				result, err := integrations.Installer{Root: rootDir}.InstallOpts(integrations.Target(target), integrations.InstallOptions{Force: force, Global: global})
 				if err != nil {
 					return err
 				}
@@ -275,10 +280,16 @@ func newIntegrationsCommand() *cobra.Command {
 				for _, path := range result.CommandFiles {
 					md += fmt.Sprintf("\n- Command template: %s", path)
 				}
+				for _, path := range result.GlobalSkillFiles {
+					md += fmt.Sprintf("\n- Global skill: %s", path)
+				}
 				return writeCommandOutput(command, result, md, pretty)
 			},
 		}
 		targetCmd.Flags().Bool("force", false, "Replace the whole instruction file instead of only the Atlas Tasker managed block")
+		if target == "openclaw" {
+			targetCmd.Flags().Bool("global", false, "Also copy the atlas-worker skill into ~/.openclaw/skills")
+		}
 		addReadOutputFlags(targetCmd, &outputFlags{})
 		install.AddCommand(targetCmd)
 	}
@@ -287,7 +298,7 @@ func newIntegrationsCommand() *cobra.Command {
 }
 
 func newAgentCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "agent", Short: "Manage Atlas worker profiles"}
+	cmd := &cobra.Command{Use: "agent", Short: "Manage Atlas worker profiles", RunE: requireKnownSubcommand}
 	list := &cobra.Command{Use: "list", Short: "List agent profiles", RunE: runAgentList}
 	view := &cobra.Command{Use: "view <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Show one agent profile", RunE: runAgentView}
 	create := &cobra.Command{Use: "create <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Create an agent profile", RunE: runAgentCreate}
@@ -511,13 +522,13 @@ func newProjectCommand() *cobra.Command {
 const timeRFC3339 = "2006-01-02T15:04:05Z07:00"
 
 func newTicketCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "ticket", Short: "Ticket CRUD and workflow commands"}
+	cmd := &cobra.Command{Use: "ticket", Short: "Ticket CRUD and workflow commands", RunE: requireKnownSubcommand}
 
 	create := &cobra.Command{Use: "create", Short: "Create a ticket", RunE: runTicketCreate}
-	addMutationFlags(create, &mutationFlags{Actor: "human:owner"})
+	addMutationFlags(create, &mutationFlags{})
 	create.Flags().String("project", "", "Project key (required)")
 	create.Flags().String("title", "", "Ticket title (required)")
-	create.Flags().String("type", "", "Ticket type: epic|task|bug|subtask")
+	create.Flags().String("type", "", "Ticket type: epic|task|bug|subtask (required unless --template supplies it)")
 	create.Flags().String("template", "", "Template name from .tracker/templates")
 	create.Flags().String("status", "backlog", "Initial status ("+strings.Join(contracts.ValidStatusValues(), ", ")+")")
 	create.Flags().String("priority", "medium", "Ticket priority")
@@ -532,9 +543,10 @@ func newTicketCommand() *cobra.Command {
 	create.Flags().Bool("sensitive", false, "Mark the ticket as sensitive")
 	_ = create.MarkFlagRequired("project")
 	_ = create.MarkFlagRequired("title")
+	create.PreRunE = requireTicketTypeOrTemplate
 	cmd.AddCommand(create)
 
-	view := &cobra.Command{Use: "view <ID>", Args: cobra.ExactArgs(1), Short: "View ticket", RunE: runTicketView}
+	view := &cobra.Command{Use: "view <ID>", Aliases: []string{"show"}, Args: cobra.ExactArgs(1), Short: "View ticket", RunE: runTicketView}
 	addReadOutputFlags(view, &outputFlags{})
 	cmd.AddCommand(view)
 
@@ -565,7 +577,7 @@ func newTicketCommand() *cobra.Command {
 	cmd.AddCommand(list)
 
 	move := &cobra.Command{Use: "move <ID> <STATUS>", Args: cobra.ExactArgs(2), Short: "Move ticket status", RunE: runTicketMove}
-	addMutationFlags(move, &mutationFlags{Actor: "human:owner"})
+	addMutationFlags(move, &mutationFlags{})
 	addReadOutputFlags(move, &outputFlags{})
 	addDependencyOverrideFlag(move)
 	cmd.AddCommand(move)
@@ -848,7 +860,7 @@ func newUnwatchCommand() *cobra.Command {
 }
 
 func newBulkCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "bulk", Short: "Run one mutation across many tickets"}
+	cmd := &cobra.Command{Use: "bulk", Short: "Run one mutation across many tickets", RunE: requireKnownSubcommand}
 	move := &cobra.Command{Use: "move <STATUS>", Args: cobra.ExactArgs(1), Short: "Move many tickets", RunE: runBulkMove}
 	assign := &cobra.Command{Use: "assign <ACTOR>", Args: cobra.ExactArgs(1), Short: "Assign many tickets", RunE: runBulkAssign}
 	requestReview := &cobra.Command{Use: "request-review", Short: "Request review for many tickets", RunE: runBulkRequestReview}
@@ -891,6 +903,47 @@ func addReadOutputFlags(cmd *cobra.Command, flags *outputFlags) {
 func addMutationFlags(cmd *cobra.Command, flags *mutationFlags) {
 	cmd.Flags().StringVar(&flags.Actor, "actor", flags.Actor, "Mutation actor (e.g. human:owner)")
 	cmd.Flags().StringVar(&flags.Reason, "reason", "", "Reason for change; required by security/protected mutations and recommended for all writes")
+}
+
+func requireKnownSubcommand(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return cmd.Help()
+	}
+	return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath()))
+}
+
+func requireTicketTypeOrTemplate(cmd *cobra.Command, _ []string) error {
+	typeValue, _ := cmd.Flags().GetString("type")
+	templateName, _ := cmd.Flags().GetString("template")
+	if strings.TrimSpace(typeValue) == "" && strings.TrimSpace(templateName) == "" {
+		return apperr.New(apperr.CodeInvalidInput, "--type is required unless --template supplies a type")
+	}
+	return nil
+}
+
+func bulkFailureError(result service.BulkOperationResult) error {
+	code := apperr.CodeInvalidInput
+	rank := map[apperr.Code]int{
+		apperr.CodePermissionDenied: 5,
+		apperr.CodeConflict:         4,
+		apperr.CodeBusy:             3,
+		apperr.CodeRepairNeeded:     3,
+		apperr.CodeNotFound:         2,
+		apperr.CodeInvalidInput:     1,
+		apperr.CodeInternal:         0,
+	}
+	best := -1
+	for _, item := range result.Results {
+		if item.OK || strings.TrimSpace(item.Code) == "" {
+			continue
+		}
+		itemCode := apperr.Code(item.Code)
+		if n, ok := rank[itemCode]; ok && n >= best {
+			best = n
+			code = itemCode
+		}
+	}
+	return apperr.New(code, fmt.Sprintf("bulk operation failed for %d of %d tickets", result.Summary.Failed, result.Summary.Total))
 }
 
 func executeArgs(args []string) error {
@@ -937,7 +990,10 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	sensitive, _ := cmd.Flags().GetBool("sensitive")
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
-	actor := normalizeActor(actorRaw)
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
 
 	if _, err := workspace.project.GetProject(ctx, project); err != nil {
 		return err
@@ -954,7 +1010,7 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	}
 	ticketType := contracts.TicketType(typeValue)
 	if !ticketType.IsValid() {
-		return fmt.Errorf("invalid ticket type: %s (valid: %s)", typeValue, strings.Join(contracts.ValidTicketTypeValues(), ", "))
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid ticket type: %s (valid: %s)", typeValue, strings.Join(contracts.ValidTicketTypeValues(), ", ")))
 	}
 	status := contracts.Status(statusValue)
 	if !status.IsValid() {
@@ -3109,7 +3165,13 @@ func runBulkOperation(cmd *cobra.Command, base service.BulkOperation) error {
 		return err
 	}
 	md, pretty := bulkOutput(result, source)
-	return writeCommandOutput(cmd, result, md, pretty)
+	if err := writeCommandOutput(cmd, result, md, pretty); err != nil {
+		return err
+	}
+	if result.Preview.DryRun || result.Summary.Failed == 0 {
+		return nil
+	}
+	return bulkFailureError(result)
 }
 
 func bulkTargetTicketIDs(ctx context.Context, workspace *workspace, cmd *cobra.Command) ([]string, string, error) {

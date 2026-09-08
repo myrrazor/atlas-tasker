@@ -8,6 +8,8 @@ A user-scoped server starts wherever Claude Code happens to be, so pin the works
 claude mcp add --transport stdio --scope user atlas -- /Users/you/bin/tracker mcp serve --workspace /Users/you/code/my-repo --tool-profile read
 ```
 
+Stdio speaks newline-delimited JSON-RPC and also accepts LSP-style `Content-Length` frames.
+
 For a project-scoped workflow profile, Claude Code already launches the server in the project directory, so `--workspace` is optional:
 
 ```bash
