@@ -7,6 +7,11 @@
 - `tracker doctor [--repair]`
 - `tracker reindex`
 - `tracker inspect <ID> [--actor <ACTOR>]`
+- `tracker schedule set <ID> --at <RFC3339> --runner <ACTOR> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule clear <ID> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule list [--project <KEY>] [--from <RFC3339>] [--to <RFC3339>]`
+- `tracker schedule history [--project <KEY>] [--from <RFC3339>] [--to <RFC3339>]`
+- `tracker schedule tick [--now <RFC3339>] --actor <ACTOR> --reason <TEXT>`
 - `tracker automation list`
 - `tracker automation view <NAME>`
 - `tracker automation create <NAME> [flags]`
@@ -178,6 +183,7 @@ Behavior:
 - `available` lists tickets an agent can start, continue, review, or complete now
 - `pending` lists relevant tickets that are blocked by dependencies, review, owner gates, claims, capacity, or policy
 - wake-ups are event-driven records created under `.tracker/runtime/agent-wakeups/` when a `done` ticket unblocks assigned agent work
+- scheduled wake-ups use the same store and command path; `{scheduled_at}` expands to the UTC due instant
 - `agent.work_available` events use reserved actor `agent:atlas`
 - auto mode defaults to `notify`; command mode stores argv items and refuses shell interpreters
 
@@ -618,6 +624,18 @@ Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Tick
 - `tracker ticket complete <ID> [--override-deps] [--actor <ACTOR>]`
 - `tracker ticket policy get <ID>`
 - `tracker ticket policy set <ID> [flags]`
+
+## Scheduled Work
+
+- `tracker schedule set <ID> --at <RFC3339> --runner <ACTOR> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule clear <ID> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule list [--project <KEY>] [--from <RFC3339>] [--to <RFC3339>]`
+- `tracker schedule history [--project <KEY>] [--from <RFC3339>] [--to <RFC3339>]`
+- `tracker schedule tick [--now <RFC3339>] --actor <ACTOR> --reason <TEXT>`
+
+`set` creates or replaces a one-time schedule and makes `--runner` the ticket assignee. Human runners receive the normal `ticket.schedule_triggered` notification when the schedule is ticked. Agent runners must reference an enabled agent profile; Atlas creates an agent wakeup and launches the configured argv only when that profile uses `agent auto` command mode. The default notify mode leaves a pending wakeup for explicit pickup.
+
+`tick` is a one-shot, idempotent command. Run it from cron, launchd, or another scheduler; Atlas does not start a background daemon. A failed agent launch is recorded once as `ticket.schedule_failed` and does not retry until the ticket is rescheduled. `history` derives completion time and actor from existing immutable done events rather than maintaining a second completion record.
 
 ## Relationships
 

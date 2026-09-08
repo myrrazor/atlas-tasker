@@ -14,7 +14,8 @@ const (
 	SchemaVersionV3      = 3
 	SchemaVersionV4      = 4
 	SchemaVersionV5      = 5
-	CurrentSchemaVersion = SchemaVersionV5
+	SchemaVersionV6      = 6
+	CurrentSchemaVersion = SchemaVersionV6
 	DefaultLeaseTTL      = 60 * time.Minute
 )
 
@@ -206,7 +207,7 @@ func (p Project) Validate() error {
 	if strings.TrimSpace(p.Name) == "" {
 		return fmt.Errorf("project name is required")
 	}
-	if p.SchemaVersion != 0 && p.SchemaVersion != SchemaVersionV1 && p.SchemaVersion != SchemaVersionV2 && p.SchemaVersion != SchemaVersionV3 && p.SchemaVersion != SchemaVersionV4 && p.SchemaVersion != SchemaVersionV5 {
+	if p.SchemaVersion != 0 && p.SchemaVersion != SchemaVersionV1 && p.SchemaVersion != SchemaVersionV2 && p.SchemaVersion != SchemaVersionV3 && p.SchemaVersion != SchemaVersionV4 && p.SchemaVersion != SchemaVersionV5 && p.SchemaVersion != SchemaVersionV6 {
 		return fmt.Errorf("invalid project schema version: %d", p.SchemaVersion)
 	}
 	if err := p.Defaults.Validate(); err != nil {
@@ -584,6 +585,41 @@ type ProgressSummary struct {
 	Percent         int `json:"percent,omitempty"`
 }
 
+// TicketSchedule is a one-time instruction to surface or dispatch a ticket at
+// a specific instant. The ticket assignee is the runner; keeping that identity
+// in one field avoids schedule and workflow ownership drifting apart.
+type TicketSchedule struct {
+	At          time.Time `json:"at" yaml:"at"`
+	CreatedAt   time.Time `json:"created_at" yaml:"created_at"`
+	CreatedBy   Actor     `json:"created_by" yaml:"created_by"`
+	TriggeredAt time.Time `json:"triggered_at,omitempty" yaml:"triggered_at,omitempty"`
+	WakeupID    string    `json:"wakeup_id,omitempty" yaml:"wakeup_id,omitempty"`
+	Error       string    `json:"error,omitempty" yaml:"error,omitempty"`
+}
+
+// Validate checks the durable invariants for a one-time schedule.
+func (s TicketSchedule) Validate() error {
+	if s.At.IsZero() {
+		return fmt.Errorf("schedule at is required")
+	}
+	if s.CreatedAt.IsZero() {
+		return fmt.Errorf("schedule created_at is required")
+	}
+	if !s.CreatedBy.IsValid() {
+		return fmt.Errorf("invalid schedule created_by actor: %s", s.CreatedBy)
+	}
+	if !s.TriggeredAt.IsZero() && s.TriggeredAt.Before(s.CreatedAt) {
+		return fmt.Errorf("schedule triggered_at must be >= created_at")
+	}
+	if strings.TrimSpace(s.WakeupID) != "" && s.TriggeredAt.IsZero() {
+		return fmt.Errorf("schedule wakeup_id requires triggered_at")
+	}
+	if strings.TrimSpace(s.Error) != "" && s.TriggeredAt.IsZero() {
+		return fmt.Errorf("schedule error requires triggered_at")
+	}
+	return nil
+}
+
 func (p ProgressSummary) Validate() error {
 	if p.TotalChildren < 0 || p.DoneChildren < 0 || p.BlockedChildren < 0 {
 		return fmt.Errorf("progress counters must be >= 0")
@@ -640,6 +676,7 @@ type TicketSnapshot struct {
 	PermissionProfiles   []string         `json:"permission_profiles,omitempty"`
 	Protected            bool             `json:"protected,omitempty"`
 	Sensitive            bool             `json:"sensitive,omitempty"`
+	Schedule             *TicketSchedule  `json:"schedule,omitempty"`
 
 	Summary            string   `json:"summary,omitempty"`
 	Description        string   `json:"description,omitempty"`
@@ -699,6 +736,14 @@ func (t TicketSnapshot) ValidateForCreate() error {
 	}
 	if err := t.Progress.Validate(); err != nil {
 		return err
+	}
+	if t.Schedule != nil {
+		if t.Assignee == "" {
+			return fmt.Errorf("scheduled ticket requires an assignee")
+		}
+		if err := t.Schedule.Validate(); err != nil {
+			return err
+		}
 	}
 	if t.DispatchMode != "" && !t.DispatchMode.IsValid() {
 		return fmt.Errorf("invalid dispatch mode: %s", t.DispatchMode)
@@ -785,6 +830,17 @@ func NormalizeTicketSnapshot(ticket TicketSnapshot) TicketSnapshot {
 	}
 	if ticket.PermissionProfiles == nil {
 		ticket.PermissionProfiles = []string{}
+	}
+	if ticket.Schedule != nil {
+		schedule := *ticket.Schedule
+		schedule.At = schedule.At.UTC()
+		schedule.CreatedAt = schedule.CreatedAt.UTC()
+		if !schedule.TriggeredAt.IsZero() {
+			schedule.TriggeredAt = schedule.TriggeredAt.UTC()
+		}
+		schedule.WakeupID = strings.TrimSpace(schedule.WakeupID)
+		schedule.Error = strings.TrimSpace(schedule.Error)
+		ticket.Schedule = &schedule
 	}
 	if ticket.ReviewState == "" {
 		ticket.ReviewState = ReviewStateNone

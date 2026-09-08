@@ -79,6 +79,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())
+	root.AddCommand(newScheduleCommand())
 	root.AddCommand(newBoardCommand())
 	root.AddCommand(newBacklogCommand())
 	root.AddCommand(newNextCommand())

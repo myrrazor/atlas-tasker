@@ -8,6 +8,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 - [Getting started](getting-started.md): the shortest path from empty repo to first ticket.
 - [Quickstart](quickstart.md): one copyable terminal flow.
 - [First agent workflow](first-agent-workflow.md): register an agent, dispatch work, attach evidence, and hand off for review.
+- [Scheduled work](scheduling.md): one-time human reminders, agent wakeups, ticking, and completion history.
 
 ## Tutorials
 

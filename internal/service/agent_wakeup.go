@@ -43,7 +43,9 @@ const (
 type AgentWakeup struct {
 	WakeupID        string            `json:"wakeup_id"`
 	TicketID        string            `json:"ticket_id"`
-	BlockerTicketID string            `json:"blocker_ticket_id"`
+	BlockerTicketID string            `json:"blocker_ticket_id,omitempty"`
+	Source          string            `json:"source,omitempty"`
+	ScheduledAt     time.Time         `json:"scheduled_at,omitempty"`
 	Actor           contracts.Actor   `json:"actor"`
 	AgentID         string            `json:"agent_id"`
 	State           AgentWakeupState  `json:"state"`
@@ -343,6 +345,7 @@ func (s *ActionService) createAgentWakeup(ctx context.Context, ticket contracts.
 		State:           AgentWakeupPending,
 		Mode:            auto.Mode,
 		Reason:          "dependency completed; assigned work is available",
+		Source:          "dependency",
 		CreatedAt:       s.now(),
 		Metadata: map[string]string{
 			"causation_event_id": fmt.Sprintf("%d", cause.EventID),
@@ -424,6 +427,7 @@ func (s *ActionService) recordWakeupFailure(ticket contracts.TicketSnapshot, blo
 			AgentID:         agentIDFromActor(ticket.Assignee),
 			Mode:            AgentAutoModeNotify,
 			Reason:          "dependency completed; assigned work is available",
+			Source:          "dependency",
 			CreatedAt:       s.now(),
 		}
 	}
@@ -454,12 +458,17 @@ func launchAgentWakeupCommand(ctx context.Context, wakeup AgentWakeup, config Ag
 
 func substituteWakeupArgv(argv []string, wakeup AgentWakeup) []string {
 	out := make([]string, 0, len(argv))
+	scheduledAt := ""
+	if !wakeup.ScheduledAt.IsZero() {
+		scheduledAt = wakeup.ScheduledAt.UTC().Format(time.RFC3339)
+	}
 	replacements := map[string]string{
-		"{ticket_id}":  wakeup.TicketID,
-		"{blocker_id}": wakeup.BlockerTicketID,
-		"{agent_id}":   wakeup.AgentID,
-		"{actor}":      string(wakeup.Actor),
-		"{wakeup_id}":  wakeup.WakeupID,
+		"{ticket_id}":    wakeup.TicketID,
+		"{blocker_id}":   wakeup.BlockerTicketID,
+		"{agent_id}":     wakeup.AgentID,
+		"{actor}":        string(wakeup.Actor),
+		"{wakeup_id}":    wakeup.WakeupID,
+		"{scheduled_at}": scheduledAt,
 	}
 	for _, arg := range argv {
 		item := arg

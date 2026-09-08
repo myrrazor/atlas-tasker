@@ -117,3 +117,45 @@ func TestNormalizeProjectPreservesLegacyCompletionFallback(t *testing.T) {
 		t.Fatalf("expected fresh project schema to default to current, got %d", fresh.SchemaVersion)
 	}
 }
+
+func TestTicketScheduleValidationAndNormalization(t *testing.T) {
+	created := time.Date(2026, 8, 7, 14, 0, 0, 0, time.FixedZone("EDT", -4*60*60))
+	ticket := TicketSnapshot{
+		ID:            "APP-7",
+		Project:       "APP",
+		Title:         "Run the release check",
+		Type:          TicketTypeTask,
+		Status:        StatusReady,
+		Priority:      PriorityHigh,
+		Assignee:      Actor("agent:builder-1"),
+		CreatedAt:     created,
+		UpdatedAt:     created,
+		SchemaVersion: CurrentSchemaVersion,
+		Schedule: &TicketSchedule{
+			At:        created.Add(2 * time.Hour),
+			CreatedAt: created,
+			CreatedBy: Actor("human:owner"),
+		},
+	}
+	if err := ticket.ValidateForCreate(); err != nil {
+		t.Fatalf("expected valid schedule: %v", err)
+	}
+
+	normalized := NormalizeTicketSnapshot(ticket)
+	if normalized.Schedule == ticket.Schedule {
+		t.Fatal("expected schedule normalization to copy the pointer")
+	}
+	if normalized.Schedule.At.Location() != time.UTC || normalized.Schedule.CreatedAt.Location() != time.UTC {
+		t.Fatalf("expected UTC schedule times, got %#v", normalized.Schedule)
+	}
+
+	ticket.Assignee = ""
+	if err := ticket.ValidateForCreate(); err == nil {
+		t.Fatal("expected scheduled ticket without runner to fail")
+	}
+	ticket.Assignee = Actor("agent:builder-1")
+	ticket.Schedule.WakeupID = "wakeup_1"
+	if err := ticket.ValidateForCreate(); err == nil {
+		t.Fatal("expected wakeup id without triggered_at to fail")
+	}
+}
