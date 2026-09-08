@@ -108,13 +108,18 @@ func compactablePaths(ctx context.Context, root string) ([]string, int64, []stri
 	if err != nil {
 		return nil, 0, nil, err
 	}
-	archivesRoot := storage.ArchivesDir(root)
+	archivesRoot := canonicalComparablePath(storage.ArchivesDir(root))
 	for _, record := range records {
 		if record.Target != contracts.RetentionTargetRuntime {
 			continue
 		}
 		payloadDir := strings.TrimSpace(record.PayloadDir)
-		if payloadDir == "" || !pathWithinDir(archivesRoot, payloadDir) {
+		if payloadDir == "" {
+			skipped = append(skipped, "archive_payload:"+record.ArchiveID)
+			continue
+		}
+		payloadDir = canonicalComparablePath(payloadDir)
+		if !pathWithinDir(archivesRoot, payloadDir) {
 			skipped = append(skipped, "archive_payload:"+record.ArchiveID)
 			continue
 		}

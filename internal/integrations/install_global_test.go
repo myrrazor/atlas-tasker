@@ -42,6 +42,9 @@ func TestInstallOpenClawGlobalWritesUnderHomeSkills(t *testing.T) {
 	if len(result.GlobalSkillFiles) == 0 {
 		t.Fatal("expected global skill files")
 	}
+	if resolved, err := filepath.EvalSymlinks(home); err == nil {
+		home = resolved
+	}
 	rootSkills := filepath.Join(home, ".openclaw", "skills", "atlas-worker")
 	for _, path := range result.GlobalSkillFiles {
 		rel, err := filepath.Rel(rootSkills, path)

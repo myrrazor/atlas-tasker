@@ -36,6 +36,11 @@ func rejectUnsafeRelPath(root string, rel string) error {
 // rejectSymlinkComponents walks each path component under root with Lstat and
 // fails closed if any component is a symlink.
 func rejectSymlinkComponents(root string, absPath string) error {
+	// Canonicalize before Rel so macOS /var vs /private/var aliases do not
+	// look like containment escapes. Walk the resolved tree with Lstat so
+	// symlinks under root still fail closed.
+	root = canonicalComparablePath(root)
+	absPath = canonicalComparablePath(absPath)
 	rel, err := filepath.Rel(root, absPath)
 	if err != nil {
 		return err
