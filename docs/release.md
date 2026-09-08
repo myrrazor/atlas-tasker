@@ -1,8 +1,8 @@
 # Atlas Tasker Release Guide
 
-Atlas is in the v1.10 release train. This guide explains the release workflow and points to the current proof gates.
+Atlas Tasker v1.10.0 is the current stable release. This guide explains the release workflow and points to its proof gates.
 
-Current evidence: [v1.9 agent workflow evidence](release/v1.9-agent-workflow-evidence.md), [launch checklist](release/launch-checklist.md), and [public release gates](release/public-release-gates.md).
+Current evidence: [v1.10 hosted RC evidence and owner ship decision](release/v1.10.0-release-evidence.md), [launch checklist](release/launch-checklist.md), and [public release gates](release/public-release-gates.md).
 
 ## Release States
 
@@ -21,15 +21,17 @@ Each hosted release tag should publish:
 - `tracker_<version>_linux_amd64.tar.gz`
 - `tracker_<version>_linux_arm64.tar.gz`
 - `checksums.txt`
+- `sbom-<tag>.cdx.json` (CycloneDX)
+- `install.sh`
 
-Each archive contains a single `tracker` binary.
+Each archive contains a single `tracker` binary. The release workflow attests the four archives, SBOM, and checksums file. The published installer is also checked against the tagged source during hosted verification.
 
 ## Local Rehearsal
 
 ```bash
-VERSION=v1.9.0-rc1 sh scripts/preflight-release.sh
-VERSION=v1.9.0-rc1 sh scripts/validate-rc.sh
-VERSION=v1.9.0-rc1 ./scripts/release-rehearsal.sh
+VERSION=v1.10.0-rc1 sh scripts/preflight-release.sh
+VERSION=v1.10.0-rc1 sh scripts/validate-rc.sh
+VERSION=v1.10.0-rc1 ./scripts/release-rehearsal.sh
 sh scripts/stability-smoke.sh
 ```
 
@@ -38,16 +40,16 @@ The preflight checks release script syntax and verifies the stamped `tracker ver
 Local vulnerability and SBOM proof is generated explicitly:
 
 ```bash
-VERSION=v1.9.0-rc1 RUN_GOVULNCHECK=1 RUN_SBOM=1 sh scripts/preflight-release.sh
+VERSION=v1.10.0-rc1 RUN_GOVULNCHECK=1 RUN_SBOM=1 sh scripts/preflight-release.sh
 ```
 
 ## Hosted Release Gate
 
 Before public sign-off, a release actor must:
 
-1. run `VERSION=v1.9.0-rc1 sh scripts/preflight-release.sh --hosted`
-2. create a prerelease tag such as `v1.9.0-rc1`
-3. let GitHub publish archives and `checksums.txt`
+1. run `VERSION=v1.10.0-rc1 sh scripts/preflight-release.sh --hosted`
+2. create a prerelease tag such as `v1.10.0-rc1`
+3. let GitHub publish all four archives, the SBOM, `checksums.txt`, and `install.sh`
 4. download at least one published archive
 5. run `scripts/verify-release.sh` against that archive with attestation verification enabled
 6. install from published assets through `scripts/install.sh`; the installer verifies checksums and attestations before copying the binary
@@ -68,14 +70,14 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 Prefer explicit verification for release candidates:
 
 ```bash
-VERSION=v1.9.0-rc1 ./scripts/verify-release.sh ./tracker_1.9.0-rc1_darwin_arm64.tar.gz
-VERSION=v1.9.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=v1.10.0-rc1 ./scripts/verify-release.sh ./tracker_1.10.0-rc1_darwin_arm64.tar.gz
+VERSION=v1.10.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 ```
 
 `scripts/verify-release.sh` verifies checksums and GitHub artifact attestations by default:
 
 ```bash
-gh attestation verify ./tracker_1.9.0-rc1_darwin_arm64.tar.gz --repo myrrazor/atlas-tasker
+gh attestation verify ./tracker_1.10.0-rc1_darwin_arm64.tar.gz --repo myrrazor/atlas-tasker
 ```
 
 Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.
