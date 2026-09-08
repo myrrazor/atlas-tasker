@@ -726,3 +726,15 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** The supported platforms, release version, public output contracts, or required CI policy change.
 9. **Affected PRs/Files:** PRs #117, #121, #126; .github/workflows, scripts/check-workflow-security.sh, scripts/validate_rc.py, scripts/*release*.sh, scripts/validate-rc.sh, docs/release/public-release-gates.md
+
+## DEC-055
+
+1. **Decision ID:** DEC-055
+2. **Date:** 2026-09-08
+3. **Question:** Which artifact should local release preflight use to generate its SBOM?
+4. **Options Considered:** Discover the application from source and Git metadata; inspect the release binary already built and validated by preflight.
+5. **Chosen Option:** Use the pinned CycloneDX generator's binary mode with the explicit release version and the preflight binary.
+6. **Why We Chose It:** Source-mode version discovery failed in a linked Git worktree. Binary mode records the dependencies of the artifact actually rehearsed and avoids relying on the layout of Git's worktree references. Hosted CI and release source-mode generation remain valid in their ordinary checkouts.
+7. **Confidence:** high
+8. **Revisit Trigger:** Release artifacts stop carrying Go build information or the required SBOM scope expands beyond binary dependencies.
+9. **Affected PRs/Files:** PR #126; scripts/preflight-release.sh

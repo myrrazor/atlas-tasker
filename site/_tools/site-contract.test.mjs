@@ -264,13 +264,13 @@ test("visible FAQ questions match FAQPage JSON-LD", () => {
   assert.deepEqual(sorted(structuredEntries), sorted(visibleEntries));
 });
 
-test("legal launch markers render without tripping the placeholder gate", () => {
+test("website notices explain actual use without unresolved legal templates", () => {
   for (const file of ["privacy.html", "terms.html"]) {
     const html = pages.get(file);
-    assert.ok(html.startsWith("<!-- review with counsel before charging money -->"));
     const rendered = textContent(html);
-    assert.match(rendered, /TODO\(launch\)/);
-    assert.match(rendered, /\{\{LEGAL_ENTITY\}\}/);
-    assert.match(rendered, /\{\{JURISDICTION\}\}/);
+    assert.doesNotMatch(rendered, /TODO\(launch\)|\{\{LEGAL_ENTITY\}\}|\{\{JURISDICTION\}\}/);
+    assert.match(html, /mailto:merlintailorcorp@gmail\.com/);
   }
+  assert.match(textContent(pages.get("privacy.html")), /hosting provider/);
+  assert.match(textContent(pages.get("terms.html")), /MIT License/);
 });

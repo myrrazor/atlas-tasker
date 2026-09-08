@@ -52,7 +52,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="../" aria-label="Atlas Tasker home">
-        <img src="../atlas-tasker-wordmark.webp" width="640" height="108" alt="Atlas Tasker" />
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="../cli.html">CLI</a>
@@ -115,15 +115,15 @@ tracker mcp schema --json --tool-profile workflow</pre>
         <p><code>serve</code> reads the current directory unless <code>--workspace</code> names one. That flag is load-bearing: user-scoped and global registrations start wherever the client happens to be, and without <code>--workspace</code> the tools answer against that directory. It is the usual reason a tool returns <code>not_found</code> for a ticket you can see in your terminal. A workspace that does not exist or was never through <code>tracker init</code> fails at startup naming the path it tried.</p>
 
         <h2>Profiles</h2>
-        <p>Four escalating profiles decide which of the 59 tools exist in a session. Start at <code>read</code> and widen only when the human asks for writes.</p>
+        <p>Four escalating profiles decide which of the 63 tools exist in a session. Start at <code>read</code> and widen only when the human asks for writes.</p>
         <div class="table-scroll">
           <table class="data-table">
             <thead>
               <tr><th scope="col">Profile</th><th scope="col">Tools</th><th scope="col">Adds</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>read</code></td><td>32</td><td>Reads and plan/dry-run tools only. The default.</td></tr>
-              <tr><td><code>workflow</code></td><td>+11</td><td>Comments, claims, moves, request review, gate approve/reject, checkpoints, evidence, handoffs, import preview. Actor and reason required.</td></tr>
+              <tr><td><code>read</code></td><td>34</td><td>Reads and plan/dry-run tools only. The default.</td></tr>
+              <tr><td><code>workflow</code></td><td>+13</td><td>Comments, claims, moves, schedule set/clear, request review, gate approve/reject, checkpoints, evidence, handoffs, import preview. Actor and reason required.</td></tr>
               <tr><td><code>delivery</code></td><td>+4</td><td>Dispatch, change create, change sync, checks sync. Live side effects.</td></tr>
               <tr><td><code>admin</code></td><td>+12</td><td>High-impact operations, hidden unless the server also runs with <code>--dangerously-allow-high-impact-tools</code>. See <a href="mcp-security.html">MCP security</a>.</td></tr>
             </tbody>

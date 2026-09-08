@@ -24,6 +24,7 @@ When a command is invoked with `--json` and it fails, stderr emits:
 
 ```json
 {
+  "format_version": "v1",
   "ok": false,
   "error": {
     "code": "invalid_input",

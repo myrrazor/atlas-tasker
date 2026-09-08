@@ -1,6 +1,6 @@
 # Contributing
 
-Atlas Tasker is still in release-candidate polish. Contributions are welcome, but expect maintainers to be conservative until the first public release is signed off.
+Contributions are welcome. Expect maintainers to be conservative about scope; read the gates below before opening a PR.
 
 ## Before Opening A PR
 
@@ -16,11 +16,17 @@ go test ./...
 go vet ./...
 ```
 
+If you touched the marketing site under `site/`, also run its contract tests (CI does not run these yet):
+
+```bash
+node --test site/_tools/*.test.mjs
+```
+
 If your change affects release scripts, docs snippets, terminal output, MCP, signing, governance, redaction, audit, or backup behavior, add the relevant targeted proof in the PR body.
 
 ## Local Setup
 
-Atlas is a Go CLI. Use the Go version from CI when possible.
+Atlas is a Go CLI. CI builds with Go 1.26.6 (same as the `go` line in `go.mod`); use that locally when possible.
 
 ```bash
 git clone https://github.com/myrrazor/atlas-tasker.git
@@ -57,4 +63,4 @@ Maintainers review for correctness, storage compatibility, security wording, doc
 
 ## Release-Candidate Rule
 
-Do not describe a change as shipped or stable unless the release evidence says so. For v1.8, `docs/release/public-release-gates.md` is the source of truth.
+Do not describe a change as shipped or stable unless the release evidence says so. `docs/release/public-release-gates.md` is the source of truth.

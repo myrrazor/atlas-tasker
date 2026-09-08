@@ -85,8 +85,8 @@ shape + harden
 
 - **Thesis:** Operator timeline, not lifestyle calendar.
 - **Signature move:** Atlas status rail crossing chronological human reminders and agent wakeups.
-- **Type:** Geist with tabular time numerals.
-- **Color:** Existing neutral charcoal; red/yellow/teal/purple only for semantic state.
+- **Type:** Geist, with times in Geist Mono (24h, tabular numerals).
+- **Color:** The deep-navy pen surfaces; status hues only on the schedule-state pill and other compact indicators.
 - **Surfaces:** One main rail boundary and one completion ledger; cards only for actual tickets.
 - **Icons/imagery:** Text-first runner badges and small CSS marks; no avatars required.
 - **Anti-references:** copied mobile shell, month grid, AI glow, card wall, decorative metrics.

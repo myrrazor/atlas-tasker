@@ -858,6 +858,8 @@ Read commands:
 - `--md`
 - `--json`
 
+`--json` is also on every write command, so agents can script mutations without parsing text. The only leaves without it are `shell`, `tui`, `mcp serve`, `web serve`, and `web open`, which own their output for other reasons.
+
 Mutating commands:
 
 - `--actor <ACTOR>`
@@ -868,7 +870,7 @@ Useful config keys:
 - `workflow.completion_mode`
 - `actor.default`
 - `web.owner_name`
-- `web.lang` (`en`, `es`, or `id`; blank uses the browser language)
+- `web.lang` (`en`, `es`, or `id`; blank uses the browser language. The board also ships `zh`, `ja`, and `ko` catalogs — reachable from the in-page language switcher or `?lang=` — but `config set web.lang` does not accept them yet)
 - `web.agent_colors.<agent>` (`claude=orange` and `codex=blue` by default; unknown color names render uncolored)
 - `notifications.terminal`
 - `notifications.file_enabled`
@@ -884,10 +886,10 @@ Useful config keys:
 `tracker version` prints release metadata in text form:
 
 ```text
-tracker v1.9.0-rc1
+tracker v1.10.0-rc1
 commit: abc123
-build date: 2026-05-07T04:00:00Z
-go: go1.26.3
+build date: 2026-08-27T04:00:00Z
+go: go1.26.6
 platform: darwin/arm64
 ```
 
@@ -897,10 +899,10 @@ platform: darwin/arm64
 {
   "format_version": "v1",
   "kind": "tracker_version",
-  "version": "v1.9.0-rc1",
+  "version": "v1.10.0-rc1",
   "commit": "abc123",
-  "build_date": "2026-05-07T04:00:00Z",
-  "go_version": "go1.26.3",
+  "build_date": "2026-08-27T04:00:00Z",
+  "go_version": "go1.26.6",
   "platform": "darwin/arm64"
 }
 ```

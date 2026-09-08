@@ -4,7 +4,7 @@ Atlas stores local task state, agent evidence, sync artifacts, signatures, gover
 
 ## Supported Versions
 
-`v1.9.1` is the current stable release. Security reports should name the affected release and include the commit SHA, branch, or PR when the issue is not present in a published tag.
+`v1.10.0` is the current stable release. Security reports should name the affected release and include the commit SHA, branch, or PR when the issue is not present in a published tag.
 
 ## Reporting A Vulnerability
 
@@ -36,6 +36,8 @@ Atlas may claim:
 - structured redaction for Atlas-owned data
 - signed audit packets
 - side-effect-safe restore planning
+- a strictly loopback-only local web board (non-loopback hosts are refused, sessions are per-process random tokens, mutations require CSRF, no CORS headers)
+- fail-closed rejection of symlinked inputs in exports, bundles, and backups
 
 Atlas does not claim OS sandboxing, SaaS-grade identity proof, encrypted-at-rest storage, protection from malicious local filesystem users, formal DLP, full provider-rule enforcement, or full MCP client safety.
 

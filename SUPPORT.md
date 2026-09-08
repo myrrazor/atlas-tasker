@@ -1,13 +1,13 @@
 # Support
 
-Atlas Tasker is entering public release-candidate polish. Support is best-effort until hosted release proof and launch evidence are complete.
+Atlas Tasker is a small open-source project, so support is best-effort.
 
 Use GitHub issues for:
 
 - reproducible command failures
 - docs mistakes
 - broken release scripts
-- terminal/TUI rendering problems
+- terminal/TUI/local web board rendering problems
 - agent workflow confusion
 - security-adjacent questions that do not include sensitive details
 

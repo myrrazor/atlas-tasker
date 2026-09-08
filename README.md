@@ -1,6 +1,6 @@
 
 # Atlas Tasker
-<img alt="Atlas Tasker" src="assets/brand/atlas-tasker-wordmark.png" width="850" />
+<img alt="Atlas Tasker" src="assets/brand/atlas-tasker-terminal-wordmark.svg" width="640" />
 
 **Jira for your terminal, built for AI coding agents.**
 
@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 
 That's it. The installer downloads the latest release for your platform, verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release).
 
-With a Go toolchain:
+With a Go toolchain (1.26.6 or newer):
 
 ```bash
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest
@@ -55,7 +55,15 @@ Prefer a full-screen view? `tracker tui` opens the interactive console — board
 
 ![Ticket detail with runs, evidence, and timeline](docs/assets/tui-detail.png)
 
-Prefer a browser without giving up local-first storage? `tracker web serve --open` starts the optional local Kanban board and schedule timeline on `127.0.0.1` with a session token, CSRF checks, and the same `QueryService`/`ActionService` paths as the CLI. It is still just your repo: no hosted mode, no login system, and no second database.
+## The web board
+
+Prefer a browser without giving up local-first storage? `tracker web serve --open` starts the optional local web UI on `127.0.0.1` — a welcome dashboard with per-project rollups, the Kanban board, and a schedule timeline — with a session token, CSRF checks, and the same `QueryService`/`ActionService` paths as the CLI. The dashboard and board chrome ship in English, Spanish, Indonesian, Chinese, Japanese, and Korean ([i18n notes](docs/i18n-notes.md) lists the honest gaps). It is still just your repo: no hosted mode, no login system, and no second database.
+
+![Kanban board in the browser with a ticket drawer open](docs/assets/web-board-desktop.png)
+
+![Welcome dashboard with per-project rollups and recent changes](docs/assets/web-welcome-desktop.png)
+
+![Schedule workspace with the week strip and day timeline](docs/assets/web-schedule-desktop.png)
 
 ## Built for agents, not just humans
 
@@ -146,7 +154,7 @@ Start at the [docs landing page](docs/README.md), or jump to [installation](docs
 
 ## Status
 
-`v1.9.1` is the latest tagged release, and what the installer and `go install ...@latest` give you. `main` is ahead of it: the local web board (`tracker web serve`) and this round of agent-facing work — `--json` on every command, `tracker mcp serve --workspace`, the OpenClaw integration target — are merged and unreleased. Build from source or `go install github.com/myrrazor/atlas-tasker/cmd/tracker@main` to get them before v1.10 ships.
+`v1.10.0` is the latest tagged release, and what the installer and `go install ...@latest` give you. It is the first release with the local web UI (`tracker web serve`: welcome dashboard, Kanban board, schedule timeline, six languages), one-time ticket schedules (`tracker schedule`, with matching MCP tools), and the agent-facing round: `--json` on every command agents run, `tracker mcp serve --workspace`, and the OpenClaw integration target. It also lands a security batch: the web server is strictly loopback-only, exports and backups fail closed on symlinked inputs, and the CI and release workflows pin every action to a reviewed commit. [CHANGELOG.md](CHANGELOG.md) has the full list, breaking changes included.
 
 `v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 

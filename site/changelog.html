@@ -52,7 +52,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="./" aria-label="Atlas Tasker home">
-        <img src="atlas-tasker-wordmark.webp" width="640" height="108" alt="Atlas Tasker" />
+        <img src="atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="cli.html">CLI</a>
@@ -71,6 +71,17 @@
       <p class="legal-summary">Highlights from the repository's changelog. The <a href="https://github.com/myrrazor/atlas-tasker/blob/main/CHANGELOG.md">full history</a> lives with the source.</p>
     </header>
     <div class="legal-content">
+      <section class="shell">
+        <h2>v1.10.0 - Local Web UI And Agent-Ready CLI (2026-09-01)</h2>
+        <ul>
+          <li>Atlas grows a local browser UI: `tracker web serve` starts a loopback-only server with a welcome dashboard, the Kanban board, a schedule workspace, and a read-only settings page — server-rendered through the same services and event log as the CLI. The board wears the atlas.pen restyle: deep-navy surfaces, Geist and Geist Mono, column accent bars, and tinted status and priority pills.</li>
+          <li>The board and welcome chrome speak six languages (English, Spanish, Indonesian, Chinese, Japanese, Korean); ticket content is never translated.</li>
+          <li>One-time ticket schedules: `tracker schedule set` reminds a human through your notification sinks or wakes (and in command mode, launches) an assigned agent; `schedule tick` is a one-shot trigger built for cron or launchd, and matching MCP tools cover list/history/set/clear.</li>
+          <li>Agent-ready CLI: `--json` on every command agents run with a build gate to keep it that way, `tracker init --json` bootstrap reporting, `mcp serve --workspace` pinning, and an OpenClaw skill installer.</li>
+          <li>Security: the web board is strictly loopback-only (the `--unsafe-host` escape hatch is gone — breaking), exports and backups fail closed on symlinked inputs, the CI and release workflows pin every action to a reviewed commit, and the toolchain moved to Go 1.26.6.</li>
+          <li>Breaking: `tracker board --json` now returns `columns` (lowercase), and forbidden workflow transitions exit 4 in the CLI (previously 1) and 409 on the web.</li>
+        </ul>
+      </section>
       <section class="shell">
         <h2>v1.9.1 - Agent Loop README And Table Polish (2026-06-16)</h2>
         <ul>
@@ -120,7 +131,7 @@
       <span>Atlas Tasker · MIT</span>
       <div class="footer-links">
         <a href="./">Home</a>
-        <a href="privacy.html" aria-current="page">Privacy</a>
+        <a href="privacy.html">Privacy</a>
         <a href="terms.html">Terms</a>
         <a href="https://github.com/myrrazor/atlas-tasker/blob/main/LICENSE">License</a>
         <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
