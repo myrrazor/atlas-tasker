@@ -52,7 +52,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="../" aria-label="Atlas Tasker home">
-        <img src="../atlas-tasker-wordmark.webp" width="640" height="108" alt="Atlas Tasker" />
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="../cli.html">CLI</a>
@@ -126,10 +126,10 @@
         <p>The repo is the database, so Git movement moves the tracker with it. For tracker-aware transfer there are signed export bundles (<code>tracker export create</code>, <code>tracker bundle</code>), remotes and sync (<code>tracker remote</code>, <code>tracker sync</code>), and conflict tooling (<code>tracker conflict</code>). Sync operations are explicit commands, never background daemons.</p>
 
         <h2>What platforms are supported?</h2>
-        <p>The release installer covers macOS and Linux on arm64 and amd64, verifying checksums and GitHub build attestations on the way in. Building from source needs Go 1.26.4 or newer. Unstamped source builds report <code>version: "dev"</code> in <code>tracker version --json</code>, which is expected and harmless.</p>
+        <p>The release installer covers macOS and Linux on arm64 and amd64, verifying checksums and GitHub build attestations on the way in. Building from source needs Go 1.26.6 or newer. Unstamped source builds report <code>version: "dev"</code> in <code>tracker version --json</code>, which is expected and harmless.</p>
 
         <h2>Can I put the web board on my network?</h2>
-        <p>It binds to <code>127.0.0.1</code> on purpose, with a per-process session token that is never written to disk. Non-loopback binding exists behind <code>--unsafe-host</code> and prints a warning, because the board has no user accounts. If you need a shared read-only screen, <code>tracker web serve --read-only</code> on a machine people can see is the sane middle ground.</p>
+        <p>No. It binds to <code>127.0.0.1</code> only, with a per-process session token that is never written to disk, and <code>--host</code> refuses anything that is not loopback. The board has no user accounts, so non-loopback serving is not an escape hatch we offer. If you need a shared read-only screen, <code>tracker web serve --read-only</code> on a machine people can see is the sane middle ground.</p>
 
         <h2>How do agents fit without wrecking things?</h2>
         <p>Agents use the same commands and tools as humans, with guardrails that are structural rather than polite: illegal moves exit 4, leases prevent double work, review gates block completion, permission profiles can deny actions per agent, and the MCP high-impact tier needs a one-time human approval per call. The <a href="../mcp.html">For agents</a> page is the tour; <a href="mcp-security.html">MCP security</a> is the fine print.</p>

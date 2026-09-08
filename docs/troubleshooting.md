@@ -61,6 +61,17 @@ tracker queue --actor agent:builder-1
 TRACKER_ACTOR=agent:builder-1 tracker tui
 ```
 
+## `tracker web open` says the board is not running
+
+`tracker web open` reuses the last recorded server and health-checks it before opening anything. Recorded state outlives crashed or stopped servers, so a fail-fast here just means that server is gone:
+
+```bash
+tracker web status
+tracker web serve --open
+```
+
+The fresh `serve` prints a new session URL. A browser without a session cookie for the server needs that URL; the token is never written to disk.
+
 ## Config not found
 
 Atlas looks for workspace state under `.tracker/`. If commands say config or workspace state is missing, start with:

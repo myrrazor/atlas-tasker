@@ -43,9 +43,12 @@ These examples use `jq`; if it is not installed, copy `payload.run_id` from the 
 
 ```bash
 ./tracker run start "$RUN_ID" --summary "Implementation started" --actor agent:builder-1 --reason "begin work"
+./tracker ticket move APP-1 in_progress --actor agent:builder-1 --reason "implementation started"
 ./tracker run checkpoint "$RUN_ID" --title "First pass" --body "Health check route added locally." --actor agent:builder-1 --reason "status update"
 ./tracker run evidence add "$RUN_ID" --type note --title "Test proof" --body "go test ./... passed" --actor agent:builder-1 --reason "attach test proof"
 ```
+
+`run start` activates the run record; the ticket itself still moves through workflow states with `ticket move`.
 
 Evidence can also copy a file into the run evidence bundle with `--artifact <PATH>`.
 
@@ -68,7 +71,11 @@ If a gate is opened for `agent:reviewer-1`, that reviewer actor must approve or 
 
 ```bash
 ./tracker run complete "$RUN_ID" --summary "Implementation and review complete" --actor agent:builder-1 --reason "done"
+./tracker ticket request-review APP-1 --actor agent:builder-1 --reason "ready for final review"
+./tracker ticket approve APP-1 --actor human:owner --reason "reviewed"
 ./tracker ticket complete APP-1 --actor human:owner --reason "done"
 ```
+
+Completing a run does not complete the ticket. The ticket has to pass through `in_review` first, and with no reviewer configured, approval falls to the assignee, active worker, or `human:owner`.
 
 The run, evidence, handoff, and gate history stay inspectable through the CLI, TUI, shell, JSON output, and safe MCP read surfaces.

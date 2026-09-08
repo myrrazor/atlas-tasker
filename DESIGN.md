@@ -2,9 +2,9 @@
 
 ## Thesis
 
-Atlas uses a restrained charcoal operator console: dense enough for daily scanning, quiet enough that blocked work, due work, and recent changes carry the signal. The signature elements come from the product itself: a borderless project ledger, a compact Kanban board, the terminal wordmark, and an auditable time rail for scheduled tickets.
+Atlas uses a deep-navy operator console built on the atlas.pen tokens: dense enough for daily scanning, quiet enough that blocked work, due work, and recent changes carry the signal. The signature elements come from the product itself: a borderless project ledger, a compact Kanban board, the terminal wordmark, and an auditable time rail for scheduled tickets.
 
-The product keeps Geist, charcoal surfaces, a blue action accent, semantic workflow colors, and inline Phosphor icons. Elevation is reserved for real layers such as the project dialog, ticket drawer, and temporary menus.
+The product uses Geist for text and Geist Mono for ticket keys, counts, times, and uppercase kickers, navy surfaces, a single `#68a9ff` accent, semantic workflow hues on compact indicators only (column accent bars and the status, priority, and schedule-state pills), and inline Phosphor icons. Cards carry no colored borders. Elevation is reserved for real layers such as the project dialog, ticket drawer, hover preview, and temporary menus, plus the brief lift a card gets on hover.
 
 Behavior should feel calm, exact, and accountable. Avoid marketing-style heroes, lifestyle calendars, glass dashboards, decorative metrics, AI glow, and pills that do not encode real state.
 
@@ -49,12 +49,13 @@ Expanded layouts place the time rail beside a 340px completion ledger. Medium an
 
 ## System
 
-- Background `#151517`; primary surface `#1b1b1e`; text `#ececee`; muted text `#9d9ea6`; action `#5b8def`.
-- Geist 400/500/600 is vendored. Changing counts and schedule times use tabular numerals.
-- Controls use the 10px radius. Large workspace regions use the existing restrained container radius; no new ambient shadow layer is added.
-- The terminal wordmark remains the app signature and keeps fixed dimensions to avoid layout shift.
+- Background `#0b0f14`; surfaces `#111821`, `#18222d`, and `#17283c`; lines `#27323e` and `#33404e`; text `#eef4fa`; muted text `#a8b5c3` and `#8b98a6`; accent `#68a9ff`.
+- Status hues: backlog `#929ba6`, ready `#c9d45d`, in progress `#43cf7c`, in review `#a78bfa`, blocked `#ff7169`, done `#54c6b4`. They color the column accent bar and the status and schedule-state pills; priority pills get the same tinted treatment in red, `#e6b85c`, the accent, and gray. Semantic color never lands on a card border or a large surface.
+- Geist and Geist Mono are vendored as variable fonts (weight axis 100 to 900). Changing counts and schedule times use tabular numerals; schedule times are 24h in the mono face.
+- Radius scale: 12px panels (week strip, timeline, ledger), 10px trays (columns, hover preview), 8px plates and controls (cards, inputs, buttons), 999px pills.
+- The web topbar carries the ASCII wordmark at fixed dimensions to avoid layout shift; the terminal wordmark is the README and site mark.
 - Known agent colors are mapped server-side; unknown names remain uncolored. Color never replaces an owner or state label. `[S]`
-- Compact targets stay at least 42px where repeated. Visible `:focus-visible` treatment remains on every control. `[S]`
+- Board, filter, tab, and drawer controls grow to a 44px minimum height at phone widths (760px and below). Visible `:focus-visible` treatment remains on every control. `[S]`
 - Schedule and board content reflow without two-dimensional page scrolling at 320px, apart from the explicitly scrollable week strip. `[S]`
 
 ## Performance and implementation

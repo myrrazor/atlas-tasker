@@ -11,9 +11,12 @@ This file is for agents **using** the tracker. If you are contributing to Atlas 
 
 ## Read this part first
 
-- **Pass `--actor` and `--reason` on every write.** They land in the event log, some policies
-  reject writes without them, and omitting `--actor` silently attributes your work to
-  `human:owner`. `--actor` is `human:<name>` or `agent:<agent-id>`; a bare `agent:` is exit 2.
+- **Pass `--actor` and `--reason` on every write.** They land in the event log and some
+  policies reject writes without them. Omit `--actor` and the workflow commands (`claim`,
+  `move`, `request-review`, `approve`, `complete`) fail with `actor is required` unless
+  `TRACKER_ACTOR` or `actor.default` fills it in — while `ticket create` and `comment`
+  silently attribute your work to `human:owner`. Either way, pass it. `--actor` is
+  `human:<name>` or `agent:<agent-id>`; a bare `agent:` is exit 2.
 - **`tracker project create` takes neither.** Projects are containers, not tracked
   mutations. Passing `--actor` there is an unknown-flag error.
 - **Exit 4 on a status change is the workflow working, not a crash.** Only some status edges
@@ -79,7 +82,8 @@ $ tracker agent available builder-1 --json
 
 Nothing available? `tracker agent pending builder-1 --json` says why, with stable reason codes:
 `dependency_blocked`, `waiting_for_review`, `waiting_for_owner`, `not_ready_status`,
-`claimed_by_other`, `policy_blocked`, `agent_at_capacity`, `missing_capability`. Only a
+`claimed_by_other`, `policy_blocked`, `agent_disabled`, `agent_at_capacity`,
+`missing_capability`, `active_run_exists`, `open_gate`. Only a
 dependency reaching `done` clears `dependency_blocked` — `canceled` does not.
 
 ### Reading state
@@ -162,8 +166,8 @@ openclaw mcp add atlas --command /usr/local/bin/tracker --arg mcp --arg serve --
 `--workspace` is what stops the server from answering against whatever directory the client
 happened to start in. Profiles go `read` (default) -> `workflow` -> `delivery` -> `admin`;
 start at `read` and widen only when the human asks for writes. High-impact tools stay hidden
-unless the server was started with `--dangerously-allow-high-impact-tools` **and** a human
-created a one-time approval with `tracker mcp approve-operation`.
+unless the server was started with `--dangerously-allow-high-impact-tools`, and executing one
+still needs a one-time approval a human created with `tracker mcp approve-operation`.
 
 `tracker mcp tools --json --tool-profile read` lists what a profile actually exposes.
 Full detail: [docs/mcp.md](docs/mcp.md).

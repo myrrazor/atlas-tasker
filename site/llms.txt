@@ -8,7 +8,7 @@ Install with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker
 
 ## Product
 - [Home](https://atlas-tasker.vercel.app/): both boards, the workflow, install, and FAQ
-- [CLI](https://atlas-tasker.vercel.app/cli.html): 71 top-level commands, the JSON contract, and exit codes
+- [CLI](https://atlas-tasker.vercel.app/cli.html): 72 top-level commands, the JSON contract, and exit codes
 - [For AI agents](https://atlas-tasker.vercel.app/mcp.html): MCP tools, permission profiles, the safety model, and client setup
 - [Install](https://atlas-tasker.vercel.app/#install): release installer and Go source build
 - [Guide](https://atlas-tasker.vercel.app/guide.html): the whole workflow on one page

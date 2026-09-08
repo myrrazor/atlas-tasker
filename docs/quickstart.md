@@ -13,15 +13,15 @@ Copy this into a fresh repo checkout after building `tracker`.
 Expected board shape:
 
 ```text
-Backlog (0)
-  - (empty)
-
-Ready (1)
-  - APP-1 [task] [ready] [medium] Ship first feature
-
-In Progress (0)
-  - (empty)
+Board
++-----------+-------+--------+---------+----------+--------------------+
+| Column    | ID    | Type   | Status  | Priority | Title              |
++-----------+-------+--------+---------+----------+--------------------+
+| Ready (1) | APP-1 | [task] | [ready] | [medium] | Ship first feature |
++-----------+-------+--------+---------+----------+--------------------+
 ```
+
+Empty columns are hidden from the table. On a terminal narrower than 54 columns the board falls back to stacked `Backlog (0)` / `Ready (1)` sections instead.
 
 Useful next commands:
 

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Atlas Tasker for AI agents: MCP and JSON</title>
-  <meta name="description" content="Plug Atlas Tasker into OpenClaw, Codex, Claude Code, or any MCP client: 59 typed tools in four permission profiles, with human approval on the big red buttons." />
+  <meta name="description" content="Plug Atlas Tasker into OpenClaw, Codex, Claude Code, or any MCP client: 63 typed tools in four permission profiles, with human approval on the big red buttons." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
@@ -18,7 +18,7 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://atlas-tasker.vercel.app/mcp.html" />
   <meta property="og:title" content="Atlas Tasker for AI agents: MCP and JSON" />
-  <meta property="og:description" content="59 typed MCP tools in four permission profiles, plus a JSON CLI. The ticketing system your AI agents can actually operate." />
+  <meta property="og:description" content="63 typed MCP tools in four permission profiles, plus a JSON CLI. The ticketing system your AI agents can actually operate." />
   <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -26,7 +26,7 @@
 
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Atlas Tasker for AI agents: MCP and JSON" />
-  <meta name="twitter:description" content="59 typed MCP tools in four permission profiles, plus a JSON CLI. The ticketing system your AI agents can actually operate." />
+  <meta name="twitter:description" content="63 typed MCP tools in four permission profiles, plus a JSON CLI. The ticketing system your AI agents can actually operate." />
   <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
@@ -35,7 +35,7 @@
     "@context": "https://schema.org",
     "@type": "WebPage",
     "name": "Atlas Tasker for AI agents",
-    "description": "Plug Atlas Tasker into OpenClaw, Codex, Claude Code, or any MCP client: 59 typed tools in four permission profiles, with human approval on the big red buttons.",
+    "description": "Plug Atlas Tasker into OpenClaw, Codex, Claude Code, or any MCP client: 63 typed tools in four permission profiles, with human approval on the big red buttons.",
     "url": "https://atlas-tasker.vercel.app/mcp.html",
     "isPartOf": {
       "@type": "WebSite",
@@ -51,7 +51,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="./" aria-label="Atlas Tasker home">
-        <img src="atlas-tasker-wordmark.webp" width="640" height="108" alt="Atlas Tasker" />
+        <img src="atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="cli.html">CLI</a>
@@ -87,7 +87,7 @@
         </li>
         <li>
           <span class="fact-term">MCP server</span>
-          <p><code>tracker mcp serve</code> exposes 59 typed tools over local stdio. No HTTP server, no remote clients, no shell strings built from tool input. Every mutation still runs Atlas permission checks, the write lock, and event metadata.</p>
+          <p><code>tracker mcp serve</code> exposes 63 typed tools over local stdio. No HTTP server, no remote clients, no shell strings built from tool input. Every mutation still runs Atlas permission checks, the write lock, and event metadata.</p>
         </li>
         <li>
           <span class="fact-term">Self-describing</span>
@@ -103,19 +103,19 @@
     <section class="page-section shell" aria-labelledby="ladder-title">
       <div class="section-heading">
         <p class="section-label">Permission profiles</p>
-        <h2 id="ladder-title">59 tools on an escalating ladder.</h2>
+        <h2 id="ladder-title">63 tools on an escalating ladder.</h2>
         <p class="section-note">Start the server with the smallest profile that does the job. Each rung adds tools on top of the previous one, and the dangerous rung stays invisible until a human turns two separate keys.</p>
       </div>
       <ol class="ladder">
         <li>
           <h3>read</h3>
-          <span class="ladder-count">32 tools · the default</span>
-          <p>Boards, queues, tickets, history, runs, evidence, handoffs, sync status, and every plan/dry-run tool. No writes at all.</p>
+          <span class="ladder-count">34 tools · the default</span>
+          <p>Boards, queues, tickets, schedules, history, runs, evidence, handoffs, sync status, and every plan/dry-run tool. No writes at all.</p>
         </li>
         <li>
           <h3>workflow</h3>
-          <span class="ladder-count">+11 tools · actor + reason required</span>
-          <p>Safe mutations: comment, claim, release, move, request review, approve or reject gates, checkpoints, evidence, handoffs, import preview.</p>
+          <span class="ladder-count">+13 tools · actor + reason required</span>
+          <p>Safe mutations: comment, claim, release, move, set or clear ticket schedules, request review, approve or reject gates, checkpoints, evidence, handoffs, import preview.</p>
         </li>
         <li>
           <h3>delivery</h3>

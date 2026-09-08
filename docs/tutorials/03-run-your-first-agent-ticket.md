@@ -28,9 +28,12 @@ Use the captured run ID in later commands:
 
 ```bash
 ./tracker run start "$RUN_ID" --summary "Work started" --actor agent:builder-1 --reason "begin tutorial run"
+./tracker ticket move APP-1 in_progress --actor agent:builder-1 --reason "work started"
 ./tracker run checkpoint "$RUN_ID" --title "First checkpoint" --body "Implementation is in progress." --actor agent:builder-1 --reason "checkpoint"
 ./tracker run evidence add "$RUN_ID" --type note --title "Local proof" --body "Smoke test passed locally." --actor agent:builder-1 --reason "evidence"
 ```
+
+`run start` activates the run record only. The ticket still moves through workflow states with `ticket move`, and the next tutorial's review steps expect it in `in_progress`.
 
 Atlas does not spawn the provider for you here. The profile and run give Codex, Claude Code, or another coding agent a durable record to work against.
 

@@ -6,7 +6,7 @@ Atlas Tasker is a local-first, terminal-first issue tracker for people coordinat
 
 The primary user is a technical owner working beside terminals and coding tools throughout the day. They need exact state, clear ownership, visible failures, and no hidden cloud dependency.
 
-The browser has three related arrival questions:
+The browser answers three related questions:
 
 - **Overview:** Which projects are moving, blocked, or recently changed?
 - **Board:** Which tickets need attention, and where are they in the workflow?
@@ -41,7 +41,7 @@ Exact instants are stored in UTC. The web form and rail use the server’s named
 - Reads go through `QueryService`; writes go through `ActionService`.
 - Browser mutations keep the local session, origin, CSRF, policy, and read-only gates.
 - The UI is server-rendered Go with vendored fonts and local assets. CSP forbids external scripts, styles, and images.
-- The welcome page, settings, and board chrome retain the existing language catalogs. Ticket content is never translated.
+- The welcome page, settings, and board chrome use the six language catalogs (en, es, id, zh, ja, ko); the schedule surface is English-only for now. Ticket content is never translated.
 - Schedule navigation is deep-linkable with `/schedule?date=YYYY-MM-DD&project=KEY`.
 - Atlas does not run a hidden scheduler daemon. Unattended ticking remains the owner’s explicit cron, launchd, or other trusted runner setup.
 - One-time scheduling, execution state, and completion history are in scope. Recurrence is not implied.

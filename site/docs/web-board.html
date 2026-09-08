@@ -52,7 +52,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="../" aria-label="Atlas Tasker home">
-        <img src="../atlas-tasker-wordmark.webp" width="640" height="108" alt="Atlas Tasker" />
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="../cli.html">CLI</a>
@@ -109,8 +109,8 @@
             <span class="terminal-title">tracker web serve --open</span>
             <span class="terminal-state">127.0.0.1 · local only</span>
           </div>
-          <img src="../assets/web-board.webp" width="2880" height="1800" loading="lazy" decoding="async" alt="Atlas Tasker web board showing six workflow columns and an open ticket drawer with Overview, Activity, Policy/Gates, and Evidence tabs" />
-          <figcaption>The board with a ticket drawer open: Overview, Activity, Policy/Gates, and Evidence in one place.</figcaption>
+          <img src="../assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Atlas Tasker web board showing six workflow columns and an open ticket drawer with Overview, Notes and activity, Policy/Gates, and Evidence tabs" />
+          <figcaption>The board with a ticket drawer open: Overview, Notes &amp; activity, Policy/Gates, and Evidence in one place.</figcaption>
         </figure>
 
         <h2>Serving</h2>
@@ -123,7 +123,7 @@ tracker web status                            <span class="c"># where is it runn
 tracker web open                              <span class="c"># reopen the last server</span></pre>
         </div>
         <ul>
-          <li>Binds to <code>127.0.0.1</code> and picks a random free port by default. Non-loopback hosts require <code>--unsafe-host</code> and print a warning; the board is designed to stay local.</li>
+          <li>Binds to <code>127.0.0.1</code> and picks a random free port by default. There is no non-loopback option; the board is loopback-only, full stop.</li>
           <li>Each server process mints a fresh session token, prints it once in the session URL, and never writes it to disk. The token dies with the process.</li>
           <li><code>--read-only</code> serves the board without any mutation controls: handy for a shared screen.</li>
           <li>Runtime status lands, without secrets, under <code>.tracker/runtime/web/server.json</code>, which is how <code>web open</code> and <code>web status</code> find the running server.</li>
@@ -131,13 +131,25 @@ tracker web open                              <span class="c"># reopen the last 
 
         <h2>What you can do on it</h2>
         <ul>
-          <li>See the workflow columns and drag cards between them. Dropping a card on its own column is a no-op, and every move runs the same status-edge rules as the CLI.</li>
-          <li>Open the ticket drawer: an Overview tab with description and acceptance criteria, an Activity tab with comments and history, a Policy/Gates tab, and an Evidence tab.</li>
+          <li>All six workflow columns are on screen at once, Backlog through Done, with a short empty note in any column that has nothing in it. Drag cards between them: dropping a card on its own column is a no-op, and every move runs the same status-edge rules as the CLI. On a phone the board shows one column at a time and a strip above it switches between them.</li>
+          <li>The ticket drawer is open as soon as the board loads, on the first ticket in the Ready column (or whichever column <code>?column=</code> names; if that column is empty, the first ticket anywhere on the board). It sits beside the board on wide screens and below it on narrow ones. Click any card to switch, and use the close control in the drawer head to clear the selection; the drawer then shows its empty state with a New ticket button. Four tabs: Overview (description, acceptance criteria, schedule, edit), Notes &amp; activity (comments and history), Policy/Gates, and Evidence.</li>
+          <li>Hover a card for a couple of seconds and a preview shows assignee, reviewer, priority, labels, and the blocker, gate, and comment counts without changing the drawer.</li>
           <li>Create and edit tickets, comment, move through workflow states, and run request-review, approve, and complete where policy allows.</li>
           <li>Filter by project, assignee, reviewer, label, priority, and type; search; and load saved views. The state lives in the URL, so a filtered board is a shareable local link.</li>
           <li>Keyboard: <code>n</code> for a new ticket, <code>/</code> for search. Every drag action also exists as a button for non-drag users.</li>
         </ul>
         <p>If a dependency, reviewer gate, owner gate, or read-only mode blocks an action, the page shows the service error instead of bypassing policy. The board mirrors the tracker; it never gets its own rules.</p>
+
+        <h2>The other pages</h2>
+        <p>The board lives at <code>/board</code>; the same server renders three more pages:</p>
+        <ul>
+          <li><code>/</code> is a welcome dashboard: per-project status rollups, blockers, a recent-activity feed, links into each project's board, and project creation when the server is not read-only.</li>
+          <li><code>/schedule</code> is a week-view workspace for one-time scheduled tickets. Pick a runner and a time, browse the week, and "Run due now" triggers everything that is due: human runners get a reminder, agent runners get an Atlas wakeup. Same data as <code>tracker schedule</code> on the CLI.</li>
+          <li><code>/settings</code> is read-only. It shows the workspace, host, actor, owner name, language, and agent colors the server is running with; changing them still happens through <code>tracker config</code>.</li>
+        </ul>
+
+        <h2>Languages</h2>
+        <p>The UI ships in six languages: English, Spanish, Indonesian, Chinese, Japanese, and Korean. A switcher in the page footer changes it per request; without it the server falls back to the <code>web.lang</code> config key, then the browser's <code>Accept-Language</code>. Two honest gaps for now: <code>tracker config set web.lang</code> only accepts <code>en</code>, <code>es</code>, and <code>id</code>, so reach the other three through the switcher or browser preference, and the schedule page is English-only.</p>
 
         <h2>The board is for humans</h2>
         <div class="docs-note docs-warn">

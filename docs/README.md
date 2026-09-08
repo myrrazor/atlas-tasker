@@ -1,6 +1,6 @@
 # Atlas Docs
 
-Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for the current stable release and the v1.10 local web board work.
+Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for the current stable release, v1.10.0.
 
 ## First Ten Minutes
 
@@ -39,10 +39,12 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 - [Claude Code](guides/claude-code.md)
 - [Generic agents](guides/generic-agent.md)
 - [MCP for agents](guides/mcp-for-agents.md)
+- [MCP](mcp.md): serve modes, tool profiles, and approvals in full
 - [v1.9 agent workflow](v1.9-agent-workflow.md)
 - [Local web board](web-board.md)
 - [Web board security](web-board-security.md)
 - [Web board user guide](web-board-user-guide.md)
+- [Web i18n notes](i18n-notes.md): the six board languages and the known `web.lang` gaps
 - [Doctor and repair](guides/doctor-and-repair.md)
 - [Release verification](guides/release-verification.md)
 - [Operations](guides/operations.md)
@@ -67,7 +69,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 
 ## Release Status
 
-`v1.9.1` is the current stable release. v1.10 is the active development train for the optional local web board; local proof and hosted release proof remain separate gates. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
+`v1.10.0` is the current stable release: the optional local web UI, one-time scheduled tickets, the agent-ready CLI, and the security batch. Local proof and hosted release proof stay separate gates for every release. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
 
 ## Security Boundary
 
