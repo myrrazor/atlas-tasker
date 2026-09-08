@@ -69,7 +69,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 
 ## Release Status
 
-`v1.10.0` is the current stable release: the optional local web UI, one-time scheduled tickets, the agent-ready CLI, and the security batch. Local proof and hosted release proof stay separate gates for every release. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
+`v1.10.0` is the current stable release: the optional local web UI, one-time scheduled tickets, the agent-ready CLI, and the security batch. Local proof and hosted release proof stay separate gates for every release. The [v1.10 release evidence](release/v1.10.0-release-evidence.md) records the hosted RC proof and owner ship decision. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
 
 ## Security Boundary
 
