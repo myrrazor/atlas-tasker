@@ -77,7 +77,7 @@ func (m model) runPromptMutation(dialog dialogState) tea.Cmd {
 	case dialogMove:
 		status := contracts.Status(value)
 		if !status.IsValid() {
-			return failMutation(fmt.Errorf("invalid status: %s", value))
+			return failMutation(fmt.Errorf("invalid status: %s (valid: %s)", value, strings.Join(contracts.ValidStatusValues(), ", ")))
 		}
 		return m.runMutation(dialog.TicketID, func(ctx context.Context, actor contracts.Actor) (string, error) {
 			_, err := m.actions.MoveTicket(ctx, dialog.TicketID, status, actor, "moved from TUI")
@@ -373,7 +373,7 @@ func (m model) buildBulkOperation(args []string) (service.BulkOperation, error) 
 		}
 		status := contracts.Status(args[1])
 		if !status.IsValid() {
-			return service.BulkOperation{}, fmt.Errorf("invalid status: %s", args[1])
+			return service.BulkOperation{}, fmt.Errorf("invalid status: %s (valid: %s)", args[1], strings.Join(contracts.ValidStatusValues(), ", "))
 		}
 		op.Kind = service.BulkOperationMove
 		op.Status = status
@@ -465,7 +465,7 @@ func (m model) executeSlash(ctx context.Context, args []string, actor contracts.
 		}
 		status := contracts.Status(positionals[1])
 		if !status.IsValid() {
-			return "", fmt.Errorf("invalid status: %s", positionals[1])
+			return "", fmt.Errorf("invalid status: %s (valid: %s)", positionals[1], strings.Join(contracts.ValidStatusValues(), ", "))
 		}
 		updated, err := m.actions.MoveTicket(ctx, positionals[0], status, actor, reason)
 		if err != nil {

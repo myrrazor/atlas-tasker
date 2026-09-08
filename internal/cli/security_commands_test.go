@@ -490,6 +490,9 @@ func TestV17AuditCLIReportSignExportAndVerify(t *testing.T) {
 
 func TestV17FailClosedExecuteWritesOnlyErrorEnvelope(t *testing.T) {
 	withTempWorkspace(t)
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	exit := Execute([]string{"verify", "backup", "no-such-file", "--json"}, &stdout, &stderr)
@@ -517,6 +520,9 @@ func TestV17FailClosedExecuteWritesOnlyErrorEnvelope(t *testing.T) {
 
 func TestV17BackupCreateRequiresActorAndReason(t *testing.T) {
 	withTempWorkspace(t)
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
 	cmd := NewRootCommand()
 	var out bytes.Buffer
 	cmd.SetOut(&out)

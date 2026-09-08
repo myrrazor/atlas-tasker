@@ -378,6 +378,9 @@ func TestDoctorRepairReportsCorruptOrchestrationDocsWithoutFailing(t *testing.T)
 
 func TestExecuteHonorsJSONFalseOnErrors(t *testing.T) {
 	withTempWorkspace(t)
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

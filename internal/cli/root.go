@@ -39,8 +39,19 @@ type mutationFlags struct {
 
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "tracker",
-		Short:         "Local-first markdown issue tracker for AI coding agents",
+		Use:   "tracker",
+		Short: "Local-first markdown issue tracker for AI coding agents",
+		Long: `Atlas Tasker is a local-first issue tracker that lives in your repo:
+tickets are markdown files, history is an append-only event log, and both
+humans and coding agents drive it from the same CLI.
+
+Start with 'tracker init' inside your project, create a project and a ticket,
+and 'tracker board' shows where everything stands. 'tracker web serve --open'
+gets you the same board in a browser.`,
+		Example: `  tracker init
+  tracker project create APP "My App"
+  tracker ticket create --project APP --title "Ship login page" --type task --actor human:owner
+  tracker board`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
@@ -199,7 +210,7 @@ func newConfigCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			rootDir, err = service.CanonicalWorkspaceRoot(rootDir)
+			rootDir, err = service.InitializedWorkspaceRoot(rootDir)
 			if err != nil {
 				return err
 			}
@@ -508,7 +519,7 @@ func newTicketCommand() *cobra.Command {
 	create.Flags().String("title", "", "Ticket title (required)")
 	create.Flags().String("type", "", "Ticket type: epic|task|bug|subtask")
 	create.Flags().String("template", "", "Template name from .tracker/templates")
-	create.Flags().String("status", "backlog", "Initial status")
+	create.Flags().String("status", "backlog", "Initial status ("+strings.Join(contracts.ValidStatusValues(), ", ")+")")
 	create.Flags().String("priority", "medium", "Ticket priority")
 	create.Flags().String("parent", "", "Parent ticket id")
 	create.Flags().String("labels", "", "Comma-separated labels")
@@ -547,7 +558,7 @@ func newTicketCommand() *cobra.Command {
 
 	list := &cobra.Command{Use: "list", Short: "List tickets", RunE: runTicketList}
 	list.Flags().String("project", "", "Project filter")
-	list.Flags().String("status", "", "Status filter")
+	list.Flags().String("status", "", "Status filter ("+strings.Join(contracts.ValidStatusValues(), ", ")+")")
 	list.Flags().String("assignee", "", "Assignee filter")
 	list.Flags().String("type", "", "Type filter")
 	addReadOutputFlags(list, &outputFlags{})
@@ -947,7 +958,7 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	}
 	status := contracts.Status(statusValue)
 	if !status.IsValid() {
-		return fmt.Errorf("invalid status: %s", statusValue)
+		return fmt.Errorf("invalid status: %s (valid: %s)", statusValue, strings.Join(contracts.ValidStatusValues(), ", "))
 	}
 	if status == contracts.StatusDone || status == contracts.StatusCanceled {
 		return fmt.Errorf("status %s is not allowed on ticket create", status)
@@ -1221,7 +1232,7 @@ func runTicketMove(cmd *cobra.Command, args []string) error {
 	}
 	to := contracts.Status(args[1])
 	if !to.IsValid() {
-		return fmt.Errorf("invalid status: %s", to)
+		return fmt.Errorf("invalid status: %s (valid: %s)", to, strings.Join(contracts.ValidStatusValues(), ", "))
 	}
 	ctx, err = commandContextWithDependencyOverride(cmd, ctx, actor, reason)
 	if err != nil {
@@ -1658,6 +1669,11 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	}
 	root, err = service.CanonicalWorkspaceRoot(root)
 	if err != nil {
+		return err
+	}
+	// doctor opens stores directly (it has to survive a corrupt index), so it
+	// needs the same wrong-CWD guard openWorkspace has.
+	if err := requireInitializedWorkspace(root); err != nil {
 		return err
 	}
 	repair, _ := cmd.Flags().GetBool("repair")
@@ -2957,7 +2973,7 @@ func deleteSubscription(cmd *cobra.Command, kind contracts.SubscriptionTargetKin
 func runBulkMove(cmd *cobra.Command, args []string) error {
 	status := contracts.Status(strings.TrimSpace(args[0]))
 	if !status.IsValid() {
-		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid status: %s", args[0]))
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid status: %s (valid: %s)", args[0], strings.Join(contracts.ValidStatusValues(), ", ")))
 	}
 	return runBulkOperation(cmd, service.BulkOperation{Kind: service.BulkOperationMove, Status: status})
 }

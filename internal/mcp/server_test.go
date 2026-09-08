@@ -304,6 +304,9 @@ func TestHighImpactDeniedAuditDoesNotLeakApprovalToken(t *testing.T) {
 func TestHighImpactHandlerFailureAfterApprovalWritesSecurityAudit(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 6, 12, 0, 0, 0, time.UTC)
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatalf("initialize workspace: %v", err)
+	}
 	workspace, err := OpenWorkspace(root, nil, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("open workspace: %v", err)

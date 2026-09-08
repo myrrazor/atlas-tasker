@@ -7,10 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	atlasmcp "github.com/myrrazor/atlas-tasker/internal/mcp"
 	"github.com/myrrazor/atlas-tasker/internal/service"
-	"github.com/myrrazor/atlas-tasker/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -200,32 +198,21 @@ func currentWorkspaceRoot() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return service.CanonicalWorkspaceRoot(root)
+	return service.InitializedWorkspaceRoot(root)
 }
 
-// Empty means "use the process working directory", which is what OpenWorkspace
-// already does. Anything else has to be a real workspace before we hand it to a
-// client that has no terminal to show a stack trace in.
+// Both an explicit workspace and the fallback working directory must be valid
+// before the server opens SQLite or starts its JSON-RPC stream.
 func requestedWorkspaceRoot(cmd *cobra.Command) (string, error) {
 	raw, _ := cmd.Flags().GetString("workspace")
 	if strings.TrimSpace(raw) == "" {
-		return "", nil
+		var err error
+		raw, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
 	}
-	root, err := service.CanonicalWorkspaceRoot(raw)
-	if err != nil {
-		return "", apperr.Wrap(apperr.CodeInvalidInput, err, "resolve --workspace %q", raw)
-	}
-	info, err := os.Stat(root)
-	if err != nil {
-		return "", apperr.Wrap(apperr.CodeNotFound, err, "--workspace %s does not exist", root)
-	}
-	if !info.IsDir() {
-		return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("--workspace %s is not a directory", root))
-	}
-	if _, err := os.Stat(storage.TrackerDir(root)); err != nil {
-		return "", apperr.Wrap(apperr.CodeInvalidInput, err, "%s is not an Atlas workspace; run 'tracker init' there first", root)
-	}
-	return root, nil
+	return service.InitializedWorkspaceRoot(raw)
 }
 
 func formatMCPTools(tools []atlasmcp.ToolInfo) string {
