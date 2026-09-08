@@ -69,3 +69,16 @@ func TestResolveContainedPath(t *testing.T) {
 		t.Fatal("expected escape rejection")
 	}
 }
+
+func TestCanonicalComparablePathResolvesMissingNestedSuffix(t *testing.T) {
+	root := t.TempDir()
+	got := canonicalComparablePath(filepath.Join(root, "missing", "nested", "file.txt"))
+	wantRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(wantRoot, "missing", "nested", "file.txt")
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}

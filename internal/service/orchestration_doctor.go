@@ -1067,12 +1067,26 @@ func stringSliceContains(values []string, target string) bool {
 
 func canonicalComparablePath(path string) string {
 	path = filepath.Clean(path)
+	if path == "" {
+		return path
+	}
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		return resolved
 	}
-	parent := filepath.Dir(path)
-	if resolvedParent, err := filepath.EvalSymlinks(parent); err == nil {
-		return filepath.Join(resolvedParent, filepath.Base(path))
+	// Walk up to the longest existing prefix so non-existent nested paths
+	// still compare correctly across OS path aliases (macOS /var -> /private/var).
+	missing := make([]string, 0, 4)
+	current := path
+	for {
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		missing = append([]string{filepath.Base(current)}, missing...)
+		if resolved, err := filepath.EvalSymlinks(parent); err == nil {
+			return filepath.Join(append([]string{resolved}, missing...)...)
+		}
+		current = parent
 	}
 	return path
 }
