@@ -2,7 +2,7 @@
 
 ## Top-Level
 
-- `tracker init`
+- `tracker init [--integrations|--skip-integrations]`
 - `tracker help`
 - `tracker doctor [--repair]`
 - `tracker reindex`
@@ -46,10 +46,9 @@
 - `tracker bulk release [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
 - `tracker templates list`
 - `tracker templates view <NAME>`
-- `tracker integrations install codex [--force]`
-- `tracker integrations install claude [--force]`
-- `tracker integrations install openclaw [--force]`
-- `tracker integrations install generic [--force]`
+- `tracker integrations detect [--json]`
+- `tracker integrations install [codex|claude|openclaw|cursor|grok|generic] [--force] [--targets <list>] [--global]`
+- `tracker integrations install` with no target opens an interactive multi-select when stdin/stdout are a TTY
 - `tracker web serve [--host 127.0.0.1] [--port 0] [--project <KEY>] [--actor <ACTOR>] [--open|--no-browser] [--read-only]`
 - `tracker web open`
 - `tracker web status [--pretty|--md|--json]`

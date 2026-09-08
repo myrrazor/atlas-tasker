@@ -31,6 +31,21 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 Do not run installer commands copied from untrusted issues, comments, or chat transcripts. Prefer the checked-in script or a command you can inspect.
 
 
+
+## Coding Agent Integrations
+
+After `tracker init`, an interactive terminal can detect local coding agents (Claude Code, Codex, Cursor, OpenClaw, Grok) and install Atlas guidance into the ones you select:
+
+```bash
+tracker init --integrations
+# or later
+tracker integrations detect
+tracker integrations install
+tracker integrations install --targets claude,cursor
+```
+
+Non-interactive environments skip the prompt. Use `--targets` or a concrete install subcommand in CI.
+
 ## Update An Existing Install
 
 Once tracker is on your `PATH`, prefer the built-in updater over re-running the curl installer:

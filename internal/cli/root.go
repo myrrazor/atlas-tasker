@@ -160,9 +160,36 @@ func newInitCommand() *cobra.Command {
 			if len(result.Created) == 0 {
 				pretty = "already bootstrapped"
 			}
-			return writeCommandOutput(cmd, result, md, pretty)
+			if err := writeCommandOutput(cmd, result, md, pretty); err != nil {
+				return err
+			}
+
+			wantIntegrations, _ := cmd.Flags().GetBool("integrations")
+			skipIntegrations, _ := cmd.Flags().GetBool("skip-integrations")
+			if skipIntegrations {
+				return nil
+			}
+			if !wantIntegrations && !canPromptIntegrations(cmd) {
+				return nil
+			}
+			if !wantIntegrations {
+				ok, err := confirmIntegrationsSetup(cmd)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "skipped integrations; run tracker integrations install later")
+					return nil
+				}
+			}
+			if !canPromptIntegrations(cmd) && wantIntegrations {
+				return apperr.New(apperr.CodeInvalidInput, "tracker init --integrations requires an interactive TTY; use tracker integrations install --targets ... instead")
+			}
+			return runIntegrationsInstallWizard(cmd, nil, false, false, true)
 		},
 	}
+	cmd.Flags().Bool("integrations", false, "After init, open the coding-agent integrations installer")
+	cmd.Flags().Bool("skip-integrations", false, "Never prompt for coding-agent integrations after init")
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
@@ -253,38 +280,52 @@ func newConfigCommand() *cobra.Command {
 
 func newIntegrationsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "integrations", Short: "Install agent guidance for Atlas Tasker", RunE: requireKnownSubcommand}
-	install := &cobra.Command{Use: "install", Short: "Install Atlas Tasker guidance into agent files", RunE: requireKnownSubcommand}
+
+	detect := &cobra.Command{
+		Use:   "detect",
+		Short: "Detect coding agents installed on this machine",
+		RunE:  runIntegrationsDetect,
+	}
+	addReadOutputFlags(detect, &outputFlags{})
+
+	install := &cobra.Command{
+		Use:   "install [codex|claude|openclaw|generic|cursor|grok]",
+		Short: "Install Atlas Tasker guidance into agent files",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			force, _ := command.Flags().GetBool("force")
+			global, _ := command.Flags().GetBool("global")
+			targetsRaw, _ := command.Flags().GetString("targets")
+			targets, err := integrations.ParseTargetList(targetsRaw)
+			if err != nil {
+				return apperr.New(apperr.CodeInvalidInput, err.Error())
+			}
+			if len(args) == 1 {
+				parsed, err := integrations.ParseTargetList(args[0])
+				if err != nil {
+					return apperr.New(apperr.CodeInvalidInput, err.Error())
+				}
+				targets = append(targets, parsed...)
+			}
+			interactive := len(targets) == 0 && canPromptIntegrations(command)
+			return runIntegrationsInstallWizard(command, targets, force, global, interactive)
+		},
+	}
+	install.Flags().Bool("force", false, "Replace the whole instruction file instead of only the Atlas Tasker managed block")
+	install.Flags().Bool("global", false, "Also copy the atlas-worker skill into ~/.openclaw/skills (openclaw only)")
+	install.Flags().String("targets", "", "Comma-separated targets for non-interactive multi-install (claude,codex,cursor,openclaw,grok,generic)")
+	addReadOutputFlags(install, &outputFlags{})
+
+	// Keep explicit per-target leaves for scripts and discoverability.
 	for _, target := range []string{"codex", "claude", "openclaw", "generic", "cursor", "grok"} {
 		target := target
 		targetCmd := &cobra.Command{
 			Use:   target,
 			Short: fmt.Sprintf("Install %s guidance", target),
 			RunE: func(command *cobra.Command, _ []string) error {
-				rootDir, err := os.Getwd()
-				if err != nil {
-					return err
-				}
-				if _, err := ensureInitArtifacts(rootDir); err != nil {
-					return err
-				}
 				force, _ := command.Flags().GetBool("force")
 				global, _ := command.Flags().GetBool("global")
-				result, err := integrations.Installer{Root: rootDir}.InstallOpts(integrations.Target(target), integrations.InstallOptions{Force: force, Global: global})
-				if err != nil {
-					return err
-				}
-				pretty := fmt.Sprintf("installed %s guidance into %s", target, result.InstructionFile)
-				md := fmt.Sprintf("# %s integration\n\n- Instructions: %s\n- Guide: %s", target, result.InstructionFile, result.GuideFile)
-				for _, path := range result.SkillFiles {
-					md += fmt.Sprintf("\n- Skill: %s", path)
-				}
-				for _, path := range result.CommandFiles {
-					md += fmt.Sprintf("\n- Command template: %s", path)
-				}
-				for _, path := range result.GlobalSkillFiles {
-					md += fmt.Sprintf("\n- Global skill: %s", path)
-				}
-				return writeCommandOutput(command, result, md, pretty)
+				return runIntegrationsInstallWizard(command, []integrations.Target{integrations.Target(target)}, force, global, false)
 			},
 		}
 		targetCmd.Flags().Bool("force", false, "Replace the whole instruction file instead of only the Atlas Tasker managed block")
@@ -294,7 +335,8 @@ func newIntegrationsCommand() *cobra.Command {
 		addReadOutputFlags(targetCmd, &outputFlags{})
 		install.AddCommand(targetCmd)
 	}
-	cmd.AddCommand(install)
+
+	cmd.AddCommand(detect, install)
 	return cmd
 }
 
