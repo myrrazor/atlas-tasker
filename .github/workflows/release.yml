@@ -5,8 +5,19 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 jobs:
+  workflow-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check workflow supply-chain policy
+        run: sh scripts/check-workflow-security.sh
+
   build:
+    needs: workflow-policy
     strategy:
       fail-fast: false
       matrix:
@@ -25,10 +36,10 @@ jobs:
             runner: macos-latest
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.6'
       - name: Build archive
         env:
           GOOS: ${{ matrix.goos }}
@@ -57,7 +68,7 @@ jobs:
           archive="tracker_${version}_${GOOS}_${GOARCH}.tar.gz"
           tar -czf "dist/${archive}" -C dist tracker
           shasum -a 256 "dist/${archive}" > "dist/${archive}.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*
@@ -70,11 +81,11 @@ jobs:
       attestations: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.26.3'
-      - uses: actions/download-artifact@v4
+          go-version: '1.26.6'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist
           merge-multiple: true
@@ -89,7 +100,7 @@ jobs:
           cat dist/*.sha256 > dist/checksums.txt
           shasum -a 256 "dist/sbom-${GITHUB_REF_NAME}.cdx.json" >> dist/checksums.txt
       - name: Attest release archives
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
           subject-path: |
             dist/*.tar.gz

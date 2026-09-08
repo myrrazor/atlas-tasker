@@ -1,0 +1,136 @@
+{{define "welcomeContent"}}
+<main class="welcome-shell">
+  <section class="welcome-main" aria-labelledby="welcome-title">
+    <div class="welcome-heading">
+      <div>
+        <p class="section-kicker">{{t "welcome.kicker"}}</p>
+        <h1 id="welcome-title">{{t "welcome.title"}}{{if .OwnerName}}, {{.OwnerName}}{{end}}</h1>
+      </div>
+      {{if not .ReadOnly}}
+        <a class="new-button" href="/?new_project=1" data-dialog-open="new-project-dialog">{{template "iconPlus"}} {{t "welcome.new_project"}}</a>
+      {{end}}
+    </div>
+
+    {{if .Flash}}<div class="flash" role="status">{{.Flash}}</div>{{end}}
+    {{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
+
+    <div class="project-table-wrap">
+      <table class="project-table">
+        <thead>
+          <tr>
+            <th scope="col">{{t "welcome.table.project"}}</th>
+            <th scope="col">{{t "welcome.table.status"}}</th>
+            <th scope="col">{{t "welcome.table.blockers"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Projects}}
+            <tr>
+              <th scope="row">
+                <a class="project-link" href="/board?project={{.Project.Key}}">
+                  <span>{{.Project.Name}}</span>
+                  <small>{{.Project.Key}}</small>
+                </a>
+              </th>
+              <td>
+                <div class="rollup-links">
+                  <a href="/board?project={{.Project.Key}}"><strong>{{.Active}}</strong> {{t "welcome.rollup.active"}}</a>
+                  <span aria-hidden="true">·</span>
+                  <a href="/board?project={{.Project.Key}}"><strong>{{.Backlog}}</strong> {{t "welcome.rollup.backlog"}}</a>
+                  <span aria-hidden="true">·</span>
+                  <a href="/board?project={{.Project.Key}}"><strong>{{.Done}}</strong> {{t "welcome.rollup.done"}}</a>
+                </div>
+              </td>
+              <td class="blocker-cell {{if .Blocked}}has-blockers{{end}}">
+                <a href="/board?project={{.Project.Key}}"><strong>{{.Blocked}}</strong> {{t "welcome.rollup.blocked"}}</a>
+              </td>
+            </tr>
+          {{else}}
+            <tr class="empty-projects">
+              <td colspan="3">{{t "welcome.empty.projects"}} <code>tracker project create &lt;KEY&gt; &lt;NAME&gt;</code>.</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <aside class="recent-rail" aria-labelledby="recent-title">
+    <div class="rail-heading">
+      <p class="section-kicker">{{t "welcome.activity.kicker"}}</p>
+      <h2 id="recent-title">{{t "welcome.activity.title"}}</h2>
+    </div>
+    <ol class="recent-list">
+      {{range .Recent}}
+        <li>
+          <a href="/board?project={{.Project}}&ticket={{.TicketID}}">{{recentDescription .}}</a>
+          <time datetime="{{.At.Format "2006-01-02T15:04:05Z07:00"}}">{{formatTime .At}}</time>
+        </li>
+      {{else}}
+        <li class="recent-empty">{{t "welcome.activity.empty"}}</li>
+      {{end}}
+    </ol>
+  </aside>
+
+  <footer class="welcome-footer">
+    <a class="settings-link" href="/settings" aria-label="{{t "welcome.settings.aria"}}">{{template "iconGear"}} <span>{{t "action.settings"}}</span></a>
+    {{template "languageSwitcher" .}}
+  </footer>
+</main>
+
+<dialog class="project-dialog" id="new-project-dialog" {{if .ShowNew}}open{{end}} aria-labelledby="new-project-title">
+  <div class="dialog-head">
+    <div>
+      <p class="section-kicker">{{t "welcome.project.kicker"}}</p>
+      <h2 id="new-project-title">{{t "welcome.project.title"}}</h2>
+    </div>
+    <a class="close-button" href="/" data-dialog-close aria-label="{{t "common.close"}}">×</a>
+  </div>
+  <form class="project-form" method="post" action="/actions/projects/create" data-confirm="{{t "welcome.project.confirm"}}">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="actor" value="{{.Actor}}">
+    <label>{{t "welcome.project.key"}} <input name="key" value="{{formValue .Form "key" ""}}" placeholder="APP" autocomplete="off" required></label>
+    <label>{{t "welcome.project.name"}} <input name="name" value="{{formValue .Form "name" ""}}" placeholder="{{t "welcome.project.name_placeholder"}}" autocomplete="off" required></label>
+    <p class="form-help">{{t "welcome.project.key_help"}}</p>
+    <div class="dialog-actions">
+      <a class="secondary-action" href="/" data-dialog-close>{{t "common.cancel"}}</a>
+      <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>{{t "welcome.project.create"}}</button>
+    </div>
+  </form>
+</dialog>
+{{end}}
+
+{{define "settingsContent"}}
+<main class="settings-shell">
+  <div class="settings-head">
+    <div>
+      <p class="section-kicker">{{t "settings.kicker"}}</p>
+      <h1>{{t "settings.title"}}</h1>
+    </div>
+    <a class="secondary-action" href="/">{{t "settings.back"}}</a>
+  </div>
+  {{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
+  <section class="settings-section" aria-labelledby="identity-settings">
+    <h2 id="identity-settings">{{t "settings.identity"}}</h2>
+    <dl class="settings-list">
+      <div><dt>{{t "settings.owner_name"}}</dt><dd>{{if .OwnerName}}{{.OwnerName}}{{else}}{{t "common.not_set"}}{{end}}</dd></div>
+      <div><dt>{{t "settings.default_actor"}}</dt><dd>{{if .ActorDefault}}{{.ActorDefault}}{{else}}{{t "common.not_set"}}{{end}}</dd></div>
+      <div><dt>{{t "settings.web_language"}}</dt><dd>{{if eq .Language "en"}}{{t "language.english"}}{{else if eq .Language "es"}}{{t "language.spanish"}}{{else if eq .Language "id"}}{{t "language.indonesian"}}{{else if eq .Language "zh"}}{{t "language.chinese"}}{{else if eq .Language "ja"}}{{t "language.japanese"}}{{else if eq .Language "ko"}}{{t "language.korean"}}{{else}}{{t "common.automatic"}}{{end}}</dd></div>
+    </dl>
+  </section>
+  <section class="settings-section" aria-labelledby="agent-colors">
+    <h2 id="agent-colors">{{t "settings.agent_colors"}}</h2>
+    <dl class="settings-list">
+      {{range .AgentColors}}
+        <div><dt>{{.Agent}}</dt><dd><span class="agent-chip {{.Class}}">{{if .Color}}{{.Color}}{{else}}{{t "common.uncolored"}}{{end}}</span></dd></div>
+      {{else}}
+        <div><dt>{{t "settings.agents"}}</dt><dd>{{t "common.uncolored"}}</dd></div>
+      {{end}}
+    </dl>
+  </section>
+  <p class="settings-note">{{t "settings.note"}} <code>tracker config set web.owner_name "Name"</code>, <code>tracker config set web.lang es</code>, <code>tracker config set web.agent_colors.&lt;agent&gt; &lt;color&gt;</code>.</p>
+  <footer class="settings-footer">
+    {{template "languageSwitcher" .}}
+  </footer>
+</main>
+{{end}}

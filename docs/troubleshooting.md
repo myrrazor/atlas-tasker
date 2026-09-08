@@ -61,6 +61,17 @@ tracker queue --actor agent:builder-1
 TRACKER_ACTOR=agent:builder-1 tracker tui
 ```
 
+## `tracker web open` says the board is not running
+
+`tracker web open` reuses the last recorded server and health-checks it before opening anything. Recorded state outlives crashed or stopped servers, so a fail-fast here just means that server is gone:
+
+```bash
+tracker web status
+tracker web serve --open
+```
+
+The fresh `serve` prints a new session URL. A browser without a session cookie for the server needs that URL; the token is never written to disk.
+
 ## Config not found
 
 Atlas looks for workspace state under `.tracker/`. If commands say config or workspace state is missing, start with:
@@ -73,12 +84,19 @@ tracker init
 
 Run `tracker init` only in the repo or directory that should own the task workspace.
 
-## Projection corruption
+## Projection missing, stale, or corrupt
 
-SQLite projection state is derived. Rebuild it before editing files by hand:
+SQLite projection state is derived. A missing or stale `index.sqlite` is not something you need to fix: the next command that opens the workspace notices the fingerprint mismatch, rebuilds the index from markdown and events under the write lock, and prints one line on stderr saying so:
+
+```
+[tracker] index.sqlite was missing or stale; rebuilt it from markdown and events (events=13 tickets=5)
+```
+
+Read-only `doctor` reports the same drift as `repair_needed` (exit 7) with both fingerprints instead of blessing the index, so a script that runs `doctor` before trusting the board gets an honest answer.
+
+A byte-corrupt index is different: every command except `reindex` stops with exit 7 and `tracker doctor --repair` guidance. Either of these recovers it:
 
 ```bash
-tracker doctor --json
 tracker reindex
 tracker doctor --repair --json
 ```

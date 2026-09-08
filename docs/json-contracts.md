@@ -71,6 +71,8 @@ Success payload includes:
 - `repair_actions`
 - `repair_pending`
 - `config`
+- `migration`
+- `index` — `stale_before_repair`, `rebuilt`, `stored_fingerprint`, `current_fingerprint`. Fingerprints are `events=<log lines> tickets=<ticket files>`; `stored_fingerprint` is empty on an index that was never stamped.
 - `issue_codes`
 - `issues`
 

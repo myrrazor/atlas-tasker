@@ -111,7 +111,7 @@ func (s *ActionService) normalizeBulkOperation(op BulkOperation) (BulkOperation,
 	switch op.Kind {
 	case BulkOperationMove:
 		if !op.Status.IsValid() {
-			return BulkOperation{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid status: %s", op.Status))
+			return BulkOperation{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid status: %s (valid: %s)", op.Status, strings.Join(contracts.ValidStatusValues(), ", ")))
 		}
 	case BulkOperationAssign:
 		if op.Assignee != "" && !op.Assignee.IsValid() {
@@ -205,7 +205,10 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 			}
 		}
 		if err := domain.ValidateTransition(ticket.Status, op.Status); err != nil {
-			return "", nil, &apperr.Error{Code: apperr.CodeInvalidInput, Message: err.Error(), Cause: err}
+			// already typed: conflict for forbidden edges, invalid_input for bad
+			// statuses — re-wrapping here made bulk exit codes disagree with
+			// single moves (DEC-031)
+			return "", nil, err
 		}
 		return fmt.Sprintf("would move %s from %s to %s", ticket.ID, ticket.Status, op.Status), &ticket, nil
 	case BulkOperationAssign:
@@ -215,7 +218,7 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 			return "", nil, err
 		}
 		if err := domain.ValidateTransition(ticket.Status, contracts.StatusInReview); err != nil {
-			return "", nil, &apperr.Error{Code: apperr.CodeInvalidInput, Message: err.Error(), Cause: err}
+			return "", nil, err
 		}
 		return fmt.Sprintf("would request review for %s", ticket.ID), &ticket, nil
 	case BulkOperationComplete:

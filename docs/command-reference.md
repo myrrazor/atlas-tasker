@@ -7,6 +7,11 @@
 - `tracker doctor [--repair]`
 - `tracker reindex`
 - `tracker inspect <ID> [--actor <ACTOR>]`
+- `tracker schedule set <ID> --at <RFC3339> --runner <ACTOR> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule clear <ID> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule list [--project <KEY>] [--from <RFC3339>] [--to <RFC3339>]`
+- `tracker schedule history [--project <KEY>] [--from <RFC3339>] [--to <RFC3339>]`
+- `tracker schedule tick [--now <RFC3339>] --actor <ACTOR> --reason <TEXT>`
 - `tracker automation list`
 - `tracker automation view <NAME>`
 - `tracker automation create <NAME> [flags]`
@@ -43,7 +48,11 @@
 - `tracker templates view <NAME>`
 - `tracker integrations install codex [--force]`
 - `tracker integrations install claude [--force]`
+- `tracker integrations install openclaw [--force]`
 - `tracker integrations install generic [--force]`
+- `tracker web serve [--host 127.0.0.1] [--port 0] [--project <KEY>] [--actor <ACTOR>] [--open|--no-browser] [--read-only]`
+- `tracker web open`
+- `tracker web status [--pretty|--md|--json]`
 - `tracker version [--json]`
 - `tracker tui [--actor <ACTOR>]`
 - `tracker config get [KEY]`
@@ -172,9 +181,10 @@ Behavior:
 - agent profiles live under `.tracker/agents/`
 - eligibility is deterministic and returns the same ranking order used later by dispatch
 - disabled agents and capability mismatches are reported explicitly in JSON mode
-- `available` lists tickets an agent can start, continue, review, or complete now
-- `pending` lists relevant tickets that are blocked by dependencies, review, owner gates, claims, capacity, or policy
-- wake-ups are event-driven records created under `.tracker/runtime/agent-wakeups/` when a `done` ticket unblocks assigned agent work
+- `available` lists tickets an agent can start, continue, review, promote, or complete now; `promote` is a backlog ticket whose blockers are all `done`, and its first suggested command is the `ticket move <ID> ready`
+- `pending` lists relevant tickets that are blocked by dependencies, review, owner gates, claims, capacity, or policy; `not_ready_status` means backlog that never had blockers or someone else's `in_progress` work; a backlog ticket whose blockers are all `done` is listed under `available` as `promote` instead
+- wake-ups are event-driven records created under `.tracker/runtime/agent-wakeups/` when a `done` ticket unblocks assigned agent work; a `backlog` dependent assigned to an agent is promoted to `ready` first (a `ticket.moved` by `agent:atlas`), a hand-set `blocked` one is only woken, and a failed promotion still leaves the wake-up with `promoted=false` and `promotion_error` in its metadata (a move that died after its canonical write leaves the wake-up `failed` and pointing at `tracker doctor --repair`, which replays the move)
+- scheduled wake-ups use the same store and command path; `{scheduled_at}` expands to the UTC due instant
 - `agent.work_available` events use reserved actor `agent:atlas`
 - auto mode defaults to `notify`; command mode stores argv items and refuses shell interpreters
 
@@ -562,6 +572,20 @@ Palette shortcuts:
 - `/bulk ...`
 - `/views run <NAME>`
 
+## Local Web Board
+
+- `tracker web serve [--host 127.0.0.1] [--port 0] [--project <KEY>] [--actor <ACTOR>] [--open|--no-browser] [--read-only]`
+- `tracker web open`
+- `tracker web status [--pretty|--md|--json]`
+
+Rules:
+
+- `serve` binds to loopback by default and chooses a random free port when `--port 0` is used
+- non-loopback hosts are rejected; use a separately authenticated and TLS-protected product if remote access is required
+- runtime status is written without secrets under `.tracker/runtime/web/server.json`
+- browser mutations use the same `ActionService` paths as CLI mutations and record `surface: "web"`
+- descriptions and comments are escaped text in v1.10; raw Markdown HTML is not rendered
+
 ## Project
 
 - `tracker project create <KEY> <NAME>`
@@ -602,6 +626,18 @@ Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Tick
 - `tracker ticket policy get <ID>`
 - `tracker ticket policy set <ID> [flags]`
 
+## Scheduled Work
+
+- `tracker schedule set <ID> --at <RFC3339> --runner <ACTOR> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule clear <ID> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule list [--project <KEY>] [--from <RFC3339>] [--to <RFC3339>]`
+- `tracker schedule history [--project <KEY>] [--from <RFC3339>] [--to <RFC3339>]`
+- `tracker schedule tick [--now <RFC3339>] --actor <ACTOR> --reason <TEXT>`
+
+`set` creates or replaces a one-time schedule and makes `--runner` the ticket assignee. Human runners receive the normal `ticket.schedule_triggered` notification when the schedule is ticked. Agent runners must reference an enabled agent profile; Atlas creates an agent wakeup and launches the configured argv only when that profile uses `agent auto` command mode. The default notify mode leaves a pending wakeup for explicit pickup.
+
+`tick` is a one-shot, idempotent command. Run it from cron, launchd, or another scheduler; Atlas does not start a background daemon. A failed agent launch is recorded once as `ticket.schedule_failed` and does not retry until the ticket is rescheduled. `history` derives completion time and actor from existing immutable done events rather than maintaining a second completion record.
+
 ## Relationships
 
 - `tracker ticket link <ID> --blocks <OTHER_ID>`
@@ -634,6 +670,8 @@ Dependency rules:
 - `tracker search <QUERY>`
 - `tracker search --view <NAME>`
 - `tracker render <ID>`
+
+Queue categories, in the order `next` walks them: `ready_for_me`, `unblocked_for_me` (backlog tickets whose blockers are all `done` but that nobody moved to `ready` yet), `claimed_by_me`, `needs_review`, `awaiting_owner`, `blocked_for_me`, `stale_claims`, `policy_violations`. Backlog that never had blockers is not queued.
 
 Search query terms:
 
@@ -822,6 +860,8 @@ Read commands:
 - `--md`
 - `--json`
 
+`--json` is also on every write command, so agents can script mutations without parsing text. The only leaves without it are `shell`, `tui`, `mcp serve`, `web serve`, and `web open`, which own their output for other reasons.
+
 Mutating commands:
 
 - `--actor <ACTOR>`
@@ -831,6 +871,9 @@ Useful config keys:
 
 - `workflow.completion_mode`
 - `actor.default`
+- `web.owner_name`
+- `web.lang` (`en`, `es`, or `id`; blank uses the browser language. The board also ships `zh`, `ja`, and `ko` catalogs — reachable from the in-page language switcher or `?lang=` — but `config set web.lang` does not accept them yet)
+- `web.agent_colors.<agent>` (`claude=orange` and `codex=blue` by default; unknown color names render uncolored)
 - `notifications.terminal`
 - `notifications.file_enabled`
 - `notifications.file_path`
@@ -845,10 +888,10 @@ Useful config keys:
 `tracker version` prints release metadata in text form:
 
 ```text
-tracker v1.9.0-rc1
+tracker v1.10.0-rc1
 commit: abc123
-build date: 2026-05-07T04:00:00Z
-go: go1.26.3
+build date: 2026-08-27T04:00:00Z
+go: go1.26.6
 platform: darwin/arm64
 ```
 
@@ -858,10 +901,10 @@ platform: darwin/arm64
 {
   "format_version": "v1",
   "kind": "tracker_version",
-  "version": "v1.9.0-rc1",
+  "version": "v1.10.0-rc1",
   "commit": "abc123",
-  "build_date": "2026-05-07T04:00:00Z",
-  "go_version": "go1.26.3",
+  "build_date": "2026-08-27T04:00:00Z",
+  "go_version": "go1.26.6",
   "platform": "darwin/arm64"
 }
 ```

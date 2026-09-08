@@ -16,6 +16,7 @@ func TestCodeOfHeuristicsAndEnvelope(t *testing.T) {
 		{name: "not found string", err: errors.New("ticket APP-1 not found"), want: CodeNotFound, exit: 3},
 		{name: "conflict string", err: errors.New("ticket APP-1 is already claimed by agent:builder-1"), want: CodeConflict, exit: 4},
 		{name: "invalid string", err: errors.New("invalid actor: nope"), want: CodeInvalidInput, exit: 2},
+		{name: "typed conflict passthrough", err: New(CodeConflict, "forbidden transition: ready -> in_review"), want: CodeConflict, exit: 4},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -1,0 +1,112 @@
+<!-- review with counsel before charging money -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas Tasker Guide: the short version</title>
+  <meta name="description" content="The one-page Atlas Tasker guide: install the binary, seed an audited board, hand tickets to coding agents, and follow the deeper docs for each step." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/guide.html" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/guide.html" />
+  <meta property="og:title" content="Atlas Tasker Guide: the short version" />
+  <meta property="og:description" content="Install, seed a board, hand work to coding agents, and keep it honest. The full manual now lives in the docs section." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Atlas Tasker Guide: the short version" />
+  <meta name="twitter:description" content="Install, seed a board, hand work to coding agents, and keep it honest. The full manual now lives in the docs section." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+    <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "name": "Atlas Tasker Guide",
+  "description": "The one-page Atlas Tasker guide: install the binary, seed an audited board, hand tickets to coding agents, and follow the deeper docs for each step.",
+  "url": "https://atlas-tasker.vercel.app/guide.html",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "Atlas Tasker",
+    "url": "https://atlas-tasker.vercel.app/"
+  }
+}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="./" aria-label="Atlas Tasker home">
+        <img src="atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="cli.html">CLI</a>
+        <a href="mcp.html">For agents</a>
+        <a href="docs/">Docs</a>
+        <a href="./#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <main id="main" class="legal-main">
+    <header class="legal-hero shell">
+      <p class="eyebrow">Guide</p>
+      <h1>From empty repo to agent-run board.</h1>
+      <p class="legal-summary">The whole workflow in one page. Each step links into the full documentation, which now lives on this site under <a href="docs/">Docs</a>.</p>
+      <p class="legal-updated">Matches Atlas Tasker v1.10+ · The deep manual starts at <a href="docs/">the docs overview</a></p>
+    </header>
+    <div class="legal-content">
+      <section class="shell">
+        <h2>1 · Install</h2>
+        <p><code>curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code></p>
+        <p>The installer fetches the latest release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. Building from source works too: <code>go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>. Details: <a href="docs/getting-started.html">getting started</a>.</p>
+      </section>
+      <section class="shell">
+        <h2>2 · Minutes to a working board</h2>
+        <p><code>tracker init</code> sets up the workspace in your repo. <code>tracker project create APP "My App"</code> makes a project; projects group tickets and get their own board.</p>
+        <p><code>tracker ticket create --project APP --title "Ship first feature" --type task --actor human:owner --reason "first ticket"</code> creates the first ticket. Every write names an <strong>actor</strong> and a <strong>reason</strong>; that pair is the audit trail agents and reviewers read later.</p>
+        <p><code>tracker ticket move APP-1 ready --actor human:owner --reason "groomed"</code>, then <code>tracker board</code> for the terminal view, <code>tracker tui</code> for the full-screen one, or <code>tracker web serve --open</code> for the <a href="docs/web-board.html">local kanban board</a>.</p>
+      </section>
+      <section class="shell">
+        <h2>3 · Hand work to agents</h2>
+        <p><code>tracker agent create builder-1 --name "Builder" --provider claude --capability go --actor human:owner --reason "register"</code> registers an agent, and <code>tracker ticket assign APP-2 agent:builder-1 --actor human:owner --reason "agent work"</code> hands a ticket over. Or skip the assembly and apply a preset: <code>tracker team apply pair --actor human:owner --reason "team setup"</code>. The full loop is in <a href="docs/agents-and-dispatch.html">agents and dispatch</a>.</p>
+        <p><code>tracker integrations install claude</code> (or <code>codex</code>, <code>openclaw</code>, <code>generic</code>) teaches your agent runtime the loop, and <code>tracker mcp serve</code> exposes typed tools for MCP clients. Setup lives in <a href="docs/mcp-setup.html">MCP setup</a>.</p>
+      </section>
+      <section class="shell">
+        <h2>4 · Keep it honest</h2>
+        <p>Statuses move backlog to ready to in progress to in review to done, with blocked as the exception lane. Review and completion run gates, evidence attaches to runs, and everything lands in an append-only event log in your repo. The mechanics are in <a href="docs/tickets-and-workflow.html">tickets and workflow</a>, and the storage story is told straight in <a href="docs/faq.html">the FAQ</a>.</p>
+      </section>
+    </div>
+  </main>
+<footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="./">Home</a>
+        <a href="docs/">Docs</a>
+        <a href="cli.html">CLI</a>
+        <a href="mcp.html">For agents</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

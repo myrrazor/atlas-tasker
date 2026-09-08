@@ -2,25 +2,37 @@ name: ci
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, testing]
+
+permissions:
+  contents: read
 
 jobs:
+  workflow-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check workflow supply-chain policy
+        run: sh scripts/check-workflow-security.sh
+
   test:
+    needs: workflow-policy
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Print base markers
         run: |
           test -f docs/v1.5-base-marker.txt && cat docs/v1.5-base-marker.txt || true
           test -f docs/v1.6-base-marker.txt && cat docs/v1.6-base-marker.txt || true
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.6'
       - name: Run vet
         run: go vet ./...
       - name: Check install script syntax
@@ -29,30 +41,34 @@ jobs:
           sh -n scripts/verify-release.sh
       - name: Run tests
         run: go test ./...
+      - name: Check browser and site contracts
+        run: node --test internal/web/testdata/refresh_board.test.mjs site/_tools/site-contract.test.mjs
 
   stability:
+    needs: workflow-policy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Print base markers
         run: |
           test -f docs/v1.5-base-marker.txt && cat docs/v1.5-base-marker.txt || true
           test -f docs/v1.6-base-marker.txt && cat docs/v1.6-base-marker.txt || true
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.6'
       - name: Run stabilization smoke lane
         run: sh scripts/stability-smoke.sh
 
   security:
+    needs: workflow-policy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.26.3'
+          go-version: '1.26.6'
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
       - name: Run full-history secret scan

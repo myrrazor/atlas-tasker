@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
@@ -64,6 +65,62 @@ func TestCollectExportFilesIncludesAuditArtifacts(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected export to include %s, got:\n%s", want, got)
 		}
+	}
+}
+
+func TestCollectExportFilesRejectsSymlinkedInputs(t *testing.T) {
+	t.Run("nested file", func(t *testing.T) {
+		root := t.TempDir()
+		outside := filepath.Join(t.TempDir(), "outside.md")
+		if err := os.WriteFile(outside, []byte("benign fixture\n"), 0o644); err != nil {
+			t.Fatalf("write outside fixture: %v", err)
+		}
+		publicDir := storage.PublicKeysDir(root)
+		if err := os.MkdirAll(publicDir, 0o755); err != nil {
+			t.Fatalf("create public dir: %v", err)
+		}
+		if err := os.Symlink(outside, filepath.Join(publicDir, "linked.md")); err != nil {
+			t.Skipf("symlinks unavailable in test environment: %v", err)
+		}
+
+		assertExportSymlinkRejected(t, root)
+	})
+
+	t.Run("candidate directory", func(t *testing.T) {
+		root := t.TempDir()
+		outside := t.TempDir()
+		if err := os.WriteFile(filepath.Join(outside, "ticket.md"), []byte("benign fixture\n"), 0o644); err != nil {
+			t.Fatalf("write outside fixture: %v", err)
+		}
+		if err := os.Symlink(outside, filepath.Join(root, "projects")); err != nil {
+			t.Skipf("symlinks unavailable in test environment: %v", err)
+		}
+
+		assertExportSymlinkRejected(t, root)
+	})
+
+	t.Run("candidate parent", func(t *testing.T) {
+		root := t.TempDir()
+		outside := t.TempDir()
+		if err := os.WriteFile(filepath.Join(outside, "config.toml"), []byte("[workspace]\n"), 0o644); err != nil {
+			t.Fatalf("write outside fixture: %v", err)
+		}
+		if err := os.Symlink(outside, filepath.Join(root, ".tracker")); err != nil {
+			t.Skipf("symlinks unavailable in test environment: %v", err)
+		}
+
+		assertExportSymlinkRejected(t, root)
+	})
+}
+
+func assertExportSymlinkRejected(t *testing.T, root string) {
+	t.Helper()
+	_, err := collectExportFiles(root)
+	if err == nil {
+		t.Fatal("expected symlinked export input to be rejected")
+	}
+	if apperr.CodeOf(err) != apperr.CodeInvalidInput || !strings.Contains(err.Error(), "export_symlink_rejected") {
+		t.Fatalf("expected invalid-input symlink rejection, got %v", err)
 	}
 }
 

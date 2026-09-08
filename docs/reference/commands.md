@@ -7,6 +7,7 @@ Core read commands:
 - `tracker queue --actor <ACTOR>`
 - `tracker next --actor <ACTOR>`
 - `tracker board`
+- `tracker web serve --open`
 - `tracker dashboard`
 - `tracker inspect <TICKET-ID> --actor <ACTOR>`
 - `tracker ticket history <TICKET-ID> --json`
@@ -18,6 +19,9 @@ Core write commands:
 - `tracker ticket create --project <KEY> --title <TITLE> --type task --actor <ACTOR> --reason <TEXT>`
 - `tracker ticket move <TICKET-ID> <STATUS> --actor <ACTOR> --reason <TEXT>`
 - `tracker ticket comment <TICKET-ID> --body <TEXT> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule set <TICKET-ID> --at <RFC3339> --runner <ACTOR> --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule tick --actor <ACTOR> --reason <TEXT>`
+- `tracker schedule history [--project <KEY>] --json`
 
 Agent workflow commands:
 
@@ -47,5 +51,6 @@ tracker ticket --help
 tracker run --help
 tracker goal --help
 tracker mcp --help
+tracker web --help
 tracker version --json
 ```

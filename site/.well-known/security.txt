@@ -1,0 +1,4 @@
+Contact: mailto:tailorcorp@icloud.com
+Expires: 2027-07-31T00:00:00.000Z
+Preferred-Languages: en
+Policy: mailto:tailorcorp@icloud.com?subject=Security%20report

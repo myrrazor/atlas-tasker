@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The local web board: Atlas Tasker Docs</title>
+  <meta name="description" content="Run the Atlas Tasker kanban board in your browser: loopback-only serving, session tokens, drag and drop, the ticket drawer, and read-only wallboard mode." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/docs/web-board.html" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/docs/web-board.html" />
+  <meta property="og:title" content="The local web board: Atlas Tasker Docs" />
+  <meta property="og:description" content="Run the Atlas Tasker kanban board in your browser: loopback-only serving, session tokens, drag and drop, the ticket drawer, and read-only wallboard mode." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="The local web board: Atlas Tasker Docs" />
+  <meta name="twitter:description" content="Run the Atlas Tasker kanban board in your browser: loopback-only serving, session tokens, drag and drop, the ticket drawer, and read-only wallboard mode." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "name": "The local web board: Atlas Tasker Docs",
+    "description": "Run the Atlas Tasker kanban board in your browser: loopback-only serving, session tokens, drag and drop, the ticket drawer, and read-only wallboard mode.",
+    "url": "https://atlas-tasker.vercel.app/docs/web-board.html",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html">Tickets and workflow</a>
+          <a href="views-and-search.html">Views and search</a>
+          <a href="web-board.html" aria-current="page">The web board</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-security.html">MCP security</a>
+          <a href="json-and-exit-codes.html">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="faq.html">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Core</p>
+        <h1>The local web board</h1>
+        <p class="docs-lead">A real kanban in your browser, served by the same binary from the same workspace. No hosted server, no second database, no login system. It is a local view over the Markdown snapshots, the event log, and the query index.</p>
+
+        <figure class="terminal-shot">
+          <div class="terminal-bar">
+            <span class="terminal-title">tracker web serve --open</span>
+            <span class="terminal-state">127.0.0.1 · local only</span>
+          </div>
+          <img src="../assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Atlas Tasker web board showing six workflow columns and an open ticket drawer with Overview, Notes and activity, Policy/Gates, and Evidence tabs" />
+          <figcaption>The board with a ticket drawer open: Overview, Notes &amp; activity, Policy/Gates, and Evidence in one place.</figcaption>
+        </figure>
+
+        <h2>Serving</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>start it</span><button class="copy-button" type="button" data-copy="wb-serve" aria-label="Copy web serve commands">Copy</button></div>
+          <pre id="wb-serve">tracker web serve --open                      <span class="c"># serve + open the session URL</span>
+tracker web serve --project APP --actor human:owner --open
+tracker web serve --read-only --no-browser    <span class="c"># wallboard mode</span>
+tracker web status                            <span class="c"># where is it running</span>
+tracker web open                              <span class="c"># reopen the last server</span></pre>
+        </div>
+        <ul>
+          <li>Binds to <code>127.0.0.1</code> and picks a random free port by default. There is no non-loopback option; the board is loopback-only, full stop.</li>
+          <li>Each server process mints a fresh session token, prints it once in the session URL, and never writes it to disk. The token dies with the process.</li>
+          <li><code>--read-only</code> serves the board without any mutation controls: handy for a shared screen.</li>
+          <li>Runtime status lands, without secrets, under <code>.tracker/runtime/web/server.json</code>, which is how <code>web open</code> and <code>web status</code> find the running server.</li>
+        </ul>
+
+        <h2>What you can do on it</h2>
+        <ul>
+          <li>All six workflow columns are on screen at once, Backlog through Done, with a short empty note in any column that has nothing in it. Drag cards between them: dropping a card on its own column is a no-op, and every move runs the same status-edge rules as the CLI. On a phone the board shows one column at a time and a strip above it switches between them.</li>
+          <li>The ticket drawer is open as soon as the board loads, on the first ticket in the Ready column (or whichever column <code>?column=</code> names; if that column is empty, the first ticket anywhere on the board). It sits beside the board on wide screens and below it on narrow ones. Click any card to switch, and use the close control in the drawer head to clear the selection; the drawer then shows its empty state with a New ticket button. Four tabs: Overview (description, acceptance criteria, schedule, edit), Notes &amp; activity (comments and history), Policy/Gates, and Evidence.</li>
+          <li>Hover a card for a couple of seconds and a preview shows assignee, reviewer, priority, labels, and the blocker, gate, and comment counts without changing the drawer.</li>
+          <li>Create and edit tickets, comment, move through workflow states, and run request-review, approve, and complete where policy allows.</li>
+          <li>Filter by project, assignee, reviewer, label, priority, and type; search; and load saved views. The state lives in the URL, so a filtered board is a shareable local link.</li>
+          <li>Keyboard: <code>n</code> for a new ticket, <code>/</code> for search. Every drag action also exists as a button for non-drag users.</li>
+        </ul>
+        <p>If a dependency, reviewer gate, owner gate, or read-only mode blocks an action, the page shows the service error instead of bypassing policy. The board mirrors the tracker; it never gets its own rules.</p>
+
+        <h2>The other pages</h2>
+        <p>The board lives at <code>/board</code>; the same server renders three more pages:</p>
+        <ul>
+          <li><code>/</code> is a welcome dashboard: per-project status rollups, blockers, a recent-activity feed, links into each project's board, and project creation when the server is not read-only.</li>
+          <li><code>/schedule</code> is a week-view workspace for one-time scheduled tickets. Pick a runner and a time, browse the week, and "Run due now" triggers everything that is due: human runners get a reminder, agent runners get an Atlas wakeup. Same data as <code>tracker schedule</code> on the CLI.</li>
+          <li><code>/settings</code> is read-only. It shows the workspace, host, actor, owner name, language, and agent colors the server is running with; changing them still happens through <code>tracker config</code>.</li>
+        </ul>
+
+        <h2>Languages</h2>
+        <p>The UI ships in six languages: English, Spanish, Indonesian, Chinese, Japanese, and Korean. A switcher in the page footer changes it per request; without it the server falls back to the <code>web.lang</code> config key, then the browser's <code>Accept-Language</code>. Two honest gaps for now: <code>tracker config set web.lang</code> only accepts <code>en</code>, <code>es</code>, and <code>id</code>, so reach the other three through the switcher or browser preference, and the schedule page is English-only.</p>
+
+        <h2>The board is for humans</h2>
+        <div class="docs-note docs-warn">
+          <p>There is no API key and no headless mode, on purpose. Agents should not scrape or drive the board; they get the <a href="../cli.html">JSON CLI</a> and <a href="mcp-setup.html">MCP</a>, which are faster and structured. Browser mutations record <code>surface: "web"</code> in the event log, so you can always tell how a change arrived.</p>
+        </div>
+
+        <h2>Under the hood</h2>
+        <p>The board uses the same canonical services as the CLI and TUI. Descriptions and comments render as escaped text; raw Markdown HTML is not injected into the page. It is a viewer over your repository state, not a separate application with its own storage.</p>
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-prev" href="views-and-search.html"><span class="pager-label">Previous</span><span class="pager-title">Views and search</span></a>
+        <a class="pager-next" href="agents-and-dispatch.html"><span class="pager-label">Next</span><span class="pager-title">Agents and dispatch</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

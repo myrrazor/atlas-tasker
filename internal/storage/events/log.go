@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
@@ -142,10 +141,6 @@ func readEventFile(path string) ([]contracts.Event, error) {
 		return nil, fmt.Errorf("scan event file %s: %w", path, err)
 	}
 	return events, nil
-}
-
-func MonthFileName(t time.Time) string {
-	return t.UTC().Format("2006-01") + ".jsonl"
 }
 
 func (l *Log) maxEventIDForProject(eventsDir string, project string) (int64, error) {

@@ -1,0 +1,142 @@
+{{define "scheduleContent"}}
+<main class="schedule-page">
+  {{if .Flash}}<div class="flash" role="status">{{.Flash}}</div>{{end}}
+  {{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
+
+  <header class="schedule-heading">
+    <div>
+      <span class="eyeline">Schedule</span>
+      <h1>{{.DateHeading}}</h1>
+      <p>One-time ticket work in {{.LocationName}}. Human runners get a reminder; agent runners get an Atlas wakeup.</p>
+    </div>
+    <div class="schedule-heading-actions">
+      <nav class="date-actions" aria-label="Schedule week">
+        <a href="{{.PrevURL}}" aria-label="Previous week">←</a>
+        <a href="{{.TodayURL}}">Today</a>
+        <a href="{{.NextURL}}" aria-label="Next week">→</a>
+      </nav>
+      <form method="post" action="/actions/schedule/tick?return=schedule&amp;date={{.SelectedDate}}{{if .ProjectExplicit}}&amp;project={{.Project}}{{end}}">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="actor" value="{{.Actor}}">
+        <input type="hidden" name="reason" value="web schedule tick">
+        <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>Run due now</button>
+      </form>
+    </div>
+  </header>
+
+  <nav class="week-strip" aria-label="Days in selected week">
+    {{range .Week}}
+      <a class="schedule-day{{if .Active}} active{{end}}{{if .Today}} today{{end}}" href="{{.URL}}" {{if .Active}}aria-current="date"{{end}}>
+        <span>{{.Label}}</span>
+        <strong>{{.Number}}</strong>
+        {{if .Count}}<i aria-label="{{.Count}} scheduled ticket(s)">{{.Count}}</i>{{end}}
+      </a>
+    {{end}}
+  </nav>
+
+  <section class="schedule-workspace">
+    <section class="timeline-panel" aria-labelledby="timeline-title">
+      <header class="timeline-head">
+        <div>
+          <span class="eyeline">Daily timeline</span>
+          <h2 id="timeline-title">{{.Entries}} scheduled {{if eq .Entries 1}}ticket{{else}}tickets{{end}}</h2>
+        </div>
+        <details class="schedule-composer" {{if .Form}}open{{end}}>
+          <summary>Schedule ticket</summary>
+          <form class="schedule-form" method="post" action="/actions/schedule/set?return=schedule&amp;date={{.SelectedDate}}{{if .ProjectExplicit}}&amp;project={{.Project}}{{end}}">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <input type="hidden" name="actor" value="{{.Actor}}">
+            <label>Ticket
+              <select name="ticket_id" required>
+                <option value="">Choose a ticket</option>
+                {{range .TicketOptions}}<option value="{{.ID}}" {{if eq ($.FormValue "ticket_id" "") .ID}}selected{{end}}>{{.ID}} · {{.Title}}</option>{{end}}
+              </select>
+            </label>
+            <label>Local date and time
+              <input type="datetime-local" name="at" value="{{.FormValue "at" ""}}" required>
+            </label>
+            <label>Runner
+              <input name="runner" list="schedule-runners" value="{{.FormValue "runner" "human:owner"}}" placeholder="human:owner or agent:builder-1" required>
+              <datalist id="schedule-runners">
+                <option value="human:owner">Human owner</option>
+                <option value="{{.Actor}}">Current actor</option>
+                {{range .AgentOptions}}<option value="{{.Actor}}">{{.Label}}</option>{{end}}
+              </datalist>
+            </label>
+            <label>Reason
+              <input name="reason" value="{{.FormValue "reason" "web schedule ticket"}}" required>
+            </label>
+            <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>Save schedule</button>
+          </form>
+        </details>
+      </header>
+
+      {{if .Entries}}
+      <ol class="time-rail" aria-label="Hourly schedule">
+        {{range .Hours}}
+        <li class="time-row{{if .Current}} current{{end}}" id="{{.ID}}">
+          <time>{{.Label}}</time>
+          <div class="hour-slot">
+            {{range .Entries}}
+            <article class="schedule-card state-{{.StateClass}}">
+              <div class="schedule-card-time">
+                <time datetime="{{.AtRFC3339}}">{{.Time}}</time>
+                <span class="schedule-state">{{.StateLabel}}</span>
+              </div>
+              <a class="schedule-ticket" href="{{.TicketURL}}">
+                <span>{{.Entry.Ticket.ID}}</span>
+                <strong>{{.Entry.Ticket.Title}}</strong>
+              </a>
+              <div class="schedule-runner">
+                <span class="avatar" aria-hidden="true">{{actorInitials .Entry.Runner}}</span>
+                <span><strong>{{.RunnerLabel}}</strong><small>{{.RunnerMeta}}</small></span>
+              </div>
+              {{if .Entry.Ticket.Schedule.Error}}<p class="schedule-error" role="alert">{{.Entry.Ticket.Schedule.Error}}</p>{{end}}
+              {{if not $.ReadOnly}}
+              <form class="schedule-clear" method="post" action="/actions/tickets/{{.Entry.Ticket.ID}}/schedule/clear?return=schedule&amp;date={{$.SelectedDate}}{{if $.ProjectExplicit}}&amp;project={{$.Project}}{{end}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="actor" value="{{$.Actor}}">
+                <input type="hidden" name="reason" value="web clear ticket schedule">
+                <button type="submit">Clear</button>
+              </form>
+              {{end}}
+            </article>
+            {{end}}
+          </div>
+        </li>
+        {{end}}
+      </ol>
+      {{else}}
+      <div class="schedule-empty">
+        <span class="eyeline">Clear day</span>
+        <h3>Nothing scheduled yet</h3>
+        <p>Choose “Schedule ticket” to put human or agent-owned work on this timeline.</p>
+      </div>
+      {{end}}
+    </section>
+
+    <aside class="completion-ledger" aria-labelledby="history-title">
+      <header>
+        <span class="eyeline">History</span>
+        <h2 id="history-title">Completed this week</h2>
+      </header>
+      {{if .History}}
+      <ol class="completion-list">
+        {{range .History}}
+        <li>
+          <span class="completion-mark" aria-hidden="true">✓</span>
+          <div>
+            <a href="{{.TicketURL}}"><strong>{{.Entry.Ticket.ID}}</strong> {{.Entry.Ticket.Title}}</a>
+            <p>{{.Day}} · {{.Time}} · {{.Entry.CompletedBy}}</p>
+          </div>
+        </li>
+        {{end}}
+      </ol>
+      {{else}}
+      <p class="history-empty">No tickets were completed in this week.</p>
+      {{end}}
+      <p class="ledger-note">History comes from Atlas workflow events, not a separate calendar record.</p>
+    </aside>
+  </section>
+</main>
+{{end}}

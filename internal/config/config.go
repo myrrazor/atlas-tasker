@@ -23,6 +23,11 @@ type fileConfig struct {
 	Actor struct {
 		Default string `toml:"default"`
 	} `toml:"actor"`
+	Web struct {
+		OwnerName   string            `toml:"owner_name"`
+		Lang        string            `toml:"lang"`
+		AgentColors map[string]string `toml:"agent_colors"`
+	} `toml:"web"`
 	Notifications struct {
 		Terminal              *bool  `toml:"terminal"`
 		FileEnabled           bool   `toml:"file_enabled"`
@@ -55,6 +60,12 @@ func defaultConfig() contracts.TrackerConfig {
 	return contracts.TrackerConfig{
 		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen},
 		Actor:    contracts.ActorConfig{},
+		Web: contracts.WebConfig{
+			AgentColors: map[string]string{
+				"claude": "orange",
+				"codex":  "blue",
+			},
+		},
 		Notifications: contracts.NotificationsConfig{
 			Terminal:              true,
 			FilePath:              filepath.Join(storage.TrackerDir(""), "notifications.log"),
@@ -92,12 +103,29 @@ func applyNotificationDefaults(root string, cfg *contracts.TrackerConfig) {
 	}
 }
 
-func configPath(root string) string {
+func applyWebDefaults(cfg *contracts.TrackerConfig) {
+	cfg.Web.Lang = strings.ToLower(strings.TrimSpace(cfg.Web.Lang))
+	colors := map[string]string{
+		"claude": "orange",
+		"codex":  "blue",
+	}
+	for agent, color := range cfg.Web.AgentColors {
+		agent = strings.ToLower(strings.TrimSpace(agent))
+		if agent != "" {
+			colors[agent] = strings.ToLower(strings.TrimSpace(color))
+		}
+	}
+	cfg.Web.AgentColors = colors
+}
+
+// Path is where the workspace config lives; callers outside the package need it
+// to report what a bootstrap actually wrote.
+func Path(root string) string {
 	return filepath.Join(storage.TrackerDir(root), "config.toml")
 }
 
 func Load(root string) (contracts.TrackerConfig, error) {
-	path := configPath(root)
+	path := Path(root)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -113,6 +141,11 @@ func Load(root string) (contracts.TrackerConfig, error) {
 		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionMode(strings.TrimSpace(parsed.Workflow.CompletionMode))},
 		Actor: contracts.ActorConfig{
 			Default: contracts.Actor(strings.TrimSpace(parsed.Actor.Default)),
+		},
+		Web: contracts.WebConfig{
+			OwnerName:   strings.TrimSpace(parsed.Web.OwnerName),
+			Lang:        strings.ToLower(strings.TrimSpace(parsed.Web.Lang)),
+			AgentColors: parsed.Web.AgentColors,
 		},
 		Notifications: contracts.NotificationsConfig{
 			FileEnabled:           parsed.Notifications.FileEnabled,
@@ -168,6 +201,7 @@ func Load(root string) (contracts.TrackerConfig, error) {
 	} else {
 		cfg.Release.VerifyAttestations = *parsed.Release.VerifyAttestations
 	}
+	applyWebDefaults(&cfg)
 	applyNotificationDefaults(root, &cfg)
 	if err := cfg.Validate(); err != nil {
 		return contracts.TrackerConfig{}, err
@@ -176,17 +210,21 @@ func Load(root string) (contracts.TrackerConfig, error) {
 }
 
 func Save(root string, cfg contracts.TrackerConfig) error {
+	applyWebDefaults(&cfg)
 	applyNotificationDefaults(root, &cfg)
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	path := configPath(root)
+	path := Path(root)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 	out := fileConfig{}
 	out.Workflow.CompletionMode = string(cfg.Workflow.CompletionMode)
 	out.Actor.Default = string(cfg.Actor.Default)
+	out.Web.OwnerName = strings.TrimSpace(cfg.Web.OwnerName)
+	out.Web.Lang = strings.ToLower(strings.TrimSpace(cfg.Web.Lang))
+	out.Web.AgentColors = cfg.Web.AgentColors
 	out.Notifications.Terminal = &cfg.Notifications.Terminal
 	out.Notifications.FileEnabled = cfg.Notifications.FileEnabled
 	out.Notifications.FilePath = cfg.Notifications.FilePath
@@ -220,11 +258,23 @@ func Get(root string, key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	switch strings.TrimSpace(key) {
+	key = strings.TrimSpace(key)
+	if agent, ok := strings.CutPrefix(key, "web.agent_colors."); ok {
+		agent = strings.ToLower(strings.TrimSpace(agent))
+		if agent == "" {
+			return "", fmt.Errorf("unsupported config key: %s", key)
+		}
+		return cfg.Web.AgentColors[agent], nil
+	}
+	switch key {
 	case "", "workflow.completion_mode":
 		return string(cfg.Workflow.CompletionMode), nil
 	case "actor.default":
 		return string(cfg.Actor.Default), nil
+	case "web.owner_name":
+		return cfg.Web.OwnerName, nil
+	case "web.lang":
+		return cfg.Web.Lang, nil
 	case "notifications.terminal":
 		if cfg.Notifications.Terminal {
 			return "true", nil
@@ -289,11 +339,27 @@ func Set(root string, key string, value string) error {
 	if err != nil {
 		return err
 	}
-	switch strings.TrimSpace(key) {
+	key = strings.TrimSpace(key)
+	if agent, ok := strings.CutPrefix(key, "web.agent_colors."); ok {
+		agent = strings.ToLower(strings.TrimSpace(agent))
+		if agent == "" {
+			return fmt.Errorf("unsupported config key: %s", key)
+		}
+		if cfg.Web.AgentColors == nil {
+			cfg.Web.AgentColors = map[string]string{}
+		}
+		cfg.Web.AgentColors[agent] = strings.ToLower(strings.TrimSpace(value))
+		return Save(root, cfg)
+	}
+	switch key {
 	case "workflow.completion_mode":
 		cfg.Workflow.CompletionMode = contracts.CompletionMode(strings.TrimSpace(value))
 	case "actor.default":
 		cfg.Actor.Default = contracts.Actor(strings.TrimSpace(value))
+	case "web.owner_name":
+		cfg.Web.OwnerName = strings.TrimSpace(value)
+	case "web.lang":
+		cfg.Web.Lang = strings.ToLower(strings.TrimSpace(value))
 	case "notifications.terminal":
 		cfg.Notifications.Terminal = strings.EqualFold(strings.TrimSpace(value), "true")
 	case "notifications.file_enabled":

@@ -1,0 +1,514 @@
+package web
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"html/template"
+	"io/fs"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
+)
+
+const (
+	sessionCookie = "atlas_web_session"
+	csrfHeader    = "X-Atlas-CSRF"
+)
+
+type Services struct {
+	Actions *service.ActionService
+	Queries *service.QueryService
+}
+
+type Config struct {
+	Root      string
+	Workspace string
+	Host      string
+	Port      int
+	Project   string
+	Actor     contracts.Actor
+	ReadOnly  bool
+	TokenMode string
+	Token     string
+	CSRFToken string
+	Clock     func() time.Time
+	Location  *time.Location
+}
+
+type Server struct {
+	cfg         Config
+	actions     *service.ActionService
+	queries     *service.QueryService
+	templates   *template.Template
+	static      fs.FS
+	staticETags map[string]string
+	startedAt   time.Time
+}
+
+type contextKey string
+
+const requestIDKey contextKey = "request_id"
+
+func NewServer(services Services, cfg Config) (*Server, error) {
+	if services.Actions == nil {
+		return nil, apperr.New(apperr.CodeInvalidInput, "web actions service is required")
+	}
+	if services.Queries == nil {
+		return nil, apperr.New(apperr.CodeInvalidInput, "web query service is required")
+	}
+	if cfg.Host == "" {
+		cfg.Host = "127.0.0.1"
+	}
+	if cfg.TokenMode == "" {
+		cfg.TokenMode = "random"
+	}
+	if cfg.Actor == "" {
+		cfg.Actor = contracts.Actor("human:owner")
+	}
+	if cfg.Workspace == "" {
+		cfg.Workspace = "workspace"
+	}
+	if cfg.Clock == nil {
+		cfg.Clock = func() time.Time { return time.Now().UTC() }
+	}
+	if cfg.Location == nil {
+		cfg.Location = time.Local
+	}
+	if cfg.TokenMode != "random" {
+		return nil, apperr.New(apperr.CodeInvalidInput, "only token-mode=random is supported")
+	}
+	if !isLoopbackHost(cfg.Host) {
+		return nil, apperr.New(apperr.CodePermissionDenied, "web host must be loopback")
+	}
+	if cfg.Token == "" {
+		cfg.Token = randomToken()
+	}
+	if cfg.CSRFToken == "" {
+		cfg.CSRFToken = randomToken()
+	}
+	templates, err := parseTemplates()
+	if err != nil {
+		return nil, err
+	}
+	static, err := staticFS()
+	if err != nil {
+		return nil, err
+	}
+	etags, err := computeStaticETags(static)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{
+		cfg:         cfg,
+		actions:     services.Actions,
+		queries:     services.Queries,
+		templates:   templates,
+		static:      static,
+		staticETags: etags,
+		startedAt:   cfg.Clock(),
+	}, nil
+}
+
+// computeStaticETags hashes the embedded assets once at startup; embed files
+// have zero modtimes, so ETags are the only way revalidation can 304.
+func computeStaticETags(fsys fs.FS) (map[string]string, error) {
+	etags := map[string]string{}
+	err := fs.WalkDir(fsys, ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		raw, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(raw)
+		etags[path] = `"` + hex.EncodeToString(sum[:8]) + `"`
+		return nil
+	})
+	return etags, err
+}
+
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	fileServer := http.StripPrefix("/static/", http.FileServer(http.FS(s.static)))
+	mux.Handle("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// FileServer's ServeContent evaluates If-None-Match (RFC 7232,
+		// including comma lists and weak tags) against a pre-set ETag
+		if etag, ok := s.staticETags[strings.TrimPrefix(r.URL.Path, "/static/")]; ok {
+			w.Header().Set("ETag", etag)
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
+	mux.HandleFunc("/favicon.ico", s.handleFavicon)
+	mux.HandleFunc("/healthz", s.handleHealth)
+	mux.HandleFunc("/api/board", s.handleBoardAPI)
+	mux.HandleFunc("/api/schedule", s.handleScheduleAPI)
+	mux.HandleFunc("/api/tickets/", s.handleTicketAPI)
+	mux.HandleFunc("/actions/projects/create", s.handleCreateProject)
+	mux.HandleFunc("/actions/tickets/create", s.handleCreateTicket)
+	mux.HandleFunc("/actions/tickets/", s.handleTicketAction)
+	mux.HandleFunc("/actions/schedule/", s.handleScheduleAction)
+	mux.HandleFunc("/new-ticket", s.handleNewTicket)
+	mux.HandleFunc("/tickets/", s.handleTicketPage)
+	mux.HandleFunc("/settings", s.handleSettings)
+	mux.HandleFunc("/board", s.handleBoard)
+	mux.HandleFunc("/schedule", s.handleSchedule)
+	mux.HandleFunc("/", s.handleRoot)
+	return s.security(mux)
+}
+
+func (s *Server) RuntimeState(port int) RuntimeState {
+	u := url.URL{Scheme: "http", Host: net.JoinHostPort(s.cfg.Host, strconv.Itoa(port)), Path: "/board"}
+	return RuntimeState{
+		Host:      s.cfg.Host,
+		Port:      port,
+		URL:       u.String(),
+		PID:       os.Getpid(),
+		Project:   strings.TrimSpace(s.cfg.Project),
+		Actor:     string(s.cfg.Actor),
+		ReadOnly:  s.cfg.ReadOnly,
+		StartedAt: s.startedAt.UTC(),
+	}
+}
+
+func (s *Server) SessionURL(port int) string {
+	state := s.RuntimeState(port)
+	u, _ := url.Parse(state.URL)
+	q := u.Query()
+	q.Set("token", s.cfg.Token)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	if err := validateLoopbackListener(ln); err != nil {
+		return err
+	}
+	server := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 5 * time.Second}
+	done := make(chan error, 1)
+	go func() {
+		err := server.Serve(ln)
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		done <- err
+	}()
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+		return <-done
+	case err := <-done:
+		return err
+	}
+}
+
+func (s *Server) security(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := newRequestID()
+		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
+		r = r.WithContext(ctx)
+		s.writeSecurityHeaders(w, r)
+		if r.Method == http.MethodOptions {
+			http.Error(w, "CORS is not enabled", http.StatusForbidden)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/static/") || r.URL.Path == "/favicon.ico" || r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !s.validSession(w, r) {
+			return
+		}
+		if isMutation(r.Method) {
+			if err := s.validateMutation(r); err != nil {
+				s.writeActionError(w, r, err, "")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) writeSecurityHeaders(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// must stay same-origin: no-referrer makes browsers send `Origin: null` on
+	// same-origin form POSTs, which our own origin check then rejects
+	w.Header().Set("Referrer-Policy", "same-origin")
+	if strings.HasPrefix(r.URL.Path, "/static/") {
+		// embedded files carry zero modtimes (no Last-Modified/ETag), so
+		// without this browsers heuristically cache app.js/app.css forever
+		// and keep serving stale assets after a tracker upgrade
+		w.Header().Set("Cache-Control", "no-cache")
+	} else {
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	w.Header().Set("X-Atlas-Request-ID", requestIDFromContext(r.Context()))
+}
+
+// sessionCookieName scopes the cookie to this server's port: browsers ignore
+// ports for cookie storage, so two workspaces served on 127.0.0.1 would
+// otherwise clobber each other's session.
+func (s *Server) sessionCookieName() string {
+	if s.cfg.Port > 0 {
+		return fmt.Sprintf("%s_%d", sessionCookie, s.cfg.Port)
+	}
+	return sessionCookie
+}
+
+func (s *Server) validSession(w http.ResponseWriter, r *http.Request) bool {
+	if token := r.URL.Query().Get("token"); secureCompare(token, s.cfg.Token) {
+		http.SetCookie(w, &http.Cookie{
+			Name:     s.sessionCookieName(),
+			Value:    s.cfg.Token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteStrictMode,
+		})
+		clean := *r.URL
+		q := clean.Query()
+		q.Del("token")
+		clean.RawQuery = q.Encode()
+		http.Redirect(w, r, clean.String(), http.StatusSeeOther)
+		return false
+	}
+	cookie, err := r.Cookie(s.sessionCookieName())
+	if err != nil || !secureCompare(cookie.Value, s.cfg.Token) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte("Atlas web session required. Start with `tracker web serve --open` to open a session URL.\n"))
+		return false
+	}
+	return true
+}
+
+func (s *Server) validateMutation(r *http.Request) error {
+	if !s.sameOrigin(r.Header.Get("Origin"), r.Host) {
+		return apperr.New(apperr.CodePermissionDenied, "cross-origin mutation rejected")
+	}
+	if ref := strings.TrimSpace(r.Header.Get("Referer")); ref != "" && !s.sameOrigin(ref, r.Host) {
+		return apperr.New(apperr.CodePermissionDenied, "cross-origin referer rejected")
+	}
+	if err := r.ParseForm(); err != nil {
+		return apperr.Wrap(apperr.CodeInvalidInput, err, "parse form")
+	}
+	token := r.Header.Get(csrfHeader)
+	if token == "" {
+		token = r.Form.Get("csrf_token")
+	}
+	if !secureCompare(token, s.cfg.CSRFToken) {
+		return apperr.New(apperr.CodePermissionDenied, "invalid csrf token")
+	}
+	return nil
+}
+
+func (s *Server) sameOrigin(raw string, host string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return true
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Host, host) && (u.Scheme == "http" || u.Scheme == "https")
+}
+
+func (s *Server) mutationContext(r *http.Request, actor contracts.Actor) context.Context {
+	return service.WithEventMetadata(r.Context(), service.EventMetaContext{
+		Surface:       contracts.EventSurfaceWeb,
+		CorrelationID: requestIDFromContext(r.Context()),
+		RootActor:     actor,
+	})
+}
+
+func (s *Server) writeJSON(w http.ResponseWriter, kind string, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"format_version": "v1",
+		"kind":           kind,
+		"generated_at":   s.cfg.Clock().UTC(),
+		"payload":        payload,
+	})
+}
+
+func (s *Server) writeError(w http.ResponseWriter, r *http.Request, err error, status int) {
+	if wantsJSON(r) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(apperr.Envelope(err))
+		return
+	}
+	http.Error(w, err.Error(), status)
+}
+
+// writeActionError reports a failed mutation. Fetch callers get the JSON
+// envelope. Plain form posts re-render the board in place with the real
+// error status, an error banner, and the submitted values echoed into the
+// form — a redirect would both lose everything the user typed (no-store
+// disables bfcache) and read as success to non-browser clients following it.
+func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err error, ticketID string) {
+	if wantsJSON(r) {
+		s.writeError(w, r, err, statusForError(err))
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/actions/schedule/") || r.URL.Query().Get("return") == "schedule" {
+		s.writeScheduleActionError(w, r, err)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/actions/projects/") {
+		s.writeProjectActionError(w, r, err)
+		return
+	}
+	// derive the target from the path, not the caller: middleware rejections
+	// (CSRF/origin) have no handler-supplied id, and echoing the form into an
+	// auto-selected ticket would prefill the wrong ticket's edit form
+	target, pathTicketID := actionTarget(r.URL.Path)
+	if pathTicketID == "" {
+		pathTicketID = ticketID
+	}
+	q := url.Values{}
+	if pathTicketID != "" {
+		q.Set("ticket", pathTicketID)
+	}
+	if target == "create" {
+		q.Set("new", "1")
+	}
+	pageReq := r.Clone(r.Context())
+	pageReq.URL = &url.URL{Path: "/board", RawQuery: q.Encode()}
+	page, buildErr := s.buildBoardPage(r.Context(), pageReq)
+	if buildErr != nil {
+		http.Error(w, err.Error(), statusForError(err))
+		return
+	}
+	page.Error = err.Error()
+	switch target {
+	case "create", "edit", "comment", "schedule":
+		page.Form = r.Form
+		page.FormTarget = target
+	}
+	s.renderPage(w, pageReq, page, statusForError(err))
+}
+
+func (s *Server) writeProjectActionError(w http.ResponseWriter, r *http.Request, err error) {
+	if wantsJSON(r) {
+		s.writeError(w, r, err, statusForError(err))
+		return
+	}
+	pageReq := r.Clone(r.Context())
+	pageReq.URL = &url.URL{Path: "/", RawQuery: "new_project=1"}
+	page, buildErr := s.buildWelcomePage(r.Context(), pageReq)
+	if buildErr != nil {
+		http.Error(w, err.Error(), statusForError(err))
+		return
+	}
+	page.Error = err.Error()
+	page.ShowNew = true
+	page.Form = r.Form
+	s.renderPage(w, pageReq, page, statusForError(err))
+}
+
+func (s *Server) writeScheduleActionError(w http.ResponseWriter, r *http.Request, actionErr error) {
+	q := r.URL.Query()
+	q.Del("return")
+	pageReq := r.Clone(r.Context())
+	pageReq.URL = &url.URL{Path: "/schedule", RawQuery: q.Encode()}
+	page, buildErr := s.buildSchedulePage(r.Context(), pageReq)
+	if buildErr != nil {
+		http.Error(w, actionErr.Error(), statusForError(actionErr))
+		return
+	}
+	page.Error = actionErr.Error()
+	page.Form = r.Form
+	s.renderPage(w, pageReq, page, statusForError(actionErr))
+}
+
+// actionTarget parses "/actions/tickets/create" and
+// "/actions/tickets/{id}/{action}" into the action name and ticket id.
+// Anything outside /actions/tickets/ yields nothing — the middleware calls
+// this for every rejected mutation, whatever its path.
+func actionTarget(path string) (string, string) {
+	rest, ok := strings.CutPrefix(path, "/actions/tickets/")
+	if !ok {
+		return "", ""
+	}
+	rest = strings.Trim(rest, "/")
+	if rest == "" {
+		return "", ""
+	}
+	if rest == "create" {
+		return "create", ""
+	}
+	id, action, ok := strings.Cut(rest, "/")
+	if !ok {
+		return "", ""
+	}
+	return action, id
+}
+
+func requestIDFromContext(ctx context.Context) string {
+	value, _ := ctx.Value(requestIDKey).(string)
+	if value == "" {
+		return "request"
+	}
+	return value
+}
+
+func isMutation(method string) bool {
+	return method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch || method == http.MethodDelete
+}
+
+func wantsJSON(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "application/json") || strings.Contains(r.Header.Get("X-Atlas-Request"), "fetch")
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.Trim(host, "[]")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func secureCompare(left string, right string) bool {
+	if left == "" || right == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(left), []byte(right)) == 1
+}
+
+// randomToken mints session/CSRF secrets at startup only.
+func randomToken() string {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		// never fall back to something guessable — refuse to serve instead
+		panic(fmt.Sprintf("atlas web: crypto/rand unavailable: %v", err))
+	}
+	return hex.EncodeToString(raw[:])
+}
+
+// newRequestID is a correlation id, not a secret — a transient entropy
+// failure at runtime must degrade gracefully, not panic per request.
+func newRequestID() string {
+	var raw [8]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return fmt.Sprintf("req-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(raw[:])
+}

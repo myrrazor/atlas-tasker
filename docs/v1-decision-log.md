@@ -402,3 +402,395 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Terminal compatibility or accessibility reports show box rendering is unreliable, or users need a persistent table style setting beyond `--plain`/`NO_COLOR`.
 9. **Affected PRs/Files:** `internal/render/render.go`, `internal/cli/root.go`, `internal/cli/run.go`, `internal/tui/app.go`, renderer/CLI/TUI tests, terminal output docs.
+
+## DEC-029
+
+1. **Decision ID:** DEC-029
+2. **Date:** 2026-06-16
+3. **Question:** How should Atlas expose a browser Kanban board without weakening the local-first storage and security model?
+4. **Options Considered:**
+   - Add a server-rendered local web board over existing services.
+   - Add a SPA with a broad local JSON API.
+   - Add hosted/server mode with login.
+5. **Chosen Option:** Add a server-rendered local web board over existing services.
+6. **Why We Chose It:** The browser board should make Atlas easier to inspect and demo while preserving Markdown snapshots, JSONL events, SQLite projection, `ActionService` writes, `QueryService` reads, and local-only security defaults.
+7. **Confidence:** high
+8. **Revisit Trigger:** Future product direction requires remote collaboration or a public API surface.
+9. **Affected PRs/Files:** `internal/web/*`, `internal/cli/*`, `internal/contracts/events.go`, web board docs, tests.
+
+## DEC-030
+
+1. **Decision ID:** DEC-030
+2. **Date:** 2026-07-03
+3. **Question:** Which referrer policy should the web board send, given that its origin check rejects mutations whose `Origin` does not match the host?
+4. **Options Considered:**
+   - Keep `Referrer-Policy: no-referrer`.
+   - Switch to `Referrer-Policy: same-origin`.
+   - Drop the origin check and rely on the CSRF token alone.
+5. **Chosen Option:** Switch to `Referrer-Policy: same-origin` and keep the origin check.
+6. **Why We Chose It:** Under `no-referrer` the Fetch spec serializes `Origin` as `null` on same-origin form POSTs, so the board rejected its own create/edit/comment/approve/complete/move forms in real browsers (reproduced in Chromium; httptest could not catch it). `same-origin` keeps referrers private cross-origin while restoring `Origin`/`Referer` on the board's own requests, and `Origin: null` remains rejected as cross-origin. Session cookies are additionally scoped per port so concurrent workspace boards on 127.0.0.1 keep separate sessions.
+7. **Confidence:** high
+8. **Revisit Trigger:** A browser changes `Origin` serialization semantics, or the board ever runs behind TLS/proxy setups that alter origin handling.
+9. **Affected PRs/Files:** `internal/web/server.go`, `internal/web/server_test.go`, `internal/web/fixes_test.go`, `docs/web-board-security.md`.
+
+## DEC-031
+
+1. **Decision ID:** DEC-031
+2. **Date:** 2026-07-03
+3. **Question:** How strictly should web mutations validate input, and how should workflow violations surface over HTTP and in exit codes?
+4. **Options Considered:**
+   - Keep lenient parsing (invalid enums coerced to defaults) and generic 500s.
+   - Mirror CLI validation on the web surface and map workflow violations to conflict semantics everywhere.
+5. **Chosen Option:** Mirror CLI validation and map `forbidden transition` errors to the conflict code.
+6. **Why We Chose It:** The web surface accepted what the CLI refuses: tickets born `done`/`canceled`, invalid enum values silently coerced (an invalid drag status became a `backlog` move attempt), and edits persisting blank titles or malformed actors that later crashed rendering. Web create/edit/move now enforce the same invariants, same-status drops are no-ops, and `apperr.CodeOf` classifies `forbidden transition` as `conflict` — HTTP 409 on the web, exit code 4 (the documented conflict exit) in the CLI instead of the unmapped default 1. Plain form posts redirect back to the board with the error rendered instead of dead-ending on a text/plain page.
+7. **Confidence:** high
+8. **Revisit Trigger:** Scripts are found depending on exit code 1 for forbidden transitions, or a surface needs to create terminal-status tickets legitimately (import/export already bypasses this via its own path).
+9. **Affected PRs/Files:** `internal/web/handlers.go`, `internal/web/server.go`, `internal/web/viewmodels.go`, `internal/apperr/errors.go`, `internal/service/query.go`, `internal/service/types.go`, `internal/storage/sqlite/store.go`, `internal/cli/web.go`, web templates/static, docs.
+
+## DEC-032
+
+1. **Decision ID:** DEC-032
+2. **Date:** 2026-07-03
+3. **Question:** How should the web board respond to a rejected non-JS form submission?
+4. **Options Considered:**
+   - Raw `http.Error` text page (original).
+   - Post/Redirect/Get back to `/board` with the error in the query string.
+   - Re-render the board in place with the error status and the submitted values echoed into the originating form.
+5. **Chosen Option:** Re-render in place with scoped echo.
+6. **Why We Chose It:** The raw text page dead-ends the user; PRG destroys typed content (Cache-Control: no-store disables bfcache) and reads as success to redirect-following clients. Render-in-place keeps the true 4xx status for every client and preserves everything typed. Echoed values are scoped via a FormTarget derived from the action path so a rejected mutation can only prefill the form that produced it — never another ticket's edit form. Known residual: refreshing the error page re-posts the form (inherent to render-in-place), and the browser address bar sits on the action URL until the next navigation; app.js resolves reloads against /board to compensate.
+7. **Confidence:** medium
+8. **Revisit Trigger:** Server-side flash/session state is introduced (enabling PRG without data loss), or users report confusion from the POST URL/refresh-repost behavior.
+9. **Affected PRs/Files:** `internal/web/server.go`, `internal/web/viewmodels.go`, `internal/web/assets.go`, `internal/web/templates/*`, `internal/web/static/app.js`, web tests.
+
+## DEC-033
+
+1. **Decision ID:** DEC-033
+2. **Date:** 2026-07-23
+3. **Question:** How should the local welcome page compute cross-project status and recent activity?
+4. **Options Considered:**
+   - Add a new persisted dashboard projection.
+   - Derive project counts from per-project board queries and merge the existing per-project event streams at request time.
+   - Read Markdown and JSONL files directly from the web handlers.
+5. **Chosen Option:** Derive counts through `QueryService` board queries and merge filtered event streams in `QueryService`, capped at 20.
+6. **Why We Chose It:** The welcome page stays a read model over the same contracts as CLI/TUI instead of adding a second source of truth. Canonical snapshots supply the Done count because DEC-026 intentionally folds canceled tickets into the board's Done column while this overview excludes canceled work. The event scan is cached per project for one request and its full-scan tradeoff is explicit.
+7. **Confidence:** high
+8. **Revisit Trigger:** Root-page latency becomes noticeable in workspaces with large event logs, or a shared indexed activity query is introduced.
+9. **Affected PRs/Files:** `internal/service/rollups.go`, `internal/service/rollups_test.go`, `internal/web/viewmodels.go`, welcome web tests.
+
+## DEC-034
+
+1. **Decision ID:** DEC-034
+2. **Date:** 2026-07-23
+3. **Question:** What should the browser root route and welcome-page interaction model be?
+4. **Options Considered:**
+   - Keep redirecting `/` to the board.
+   - Add a stat-card dashboard.
+   - Render a borderless project ledger with a recent-change rail, native project-creation dialog, and a read-only settings page.
+5. **Chosen Option:** Render the project ledger/activity rail at `/`; keep `/board` canonical and link both directions.
+6. **Why We Chose It:** Owners need cross-project orientation before card-level manipulation. A plain ledger compares real counts without card/grid noise, while the activity rail answers what changed. Project creation reuses `ActionService` plus the existing origin/CSRF/read-only gates; rejected forms keep the exact error and submitted values. Web identity falls back from `web.owner_name` to `actor.default` to the OS username, and agent color names are mapped to a small server-side CSS class allowlist so CSP stays strict.
+7. **Confidence:** high
+8. **Revisit Trigger:** Usage shows owners always bypass the overview, settings become editable in-browser, or the web surface adds a shared indexed activity API.
+9. **Affected PRs/Files:** `internal/contracts/domain.go`, `internal/config/config.go`, `internal/web/*`, `PRODUCT.md`, `DESIGN.md`, `docs/web-welcome-screen-brief.md`, web/config tests.
+
+## DEC-035
+
+**Status:** Superseded by DEC-038 for motion timing and feedback; the card information model remains current.
+
+1. **Decision ID:** DEC-035
+2. **Date:** 2026-07-23
+3. **Question:** How much information should Kanban cards expose, and how should secondary detail and movement feel?
+4. **Options Considered:**
+   - Keep assignee avatars, priority and label pills, and counters on every card.
+   - Reduce the face to ID/title plus an optional configured agent color mark, with delayed local preview and full drawer detail.
+   - Fetch a richer server preview on every hover.
+5. **Chosen Option:** Use the minimal face, one two-second `data-*` preview, a 200ms drawer transform, and SortableJS's 150ms position animation.
+6. **Why We Chose It:** The board is a high-frequency scan surface, so repeated badges and icon rows made each ticket harder to compare and forced wider columns. Escaped metadata already rendered with the card can power one viewport-clamped preview without network work or a new API. The drawer remains the authoritative detail/edit surface, agent color stays a scarce ownership hint rather than a card fill, and reduced-motion users get immediate state changes.
+7. **Confidence:** high
+8. **Revisit Trigger:** Owners consistently miss urgent work without face-level priority, the hover delay creates excess drawer opens, or keyboard users need an equivalent non-navigation summary.
+9. **Affected PRs/Files:** `internal/web/viewmodels.go`, `internal/web/templates/board.html`, `internal/web/static/app.css`, `internal/web/static/app.js`, `internal/web/card_interactions_test.go`, `PRODUCT.md`, `DESIGN.md`, `docs/web-board-screen-brief.md`.
+
+## DEC-036
+
+1. **Decision ID:** DEC-036
+2. **Date:** 2026-07-23
+3. **Question:** How should Atlas pilot multilingual browser chrome without adding a localization dependency or changing stored ticket content?
+4. **Options Considered:**
+   - Add `golang.org/x/text` and locale-aware routing.
+   - Keep strings in templates and duplicate localized pages.
+   - Bind a small in-process message catalog to cloned templates per request.
+5. **Chosen Option:** Use flat English, Spanish, and Indonesian catalogs with a request-bound `t` template function; resolve language from `?lang=`, then `web.lang`, then `Accept-Language`, then English.
+6. **Why We Chose It:** The browser remains server-rendered, dependency-free, and easy to extend. Cloning the parsed template before binding request functions keeps concurrent requests isolated. Ticket text, comments, labels, actors, event payloads, and audit reasons remain canonical data rather than translation input. A catalog key-set test makes missing translations fail in CI.
+7. **Confidence:** high
+8. **Revisit Trigger:** Atlas adds locale-aware dates/numbers, plural rules beyond the pilot, RTL support, or enough languages that maintaining literal maps becomes error-prone.
+9. **Affected PRs/Files:** `internal/contracts/domain.go`, `internal/config/config.go`, `internal/web/i18n.go`, `internal/web/templates/*`, `internal/web/static/*`, web/config tests, `docs/i18n-notes.md`, web/config docs.
+
+## DEC-037
+
+1. **Decision ID:** DEC-037
+2. **Date:** 2026-07-25
+3. **Question:** How should a live board sync communicate card and count movement without weakening strict CSP or pulling the grid out from under an active drag?
+4. **Options Considered:**
+   - Keep replacing the board grid instantly.
+   - Vendor Motion Mini and use its animation helper for FLIP.
+   - Record ticket rectangles and column counts locally, then use the browser's Web Animations API for FLIP plus CSS classes for drop/count feedback.
+5. **Chosen Option:** Use a small native FLIP implementation and CSS feedback classes.
+6. **Why We Chose It:** Ticket IDs already provide stable keys across the server-rendered grid swap. Capturing rectangles only after `waitForDragEnd`, checking the drag counter again before playback, and animating transforms for 180ms preserves spatial continuity without changing the mutation or refresh contracts. Native animation needs no module loader, package metadata, inline style, external request, or additional vendored code; the same path skips all effects when reduced motion is requested.
+7. **Confidence:** high
+8. **Revisit Trigger:** Supported browsers no longer provide the Web Animations API, sync expands beyond simple card movement, or a shared animation runtime becomes justified by several independent interactions.
+9. **Affected PRs/Files:** `internal/web/static/app.js`, `internal/web/static/app.css`, `internal/web/card_interactions_test.go`, `DESIGN.md`, `docs/web-board-screen-brief.md`.
+
+## DEC-038
+
+1. **Decision ID:** DEC-038
+2. **Date:** 2026-07-25
+3. **Question:** How should the board's drawer, hover, and press feedback change now that DEC-035's uniform 200ms drawer motion feels too linear?
+4. **Options Considered:**
+   - Keep the existing 200ms standard ease for every drawer direction and card lift.
+   - Use CSS cubic-bezier springs for entry/lift, with shorter standard ease-out timing for close/press.
+   - Add JavaScript spring physics for every interaction.
+5. **Chosen Option:** Use transform-only CSS curves: 240ms restrained overshoot on drawer open, 160ms standard ease-out on close, 220ms spring lift on card hover/focus, and 90ms compression on press.
+6. **Why We Chose It:** Entry benefits from a small amount of continuity while exit and direct press feedback should get out of the way. CSS keeps these frequent interactions compositor-friendly and interruptible without adding a runtime. The existing surface colors, layout, and `--ease` curve remain unchanged; one spring easing token handles the causal entry/lift cases, and the reduced-motion block removes every transform and animation.
+7. **Confidence:** high
+8. **Revisit Trigger:** Runtime inspection shows visible overshoot at large drawer widths, interaction latency rises on lower-performance hardware, or users report that frequent card feedback feels busy.
+9. **Affected PRs/Files:** Supersedes the motion timing/feedback portion of DEC-035; `internal/web/static/app.css`, `internal/web/card_interactions_test.go`, `DESIGN.md`, `docs/web-board-screen-brief.md`.
+
+## DEC-039
+
+1. **Decision ID:** DEC-039
+2. **Date:** 2026-08-28
+3. **Question:** How should the atlas.pen visual direction reach the browser board — as a full restructure, or as a restyle of the layout people already use?
+4. **Options Considered:**
+   - Keep the soft charcoal skin and treat the pen design as non-binding inspiration.
+   - Ship the Survey Ledger restructure (`feat/pen-design-frontend`): arrival-question headers, a workflow route line, no default drawer, selection-driven detail.
+   - Keep the existing layout — topbar shell, filter row, six columns, right drawer — and restyle it to the pen tokens and type.
+5. **Chosen Option:** Restyle the existing layout to the pen visual system: the #0B0F14/#111821/#18222D surface scale, #68A9FF accent, vendored Geist and Geist Mono variable fonts (Inter removed), semantic color reserved for compact indicators. The Survey Ledger implementation stays on its own branch as a complete alternative and does not ship in v1.10.
+6. **Why We Chose It:** The owner asked for the layout to stay put. The board's interaction contracts (drag, filters, drawer, saved views) are pinned by tests and by muscle memory; the restructure changed where selection lives and how detail opens, which is a product change dressed as a restyle. Matching the pen tokens and type on the existing shell gets the look without renegotiating the loop, in a diff a reviewer can read in one sitting. Keeping Survey Ledger on a branch preserves the work for a deliberate product decision later instead of losing it in a merge conflict.
+7. **Confidence:** high
+8. **Revisit Trigger:** Owners cannot identify selected work without opening detail, or horizontal scanning of six columns is measurably slower on common screens — the two problems the Survey Ledger structure was built to solve.
+9. **Affected PRs/Files:** `internal/web/static/app.css`, `internal/web/static/vendor/*`, `internal/web/templates/board.html`, `internal/web/templates/schedule.html`, `internal/web/viewmodels.go`, `DESIGN.md`, `docs/web-board.md`.
+
+## DEC-040
+
+1. **Decision ID:** DEC-040
+2. **Date:** 2026-08-10
+3. **Question:** How should Atlas handle symlinks found while collecting workspace files for export-derived artifacts?
+4. **Options Considered:**
+   - Follow symlinks and include their targets.
+   - Silently omit symlinked inputs.
+   - Reject the operation before writing an artifact.
+5. **Chosen Option:** Reject the operation before writing an artifact.
+6. **Why We Chose It:** The export collector is shared by normal and redacted exports, backups, audit artifacts, and goal artifacts. Following a link can copy data outside the workspace into a shareable artifact, while silently omitting it would produce an incomplete artifact without telling the operator. A fail-closed error preserves the documented boundary that private material must never enter export-derived artifacts.
+7. **Confidence:** high
+8. **Revisit Trigger:** Atlas adopts a separately reviewed, explicit link-materialization policy with target containment and clear artifact provenance.
+9. **Affected PRs/Files:** `internal/service/import_export.go`, `internal/service/security_boundary_test.go`, `docs/v1-decision-log.md`.
+
+## DEC-041
+
+1. **Decision ID:** DEC-041
+2. **Date:** 2026-08-12
+3. **Question:** How should Atlas keep its CI and release automation from silently changing underneath a reviewed commit?
+4. **Options Considered:**
+   - Keep mutable major-version action tags and repository-default token permissions.
+   - Pin every third-party action to a reviewed commit and declare least-privilege workflow permissions.
+   - Vendor every action into this repository.
+5. **Chosen Option:** Pin actions to immutable commits, declare `contents: read` at workflow scope, and let only the publish job elevate the three permissions it needs.
+6. **Why We Chose It:** Immutable action references make the reviewed automation the automation that runs. An executable policy check prevents a later mutable tag or mismatched Go bootstrap from quietly reopening the same supply-chain gap without taking on the maintenance and audit burden of vendoring action code.
+7. **Confidence:** high
+8. **Revisit Trigger:** GitHub changes action pinning or token-permission semantics, or Atlas moves release execution to a different CI provider.
+9. **Affected PRs/Files:** `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `scripts/check-workflow-security.sh`, `scripts/preflight-release-proof.sh`.
+
+## DEC-042
+
+1. **Decision ID:** DEC-042
+2. **Date:** 2026-08-12
+3. **Question:** Should the web drawer's close control optimize for a compact desktop silhouette or a reliable phone touch target?
+4. **Options Considered:**
+   - Keep the 28-by-28-pixel control because it clears the WCAG 2.5.8 minimum.
+   - Give the existing control a 44-by-44-pixel hit area while keeping the same icon and visual treatment.
+5. **Chosen Option:** Use a 44-by-44-pixel close control at every viewport.
+6. **Why We Chose It:** The drawer is a primary phone interaction and its close action should not demand precise tapping. A consistent target across viewports avoids a second responsive rule while preserving the existing icon, color, and hover language.
+7. **Confidence:** high
+8. **Revisit Trigger:** Rendered QA finds that the larger target collides with long drawer titles at the narrowest supported width.
+9. **Affected PRs/Files:** `internal/web/static/app.css`, `internal/web/fixes_test.go`.
+
+## DEC-043
+
+1. **Decision ID:** DEC-043
+2. **Date:** 2026-08-12
+3. **Question:** How should Atlas respond when its required Go runtime or a reachable transitive module has a published vulnerability?
+4. **Options Considered:**
+   - Record the advisories and wait for the next feature release.
+   - Patch only the modules and keep the vulnerable Go runtime.
+   - Move the runtime and every reachable vulnerable module to the first fixed versions, then require CI and release jobs to use the same runtime as `go.mod`.
+5. **Chosen Option:** Move the runtime and all reachable vulnerable modules to fixed versions and keep the workflow toolchain synchronized with `go.mod`.
+6. **Why We Chose It:** `govulncheck` traced the affected standard-library TLS code, Markdown renderer, and text renderer into Atlas. Updating all three boundaries closes the reachable paths without carrying a partial exception, while the workflow policy prevents a future runtime mismatch.
+7. **Confidence:** high
+8. **Revisit Trigger:** A fixed version causes a reproducible compatibility regression or a future Go release changes how the module directive maps to CI toolchains.
+9. **Affected PRs/Files:** `go.mod`, `go.sum`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `scripts/check-workflow-security.sh`.
+
+## DEC-044
+
+1. **Decision ID:** DEC-044
+2. **Date:** 2026-08-12
+3. **Question:** Should the local web board retain an explicit escape hatch for plaintext non-loopback serving?
+4. **Options Considered:**
+   - Keep `--unsafe-host` with a warning.
+   - Add authentication and TLS to turn the board into a network product.
+   - Reject non-loopback hosts and keep the board local-only.
+5. **Chosen Option:** Reject non-loopback hosts and remove `--unsafe-host`.
+6. **Why We Chose It:** The current board uses a bearer session URL but has no remote-user identity, authorization, or TLS lifecycle. A warning does not contain exposure on an untrusted network. Loopback-only serving matches the product boundary without inventing a partial hosted security model.
+7. **Confidence:** high
+8. **Revisit Trigger:** Atlas intentionally designs and tests a remote web product with TLS, authenticated identities, authorization, session revocation, and deployment guidance.
+9. **Affected PRs/Files:** `internal/cli/web.go`, `internal/cli/root_test.go`, `internal/web/server.go`, `internal/web/server_test.go`, `docs/command-reference.md`, `docs/web-board-security.md`.
+
+## DEC-045
+
+1. **Decision ID:** DEC-045
+2. **Date:** 2026-07-30
+3. **Question:** How do we make the README's "JSON output on every command" claim true, and keep it true?
+4. **Options Considered:**
+   - Register `--json` on the thirteen ticket write commands the agent skill names and stop there.
+   - Register it everywhere it makes sense and add a tree-walking test with an allowlist.
+   - Move output-flag registration into a shared command constructor so new commands inherit it.
+5. **Chosen Option:** Register the flags on every leaf that produces a result, then walk the cobra tree in a test and fail on any leaf without `--json` outside a documented allowlist.
+6. **Why We Chose It:** The commands were already printing through `writeCommandOutput`; the flags were the only thing missing, so the fix was registration rather than new output paths. A shared constructor would have meant rewriting every command declaration in the package for the same guarantee a twenty-line test gives, and the test also catches the reverse mistake — an allowlist entry that quietly gains the flag or stops being a leaf. The allowlist holds five surfaces that own stdout for something else (`mcp serve` speaks JSON-RPC on it), are interactive (`shell`, `tui`), or are long-running/human-facing (`web serve`, `web open`). `tracker init` gained a result payload at the same time, because bootstrap you cannot verify is not scriptable, and `board --json` lost its lone PascalCase `Columns` key.
+7. **Confidence:** high
+8. **Revisit Trigger:** The allowlist grows past a handful of entries, or a command needs machine output in a shape the versioned envelope cannot carry.
+9. **Affected PRs/Files:** `internal/cli/root.go`, `internal/cli/actions.go`, `internal/cli/json_coverage_test.go`, `internal/config/config.go`, `internal/contracts/interfaces.go`.
+
+## DEC-046
+
+1. **Decision ID:** DEC-046
+2. **Date:** 2026-07-30
+3. **Question:** How should an MCP client that does not control its working directory reach a specific Atlas workspace?
+4. **Options Considered:**
+   - Leave it at the working directory and tell people to register the server per project.
+   - Add `--workspace` to `mcp serve` and validate the path before the server starts.
+   - Read a workspace path from an environment variable or a config file in the user's home.
+5. **Chosen Option:** `tracker mcp serve --workspace <path>`, checked at startup, with the working directory as the fallback.
+6. **Why We Chose It:** User-scoped registrations (`claude mcp add --scope user`, a global Codex `mcp_servers` entry) are the normal way people install a local MCP server, and they start it wherever the client happens to be — which showed up as `not_found` for tickets the human could see in the terminal. An explicit flag keeps the workspace visible in the registration itself rather than hidden in a home-directory file. The path is validated before serving because an MCP client has no terminal to show a failure in: a missing directory is `not_found`, a directory without `.tracker/` says to run `tracker init` there. `mcp schema` and `mcp tools` describe the adapter and never open a workspace, so they do not take the flag.
+7. **Confidence:** high
+8. **Revisit Trigger:** MCP clients gain a standard way to pass a working directory, or Atlas needs one server to answer for several workspaces at once.
+9. **Affected PRs/Files:** `internal/cli/mcp.go`, `internal/cli/mcp_test.go`, `docs/mcp.md`, `docs/mcp-claude-code.md`, `docs/mcp-codex.md`, `docs/guides/mcp-for-agents.md`.
+
+## DEC-047
+
+1. **Decision ID:** DEC-047
+2. **Date:** 2026-07-30
+3. **Question:** Where should `tracker integrations install openclaw` write, given that OpenClaw reads `AGENTS.md` like Codex does?
+4. **Options Considered:**
+   - Share the Codex block in `AGENTS.md` and install the skill to `~/.openclaw/skills`.
+   - Write a second `AGENTS.md` block under its own markers and install the skill to the repo-local `.agents/skills` root.
+   - Give OpenClaw its own instruction file so the two never meet.
+5. **Chosen Option:** A second managed block in `AGENTS.md` with `atlas-tasker:openclaw` markers, plus the skill at `.agents/skills/atlas-worker/`.
+6. **Why We Chose It:** OpenClaw's own precedence table puts repo-local project-agent skills at `<workspace>/.agents/skills`, which matches what the codex and claude targets already do with `.codex/skills` and `.claude/skills` — the skill travels with the repo and only applies where Atlas is. Sharing the Codex block would have made whichever target ran last silently win, and a separate instruction file would be a file OpenClaw does not read. `~/.openclaw/skills` is the shared per-machine root and stays the user's to install; a repo-scoped command reaching into a home directory is a surprise, so the guide prints the `openclaw skills install ... --global` one-liner instead. The generated skill carries `metadata.openclaw.requires.bins`, which gates it on the `tracker` binary and which other agents ignore. The same pass fixed a bare `": "` in the skill description across all four targets — that is not a legal plain YAML scalar, so no agent had been able to parse the frontmatter.
+7. **Confidence:** high
+8. **Revisit Trigger:** OpenClaw changes its skill roots or stops injecting `AGENTS.md`, or a fourth AGENTS.md-reading target makes per-target markers unwieldy.
+9. **Affected PRs/Files:** `internal/integrations/install.go`, `internal/integrations/agent_skill.go`, `internal/integrations/install_test.go`, `internal/cli/root.go`, `docs/command-reference.md`, `docs/guides/team-presets.md`.
+
+## DEC-048
+
+1. **Decision ID:** DEC-048
+2. **Date:** 2026-07-30
+3. **Question:** Who is the root `AGENTS.md` for, now that agents arrive at this repo to use Atlas rather than to build it?
+4. **Options Considered:**
+   - Keep the v1 contributor guide and add a section for agents using the tracker.
+   - Archive the contributor guide and write a new root `AGENTS.md` for agents operating Atlas.
+   - Point `AGENTS.md` at the existing per-provider guides under `docs/guides/`.
+5. **Chosen Option:** Archive the v1 guide as `docs/v1-agents-archive.md` and write a new root `AGENTS.md` for agents driving the tracker, with `CLAUDE.md` importing it via `@AGENTS.md`.
+6. **Why We Chose It:** The old file described the PR-001..PR-009 delivery train and a locked v1 scope — accurate history, useless to an agent asked to work a ticket, and actively misleading as the first thing a coding agent reads. The new file leads with the failure modes rather than a feature tour: every write needs `--actor` and `--reason`, `project create` takes neither, a forbidden transition is a deliberate exit 4 rather than a bug to retry around. The web board is named as human-only in the same list, because its session token is random per process and never persisted — there is no headless path, and an agent that tries to scrape it is working against the design when the CLI and MCP are right there. Claude Code reads `CLAUDE.md` rather than `AGENTS.md`, so the bridge is an import rather than a second copy to drift.
+7. **Confidence:** high
+8. **Revisit Trigger:** The don'ts list stops matching real agent failures, or the web board grows a non-interactive auth path.
+9. **Affected PRs/Files:** `AGENTS.md`, `CLAUDE.md`, `docs/v1-agents-archive.md`, `README.md`, `docs/README.md`.
+
+## DEC-049
+
+1. **Decision ID:** DEC-049
+2. **Date:** 2026-09-01
+3. **Question:** When the last blocker of a dependent ticket reaches `done`, should Atlas promote the dependent to `ready` itself, or keep promotion as the woken agent's first move?
+4. **Options Considered:**
+   - Keep the wakeup-only behavior and rely on the agent to promote the ticket.
+   - Promote the dependent automatically when its last blocker completes.
+   - Leave status alone but make the queues show unblocked backlog tickets.
+5. **Chosen Option:** Both. Atlas promotes an agent-assigned `backlog` dependent to `ready` under the system actor `agent:atlas`, with an audited reason naming the completed blocker and who completed it, as a best-effort step after the completion commits — and `queue`/`next` gain an `unblocked_for_me` category while `agent available` reports a `promote` action, so human-assigned and unassigned dependents surface without being moved.
+6. **Why We Chose It:** The wakeup pointed at a ticket no query would show. `agent.work_available` fired, the notifier printed it, and then `tracker next`, `agent available`, and `queue` all came back empty for the woken agent, because every one of them keyed on persisted status `ready` and the dependent was still `backlog`. Telling the agent "promoting is your first move" in a code comment does nothing when its own tooling never hands it the ticket. Promotion alone would have fixed the agent case and left humans in the same hole; the read-path change alone would have left agents doing a status dance on every wakeup. Doing both keeps the audit trail honest (`agent:atlas`, not the human who completed the blocker, moves the dependent) and keeps human backlog grooming manual. Plain backlog that never had blockers is deliberately excluded from the new category so the whole backlog does not pour into every agent's `next`, and a hand-set `blocked` status is never overridden. Nesting the promotion inside the completion's post-commit hook exposed a latent journal weakness: a write that dies after its canonical file keeps its event id, and the very next write (here, the wakeup) used to overwrite its journal entry, so `journal.Begin` now refuses a pending entry and points at `doctor --repair` instead of letting the half-applied move vanish.
+7. **Confidence:** high
+8. **Revisit Trigger:** A workspace that needs backlog grooming to stay manual even for agent-assigned tickets; that would need a config switch rather than a code comment.
+9. **Affected PRs/Files:** `internal/service/agent_wakeup.go`, `internal/service/journal.go`, `internal/service/agent_work.go`, `internal/service/query.go`, `internal/service/types.go`, `internal/cli/root.go`, `internal/tui/app.go`, `internal/integrations/agent_skill.go`, `AGENTS.md`, `README.md`, `CHANGELOG.md`, `docs/v1.9-agent-workflow.md`, `docs/command-reference.md`, `docs/KNOWN_LIMITATIONS.md`, `site/mcp.html`, `site/changelog.html`, `site/docs/agents-and-dispatch.html`, `site/docs/json-and-exit-codes.html`, `site/docs/views-and-search.html`.
+
+## DEC-050
+
+Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. The count-based on-open policy remains; DEC-052 records why live readers require a different commit strategy.
+
+1. **Decision ID:** DEC-050
+2. **Date:** 2026-09-01
+3. **Question:** When the derived SQLite index is missing or stale relative to the markdown and event log, should a command error, warn, or rebuild it on its own?
+4. **Options Considered:**
+   - Loud error everywhere: any fingerprint mismatch is `repair_needed` (exit 7) until the operator runs `doctor --repair`.
+   - Leave it as it was: `CREATE TABLE IF NOT EXISTS` on open, an empty or behind index answers as if it were the truth, and only a byte-corrupt file is detected.
+   - Self-heal on open, with `doctor` as the honest reporter: rebuild under the write lock when the stamped fingerprint disagrees with the sources, print one notice, and have read-only `doctor` report drift as exit 7 instead of `ok`.
+5. **Chosen Option:** Self-heal on open plus a single stderr notice; `doctor` reports drift with both fingerprints; a byte-corrupt file stays loud everywhere except `reindex`, which removes and rebuilds it.
+6. **Why We Chose It:** A derived artifact that lies is worse than one that rebuilds. A deleted `index.sqlite` printed an empty board with exit 0, `ticket view` silently fell back to markdown so two surfaces disagreed, and `doctor` printed `doctor ok` from markdown counts it never compared to the projection. The fingerprint is deliberately just counts — event-log newline bytes plus ticket files — because a rebuild replays every event and then inserts only the tickets the projection is missing, so count and ID-set drift is exactly the drift a rebuild is guaranteed to clear, and every append grows one file by one line. A missing stamp is treated as the zero fingerprint, which makes a workspace fresh from `tracker init` read as fresh and an index from before the stamp existed rebuild once. The rebuild swaps files under `index.sqlite`, and reads take no lock today, so the check takes the workspace write lock and re-checks inside it. Corruption stays loud because a long-running server should never have a damaged file thrown away underneath it; `reindex` is the explicit way out and could not previously open the very file it exists to replace.
+7. **Confidence:** high
+8. **Revisit Trigger:** Workspaces large enough that a rebuild stops being a fraction of a second, or the per-command fingerprint stat over `.tracker/events/*.jsonl` and `projects/*/tickets/*.md` becomes visible in command latency.
+9. **Affected PRs/Files:** `internal/storage/fingerprint.go`, `internal/storage/sqlite/store.go`, `internal/service/projection_freshness.go`, `internal/cli/actions.go`, `internal/cli/execute.go`, `internal/cli/root.go`, `internal/mcp/workspace.go`, `internal/tui/app.go`, `docs/invariants.md`, `docs/guides/doctor-and-repair.md`, `docs/troubleshooting.md`, `docs/operator-manual.md`, `docs/json-contracts.md`, `docs/errors.md`, `README.md`, `AGENTS.md`, `site/cli.html`, `site/docs/json-and-exit-codes.html`, `site/docs/faq.html`, `CHANGELOG.md`.
+
+## DEC-051
+
+1. **Decision ID:** DEC-051
+2. **Date:** 2026-09-08
+3. **Question:** How should the v1.10 interfaces enforce their existing local workspace and secret boundaries?
+4. **Options Considered:** Keep surface-specific checks; share initialized-root validation and preflight every integration destination.
+5. **Chosen Option:** Use a shared initialized-root check for CLI config/reads, MCP serving/approvals, and TUI. Keep init and explicit integration installation as bootstrap operations, and version/help/MCP schema/tools as workspace-independent discovery. Mask config-set JSON exactly like config-get. Normalize web bind hosts before listening and validate the actual loopback listener. Reject symlink components in every integration output path before writing any file.
+6. **Why We Chose It:** The review reproduced silent workspace creation through implicit MCP/TUI startup, default config reads from the wrong directory, webhook secrets echoed by the JSON setter, a wildcard listener created by an empty host, and integration writes escaping through symlinks. These changes enforce DEC-044 and DEC-047 without adding remote serving or shared-skill installation.
+7. **Confidence:** high
+8. **Revisit Trigger:** A future explicitly approved remote web mode or shared integration installer requires a separate trust model.
+9. **Affected PRs/Files:** PRs #121, #122, #127; internal/service/workspace.go, internal/cli, internal/mcp/workspace.go, internal/tui/app.go, internal/web/listener.go, internal/integrations/install.go, AGENTS.md
+
+## DEC-052
+
+1. **Decision ID:** DEC-052
+2. **Date:** 2026-09-08
+3. **Question:** How can projection rebuilds and recovery preserve live readers and truthful freshness?
+4. **Options Considered:** Continue replacing the index file; reopen every live consumer on file changes; commit rebuilds in the existing SQLite database.
+5. **Chosen Option:** Commit full and project rebuilds, event application, and schema initialization in SQLite transactions. Use immediate write transactions and configure the driver busy timeout on every pooled connection. WAL setup uses the existing workspace lock wait and polling interval (five seconds and 50ms) because SQLite can bypass its busy handler during simultaneous conversion. Hold the canonical workspace lock before corrupt-index reset and through rebuilding. Read-only doctor reports pending journals as repair_needed. Advance an incremental source watermark only when it accounts for at most the next appended event; a complete replay can stamp the complete source count.
+6. **Why We Chose It:** This supersedes the file-swap portion of DEC-050 and V13-005: inode replacement stranded already-open MCP/web/TUI pools, and failed project rebuilds could erase rows. A later successful apply could also hide an earlier skipped event. Transactions preserve rollback and reader continuity. Counting projected rows is insufficient because imported duplicate source events can share projection IDs. The retained source-count policy reads complete event files and still does not detect same-count manual content edits; authoritative events remain necessary to recover edited state.
+7. **Confidence:** high
+8. **Revisit Trigger:** Measured event-log scan or replay latency requires a new watermark contract, or support is added for replacing a healthy database underneath a live process.
+9. **Affected PRs/Files:** PR #123; internal/storage/sqlite/store.go, internal/service/projection_freshness.go, internal/cli/root.go, internal/cli/actions.go, docs/storage-transaction-model.md, docs/v1.3-decision-log.md
+
+## DEC-053
+
+1. **Decision ID:** DEC-053
+2. **Date:** 2026-09-08
+3. **Question:** Which validation must run for the reconciled v1.10 release train?
+4. **Options Considered:** Rely on historical PR checks; rerun required checks and extend the gaps in the existing workflows.
+5. **Chosen Option:** Use Go 1.26.6 and x/net v0.56.0 (with its required x/term v0.44.0 and x/sys v0.46.0), retaining the audit goldmark v1.7.17 and x/text v0.39.0 fixes. Run tests/vet, workflow policy, browser/site contracts, stabilization, packaged RC and local install rehearsal, vulnerability scanning, full-history secret scanning, and SBOM generation. Include testing pushes in CI and include every YAML workflow in action-pin and least-privilege checks. Exercise an actual stdio MCP initialize/tools call from an unrelated directory using an explicit workspace. Use v1.10.0-rc1 as the local rehearsal version; creation/publication of any tag remains a separate owner action.
+6. **Why We Chose It:** Historical green checks did not prove the current combined tree, testing pushes had no CI, the scheduled vulnerability workflow escaped the new policy, and the packaged validator checked only MCP inventory. Hosted downloads, attestations, owner merges, and stable sign-off cannot be proven by a local rehearsal and remain explicit release gates.
+7. **Confidence:** high
+8. **Revisit Trigger:** The supported platforms, release version, public output contracts, or required CI policy change.
+9. **Affected PRs/Files:** PRs #117, #121, #126; .github/workflows, scripts/check-workflow-security.sh, scripts/validate_rc.py, scripts/*release*.sh, scripts/validate-rc.sh, docs/release/public-release-gates.md
+
+## DEC-054
+
+1. **Decision ID:** DEC-054
+2. **Date:** 2026-09-08
+3. **Question:** May a reviewer promote another assignee's unblocked backlog ticket?
+4. **Options Considered:** Offer promotion to every relevant actor including reviewers; offer it only to the assigned worker, unassigned claimable work, or the owner.
+5. **Chosen Option:** Limit the new promote action to the ticket assignee, unassigned claimable work, and human:owner. Keep reviewer visibility and the existing in_review action. Preserve existing action authorization; this correction narrows the new work recommendation.
+6. **Why We Chose It:** Review showed that relevance through reviewer assignment could recommend a successful claim/start sequence on human-owned backlog work. DEC-049 keeps human backlog grooming manual. Denied policy, lease, disabled-agent, and missing-capability cases also need regression coverage proving no promotion event or wakeup occurs.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner introduces explicit reviewer authority to take over assigned backlog work.
+9. **Affected PRs/Files:** PR #123; internal/service/agent_work.go, internal/service/agent_work_test.go, internal/service/agent_wakeup_policy_test.go
+
+## DEC-055
+
+1. **Decision ID:** DEC-055
+2. **Date:** 2026-09-08
+3. **Question:** Which artifact should local release preflight use to generate its SBOM?
+4. **Options Considered:** Discover the application from source and Git metadata; inspect the release binary already built and validated by preflight.
+5. **Chosen Option:** Use the pinned CycloneDX generator's binary mode with the explicit release version and the preflight binary.
+6. **Why We Chose It:** Source-mode version discovery failed in a linked Git worktree. Binary mode records the dependencies of the artifact actually rehearsed and avoids relying on the layout of Git's worktree references. Hosted CI and release source-mode generation remain valid in their ordinary checkouts.
+7. **Confidence:** high
+8. **Revisit Trigger:** Release artifacts stop carrying Go build information or the required SBOM scope expands beyond binary dependencies.
+9. **Affected PRs/Files:** PR #126; scripts/preflight-release.sh

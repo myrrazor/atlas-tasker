@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
 
@@ -37,15 +38,17 @@ func CanTransition(from contracts.Status, to contracts.Status) bool {
 }
 
 // ValidateTransition checks status validity and transition edge constraints.
+// Errors carry typed apperr codes so HTTP statuses and CLI exit codes don't
+// depend on message wording (forbidden edges are conflicts, exit 4).
 func ValidateTransition(from contracts.Status, to contracts.Status) error {
 	if !from.IsValid() {
-		return fmt.Errorf("invalid source status: %s", from)
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid source status: %s", from))
 	}
 	if !to.IsValid() {
-		return fmt.Errorf("invalid target status: %s", to)
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid target status: %s", to))
 	}
 	if !CanTransition(from, to) {
-		return fmt.Errorf("forbidden transition: %s -> %s", from, to)
+		return apperr.New(apperr.CodeConflict, fmt.Sprintf("forbidden transition: %s -> %s", from, to))
 	}
 	return nil
 }

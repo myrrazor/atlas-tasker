@@ -2,7 +2,7 @@
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
-VERSION="${VERSION:-v1.9.0-rc1}"
+VERSION="${VERSION:-v1.10.0-rc1}"
 RELEASE_PROOF_DIR="${RELEASE_PROOF_DIR:-$ROOT_DIR/docs/release-proof}"
 RUN_GOVULNCHECK="${RUN_GOVULNCHECK:-0}"
 RUN_SBOM="${RUN_SBOM:-0}"
@@ -142,7 +142,9 @@ if [ "$RUN_SBOM" = "1" ]; then
   SBOM_OUT="$RELEASE_PROOF_DIR/sbom-${VERSION}.cdx.json"
   if ! (
     cd "$ROOT_DIR"
-    GOOS="$OS_NAME" GOARCH="$ARCH_NAME" CGO_ENABLED=0 go run "github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}" app -json -output "$SBOM_OUT" -main cmd/tracker "$ROOT_DIR"
+    # Inspect the binary whose metadata was checked above. This also works in
+    # linked Git worktrees, where source-mode version discovery can fail.
+    go run "github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}" bin -json -output "$SBOM_OUT" -version "$VERSION" "$TMP_DIR/tracker"
   ); then
     echo "sbom_output=$SBOM_OUT"
     fail "sbom_generation_failed" "CycloneDX SBOM generation failed; see $SBOM_OUT"

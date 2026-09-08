@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JSON output and exit codes: Atlas Tasker Docs</title>
+  <meta name="description" content="The machine contract for scripts and agents: one JSON document on stdout, JSON errors on stderr, stable exit codes 0 to 7, and stable pending reason codes." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/docs/json-and-exit-codes.html" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/docs/json-and-exit-codes.html" />
+  <meta property="og:title" content="JSON output and exit codes: Atlas Tasker Docs" />
+  <meta property="og:description" content="The machine contract for scripts and agents: one JSON document on stdout, JSON errors on stderr, stable exit codes 0 to 7, and stable pending reason codes." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="JSON output and exit codes: Atlas Tasker Docs" />
+  <meta name="twitter:description" content="The machine contract for scripts and agents: one JSON document on stdout, JSON errors on stderr, stable exit codes 0 to 7, and stable pending reason codes." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "name": "JSON output and exit codes: Atlas Tasker Docs",
+    "description": "The machine contract for scripts and agents: one JSON document on stdout, JSON errors on stderr, stable exit codes 0 to 7, and stable pending reason codes.",
+    "url": "https://atlas-tasker.vercel.app/docs/json-and-exit-codes.html",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html">Tickets and workflow</a>
+          <a href="views-and-search.html">Views and search</a>
+          <a href="web-board.html">The web board</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-security.html">MCP security</a>
+          <a href="json-and-exit-codes.html" aria-current="page">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="faq.html">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Agents</p>
+        <h1>JSON and exit codes</h1>
+        <p class="docs-lead">This page is the machine contract. If you script Atlas or point an agent at it, these are the only shapes you need to parse and the only codes you need to branch on.</p>
+
+        <h2>The stdout rule</h2>
+        <p>With <code>--json</code>, stdout is exactly one JSON document and nothing else. Notifications, warnings, and errors go to stderr. Parse stdout; never parse the pretty tables, Markdown output, or TUI text.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>a typical envelope</span><button class="copy-button" type="button" data-copy="jc-envelope" aria-label="Copy envelope example">Copy</button></div>
+          <pre id="jc-envelope">$ tracker version --json
+{
+  "format_version": "v1",
+  "kind": "tracker_version",
+  "version": "v1.10.0",
+  "commit": "abc123",
+  "build_date": "2026-05-07T00:00:00Z",
+  "go_version": "go1.26.6",
+  "platform": "darwin/arm64"
+}</pre>
+        </div>
+        <p>List commands share a common shape with <code>kind</code>, <code>generated_at</code>, and <code>items</code>, and useful fields are flattened onto each item so <code>items[0].public_key_id</code> style access works without digging.</p>
+
+        <h2>The error envelope</h2>
+        <p>Failures under <code>--json</code> leave stdout empty and emit a machine-readable error on stderr:</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>stderr on failure</span><button class="copy-button" type="button" data-copy="jc-error" aria-label="Copy error envelope">Copy</button></div>
+          <pre id="jc-error">{
+  "format_version": "v1",
+  "ok": false,
+  "error": { "code": "not_found", "message": "ticket APP-99 not found", "exit": 3 }
+}</pre>
+        </div>
+        <p>Branch on <code>error.code</code> or the exit status. Message text is for humans and can change; the codes are the contract.</p>
+
+        <h2>Exit codes</h2>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr><th scope="col">Code</th><th scope="col">Meaning</th><th scope="col">What it usually is</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>0</code></td><td>ok</td><td>It worked.</td></tr>
+              <tr><td><code>1</code></td><td>internal</td><td>A real bug, or a missing required flag.</td></tr>
+              <tr><td><code>2</code></td><td>invalid_input</td><td>Bad status, type, priority, or actor. Malformed query. A bare <code>agent:</code> actor.</td></tr>
+              <tr><td><code>3</code></td><td>not_found</td><td>No such ticket, project, agent, or view. Also the classic symptom of an MCP server missing <code>--workspace</code>.</td></tr>
+              <tr><td><code>4</code></td><td>conflict</td><td>Forbidden status transition, ticket already claimed, resource already exists. The workflow saying no, as designed.</td></tr>
+              <tr><td><code>5</code></td><td>permission_denied</td><td>Policy, separation of duties, or the wrong reviewer.</td></tr>
+              <tr><td><code>6</code></td><td>busy</td><td>Another writer holds the workspace lock. Waiting a few seconds and retrying is legitimate.</td></tr>
+              <tr><td><code>7</code></td><td>repair_needed</td><td>The index is unreadable, or read-only <code>doctor</code> found it stale against the sources. Run <code>tracker doctor --repair</code> or <code>tracker reindex</code>. A merely missing or stale index heals itself on the next command.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2>Nothing prompts</h2>
+        <p>Every command is non-interactive. A missing required flag fails immediately naming the flag, for example <code>required flag(s) "body" not set</code>, instead of waiting on stdin. If a command appears to hang, it is waiting a few seconds for the workspace write lock, and that path ends in exit 6, never a prompt.</p>
+
+        <h2>Pending reason codes</h2>
+        <p><code>tracker agent pending --json</code> explains blocked work with stable codes, so agents branch instead of guessing:</p>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr><th scope="col">Code</th><th scope="col">Meaning</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>dependency_blocked</code></td><td>A blocker is not <code>done</code> yet. Canceled blockers stay blocking.</td></tr>
+              <tr><td><code>waiting_for_review</code></td><td>The ticket sits in review and someone else must decide.</td></tr>
+              <tr><td><code>waiting_for_owner</code></td><td>An owner gate needs a human.</td></tr>
+              <tr><td><code>not_ready_status</code></td><td>The ticket is not in a state this actor can act on: usually backlog that never had blockers, or someone else's <code>in_progress</code> work. A backlog ticket whose blockers are all <code>done</code> is not pending; it appears under <code>available</code> as action <code>promote</code>.</td></tr>
+              <tr><td><code>claimed_by_other</code></td><td>Another actor holds the lease.</td></tr>
+              <tr><td><code>policy_blocked</code></td><td>A permission profile or governance policy says no.</td></tr>
+              <tr><td><code>agent_at_capacity</code></td><td>The agent already holds its maximum active work.</td></tr>
+              <tr><td><code>missing_capability</code></td><td>The ticket needs a capability this agent does not have.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Every <code>available</code> entry carries an <code>action</code>: <code>start</code>, <code>continue</code>, <code>review</code>, <code>complete</code>, or <code>promote</code>. <code>promote</code> means the blockers are resolved but the ticket is still in <code>backlog</code>, so the first suggested command is the move to <code>ready</code>. <code>tracker queue --json</code> groups the same tickets under the <code>unblocked_for_me</code> category, which <code>tracker next</code> walks right after <code>ready_for_me</code>.</p>
+
+        <h2>MCP shares the shapes</h2>
+        <p>MCP tool responses use the same <code>format_version</code> convention with <code>kind</code>, <code>generated_at</code>, and <code>payload</code>, the same error envelope, and the same codes. Mutating tools take <code>actor</code> and <code>reason</code> arguments; high-impact tools additionally take <code>operation_approval_id</code> and <code>confirm_text</code>. Paged tools accept <code>limit</code> and <code>cursor</code> and report <code>total</code>, <code>next_cursor</code>, and <code>truncated</code>. Details live in <a href="mcp-setup.html">MCP setup</a>.</p>
+
+        <div class="docs-note">
+          <p>One workflow-shaped gotcha worth repeating: exit 4 on a status move usually means the edge does not exist. <code>backlog</code> to <code>in_progress</code> is forbidden by design; go through <code>ready</code>. Retrying the same move returns the same 4.</p>
+        </div>
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-prev" href="mcp-security.html"><span class="pager-label">Previous</span><span class="pager-title">MCP security</span></a>
+        <a class="pager-next" href="faq.html"><span class="pager-label">Next</span><span class="pager-title">FAQ</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

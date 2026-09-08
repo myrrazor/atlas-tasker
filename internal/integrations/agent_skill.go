@@ -5,12 +5,68 @@ import (
 	"strings"
 )
 
+func openclawBlock(guidePath string) string {
+	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (OpenClaw)
+
+- Read work with `+"`tracker agent available <agent-id> --json`"+` and `+"`tracker agent pending <agent-id> --json`"+`.
+- Every write takes `+"`--actor`"+` and `+"`--reason`"+`; `+"`tracker project create`"+` takes neither.
+- Claim before editing: `+"`tracker ticket claim <ID> --actor agent:<agent-id> --reason \"start work\"`"+`.
+- Exit 4 on a status change means the transition is forbidden, not that the command broke. Read `+"`tracker inspect <ID> --json`"+` before retrying.
+- The `+"`atlas-worker`"+` skill installs under `+"`.agents/skills/`"+`; confirm it loaded with `+"`openclaw skills list`"+`.
+- The browser board (`+"`tracker web serve`"+`) is for humans. Agents use the CLI or `+"`tracker mcp serve`"+`.
+- Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
+`, guidePath))
+}
+
+func openclawGuide(skillDir string) string {
+	return strings.TrimSpace(fmt.Sprintf(`# Atlas Tasker OpenClaw Guide
+
+OpenClaw reads `+"`AGENTS.md`"+` into every session and loads skills from four roots. Atlas installs into the repo-local one.
+
+## Where things land
+
+- `+"`AGENTS.md`"+` gets an Atlas block between `+"`atlas-tasker:openclaw`"+` markers. Codex writes its own block with different markers, so both can live in the same file.
+- The `+"`atlas-worker`"+` skill goes to `+"`%s`"+`, which OpenClaw picks up as a project-agent skill for this repo only.
+- The skill is gated on the `+"`tracker`"+` binary, so it stays out of the prompt in workspaces that do not have Atlas installed.
+
+## Confirm it loaded
+
+~~~bash
+openclaw skills list
+openclaw skills check
+~~~
+
+`+"`check`"+` is the one that explains a skill that is present but not ready — usually a missing binary or a name collision with a higher-precedence root.
+
+## Sharing it across agents
+
+Repo-local is the right default: the skill travels with the repo and only applies where Atlas is. For every agent on the machine, install the shared copy yourself:
+
+~~~bash
+openclaw skills install %s --as atlas-worker --global
+~~~
+
+That writes to `+"`~/.openclaw/skills/`"+`, which Atlas deliberately never touches — a repo command should not reach into your home directory.
+
+## The loop
+
+1. `+"`tracker agent available <agent-id> --json`"+`
+2. `+"`tracker ticket claim <ID> --actor agent:<agent-id> --reason \"start work\"`"+`
+3. `+"`tracker ticket move <ID> in_progress --actor agent:<agent-id> --reason \"start work\"`"+`
+4. `+"`tracker ticket comment <ID> --body \"what changed\" --actor agent:<agent-id> --reason \"progress note\"`"+`
+5. `+"`tracker ticket request-review <ID> --actor agent:<agent-id> --reason \"ready for review\"`"+`
+
+Read `+"`references/workflow.md`"+` inside the skill for blocker codes, reviewer behavior, and wake-ups.
+`, skillDir, skillDir)) + "\n"
+}
+
 func genericBlock(guidePath string) string {
 	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (Generic Agent)
 
 - Start with `+"`tracker agent available <agent-id> --json`"+` and `+"`tracker agent pending <agent-id> --json`"+`.
 - Agents may self-dispatch eligible assigned work with `+"`tracker run dispatch <ticket-id> --agent agent:<agent-id> --actor agent:<agent-id>`"+`.
 - Claim before editing and request review when done.
+- An available entry with action `+"`promote`"+` is a backlog ticket whose blockers are all `+"`done`"+`; run its `+"`ticket move <ID> ready`"+` before claiming.
 - Treat `+"`dependency_blocked`"+` as a stop sign until the blocker reaches `+"`done`"+`.
 - Use explicit `+"`--actor`"+` and `+"`--reason`"+` flags for every write.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
@@ -33,10 +89,32 @@ Atlas does not poll or launch agents unless an owner enables agent auto mode.
 `) + "\n"
 }
 
+// runtime.go has its own providerLabel for launch text; this one reads inside a
+// sentence, so "generic" has to come out as something you can say out loud
+func skillProviderLabel(provider string) string {
+	switch provider {
+	case "codex":
+		return "Codex"
+	case "claude":
+		return "Claude Code"
+	case "openclaw":
+		return "OpenClaw"
+	default:
+		return "generic agent"
+	}
+}
+
 func atlasWorkerSkill(provider string) string {
-	return strings.TrimSpace(fmt.Sprintf(`---
+	// keep the description free of ": " -- a plain YAML scalar cannot hold one and
+	// a skill whose frontmatter will not parse never loads
+	frontmatter := fmt.Sprintf(`---
 name: atlas-worker
-description: Use when working inside an Atlas Tasker workspace as a %s coding agent: find available tickets, claim work, respect blockers, request review, and record durable evidence.
+description: Use inside an Atlas Tasker workspace -- "what should I work on", "pick up the next ticket", "claim APP-12", "why is this blocked", "ready for review", "hand this off". Drives the tracker from %s sessions; finds available work, claims tickets, respects dependency and policy blockers, records evidence, and requests review.`, skillProviderLabel(provider))
+	if provider == "openclaw" {
+		// keeps the skill out of the prompt in workspaces with no tracker binary
+		frontmatter += "\nmetadata: { \"openclaw\": { \"requires\": { \"bins\": [\"tracker\"] } } }"
+	}
+	return strings.TrimSpace(fmt.Sprintf(`%s
 ---
 
 # Atlas Worker
@@ -57,7 +135,7 @@ If the workspace has no agent profiles yet (`+"`tracker agent list --json`"+` is
 2. Run `+"`tracker agent available <agent-id> --json`"+`.
 3. If nothing is available, run `+"`tracker agent pending <agent-id> --json`"+` and report the blocker reason codes.
 4. If you were launched by a wake-up, acknowledge it: `+"`tracker agent wakeups list <agent-id> --json`"+`, then `+"`tracker agent wakeups ack <WAKEUP-ID> --actor agent:<agent-id> --reason \"picked up\"`"+`.
-5. Before editing, claim the ticket and move it to `+"`in_progress`"+` if it is still ready.
+5. Before editing, claim the ticket and move it to `+"`in_progress`"+` if it is still ready. An entry with action `+"`promote`"+` is still in `+"`backlog`"+` with every blocker `+"`done`"+`; its first suggested command moves it to `+"`ready`"+`.
 6. When a run is needed, dispatch yourself with `+"`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`"+`.
 
 ## Work
@@ -70,7 +148,7 @@ If the workspace has no agent profiles yet (`+"`tracker agent list --json`"+` is
 ## More Detail
 
 Read `+"`references/workflow.md`"+` when you need the full loop, blocker handling, reviewer behavior, or handoff patterns.
-`, provider)) + "\n"
+`, frontmatter)) + "\n"
 }
 
 func atlasWorkerReference() string {
@@ -78,7 +156,7 @@ func atlasWorkerReference() string {
 
 ## Available Work
 
-`+"`tracker agent available <agent-id> --json`"+` returns tickets the agent can act on now. Entries include an action such as `+"`start`"+`, `+"`continue`"+`, or `+"`review`"+` plus suggested commands.
+`+"`tracker agent available <agent-id> --json`"+` returns tickets the agent can act on now. Entries include an action such as `+"`start`"+`, `+"`continue`"+`, `+"`review`"+`, or `+"`promote`"+` plus suggested commands. `+"`promote`"+` means every blocker is `+"`done`"+` but the ticket is still in `+"`backlog`"+`; the first suggested command is the `+"`ticket move <ID> ready`"+`, and `+"`backlog -> in_progress`"+` is not a legal edge, so run it first.
 
 ## Pending Work
 
@@ -92,6 +170,8 @@ func atlasWorkerReference() string {
 - `+"`policy_blocked`"+`
 - `+"`agent_at_capacity`"+`
 - `+"`missing_capability`"+`
+
+`+"`not_ready_status`"+` means the ticket is not in a state you can act on: usually backlog that never had blockers, or someone else's `+"`in_progress`"+` work. A backlog ticket whose blockers all landed is not pending; it is listed under available as `+"`promote`"+`.
 
 Only `+"`done`"+` unblocks dependencies. `+"`canceled`"+` does not. `+"`--override-deps`"+` is for `+"`human:owner`"+` only and must include a reason.
 
@@ -118,11 +198,11 @@ When no tickets are available, inspect pending items and wait for the next Atlas
 
 ## Wake-ups
 
-When a ticket you are assigned to becomes unblocked (its last `+"`blocked_by`"+` dependency reaches `+"`done`"+`), Atlas emits an `+"`agent.work_available`"+` event and records a wake-up. If the owner enabled auto mode (`+"`tracker agent auto set <agent-id> --mode command ...`"+`), your session may have been launched by that wake-up with the ticket id substituted into the command.
+When a ticket you are assigned to becomes unblocked (its last `+"`blocked_by`"+` dependency reaches `+"`done`"+`), Atlas moves it from `+"`backlog`"+` to `+"`ready`"+` for you (audited as `+"`agent:atlas`"+`), emits an `+"`agent.work_available`"+` event, and records a wake-up. If the owner enabled auto mode (`+"`tracker agent auto set <agent-id> --mode command ...`"+`), your session may have been launched by that wake-up with the ticket id substituted into the command.
 
 1. `+"`tracker agent wakeups list <agent-id> --json`"+` shows pending wake-ups.
 2. Acknowledge before working: `+"`tracker agent wakeups ack <WAKEUP-ID> --actor agent:<agent-id> --reason \"picked up\"`"+`.
-3. Then run the normal worker loop against the wake-up's ticket.
+3. Then run the normal worker loop against the wake-up's ticket. If the wake-up's `+"`metadata.promoted`"+` is `+"`\"false\"`"+`, the automatic move did not go through: when `+"`tracker agent available`"+` still lists the ticket as `+"`promote`"+`, run that entry's first suggested command; when the wake-up itself is `+"`failed`"+` and its error names `+"`tracker doctor --repair`"+`, stop and let a human run that first.
 
 ## Team Presets
 

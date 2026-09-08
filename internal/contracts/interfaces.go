@@ -22,7 +22,7 @@ type BoardQueryOptions struct {
 
 // BoardView is a grouped set of tickets by status column.
 type BoardView struct {
-	Columns map[Status][]TicketSnapshot
+	Columns map[Status][]TicketSnapshot `json:"columns"`
 }
 
 // ProjectStore is the source-of-truth project storage contract.
@@ -56,6 +56,7 @@ type ProjectionStore interface {
 	QueryTicket(ctx context.Context, ticketID string) (TicketSnapshot, error)
 	QuerySearch(ctx context.Context, query SearchQuery) ([]TicketSnapshot, error)
 	QueryHistory(ctx context.Context, ticketID string) ([]Event, error)
+	QueryCommentCounts(ctx context.Context, ticketIDs []string) (map[string]int, error)
 }
 
 type CollaboratorStore interface {

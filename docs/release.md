@@ -1,6 +1,6 @@
 # Atlas Tasker Release Guide
 
-Atlas is in the v1.9 release-readiness train. This guide explains the release workflow and points to the current proof gates.
+Atlas is in the v1.10 release train. This guide explains the release workflow and points to the current proof gates.
 
 Current evidence: [v1.9 agent workflow evidence](release/v1.9-agent-workflow-evidence.md), [launch checklist](release/launch-checklist.md), and [public release gates](release/public-release-gates.md).
 

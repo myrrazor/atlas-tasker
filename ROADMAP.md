@@ -1,25 +1,15 @@
 # Roadmap
 
-Atlas is close to its first public release candidate. The next work is polish and proof, not a new subsystem.
+`v1.10.0` is the current stable release. It shipped the local web console (welcome dashboard, the restyled Kanban board, schedule workspace, read-only settings), six-language web chrome, one-time scheduled tickets across CLI, web, and MCP, the security audit batch, the agent-ready CLI work (`--json` on every command agents run, the rewritten `AGENTS.md`, MCP workspace pinning), and the marketing site. What is left is follow-up work, not new subsystems.
 
-## v1.8 Release Candidate Polish
+## Next
 
-- public README and OSS metadata
-- docs landing, install guide, quickstart, tutorials, concepts, and references
-- terminal, Markdown, and TUI polish
-- Codex, Claude Code, generic-agent, MCP, and goal manifest guides
-- demo workspace, transcripts, prompts, and assets
-- release preflight, SBOM, vulnerability scan, hosted artifact verification
-- RC validation, CSO review, release evidence, launch checklist
+Follow-ups flagged during the v1.10 work:
 
-## After v1.8
+- `tracker config set web.lang` still validates only `en`, `es`, and `id` even though the `zh`, `ja`, and `ko` catalogs already ship — accept all six
+- the schedule workspace renders English-only; bring it into the language catalogs
+- richer screenshots and GIFs, plus packaged examples for common agent workflows
 
-Likely follow-up work:
+## Not planned
 
-- first-run walkthrough
-- richer screenshots/GIFs
-- packaged examples for common agent workflows
-- generated docs site if GitHub Markdown becomes too limiting
-- license finalization
-
-Not planned for v1.8: hosted server, SaaS identity, CRDT rewrite, plugin marketplace, mandatory MCP flow, encrypted workspace storage, or provider-rule controller.
+Hosted server, SaaS identity, CRDT rewrite, plugin marketplace, mandatory MCP flow, encrypted workspace storage, provider-rule controller, or a hidden scheduler daemon — unattended schedule ticking stays on the owner's explicit cron, launchd, or other trusted runner.

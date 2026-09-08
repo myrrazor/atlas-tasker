@@ -3,8 +3,12 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
+	"github.com/spf13/cobra"
 )
 
 func TestMCPSchemaAndToolsReflectProfiles(t *testing.T) {
@@ -74,6 +78,112 @@ func TestMCPApproveOperationCreatesBoundApproval(t *testing.T) {
 	}
 	if !strings.Contains(listOut, "atlas.change.merge") || !strings.Contains(listOut, "CHG-1") {
 		t.Fatalf("approval list missing created approval:\n%s", listOut)
+	}
+}
+
+func TestMCPServeWorkspaceFlagIsChecked(t *testing.T) {
+	withTempWorkspace(t)
+	serve, _, err := NewRootCommand().Find([]string{"mcp", "serve"})
+	if err != nil {
+		t.Fatalf("find mcp serve: %v", err)
+	}
+	if serve.Flag("workspace") == nil {
+		t.Fatalf("expected mcp serve to expose --workspace")
+	}
+
+	initialized := t.TempDir()
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	resolve := func(path string) (string, error) {
+		cmd := &cobra.Command{}
+		cmd.Flags().String("workspace", "", "")
+		if err := cmd.Flags().Set("workspace", path); err != nil {
+			t.Fatalf("set workspace flag: %v", err)
+		}
+		return requestedWorkspaceRoot(cmd)
+	}
+
+	root, err := resolve(cwd)
+	if err != nil {
+		t.Fatalf("initialized workspace should resolve: %v", err)
+	}
+	if root == "" {
+		t.Fatalf("expected an explicit root for %s", cwd)
+	}
+
+	if _, err := resolve(initialized); err == nil {
+		t.Fatalf("expected an uninitialized directory to be rejected")
+	} else if !strings.Contains(err.Error(), "tracker init") {
+		t.Fatalf("rejection should point at tracker init, got: %v", err)
+	}
+	if _, err := resolve(filepath.Join(initialized, "nope")); err == nil {
+		t.Fatalf("expected a missing directory to be rejected")
+	} else if apperr.CodeOf(err) != apperr.CodeNotFound {
+		t.Fatalf("missing workspace should be not_found, got %s", apperr.CodeOf(err))
+	}
+}
+
+func TestMCPServeDefaultWorkspaceIsValidated(t *testing.T) {
+	withTempWorkspace(t)
+	cmd := &cobra.Command{}
+	cmd.Flags().String("workspace", "", "")
+	if _, err := requestedWorkspaceRoot(cmd); apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("uninitialized CWD must be rejected, got %v", err)
+	}
+	if _, err := os.Stat(".tracker"); !os.IsNotExist(err) {
+		t.Fatalf("rejected default workspace created state: %v", err)
+	}
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatal(err)
+	}
+	root, err := requestedWorkspaceRoot(cmd)
+	if err != nil || root == "" {
+		t.Fatalf("initialized default workspace must resolve, got %q, %v", root, err)
+	}
+	nested := filepath.Join(root, "src", "deep")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := requestedWorkspaceRoot(cmd); apperr.CodeOf(err) != apperr.CodeInvalidInput || !strings.Contains(err.Error(), root) {
+		t.Fatalf("nested default workspace must name the actual root %q, got %v", root, err)
+	}
+	if _, err := os.Stat(filepath.Join(nested, ".tracker")); !os.IsNotExist(err) {
+		t.Fatalf("rejected nested workspace created state: %v", err)
+	}
+}
+
+func TestMCPDiscoveryDoesNotRequireWorkspace(t *testing.T) {
+	withTempWorkspace(t)
+	for _, command := range []string{"schema", "tools"} {
+		out, err := runCLI(t, "mcp", command, "--json")
+		if err != nil {
+			t.Fatalf("mcp %s outside a workspace: %v", command, err)
+		}
+		if !json.Valid([]byte(out)) {
+			t.Fatalf("mcp %s must emit JSON: %s", command, out)
+		}
+	}
+	if _, err := os.Stat(".tracker"); !os.IsNotExist(err) {
+		t.Fatalf("MCP discovery must not initialize a workspace: %v", err)
+	}
+}
+
+func TestMCPOperationApprovalRequiresInitializedWorkspace(t *testing.T) {
+	withTempWorkspace(t)
+	_, err := runCLI(t, "mcp", "approve-operation", "--operation", "atlas.change.merge", "--target", "CHG-1", "--actor", "human:owner", "--reason", "approve merge", "--json")
+	if apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("MCP approval outside a workspace must fail as invalid_input: %v", err)
+	}
+	if _, err := os.Stat(".tracker"); !os.IsNotExist(err) {
+		t.Fatalf("refused MCP approval must not bootstrap a workspace: %v", err)
 	}
 }
 

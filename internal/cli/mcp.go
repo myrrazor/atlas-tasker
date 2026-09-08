@@ -15,7 +15,13 @@ import (
 func newMCPCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "mcp", Short: "Serve and inspect the Atlas MCP adapter"}
 
-	serve := &cobra.Command{Use: "serve", Short: "Serve Atlas MCP tools over stdio", RunE: runMCPServe}
+	serve := &cobra.Command{
+		Use:   "serve",
+		Short: "Serve Atlas MCP tools over stdio",
+		Long:  "Serve Atlas MCP tools over stdio. MCP clients launch the server from their own working directory, so pass --workspace to pin it to a repo instead of wherever the client happened to start.",
+		RunE:  runMCPServe,
+	}
+	serve.Flags().String("workspace", "", "Atlas workspace root to serve; defaults to the current directory")
 	addMCPRuntimeFlags(serve)
 
 	schema := &cobra.Command{Use: "schema", Short: "Print enabled MCP tool schemas", RunE: runMCPSchema}
@@ -85,7 +91,11 @@ func runMCPServe(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	workspace, err := atlasmcp.OpenWorkspace("", cmd.ErrOrStderr(), defaultNow)
+	root, err := requestedWorkspaceRoot(cmd)
+	if err != nil {
+		return err
+	}
+	workspace, err := atlasmcp.OpenWorkspace(root, cmd.ErrOrStderr(), defaultNow)
 	if err != nil {
 		return err
 	}
@@ -188,7 +198,21 @@ func currentWorkspaceRoot() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return service.CanonicalWorkspaceRoot(root)
+	return service.InitializedWorkspaceRoot(root)
+}
+
+// Both an explicit workspace and the fallback working directory must be valid
+// before the server opens SQLite or starts its JSON-RPC stream.
+func requestedWorkspaceRoot(cmd *cobra.Command) (string, error) {
+	raw, _ := cmd.Flags().GetString("workspace")
+	if strings.TrimSpace(raw) == "" {
+		var err error
+		raw, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
+	}
+	return service.InitializedWorkspaceRoot(raw)
 }
 
 func formatMCPTools(tools []atlasmcp.ToolInfo) string {

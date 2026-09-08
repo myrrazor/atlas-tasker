@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agents and dispatch: Atlas Tasker Docs</title>
+  <meta name="description" content="Register AI agents, apply team presets, dispatch runs with managed worktrees, attach evidence, hand off context, and let wake-ups pull agents back to work." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/docs/agents-and-dispatch.html" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/docs/agents-and-dispatch.html" />
+  <meta property="og:title" content="Agents and dispatch: Atlas Tasker Docs" />
+  <meta property="og:description" content="Register AI agents, apply team presets, dispatch runs with managed worktrees, attach evidence, hand off context, and let wake-ups pull agents back to work." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Agents and dispatch: Atlas Tasker Docs" />
+  <meta name="twitter:description" content="Register AI agents, apply team presets, dispatch runs with managed worktrees, attach evidence, hand off context, and let wake-ups pull agents back to work." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "name": "Agents and dispatch: Atlas Tasker Docs",
+    "description": "Register AI agents, apply team presets, dispatch runs with managed worktrees, attach evidence, hand off context, and let wake-ups pull agents back to work.",
+    "url": "https://atlas-tasker.vercel.app/docs/agents-and-dispatch.html",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html">Tickets and workflow</a>
+          <a href="views-and-search.html">Views and search</a>
+          <a href="web-board.html">The web board</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html" aria-current="page">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-security.html">MCP security</a>
+          <a href="json-and-exit-codes.html">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="faq.html">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Agents</p>
+        <h1>Agents and dispatch</h1>
+        <p class="docs-lead">Atlas treats an agent run as a durable work record, not a chat transcript. Agents get registered, tickets get dispatched, progress lands as checkpoints and evidence, and handoffs carry context to the next actor. Everything stays inspectable after the session ends.</p>
+
+        <h2>Register an agent</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>the roster</span><button class="copy-button" type="button" data-copy="ad-create" aria-label="Copy agent create command">Copy</button></div>
+          <pre id="ad-create">tracker agent create builder-1 --name "Builder One" --provider codex \
+  --capability go --actor human:owner --reason "register builder"
+tracker agent list
+tracker agent eligible APP-1</pre>
+        </div>
+        <p>The profile records routing metadata: provider, capabilities, and weights. It does not give Atlas control over Codex, Claude Code, or any other runtime; your agent still runs wherever it runs and drives the tracker through the CLI or MCP.</p>
+
+        <h2>Or apply a team preset</h2>
+        <p><code>tracker team</code> turns a fresh workspace into a working agent team in one idempotent command: agent profiles, the implement-review runbook, a separation-of-duties permission profile, and the completion mode that makes gates real.</p>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr><th scope="col">Preset</th><th scope="col">Roster</th><th scope="col">Completion</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>solo</code></td><td>builder-1</td><td>open: one agent finishes its own tickets</td></tr>
+              <tr><td><code>pair</code></td><td>builder-1 + reviewer-1</td><td>review gate: builders cannot approve or complete</td></tr>
+              <tr><td><code>swarm</code></td><td>builder-1..3 + qa-1 + owner-delegate-1</td><td>review gate, routing weights, one active run each</td></tr>
+              <tr><td><code>crossfire</code></td><td>codex builds, claude reviews</td><td>review gate across vendors</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code-block">
+          <div class="snippet-title"><span>apply one</span><button class="copy-button" type="button" data-copy="ad-team" aria-label="Copy team commands">Copy</button></div>
+          <pre id="ad-team">tracker team list
+tracker team apply pair --dry-run --actor human:owner --reason "preview"
+tracker team apply pair --actor human:owner --reason "team setup"</pre>
+        </div>
+        <p>Re-running <code>apply</code> is safe: existing agents, runbooks, and profiles are skipped, never overwritten.</p>
+
+        <h2>The agent working loop</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>what agents actually run</span><button class="copy-button" type="button" data-copy="ad-loop" aria-label="Copy the agent loop">Copy</button></div>
+          <pre id="ad-loop"><span class="c"># what can I work on right now</span>
+tracker agent available builder-1 --json
+
+<span class="c"># take it and work it</span>
+tracker ticket claim APP-12 --actor agent:builder-1 --reason "start work"
+tracker ticket move APP-12 in_progress --actor agent:builder-1 --reason "start work"
+tracker ticket comment APP-12 --body "retry now exponential" \
+  --actor agent:builder-1 --reason "progress note"
+
+<span class="c"># hand it over</span>
+tracker ticket request-review APP-12 --actor agent:builder-1 --reason "ready for review"</pre>
+        </div>
+        <p><code>agent available</code> lists what an agent can start, continue, review, promote, or complete now, and each item includes <code>suggested_commands</code> ready to execute verbatim. A <code>promote</code> entry is a backlog ticket whose blockers are all done; its first suggested command is the move to <code>ready</code>. When nothing is available, <code>tracker agent pending builder-1 --json</code> explains why with stable reason codes: <code>dependency_blocked</code>, <code>waiting_for_review</code>, <code>waiting_for_owner</code>, <code>not_ready_status</code>, <code>claimed_by_other</code>, <code>policy_blocked</code>, <code>agent_at_capacity</code>, <code>missing_capability</code>.</p>
+        <div class="docs-note">
+          <p>Only a dependency reaching <code>done</code> clears <code>dependency_blocked</code>. A canceled blocker stays blocking, on purpose, until a human resolves the plan. When the last blocker of an agent-assigned ticket completes, Atlas moves that ticket from <code>backlog</code> to <code>ready</code> itself (audited as <code>agent:atlas</code>) before the wake-up goes out. Nothing else is promoted: an unassigned dependent surfaces as a claimable <code>promote</code> entry in <code>agent available</code> and under <code>unblocked_for_me</code> in <code>tracker queue</code>, while a human-assigned one surfaces only in that human's <code>queue</code>/<code>next</code> under <code>unblocked_for_me</code>. An agent-assigned ticket shows as <code>promote</code> when the automatic move failed (wake-up metadata <code>promoted="false"</code>) or the blocker was already done when it was linked or assigned.</p>
+        </div>
+
+        <h2>Dispatch and runs</h2>
+        <p>A run is the tracked container for one working session on one ticket: snapshot, worktree, checkpoints, evidence, and outcome.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>dispatch lifecycle</span><button class="copy-button" type="button" data-copy="ad-dispatch" aria-label="Copy dispatch commands">Copy</button></div>
+          <pre id="ad-dispatch">tracker dispatch suggest APP-1          <span class="c"># who should take this, deterministically</span>
+tracker run dispatch APP-1 --agent builder-1 --actor human:owner --reason "start"
+tracker run launch &lt;RUN-ID&gt; --actor human:owner --reason "prepare launch files"
+tracker run open &lt;RUN-ID&gt; --json        <span class="c"># canonical runtime + worktree paths</span></pre>
+        </div>
+        <ul>
+          <li>Dispatch snapshots the run first, then creates a managed Git worktree so the agent works isolated from your checkout. It requires a clean workspace because of that worktree.</li>
+          <li><code>run launch</code> writes <code>brief.md</code>, <code>context.json</code>, <code>launch.codex.txt</code>, and <code>launch.claude.txt</code> under <code>.tracker/runtime/&lt;run-id&gt;/</code>: everything a session needs to start with full context. It is idempotent; <code>--refresh</code> rewrites stale artifacts.</li>
+          <li>One active run per ticket is the default. <code>dispatch run</code> auto-routes only when exactly one agent is eligible; otherwise name the agent.</li>
+          <li>Cleanup is explicit and only allowed after a run completes, fails, or is aborted. Managed worktrees are execution isolation, never the source of truth.</li>
+        </ul>
+
+        <h2>Evidence and handoffs</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>prove the work</span><button class="copy-button" type="button" data-copy="ad-evidence" aria-label="Copy evidence commands">Copy</button></div>
+          <pre id="ad-evidence">tracker run checkpoint &lt;RUN-ID&gt; --title "First pass" \
+  --body "Health check route added." --actor agent:builder-1 --reason "status"
+tracker run evidence add &lt;RUN-ID&gt; --type test_result \
+  --title "Tests" --body "go test ./... passed" \
+  --actor agent:builder-1 --reason "attach proof"
+tracker run handoff &lt;RUN-ID&gt; --next-actor agent:reviewer-1 --next-gate review \
+  --actor agent:builder-1 --reason "ready for review"</pre>
+        </div>
+        <ul>
+          <li>Evidence types include <code>note</code>, <code>test_result</code>, <code>file_diff_summary</code>, <code>log_excerpt</code>, <code>screenshot</code>, <code>commit_ref</code>, and more. <code>--artifact</code> copies a file into the run's evidence bundle.</li>
+          <li>Evidence is immutable: superseding creates a new item instead of rewriting history, and evidence survives <code>run cleanup</code>.</li>
+          <li>Handoffs are immutable Markdown packets with open questions, risks, and the next actor, stored under <code>.tracker/handoffs/</code>. Gates opened by a handoff show up in <code>approvals</code> and <code>inbox</code> until someone decides.</li>
+        </ul>
+
+        <h2>Wake-ups</h2>
+        <p>When a <code>done</code> ticket unblocks an agent's assigned work, Atlas records a wake-up. Agents acknowledge them explicitly, so nothing gets lost between sessions.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>event-driven, not polling</span><button class="copy-button" type="button" data-copy="ad-wake" aria-label="Copy wakeup commands">Copy</button></div>
+          <pre id="ad-wake">tracker agent wakeups list builder-1
+tracker agent wakeups ack &lt;WAKEUP-ID&gt; --actor agent:builder-1 --reason "resuming"
+tracker agent auto set builder-1 --mode notify --actor human:owner --reason "wire wakeups"</pre>
+        </div>
+        <p><code>agent auto</code> defaults to <code>notify</code>. Command mode stores an argv list with the ticket id substituted in, and it refuses shell interpreters outright.</p>
+
+        <h2>Teach your runtime the loop</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>one installer per runtime</span><button class="copy-button" type="button" data-copy="ad-skill" aria-label="Copy integrations commands">Copy</button></div>
+          <pre id="ad-skill">tracker integrations install claude     <span class="c"># .claude/skills/</span>
+tracker integrations install codex      <span class="c"># .codex/skills/</span>
+tracker integrations install openclaw   <span class="c"># .agents/skills/</span>
+tracker integrations install generic    <span class="c"># .tracker/integrations/</span></pre>
+        </div>
+        <p>Each writes the <code>atlas-worker</code> skill and an instruction block into the right place for that agent runtime, only ever inside the workspace. Re-running updates just the Atlas-managed block between markers; <code>--force</code> whole-file replacement is opt-in. Pair it with <a href="mcp-setup.html">MCP setup</a> for clients that prefer tools over a shell.</p>
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-prev" href="web-board.html"><span class="pager-label">Previous</span><span class="pager-title">The web board</span></a>
+        <a class="pager-next" href="mcp-setup.html"><span class="pager-label">Next</span><span class="pager-title">MCP setup</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

@@ -57,6 +57,24 @@ func TestEventValidateRejectsInvalidSurface(t *testing.T) {
 	}
 }
 
+func TestEventValidateAllowsWebSurface(t *testing.T) {
+	event := Event{
+		EventID:       1,
+		Timestamp:     mustTime(t, "2026-03-23T12:00:00Z"),
+		Actor:         Actor("human:owner"),
+		Type:          EventTicketCreated,
+		Project:       "APP",
+		TicketID:      "APP-1",
+		SchemaVersion: CurrentSchemaVersion,
+		Metadata: EventMetadata{
+			Surface: EventSurfaceWeb,
+		},
+	}
+	if err := event.Validate(); err != nil {
+		t.Fatalf("expected web metadata surface to validate, got %v", err)
+	}
+}
+
 func mustTime(t *testing.T, raw string) time.Time {
 	t.Helper()
 	parsed, err := time.Parse(time.RFC3339, raw)

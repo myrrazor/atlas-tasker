@@ -12,6 +12,9 @@ CLAW_REVIEW_*.md
 /design docs/
 /_variants/
 
+# local build output
+/tracker
+
 # editor/system
 .DS_Store
 

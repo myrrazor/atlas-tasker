@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/render"
@@ -235,19 +236,32 @@ func Run(root string, explicitActor contracts.Actor) error {
 }
 
 func newModel(root string, explicitActor contracts.Actor) (model, error) {
+	root, err := service.InitializedWorkspaceRoot(root)
+	if err != nil {
+		return model{}, err
+	}
 	clock := func() time.Time { return time.Now().UTC() }
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: clock}
 	eventLog := &eventstore.Log{RootDir: root}
 	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
 	if err != nil {
+		if sqlitestore.IsCorrupt(err) {
+			return model{}, apperr.Wrap(apperr.CodeRepairNeeded, err, "ticket index is unreadable; run 'tracker doctor --repair' to rebuild it")
+		}
+		return model{}, err
+	}
+	locks := service.FileLockManager{Root: root}
+	// before the alt screen takes over, so the notice is still readable
+	if _, err := service.EnsureFreshProjection(context.Background(), root, locks, projection, os.Stderr); err != nil {
+		_ = projection.Close()
 		return model{}, err
 	}
 	projectStore := mdstore.ProjectStore{RootDir: root}
 	cfg, err := config.Load(root)
 	if err != nil {
+		_ = projection.Close()
 		return model{}, err
 	}
-	locks := service.FileLockManager{Root: root}
 	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, clock)
 	notifier, err := service.BuildNotifier(root, cfg, os.Stderr, service.SubscriptionResolver{
 		Store:   service.SubscriptionStore{Root: root},
@@ -1315,6 +1329,7 @@ func queueItems(queue service.QueueView) []contracts.TicketSnapshot {
 	items := make([]contracts.TicketSnapshot, 0)
 	for _, category := range []service.QueueCategory{
 		service.QueueReadyForMe,
+		service.QueueUnblockedForMe,
 		service.QueueClaimedByMe,
 		service.QueueNeedsReview,
 		service.QueueAwaitingOwner,

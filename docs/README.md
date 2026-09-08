@@ -1,6 +1,6 @@
 # Atlas Docs
 
-Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for the v1.9 release-readiness train.
+Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for the current stable release, v1.10.0.
 
 ## First Ten Minutes
 
@@ -8,6 +8,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 - [Getting started](getting-started.md): the shortest path from empty repo to first ticket.
 - [Quickstart](quickstart.md): one copyable terminal flow.
 - [First agent workflow](first-agent-workflow.md): register an agent, dispatch work, attach evidence, and hand off for review.
+- [Scheduled work](scheduling.md): one-time human reminders, agent wakeups, ticking, and completion history.
 
 ## Tutorials
 
@@ -32,12 +33,18 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 
 ## Guides
 
+- [AGENTS.md](../AGENTS.md): the file to hand a coding agent — don'ts, the loop, exit codes, MCP registration
 - [Codex](guides/codex.md)
 - [Codex `/goal`](guides/codex-goals.md)
 - [Claude Code](guides/claude-code.md)
 - [Generic agents](guides/generic-agent.md)
 - [MCP for agents](guides/mcp-for-agents.md)
+- [MCP](mcp.md): serve modes, tool profiles, and approvals in full
 - [v1.9 agent workflow](v1.9-agent-workflow.md)
+- [Local web board](web-board.md)
+- [Web board security](web-board-security.md)
+- [Web board user guide](web-board-user-guide.md)
+- [Web i18n notes](i18n-notes.md): the six board languages and the known `web.lang` gaps
 - [Doctor and repair](guides/doctor-and-repair.md)
 - [Release verification](guides/release-verification.md)
 - [Operations](guides/operations.md)
@@ -62,7 +69,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 
 ## Release Status
 
-Atlas is in the v1.9 release-readiness train. Local proof and hosted release proof are separate gates. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
+`v1.10.0` is the current stable release: the optional local web UI, one-time scheduled tickets, the agent-ready CLI, and the security batch. Local proof and hosted release proof stay separate gates for every release. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
 
 ## Security Boundary
 

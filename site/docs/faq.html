@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FAQ: Atlas Tasker Docs</title>
+  <meta name="description" content="Straight answers on Atlas Tasker internals: where data lives, the role of SQLite, what belongs in Git, hand-edits, multiple machines, and version metadata." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/docs/faq.html" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/docs/faq.html" />
+  <meta property="og:title" content="FAQ: Atlas Tasker Docs" />
+  <meta property="og:description" content="Straight answers on Atlas Tasker internals: where data lives, the role of SQLite, what belongs in Git, hand-edits, multiple machines, and version metadata." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="FAQ: Atlas Tasker Docs" />
+  <meta name="twitter:description" content="Straight answers on Atlas Tasker internals: where data lives, the role of SQLite, what belongs in Git, hand-edits, multiple machines, and version metadata." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "name": "FAQ: Atlas Tasker Docs",
+    "description": "Straight answers on Atlas Tasker internals: where data lives, the role of SQLite, what belongs in Git, hand-edits, multiple machines, and version metadata.",
+    "url": "https://atlas-tasker.vercel.app/docs/faq.html",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html">Tickets and workflow</a>
+          <a href="views-and-search.html">Views and search</a>
+          <a href="web-board.html">The web board</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-security.html">MCP security</a>
+          <a href="json-and-exit-codes.html">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="faq.html" aria-current="page">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Help</p>
+        <h1>FAQ</h1>
+        <p class="docs-lead">The questions people actually ask, answered without hand-waving. This is also where the storage internals get named precisely.</p>
+
+        <h2>Where does my data live, exactly?</h2>
+        <p>Three places, all inside your repository:</p>
+        <ul>
+          <li><code>projects/&lt;KEY&gt;/tickets/&lt;ID&gt;.md</code>: the tickets themselves, as plain Markdown. This is the canonical record.</li>
+          <li><code>.tracker/events/</code>: an append-only JSONL event log. Every mutation lands here with its actor, reason, and timestamp.</li>
+          <li><code>.tracker/index.sqlite</code>: a SQLite projection of the above, kept so boards, queues, and search answer instantly.</li>
+        </ul>
+        <p>There is no hosted mode, no account, and no telemetry. Delete the directory and the data is gone; copy the repo and the tracker comes with it.</p>
+
+        <h2>So SQLite is the database?</h2>
+        <p>No, and the distinction matters. The Markdown files and the event log are the source of truth. The SQLite file is a disposable index: a cache with a schema. You can delete it any time; the next command rebuilds it from the files and says so once on stderr, or <code>tracker doctor --repair</code> does it on demand. Nothing the tracker knows lives only in the index, which is why the marketing page just says "lightweight" and leaves the engine name to this page.</p>
+
+        <h2>What belongs in Git?</h2>
+        <p>The record: ticket Markdown under <code>projects/</code> and the event log under <code>.tracker/events/</code>. Keep the disposable parts out of version control: the index (<code>.tracker/index.sqlite</code> and its <code>-wal</code>/<code>-shm</code> companions) and the write lock (<code>.tracker/write.lock</code>). Dispatch also requires a clean workspace, so committing tracker state before dispatching is normal practice.</p>
+
+        <h2>Can I edit the ticket files by hand?</h2>
+        <p>Do not. Writes go through the CLI, web board, or MCP so the event log, the index, and lease state stay in agreement. If you already hand-edited something, <code>tracker doctor --repair</code> rebuilds the projection from Markdown and events and reports what it found.</p>
+
+        <h2>How do I use Atlas on two machines?</h2>
+        <p>The repo is the database, so Git movement moves the tracker with it. For tracker-aware transfer there are signed export bundles (<code>tracker export create</code>, <code>tracker bundle</code>), remotes and sync (<code>tracker remote</code>, <code>tracker sync</code>), and conflict tooling (<code>tracker conflict</code>). Sync operations are explicit commands, never background daemons.</p>
+
+        <h2>What platforms are supported?</h2>
+        <p>The release installer covers macOS and Linux on arm64 and amd64, verifying checksums and GitHub build attestations on the way in. Building from source needs Go 1.26.6 or newer. Unstamped source builds report <code>version: "dev"</code> in <code>tracker version --json</code>, which is expected and harmless.</p>
+
+        <h2>Can I put the web board on my network?</h2>
+        <p>No. It binds to <code>127.0.0.1</code> only, with a per-process session token that is never written to disk, and <code>--host</code> refuses anything that is not loopback. The board has no user accounts, so non-loopback serving is not an escape hatch we offer. If you need a shared read-only screen, <code>tracker web serve --read-only</code> on a machine people can see is the sane middle ground.</p>
+
+        <h2>How do agents fit without wrecking things?</h2>
+        <p>Agents use the same commands and tools as humans, with guardrails that are structural rather than polite: illegal moves exit 4, leases prevent double work, review gates block completion, permission profiles can deny actions per agent, and the MCP high-impact tier needs a one-time human approval per call. The <a href="../mcp.html">For agents</a> page is the tour; <a href="mcp-security.html">MCP security</a> is the fine print.</p>
+
+        <h2>How do I update or uninstall?</h2>
+        <p>Update by running the release installer again; export <code>VERSION</code> first to pin a release. Uninstall by removing the <code>tracker</code> binary. Your project data stays in the repository until you delete it, and if Git tracked it, history keeps it until you rewrite history.</p>
+
+        <h2>Something looks corrupted. Now what?</h2>
+        <p>Run <code>tracker doctor</code> for the audit, then <code>tracker doctor --repair</code> to rebuild projection state. Exit code 7 from a read or from <code>doctor</code> usually means one of two things: the index is unreadable, or read-only <code>doctor</code> found it stale against the Markdown and events. A missing or stale index heals itself the next time a command opens the workspace; a corrupt one needs <code>tracker reindex</code> or <code>tracker doctor --repair</code>. Repair never invents data; it replays the Markdown and events you already have. It also will not recreate deleted worktrees, runtime files, or evidence artifacts, because those are execution leftovers, not the record.</p>
+
+        <h2>Where is the complete reference?</h2>
+        <p>The <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">command reference</a> lists every command and flag, including the governance, signing, backup, classification, and goal-manifest surfaces these docs only wave at. <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md</a> is the same knowledge compressed for agent consumption.</p>
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-prev" href="json-and-exit-codes.html"><span class="pager-label">Previous</span><span class="pager-title">JSON and exit codes</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

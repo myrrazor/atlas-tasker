@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tickets and workflow: Atlas Tasker Docs</title>
+  <meta name="description" content="How Atlas Tasker tickets work: statuses and legal edges, claims and leases, dependencies, review gates, bulk operations, and the actor and reason audit trail." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/docs/tickets-and-workflow.html" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/docs/tickets-and-workflow.html" />
+  <meta property="og:title" content="Tickets and workflow: Atlas Tasker Docs" />
+  <meta property="og:description" content="How Atlas Tasker tickets work: statuses and legal edges, claims and leases, dependencies, review gates, bulk operations, and the actor and reason audit trail." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Tickets and workflow: Atlas Tasker Docs" />
+  <meta name="twitter:description" content="How Atlas Tasker tickets work: statuses and legal edges, claims and leases, dependencies, review gates, bulk operations, and the actor and reason audit trail." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "name": "Tickets and workflow: Atlas Tasker Docs",
+    "description": "How Atlas Tasker tickets work: statuses and legal edges, claims and leases, dependencies, review gates, bulk operations, and the actor and reason audit trail.",
+    "url": "https://atlas-tasker.vercel.app/docs/tickets-and-workflow.html",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html" aria-current="page">Tickets and workflow</a>
+          <a href="views-and-search.html">Views and search</a>
+          <a href="web-board.html">The web board</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-security.html">MCP security</a>
+          <a href="json-and-exit-codes.html">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="faq.html">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Core</p>
+        <h1>Tickets and workflow</h1>
+        <p class="docs-lead">Tickets carry a type, status, priority, labels, relationships, comments, and history. The workflow is deliberately strict: only some status edges exist, review is a real gate, and the tracker would rather refuse a move than let state drift.</p>
+
+        <h2>Creating and editing</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>ticket CRUD</span><button class="copy-button" type="button" data-copy="tw-crud" aria-label="Copy ticket commands">Copy</button></div>
+          <pre id="tw-crud">tracker ticket create --project APP --title "Add health check" \
+  --type task --actor human:owner --reason "planned work"
+tracker ticket view APP-1
+tracker ticket edit APP-1 --actor human:owner --reason "retitle"
+tracker ticket list --project APP --status ready</pre>
+        </div>
+        <ul>
+          <li>Types: <code>epic</code>, <code>task</code>, <code>bug</code>, <code>subtask</code>. Templates from <code>tracker templates list</code> can pre-fill new tickets via <code>--template</code>.</li>
+          <li>Priority, labels, and assignee have their own commands: <code>ticket priority</code>, <code>ticket label add/remove</code>, <code>ticket assign</code>.</li>
+          <li>Ticket titles are normalized before rendering: control characters and bidirectional overrides are stripped so a hostile title cannot scramble a board or a terminal.</li>
+        </ul>
+
+        <h2>Statuses and legal edges</h2>
+        <p>Six working statuses plus two terminals. Not every move exists, and that is the point.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>the edges</span><button class="copy-button" type="button" data-copy="tw-edges" aria-label="Copy status edges">Copy</button></div>
+          <pre id="tw-edges">backlog     -> ready, blocked, canceled
+ready       -> in_progress, blocked, canceled
+in_progress -> in_review, ready, blocked, canceled
+in_review   -> done, in_progress, blocked
+blocked     -> ready, in_progress, canceled
+done        -> (terminal)
+canceled    -> (terminal)</pre>
+        </div>
+        <p><code>backlog -&gt; in_progress</code> is forbidden and always will be; work goes through <code>ready</code>. An illegal move exits with code 4 and a clear message. That exit 4 is the workflow working, not a crash, and retrying the same move gets the same 4.</p>
+        <p><code>in_review</code> and <code>done</code> are special: you reach them through <code>request-review</code>, <code>approve</code>, and <code>complete</code> rather than <code>move</code>, because those commands also run the completion policy and any gates.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>the review path</span><button class="copy-button" type="button" data-copy="tw-review" aria-label="Copy review commands">Copy</button></div>
+          <pre id="tw-review">tracker ticket request-review APP-1 --reviewer agent:reviewer-1 \
+  --actor agent:builder-1 --reason "ready for review"
+tracker ticket approve APP-1 --actor agent:reviewer-1 --reason "review passed"
+tracker ticket complete APP-1 --actor agent:reviewer-1 --reason "merged"
+tracker ticket reject APP-1 --reason "tests missing" --actor agent:reviewer-1</pre>
+        </div>
+        <p><code>request-review</code> opens or reuses a review gate, so <code>gate list</code>, <code>approvals</code>, and <code>inbox</code> show the pending review explicitly. When <code>--reviewer</code> is omitted, Atlas uses the ticket reviewer or the effective project, epic, or ticket <code>required_reviewer</code>.</p>
+
+        <h2>Claims and leases</h2>
+        <p>A claim is a lease that keeps two workers off the same ticket. Claim before you touch code.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>lease lifecycle</span><button class="copy-button" type="button" data-copy="tw-claim" aria-label="Copy claim commands">Copy</button></div>
+          <pre id="tw-claim">tracker ticket claim APP-1 --actor agent:builder-1 --reason "start work"
+tracker ticket heartbeat APP-1 --actor agent:builder-1
+tracker ticket release APP-1 --actor agent:builder-1 --reason "handing back"</pre>
+        </div>
+        <p>Claiming a ticket someone else holds is exit 4, not a queue. When the queue and a ticket seem to disagree, <code>tracker inspect APP-1 --actor agent:builder-1</code> answers "why can't I move this" in one call: policy, lease, queue position, and history together.</p>
+
+        <h2>Dependencies</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>linking work</span><button class="copy-button" type="button" data-copy="tw-links" aria-label="Copy link commands">Copy</button></div>
+          <pre id="tw-links">tracker ticket link APP-2 --blocked-by APP-1 --actor human:owner --reason "needs schema"
+tracker ticket link APP-5 --parent APP-4 --actor human:owner --reason "subtask"
+tracker ticket unlink APP-2 APP-1 --actor human:owner --reason "no longer needed"</pre>
+        </div>
+        <ul>
+          <li><code>blocked_by</code> is enforced for unsafe progress: moving to <code>in_progress</code> or <code>in_review</code>, approval, and completion are rejected while any blocker is unresolved.</li>
+          <li>Only <code>done</code> unblocks dependents. A <code>canceled</code> blocker does not, on purpose.</li>
+          <li><code>human:owner</code> can push through with <code>--override-deps --reason "..."</code>. The event records a <code>dependency_override</code> payload naming the unresolved blockers, so the shortcut is visible forever.</li>
+        </ul>
+
+        <h2>Comments and history</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>the durable trace</span><button class="copy-button" type="button" data-copy="tw-comment" aria-label="Copy comment commands">Copy</button></div>
+          <pre id="tw-comment">tracker ticket comment APP-1 --body "retry logic now exponential" \
+  --actor agent:builder-1 --reason "progress note"
+tracker ticket history APP-1 --json</pre>
+        </div>
+        <p>History is the append-only event stream rendered for one ticket: every move, claim, comment, gate decision, and override, each with its actor and reason.</p>
+
+        <h2>Bulk operations</h2>
+        <p>Grooming sessions get real tooling instead of a shell loop.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>preview, then apply</span><button class="copy-button" type="button" data-copy="tw-bulk" aria-label="Copy bulk commands">Copy</button></div>
+          <pre id="tw-bulk">tracker bulk move ready --ticket APP-3 --ticket APP-4 --dry-run --actor human:owner
+tracker bulk move ready --ticket APP-3 --ticket APP-4 --yes \
+  --actor human:owner --reason "sprint planning"
+tracker bulk assign agent:builder-1 --view sprint-42 --yes \
+  --actor human:owner --reason "assign sprint"</pre>
+        </div>
+        <ul>
+          <li><code>--dry-run</code> previews without mutating; live batches require <code>--yes</code>.</li>
+          <li><code>--view</code> expands a saved view into ticket IDs in the view's own order; duplicates are removed.</li>
+          <li>Every committed per-ticket event carries the same <code>metadata.batch_id</code>, so a batch is auditable as a unit.</li>
+          <li><code>bulk</code> covers <code>move</code>, <code>assign</code>, <code>request-review</code>, <code>complete</code>, <code>claim</code>, and <code>release</code>.</li>
+        </ul>
+
+        <div class="docs-note">
+          <p>Archiving is soft: <code>tracker ticket archive</code> removes a ticket from active views while the file and history stay in the repo. <code>ticket delete</code> survives as a compatibility alias for the same thing.</p>
+        </div>
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-prev" href="getting-started.html"><span class="pager-label">Previous</span><span class="pager-title">Getting started</span></a>
+        <a class="pager-next" href="views-and-search.html"><span class="pager-label">Next</span><span class="pager-title">Views and search</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

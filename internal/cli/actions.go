@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,6 +25,11 @@ import (
 
 const jsonFormatVersion = "v1"
 
+// noticeOut is where one-line operational notices go (the index rebuild
+// message, for now). Execute points it at the caller's stderr so tests can
+// read it; outside Execute it is the process stderr.
+var noticeOut io.Writer = os.Stderr
+
 type workspace struct {
 	root       string
 	project    mdstore.ProjectStore
@@ -35,7 +41,17 @@ type workspace struct {
 	queries    *service.QueryService
 }
 
+type openOptions struct {
+	// skipIndexFreshness: the caller is about to rebuild anyway (reindex), so
+	// don't do it twice
+	skipIndexFreshness bool
+}
+
 func openWorkspace() (*workspace, error) {
+	return openWorkspaceWith(openOptions{})
+}
+
+func openWorkspaceWith(opts openOptions) (*workspace, error) {
 	root, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -44,18 +60,34 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := requireInitializedWorkspace(root); err != nil {
+		return nil, err
+	}
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
 	eventLog := &eventstore.Log{RootDir: root}
-	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
+	indexPath := filepath.Join(storage.TrackerDir(root), "index.sqlite")
+	projection, err := sqlitestore.Open(indexPath, ticketStore, eventLog)
+
 	if err != nil {
 		if sqlitestore.IsCorrupt(err) {
 			return nil, apperr.Wrap(apperr.CodeRepairNeeded, err, "ticket index is unreadable; run 'tracker doctor --repair' to rebuild it")
 		}
 		return nil, err
 	}
+	// every write stamps the source fingerprint through this, so it has to be
+	// set even when the freshness check below is skipped
+	projection.Root = root
+	locks := service.FileLockManager{Root: root}
+	if !opts.skipIndexFreshness {
+		if _, err := service.EnsureFreshProjection(context.Background(), root, locks, projection, noticeOut); err != nil {
+			_ = projection.Close()
+			return nil, err
+		}
+	}
 	projectStore := mdstore.ProjectStore{RootDir: root}
 	cfg, err := config.Load(root)
 	if err != nil {
+		_ = projection.Close()
 		return nil, err
 	}
 	w := &workspace{
@@ -64,7 +96,7 @@ func openWorkspace() (*workspace, error) {
 		ticket:     ticketStore,
 		events:     eventLog,
 		projection: projection,
-		locks:      service.FileLockManager{Root: root},
+		locks:      locks,
 	}
 	w.queries = service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
 	notifier, err := service.BuildNotifier(root, cfg, os.Stderr, service.SubscriptionResolver{
@@ -80,6 +112,13 @@ func openWorkspace() (*workspace, error) {
 	}
 	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
 	return w, nil
+}
+
+// init and integrations install bootstrap explicitly; every other workspace
+// opener shares the same side-effect-free root validation with MCP and the TUI.
+func requireInitializedWorkspace(root string) error {
+	_, err := service.InitializedWorkspaceRoot(root)
+	return err
 }
 
 func (w *workspace) close() {
@@ -162,90 +201,90 @@ func defaultNow() time.Time {
 	return time.Now().UTC()
 }
 
-func ensureInitArtifacts(root string) error {
-	var err error
-	root, err = service.CanonicalWorkspaceRoot(root)
+// initResult is what `tracker init` reports back: where the workspace landed and
+// what scaffolding this run had to lay down. A second init reports an empty
+// Created, which is how a script tells "already bootstrapped" from "just
+// bootstrapped". Derived state the first read builds — the sqlite index, the sync
+// subtree — is not listed; it is rebuildable and not worth reporting.
+type initResult struct {
+	Kind      string   `json:"kind"`
+	Workspace string   `json:"workspace"`
+	Created   []string `json:"created"`
+}
+
+func ensureInitArtifacts(root string) (initResult, error) {
+	root, err := service.CanonicalWorkspaceRoot(root)
 	if err != nil {
-		return err
+		return initResult{}, err
 	}
-	if err := os.MkdirAll(storage.TrackerDir(root), 0o755); err != nil {
-		return err
+	result := initResult{Kind: "workspace_init", Workspace: root, Created: []string{}}
+	trackerDir := storage.TrackerDir(root)
+	for _, dir := range []string{
+		trackerDir,
+		storage.EventsDir(root),
+		storage.AutomationsDir(root),
+		storage.ViewsDir(root),
+		storage.SubscriptionsDir(root),
+		storage.AgentsDir(root),
+		storage.RunbooksDir(root),
+		storage.RunsDir(root),
+		storage.GatesDir(root),
+		storage.ChangesDir(root),
+		storage.ChecksDir(root),
+		storage.PermissionProfilesDir(root),
+		storage.HandoffsDir(root),
+		storage.ImportsDir(root),
+		storage.ExportsDir(root),
+		storage.RetentionPoliciesDir(root),
+		storage.ArchivesDir(root),
+		filepath.Join(trackerDir, "evidence"),
+		filepath.Join(trackerDir, "runtime"),
+		filepath.Join(trackerDir, "templates"),
+		storage.ProjectsDir(root),
+	} {
+		missing, err := isMissing(dir)
+		if err != nil {
+			return initResult{}, err
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return initResult{}, err
+		}
+		if missing {
+			result.Created = append(result.Created, relativeToRoot(root, dir))
+		}
 	}
-	if err := os.MkdirAll(storage.EventsDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.AutomationsDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.ViewsDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.SubscriptionsDir(root), 0o755); err != nil {
-		return err
+	identityMissing, err := isMissing(storage.WorkspaceMetadataFile(root))
+	if err != nil {
+		return initResult{}, err
 	}
 	if _, err := service.EnsureWorkspaceIdentityForCLI(root); err != nil {
-		return err
+		return initResult{}, err
 	}
-	if err := os.MkdirAll(storage.AgentsDir(root), 0o755); err != nil {
-		return err
+	if identityMissing {
+		result.Created = append(result.Created, relativeToRoot(root, storage.WorkspaceMetadataFile(root)))
 	}
-	if err := os.MkdirAll(storage.RunbooksDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.RunsDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.GatesDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.ChangesDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.ChecksDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.PermissionProfilesDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.HandoffsDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.ImportsDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.ExportsDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.RetentionPoliciesDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.ArchivesDir(root), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "evidence"), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "runtime"), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Join(storage.TrackerDir(root), "templates"), 0o755); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(storage.ProjectsDir(root), 0o755); err != nil {
-		return err
+	configMissing, err := isMissing(config.Path(root))
+	if err != nil {
+		return initResult{}, err
 	}
 	cfg, err := config.Load(root)
 	if err != nil {
-		return err
+		return initResult{}, err
 	}
 	if err := config.Save(root, cfg); err != nil {
-		return err
+		return initResult{}, err
+	}
+	if configMissing {
+		result.Created = append(result.Created, relativeToRoot(root, config.Path(root)))
 	}
 	monthFile := filepath.Join(storage.EventsDir(root), defaultNow().Format("2006-01")+".jsonl")
-	if _, err := os.Stat(monthFile); os.IsNotExist(err) {
+	if missing, err := isMissing(monthFile); err != nil {
+		return initResult{}, err
+	} else if missing {
 		if err := os.WriteFile(monthFile, []byte(""), 0o644); err != nil {
-			return err
+			return initResult{}, err
 		}
+		result.Created = append(result.Created, relativeToRoot(root, monthFile))
 	}
 	templates := map[string]string{
 		"epic.md": `---
@@ -389,15 +428,42 @@ Time-boxed investigation with explicit follow-up output.
 - Next steps are clear
 `,
 	}
-	for name, body := range templates {
-		path := filepath.Join(storage.TrackerDir(root), "templates", name)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-				return err
-			}
-		}
+	names := make([]string, 0, len(templates))
+	for name := range templates {
+		names = append(names, name)
 	}
-	return nil
+	sort.Strings(names)
+	for _, name := range names {
+		path := filepath.Join(trackerDir, "templates", name)
+		missing, err := isMissing(path)
+		if err != nil {
+			return initResult{}, err
+		}
+		if !missing {
+			continue
+		}
+		if err := os.WriteFile(path, []byte(templates[name]), 0o644); err != nil {
+			return initResult{}, err
+		}
+		result.Created = append(result.Created, relativeToRoot(root, path))
+	}
+	return result, nil
+}
+
+func isMissing(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	return false, err
+}
+
+func relativeToRoot(root string, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return path
+	}
+	return rel
 }
 
 func loadTicketsMap(ctx context.Context, w *workspace) (map[string]contracts.TicketSnapshot, error) {

@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas Tasker CLI: 72 commands, one binary</title>
+  <meta name="description" content="Tour the Atlas Tasker CLI: 72 top-level commands in nine groups, JSON output on everything, stable exit codes, and the shell, TUI, and web board trio." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/cli.html" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/cli.html" />
+  <meta property="og:title" content="Atlas Tasker CLI: 72 commands, one binary" />
+  <meta property="og:description" content="Every tracker command in nine groups, plus the JSON contract and exit codes that make it scriptable." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Atlas Tasker CLI: 72 commands, one binary" />
+  <meta name="twitter:description" content="Every tracker command in nine groups, plus the JSON contract and exit codes that make it scriptable." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Atlas Tasker CLI",
+    "description": "Tour the Atlas Tasker CLI: 72 top-level commands in nine groups, JSON output on everything, stable exit codes, and the shell, TUI, and web board trio.",
+    "url": "https://atlas-tasker.vercel.app/cli.html",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="./" aria-label="Atlas Tasker home">
+        <img src="atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="cli.html" aria-current="page">CLI</a>
+        <a href="mcp.html">For agents</a>
+        <a href="docs/">Docs</a>
+        <a href="./#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <main id="main">
+    <header class="page-hero shell">
+      <p class="kicker">The command line</p>
+      <h1>A tracker that speaks shell.</h1>
+      <p class="lead">One <code>tracker</code> binary carries 72 top-level commands: tickets, boards, agents, gates, evidence, governance, sync, and the rest of the delivery loop. Every command takes <code>--json</code>, exits with a stable code, and never stops to prompt.</p>
+      <div class="page-hero-actions">
+        <a class="button button-primary" href="./#install">Install Atlas Tasker</a>
+        <a class="button button-secondary" href="docs/getting-started.html">Read the docs</a>
+      </div>
+    </header>
+
+    <section class="page-section shell" aria-labelledby="trio-title">
+      <div class="section-heading">
+        <p class="section-label">Three ways to sit in it</p>
+        <h2 id="trio-title">Shell, TUI, or web board. Your call.</h2>
+        <p class="section-note">The plain CLI is for scripts and agents. When a human wants to live in the tracker for a while, three interactive front ends share the exact same data and rules.</p>
+      </div>
+      <div class="cmd-groups">
+        <div class="cmd-group">
+          <h3><span class="cmd-count">REPL</span>tracker shell</h3>
+          <p>Slash commands with no per-call startup cost: <code>/board</code>, <code>/ticket create</code>, <code>/dispatch run</code>, <code>/approvals</code>. Fastest way to grind through a grooming session.</p>
+          <div class="cmd-chips"><code>/ticket move APP-1 in_review</code><code>/inbox</code></div>
+        </div>
+        <div class="cmd-group">
+          <h3><span class="cmd-count">Full screen</span>tracker tui</h3>
+          <p>Board, queues, detail, search, review, and ops tabs in one keyboard-first screen. Single keys claim, move, comment, approve, and complete tickets.</p>
+          <div class="cmd-chips"><code>n</code><code>m</code><code>c</code><code>p</code><code>v</code><code>d</code><code>/</code></div>
+        </div>
+        <div class="cmd-group">
+          <h3><span class="cmd-count">Browser</span>tracker web serve</h3>
+          <p>A local kanban on <code>127.0.0.1</code> with drag and drop, a ticket drawer, and search. Loopback only, one session token per process, <code>--read-only</code> when you want a wallboard.</p>
+          <div class="cmd-chips"><code>--open</code><code>--read-only</code><code>--project APP</code></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page-section shell" aria-labelledby="map-title">
+      <div class="section-heading">
+        <p class="section-label">The command map</p>
+        <h2 id="map-title">72 commands, nine neighborhoods.</h2>
+        <p class="section-note">Counted from the release source, not marketing. Run <code>tracker help</code> for the live list or read the <a class="text-link" style="display:inline" href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">full command reference</a> for every flag.</p>
+      </div>
+      <div class="cmd-groups">
+        <div class="cmd-group">
+          <h3><span class="cmd-count">4</span>Setup</h3>
+          <p>Initialize a workspace, tune config, and repair the index when something looks off.</p>
+          <div class="cmd-chips"><code>init</code><code>config</code><code>doctor</code><code>reindex</code></div>
+        </div>
+        <div class="cmd-group">
+          <h3><span class="cmd-count">10</span>Tickets</h3>
+          <p>Create, edit, link, label, classify, schedule, and search the work itself, one at a time or in bulk.</p>
+          <div class="cmd-chips"><code>ticket</code><code>project</code><code>templates</code><code>classify</code><code>schedule</code><code>bulk</code><code>render</code><code>search</code><code>inspect</code><code>timeline</code></div>
+        </div>
+        <div class="cmd-group">
+          <h3><span class="cmd-count">15</span>Views</h3>
+          <p>Read the same tickets from every useful angle, then save the angles you like.</p>
+          <div class="cmd-chips"><code>board</code><code>backlog</code><code>blocked</code><code>next</code><code>queue</code><code>review-queue</code><code>owner-queue</code><code>who</code><code>dashboard</code><code>inbox</code><code>approvals</code><code>mentions</code><code>views</code><code>watch</code><code>unwatch</code></div>
+        </div>
+        <div class="cmd-group">
+          <h3><span class="cmd-count">7</span>Agents</h3>
+          <p>Register agents, apply team presets, dispatch runs, and expose the MCP server.</p>
+          <div class="cmd-chips"><code>agent</code><code>team</code><code>dispatch</code><code>run</code><code>goal</code><code>integrations</code><code>mcp</code></div>
+        </div>
+        <div class="cmd-group">
+          <h3><span class="cmd-count">8</span>Delivery</h3>
+          <p>Tie tickets to branches, pull requests, checks, gates, evidence, and handoffs.</p>
+          <div class="cmd-chips"><code>change</code><code>checks</code><code>gh</code><code>git</code><code>gate</code><code>evidence</code><code>handoff</code><code>worktree</code></div>
+        </div>
+        <div class="cmd-group">
+          <h3><span class="cmd-count">12</span>Governance</h3>
+          <p>Permission profiles, collaborators, trust, signing, audits, and redaction for teams that need proof.</p>
+          <div class="cmd-chips"><code>governance</code><code>permissions</code><code>permission-profile</code><code>collaborator</code><code>membership</code><code>trust</code><code>audit</code><code>key</code><code>sign</code><code>verify</code><code>redact</code><code>admin</code></div>
+        </div>
+        <div class="cmd-group">
+          <h3><span class="cmd-count">6</span>Sync</h3>
+          <p>Move workspaces between machines with bundles, remotes, and conflict tooling.</p>
+          <div class="cmd-chips"><code>remote</code><code>sync</code><code>bundle</code><code>conflict</code><code>import</code><code>export</code></div>
+        </div>
+        <div class="cmd-group">
+          <h3><span class="cmd-count">6</span>Lifecycle</h3>
+          <p>Back up, archive, compact, sweep, and automate the boring maintenance.</p>
+          <div class="cmd-chips"><code>backup</code><code>archive</code><code>compact</code><code>sweep</code><code>notify</code><code>automation</code></div>
+        </div>
+        <div class="cmd-group">
+          <h3><span class="cmd-count">4</span>Interactive</h3>
+          <p>The REPL shell, the full-screen TUI, the local web board, and version metadata.</p>
+          <div class="cmd-chips"><code>shell</code><code>tui</code><code>web</code><code>version</code></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page-section shell" aria-labelledby="json-title">
+      <div class="section-heading">
+        <p class="section-label">The JSON contract</p>
+        <h2 id="json-title">Pipe it anywhere. Parse it everywhere.</h2>
+        <p class="section-note">Add <code>--json</code> to any command and stdout becomes exactly one JSON document. Notifications, warnings, and errors go to stderr, so a pipeline never has to guess what it just read.</p>
+      </div>
+      <div class="code-block">
+        <div class="snippet-title"><span>success: one envelope on stdout</span><button class="copy-button" type="button" data-copy="json-ok" aria-label="Copy JSON example">Copy</button></div>
+        <pre id="json-ok">$ tracker version --json
+{
+  "format_version": "v1",
+  "kind": "tracker_version",
+  "version": "v1.10.0",
+  "commit": "abc123",
+  "platform": "darwin/arm64"
+}</pre>
+      </div>
+      <div class="code-block">
+        <div class="snippet-title"><span>failure: machine-readable error on stderr, stdout stays empty</span><button class="copy-button" type="button" data-copy="json-err" aria-label="Copy JSON error example">Copy</button></div>
+        <pre id="json-err">{
+  "format_version": "v1",
+  "ok": false,
+  "error": { "code": "not_found", "message": "ticket APP-99 not found", "exit": 3 }
+}</pre>
+      </div>
+      <p class="section-note">Branch on <code>error.code</code> or the exit status, never on message text. And never parse the pretty tables: the JSON is the interface.</p>
+    </section>
+
+    <section class="page-section shell" aria-labelledby="exit-title">
+      <div class="section-heading">
+        <p class="section-label">Exit codes</p>
+        <h2 id="exit-title">Eight codes, no surprises.</h2>
+        <p class="section-note">Exit codes are part of the public contract, so scripts and agents can branch without reading a single byte of output. Exit 4 on a status change is the workflow working, not a crash: only some status edges exist, and Atlas refuses the rest.</p>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr><th scope="col">Code</th><th scope="col">Meaning</th><th scope="col">What it usually is</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>0</code></td><td>ok</td><td>It worked.</td></tr>
+            <tr><td><code>1</code></td><td>internal</td><td>A real bug, or a missing required flag.</td></tr>
+            <tr><td><code>2</code></td><td>invalid_input</td><td>Bad status, type, priority, or actor. Malformed query.</td></tr>
+            <tr><td><code>3</code></td><td>not_found</td><td>No such ticket, project, agent, or view.</td></tr>
+            <tr><td><code>4</code></td><td>conflict</td><td>Forbidden transition, ticket already claimed, already exists.</td></tr>
+            <tr><td><code>5</code></td><td>permission_denied</td><td>Policy, separation of duties, or the wrong reviewer.</td></tr>
+            <tr><td><code>6</code></td><td>busy</td><td>Another writer holds the workspace lock.</td></tr>
+            <tr><td><code>7</code></td><td>repair_needed</td><td>Index is unreadable, or <code>doctor</code> found it stale. Run <code>tracker doctor --repair</code> or <code>tracker reindex</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="section-note">Nothing ever prompts. A missing required flag fails immediately naming the flag instead of waiting on stdin, which is exactly what you want under automation.</p>
+    </section>
+
+    <section class="page-section shell" aria-labelledby="loop-title">
+      <div class="section-heading">
+        <p class="section-label">A day in the loop</p>
+        <h2 id="loop-title">Claim, work, prove, hand off.</h2>
+        <p class="section-note">This is the whole working rhythm, human or agent. Every write names an <code>--actor</code> and a <code>--reason</code>, and that pair becomes the audit trail.</p>
+      </div>
+      <div class="code-block">
+        <div class="snippet-title"><span>the loop</span><button class="copy-button" type="button" data-copy="cli-loop" aria-label="Copy loop commands">Copy</button></div>
+        <pre id="cli-loop"><span class="c"># what can I work on right now</span>
+tracker agent available builder-1 --json
+
+<span class="c"># take it</span>
+tracker ticket claim APP-12 --actor agent:builder-1 --reason "start work"
+tracker ticket move APP-12 in_progress --actor agent:builder-1 --reason "start work"
+
+<span class="c"># leave a durable trace as you go</span>
+tracker ticket comment APP-12 --body "swapped the retry to exponential backoff" \
+  --actor agent:builder-1 --reason "progress note"
+
+<span class="c"># hand it over</span>
+tracker ticket request-review APP-12 --actor agent:builder-1 --reason "ready for review"
+
+<span class="c"># and as the reviewer</span>
+tracker ticket approve APP-12 --actor agent:reviewer-1 --reason "review passed"
+tracker ticket complete APP-12 --actor agent:reviewer-1 --reason "merged"</pre>
+      </div>
+      <p class="section-note">Statuses move backlog, ready, in progress, in review, done, with blocked as the exception lane. Review and done are reached through <code>request-review</code>, <code>approve</code>, and <code>complete</code> because those commands also run the completion policy and any gates. The details live in <a class="text-link" style="display:inline" href="docs/tickets-and-workflow.html">tickets and workflow</a>.</p>
+    </section>
+
+    <section class="support-section shell" aria-labelledby="cli-next-title">
+      <div class="support-copy">
+        <p class="section-label">Next stop</p>
+        <h2 id="cli-next-title">Give your agents the same CLI.</h2>
+        <p>Everything on this page works for an AI agent too. The For agents page adds the MCP server, permission profiles, and the safety model on top.</p>
+      </div>
+      <div class="support-actions">
+        <a class="button button-primary" href="mcp.html">For AI agents</a>
+        <a class="button button-secondary" href="docs/">Browse the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="./">Home</a>
+        <a href="docs/">Docs</a>
+        <a href="mcp.html">For agents</a>
+        <a href="changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

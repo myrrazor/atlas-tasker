@@ -20,6 +20,7 @@ const (
 	EventSurfaceGit        EventSurface = "git"
 	EventSurfaceGH         EventSurface = "gh"
 	EventSurfaceMCP        EventSurface = "mcp"
+	EventSurfaceWeb        EventSurface = "web"
 )
 
 var validEventSurfaces = map[EventSurface]struct{}{
@@ -31,6 +32,7 @@ var validEventSurfaces = map[EventSurface]struct{}{
 	EventSurfaceGit:        {},
 	EventSurfaceGH:         {},
 	EventSurfaceMCP:        {},
+	EventSurfaceWeb:        {},
 }
 
 func (s EventSurface) IsValid() bool {
@@ -55,6 +57,10 @@ const (
 	EventTicketRejected                   EventType = "ticket.rejected"
 	EventTicketPolicyUpdated              EventType = "ticket.policy_updated"
 	EventTicketTemplateApplied            EventType = "ticket.template_applied"
+	EventTicketScheduleSet                EventType = "ticket.schedule_set"
+	EventTicketScheduleCleared            EventType = "ticket.schedule_cleared"
+	EventTicketScheduleTriggered          EventType = "ticket.schedule_triggered"
+	EventTicketScheduleFailed             EventType = "ticket.schedule_failed"
 	EventOwnerAttentionRaised             EventType = "ticket.owner_attention_required"
 	EventOwnerAttentionCleared            EventType = "ticket.owner_attention_cleared"
 	EventProjectPolicyUpdated             EventType = "project.policy_updated"
@@ -174,6 +180,10 @@ var validEventTypes = map[EventType]struct{}{
 	EventTicketRejected:                   {},
 	EventTicketPolicyUpdated:              {},
 	EventTicketTemplateApplied:            {},
+	EventTicketScheduleSet:                {},
+	EventTicketScheduleCleared:            {},
+	EventTicketScheduleTriggered:          {},
+	EventTicketScheduleFailed:             {},
 	EventOwnerAttentionRaised:             {},
 	EventOwnerAttentionCleared:            {},
 	EventProjectPolicyUpdated:             {},

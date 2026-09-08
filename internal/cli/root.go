@@ -39,8 +39,19 @@ type mutationFlags struct {
 
 func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "tracker",
-		Short:         "Local-first markdown issue tracker for AI coding agents",
+		Use:   "tracker",
+		Short: "Local-first markdown issue tracker for AI coding agents",
+		Long: `Atlas Tasker is a local-first issue tracker that lives in your repo:
+tickets are markdown files, history is an append-only event log, and both
+humans and coding agents drive it from the same CLI.
+
+Start with 'tracker init' inside your project, create a project and a ticket,
+and 'tracker board' shows where everything stands. 'tracker web serve --open'
+gets you the same board in a browser.`,
+		Example: `  tracker init
+  tracker project create APP "My App"
+  tracker ticket create --project APP --title "Ship login page" --type task --actor human:owner
+  tracker board`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
@@ -79,6 +90,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(newHandoffCommand())
 	root.AddCommand(newTicketCommand())
+	root.AddCommand(newScheduleCommand())
 	root.AddCommand(newBoardCommand())
 	root.AddCommand(newBacklogCommand())
 	root.AddCommand(newNextCommand())
@@ -101,6 +113,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
 	root.AddCommand(newRenderCommand())
+	root.AddCommand(newWebCommand())
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newShellCommand())
 	root.AddCommand(newMCPCommand())
@@ -129,7 +142,8 @@ func newInitCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := ensureInitArtifacts(root); err != nil {
+			result, err := ensureInitArtifacts(root)
+			if err != nil {
 				return err
 			}
 			workspace, err := openWorkspace()
@@ -137,10 +151,14 @@ func newInitCommand() *cobra.Command {
 				return err
 			}
 			workspace.close()
-			fmt.Fprintln(cmd.OutOrStdout(), "initialized")
-			return nil
+			md := fmt.Sprintf("# Workspace\n\n- Root: %s\n- Created: %d\n", result.Workspace, len(result.Created))
+			for _, path := range result.Created {
+				md += "- " + path + "\n"
+			}
+			return writeCommandOutput(cmd, result, md, "initialized")
 		},
 	}
+	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
@@ -161,6 +179,7 @@ func newReindexCommand() *cobra.Command {
 		Short: "Rebuild SQLite projection from markdown and events",
 		RunE:  runReindex,
 	}
+	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
 
@@ -178,11 +197,11 @@ func newInspectCommand() *cobra.Command {
 
 func newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "config", Short: "Read or update tracker config"}
-	cmd.AddCommand(&cobra.Command{
+	get := &cobra.Command{
 		Use:   "get [KEY]",
 		Args:  cobra.MaximumNArgs(1),
 		Short: "Get config values",
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(command *cobra.Command, args []string) error {
 			key := ""
 			if len(args) == 1 {
 				key = args[0]
@@ -191,7 +210,7 @@ func newConfigCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			rootDir, err = service.CanonicalWorkspaceRoot(rootDir)
+			rootDir, err = service.InitializedWorkspaceRoot(rootDir)
 			if err != nil {
 				return err
 			}
@@ -199,15 +218,16 @@ func newConfigCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stdout, "%s\n", value)
-			return nil
+			return writeCommandOutput(command, map[string]any{"key": key, "value": value}, value, value)
 		},
-	})
-	cmd.AddCommand(&cobra.Command{
+	}
+	addReadOutputFlags(get, &outputFlags{})
+	cmd.AddCommand(get)
+	set := &cobra.Command{
 		Use:   "set <KEY> <VALUE>",
 		Args:  cobra.ExactArgs(2),
 		Short: "Set config values",
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(command *cobra.Command, args []string) error {
 			workspace, err := openWorkspace()
 			if err != nil {
 				return err
@@ -218,17 +238,18 @@ func newConfigCommand() *cobra.Command {
 			}); err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stdout, "ok\n")
-			return nil
+			return writeCommandOutput(command, map[string]any{"key": args[0], "value": config.MaskSensitiveConfigValue(args[0], args[1])}, "ok", "ok")
 		},
-	})
+	}
+	addReadOutputFlags(set, &outputFlags{})
+	cmd.AddCommand(set)
 	return cmd
 }
 
 func newIntegrationsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "integrations", Short: "Install agent guidance for Atlas Tasker"}
 	install := &cobra.Command{Use: "install", Short: "Install Atlas Tasker guidance into agent files"}
-	for _, target := range []string{"codex", "claude", "generic"} {
+	for _, target := range []string{"codex", "claude", "openclaw", "generic"} {
 		target := target
 		targetCmd := &cobra.Command{
 			Use:   target,
@@ -238,7 +259,7 @@ func newIntegrationsCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if err := ensureInitArtifacts(rootDir); err != nil {
+				if _, err := ensureInitArtifacts(rootDir); err != nil {
 					return err
 				}
 				force, _ := command.Flags().GetBool("force")
@@ -398,10 +419,11 @@ func newGitCommand() *cobra.Command {
 
 func newProjectCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "project", Short: "Project management commands"}
-	cmd.AddCommand(&cobra.Command{
+	create := &cobra.Command{
 		Use:   "create <KEY> <NAME>",
 		Args:  cobra.ExactArgs(2),
 		Short: "Create a project",
+		Long:  "Create a project. Projects are containers, not tracked mutations, so this takes no --actor or --reason.",
 		RunE: func(command *cobra.Command, args []string) error {
 			ctx := context.Background()
 			workspace, err := openWorkspace()
@@ -420,7 +442,9 @@ func newProjectCommand() *cobra.Command {
 			}
 			return writeCommandOutput(command, project, fmt.Sprintf("# %s\n\n%s", project.Key, project.Name), fmt.Sprintf("created project %s", project.Key))
 		},
-	})
+	}
+	addReadOutputFlags(create, &outputFlags{})
+	cmd.AddCommand(create)
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List projects",
@@ -476,6 +500,7 @@ func newProjectCommand() *cobra.Command {
 	policySet.Flags().String("required-reviewer", "", "Default required reviewer actor")
 	policySet.Flags().StringArray("retention-policy", nil, "Bound retention policy ID; repeat to set multiple")
 	addMutationFlags(policySet, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(policySet, &outputFlags{})
 	policy.AddCommand(policySet)
 	cmd.AddCommand(policy)
 	cmd.AddCommand(newProjectCodeownersCommand())
@@ -494,7 +519,7 @@ func newTicketCommand() *cobra.Command {
 	create.Flags().String("title", "", "Ticket title (required)")
 	create.Flags().String("type", "", "Ticket type: epic|task|bug|subtask")
 	create.Flags().String("template", "", "Template name from .tracker/templates")
-	create.Flags().String("status", "backlog", "Initial status")
+	create.Flags().String("status", "backlog", "Initial status ("+strings.Join(contracts.ValidStatusValues(), ", ")+")")
 	create.Flags().String("priority", "medium", "Ticket priority")
 	create.Flags().String("parent", "", "Parent ticket id")
 	create.Flags().String("labels", "", "Comma-separated labels")
@@ -533,7 +558,7 @@ func newTicketCommand() *cobra.Command {
 
 	list := &cobra.Command{Use: "list", Short: "List tickets", RunE: runTicketList}
 	list.Flags().String("project", "", "Project filter")
-	list.Flags().String("status", "", "Status filter")
+	list.Flags().String("status", "", "Status filter ("+strings.Join(contracts.ValidStatusValues(), ", ")+")")
 	list.Flags().String("assignee", "", "Assignee filter")
 	list.Flags().String("type", "", "Type filter")
 	addReadOutputFlags(list, &outputFlags{})
@@ -633,6 +658,12 @@ func newTicketCommand() *cobra.Command {
 	addMutationFlags(ticketPolicySet, &mutationFlags{Actor: "human:owner"})
 	policy.AddCommand(ticketPolicySet)
 	cmd.AddCommand(policy)
+
+	// every mutation already prints through writeCommandOutput, so they all get
+	// --json/--md; the workflow ones above registered theirs at declaration time
+	for _, sub := range []*cobra.Command{create, edit, archiveCmd, assign, priority, labelAdd, labelRemove, link, unlink, comment, claim, release, heartbeat, ticketPolicySet} {
+		addReadOutputFlags(sub, &outputFlags{})
+	}
 
 	return cmd
 }
@@ -927,7 +958,7 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	}
 	status := contracts.Status(statusValue)
 	if !status.IsValid() {
-		return fmt.Errorf("invalid status: %s", statusValue)
+		return fmt.Errorf("invalid status: %s (valid: %s)", statusValue, strings.Join(contracts.ValidStatusValues(), ", "))
 	}
 	if status == contracts.StatusDone || status == contracts.StatusCanceled {
 		return fmt.Errorf("status %s is not allowed on ticket create", status)
@@ -1201,7 +1232,7 @@ func runTicketMove(cmd *cobra.Command, args []string) error {
 	}
 	to := contracts.Status(args[1])
 	if !to.IsValid() {
-		return fmt.Errorf("invalid status: %s", to)
+		return fmt.Errorf("invalid status: %s (valid: %s)", to, strings.Join(contracts.ValidStatusValues(), ", "))
 	}
 	ctx, err = commandContextWithDependencyOverride(cmd, ctx, actor, reason)
 	if err != nil {
@@ -1631,7 +1662,7 @@ func runProjectPolicySet(cmd *cobra.Command, args []string) error {
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	root, err := os.Getwd()
 	if err != nil {
 		return err
@@ -1640,7 +1671,28 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	// doctor opens stores directly (it has to survive a corrupt index), so it
+	// needs the same wrong-CWD guard openWorkspace has.
+	if err := requireInitializedWorkspace(root); err != nil {
+		return err
+	}
 	repair, _ := cmd.Flags().GetBool("repair")
+	if repair {
+		return service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
+			return runDoctorAtRoot(cmd, ctx, root, true)
+		})
+	}
+	return runDoctorAtRoot(cmd, ctx, root, false)
+}
+
+func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repair bool) error {
+	pending, err := (service.MutationJournal{Root: root, Clock: defaultNow}).List()
+	if err != nil {
+		return err
+	}
+	if !repair && len(pending) > 0 {
+		return apperr.New(apperr.CodeRepairNeeded, fmt.Sprintf("%d pending mutation journal entries; run 'tracker doctor --repair'", len(pending)))
+	}
 	projectStore := mdstore.ProjectStore{RootDir: root}
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
 	eventLog := &eventstore.Log{RootDir: root}
@@ -1668,6 +1720,9 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			if sqlitestore.IsCorrupt(err) {
 				return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection index is unreadable; rerun as 'tracker doctor --repair' to rebuild it")
 			}
+			return err
+		}
+		if !sqlitestore.IsCorrupt(err) {
 			return err
 		}
 		for _, candidate := range []string{projectionPath, projectionPath + "-wal", projectionPath + "-shm"} {
@@ -1712,10 +1767,18 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	repairReport := service.RepairReport{}
+	projection.Root = root
+	indexReport := map[string]any{
+		"stale_before_repair": false,
+		"rebuilt":             false,
+		"stored_fingerprint":  "",
+		"current_fingerprint": "",
+	}
 	if _, err := projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
 		if !repair {
 			return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection index failed its health check; rerun as 'tracker doctor --repair' to rebuild it")
 		}
+		indexReport["stale_before_repair"] = true
 		if rebuildErr := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 			var err error
 			repairReport, err = service.RepairWorkspace(ctx, root, defaultNow, eventLog, projection)
@@ -1724,6 +1787,29 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			return rebuildErr
 		}
 	} else {
+		// the index opens and answers queries; now check it's answering from
+		// the same sources that are on disk. A projection that lies is worse
+		// than one that is missing.
+		stale, stored, current, err := projection.IsStale(ctx)
+		if err != nil {
+			return err
+		}
+		if _, hasStamp, err := projection.StoredSourceFingerprint(ctx); err != nil {
+			return err
+		} else if !hasStamp {
+			stored = ""
+		}
+		indexReport["stale_before_repair"] = stale
+		indexReport["stored_fingerprint"] = stored
+		indexReport["current_fingerprint"] = current
+		if stale && !repair {
+			drift := fmt.Sprintf("index built from %s, sources now %s", stored, current)
+			if stored == "" {
+				// an index from before the stamp existed, or a freshly recreated file
+				drift = "no recorded fingerprint; sources now " + current
+			}
+			return apperr.New(apperr.CodeRepairNeeded, fmt.Sprintf("projection index is stale (%s); run 'tracker doctor --repair' or 'tracker reindex'", drift))
+		}
 		if repair {
 			if err := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 				var err error
@@ -1752,6 +1838,12 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	if slices.Contains(repairReport.Actions, "rebuilt projection") {
+		indexReport["rebuilt"] = true
+		if _, _, current, err := projection.IsStale(ctx); err == nil {
+			indexReport["current_fingerprint"] = current
+		}
+	}
 	issueCodes := append([]string{}, orchestrationReport.IssueCodes...)
 	issueCodes = append(issueCodes, migration.ReasonCodes...)
 	sort.Strings(issueCodes)
@@ -1767,6 +1859,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"repair_pending": repairReport.Pending,
 		"config":         config.MaskTrackerConfig(cfg),
 		"migration":      migration,
+		"index":          indexReport,
 		"issue_codes":    issueCodes,
 		"issues": map[string]any{
 			"project_issues": projectIssues,
@@ -1806,18 +1899,37 @@ func runInspect(cmd *cobra.Command, args []string) error {
 }
 
 func runReindex(cmd *cobra.Command, _ []string) error {
-	ctx := context.Background()
-	workspace, err := openWorkspace()
+	root, err := currentWorkspaceRoot()
 	if err != nil {
 		return err
 	}
-	defer workspace.close()
-	if _, err := config.Load(workspace.root); err != nil {
+	if err := requireInitializedWorkspace(root); err != nil {
 		return err
 	}
-	if err := workspace.withWriteLock(ctx, "reindex projection", func(ctx context.Context) error {
-		return workspace.projection.Rebuild(ctx, "")
-	}); err != nil {
+	if _, err := config.Load(root); err != nil {
+		return err
+	}
+	err = service.WithWriteLock(commandContext(cmd), service.FileLockManager{Root: root}, "reindex projection", func(ctx context.Context) error {
+		tickets := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
+		events := &eventstore.Log{RootDir: root}
+		path := filepath.Join(storage.TrackerDir(root), "index.sqlite")
+		projection, err := sqlitestore.Open(path, tickets, events)
+		if err != nil && sqlitestore.IsCorrupt(err) {
+			for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+				if err := os.Remove(candidate); err != nil && !os.IsNotExist(err) {
+					return err
+				}
+			}
+			projection, err = sqlitestore.Open(path, tickets, events)
+		}
+		if err != nil {
+			return err
+		}
+		defer projection.Close()
+		projection.SetRoot(root)
+		return projection.Rebuild(ctx, "")
+	})
+	if err != nil {
 		return err
 	}
 	message := "reindex complete"
@@ -2937,7 +3049,7 @@ func deleteSubscription(cmd *cobra.Command, kind contracts.SubscriptionTargetKin
 func runBulkMove(cmd *cobra.Command, args []string) error {
 	status := contracts.Status(strings.TrimSpace(args[0]))
 	if !status.IsValid() {
-		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid status: %s", args[0]))
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid status: %s (valid: %s)", args[0], strings.Join(contracts.ValidStatusValues(), ", ")))
 	}
 	return runBulkOperation(cmd, service.BulkOperation{Kind: service.BulkOperationMove, Status: status})
 }
@@ -3267,6 +3379,7 @@ func queuePrettySelected(queue service.QueueView, categories []string, title str
 func orderedQueueCategories() []service.QueueCategory {
 	return []service.QueueCategory{
 		service.QueueReadyForMe,
+		service.QueueUnblockedForMe,
 		service.QueueClaimedByMe,
 		service.QueueBlockedForMe,
 		service.QueueNeedsReview,

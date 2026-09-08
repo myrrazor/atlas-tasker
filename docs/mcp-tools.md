@@ -24,6 +24,8 @@ Columns:
 | `atlas.ticket.view` | read | yes | no | no | no | no |
 | `atlas.ticket.history` | read | yes | no | no | no | no |
 | `atlas.ticket.inspect` | read | yes | no | no | no | no |
+| `atlas.schedule.list` | read | yes | no | no | no | no |
+| `atlas.schedule.history` | read | yes | no | no | no | no |
 | `atlas.dashboard` | read | yes | no | no | no | no |
 | `atlas.timeline` | read | yes | no | no | no | no |
 | `atlas.run.view` | read | yes | no | no | no | no |
@@ -51,6 +53,8 @@ Columns:
 | `atlas.ticket.claim` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.release` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.move` | workflow | no | yes | yes | no | no |
+| `atlas.schedule.set` | workflow | no | yes | yes | no | no |
+| `atlas.schedule.clear` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.request_review` | workflow | no | yes | yes | no | no |
 | `atlas.gate.approve` | workflow | no | yes | yes | no | no |
 | `atlas.gate.reject` | workflow | no | yes | yes | no | no |

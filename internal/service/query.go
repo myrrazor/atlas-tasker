@@ -357,6 +357,11 @@ func (s *QueryService) History(ctx context.Context, ticketID string) (HistoryVie
 	return HistoryView{TicketID: ticketID, Events: events}, nil
 }
 
+// CommentCounts returns comment totals per ticket id for board badges.
+func (s *QueryService) CommentCounts(ctx context.Context, ticketIDs []string) (map[string]int, error) {
+	return s.Projection.QueryCommentCounts(ctx, ticketIDs)
+}
+
 func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (TicketDetailView, error) {
 	ticket, err := s.Projection.QueryTicket(ctx, ticketID)
 	if err != nil {
@@ -370,6 +375,7 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 		return TicketDetailView{}, err
 	}
 	comments := make([]string, 0)
+	commentEntries := make([]CommentEntry, 0)
 	for _, event := range history.Events {
 		if event.Type != contracts.EventTicketCommented {
 			continue
@@ -377,6 +383,11 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 		if payloadMap, ok := event.Payload.(map[string]any); ok {
 			if body, ok := payloadMap["body"].(string); ok && strings.TrimSpace(body) != "" {
 				comments = append(comments, strings.TrimSpace(body))
+				commentEntries = append(commentEntries, CommentEntry{
+					Body:      strings.TrimSpace(body),
+					Actor:     event.Actor,
+					Timestamp: event.Timestamp,
+				})
 			}
 		}
 	}
@@ -409,7 +420,7 @@ func (s *QueryService) TicketDetail(ctx context.Context, ticketID string) (Ticke
 	if err != nil {
 		return TicketDetailView{}, err
 	}
-	return TicketDetailView{Ticket: ticket, BoardStatus: boardStatus, EffectiveReviewer: effectiveReviewer(ticket, policy), Comments: comments, Mentions: mentions, History: history.Events, Gates: gates, Changes: changes, Checks: checks, EffectivePolicy: policy, Git: gitView}, nil
+	return TicketDetailView{Ticket: ticket, BoardStatus: boardStatus, EffectiveReviewer: effectiveReviewer(ticket, policy), Comments: comments, CommentEntries: commentEntries, Mentions: mentions, History: history.Events, Gates: gates, Changes: changes, Checks: checks, EffectivePolicy: policy, Git: gitView}, nil
 }
 
 func (s *QueryService) InspectTicket(ctx context.Context, ticketID string, actor contracts.Actor) (InspectView, error) {
@@ -539,6 +550,10 @@ func (s *QueryService) Queue(ctx context.Context, actor contracts.Actor) (QueueV
 			view.Categories[QueueBlockedForMe] = append(view.Categories[QueueBlockedForMe], QueueEntry{Ticket: ticket, Reason: "ticket is blocked", GitHint: entryHint})
 		case ticket.Status == contracts.StatusReady && (ticket.Assignee == "" || ticket.Assignee == actor):
 			view.Categories[QueueReadyForMe] = append(view.Categories[QueueReadyForMe], QueueEntry{Ticket: ticket, Reason: "ready and assignable", GitHint: entryHint})
+		case ticket.Status == contracts.StatusBacklog && len(ticket.BlockedBy) > 0 && boardStatus != contracts.StatusBlocked && (ticket.Assignee == "" || ticket.Assignee == actor):
+			// every blocker landed but nobody groomed it; for persisted backlog
+			// a non-blocked board status already means zero open blockers
+			view.Categories[QueueUnblockedForMe] = append(view.Categories[QueueUnblockedForMe], QueueEntry{Ticket: ticket, Reason: "blockers resolved; promote to ready", GitHint: entryHint})
 		}
 		if ticket.Status == contracts.StatusInReview && (effectiveReviewer(ticket, policy) == actor || actor == contracts.Actor("human:owner")) {
 			view.Categories[QueueNeedsReview] = append(view.Categories[QueueNeedsReview], QueueEntry{Ticket: ticket, Reason: "waiting for review", GitHint: entryHint})
@@ -636,6 +651,7 @@ func (s *QueryService) Next(ctx context.Context, actor contracts.Actor) (NextVie
 	}
 	order := []QueueCategory{
 		QueueReadyForMe,
+		QueueUnblockedForMe,
 		QueueClaimedByMe,
 		QueueNeedsReview,
 		QueueAwaitingOwner,

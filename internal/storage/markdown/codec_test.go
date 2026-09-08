@@ -29,6 +29,13 @@ func TestEncodeDecodeTicketMarkdownRoundTrip(t *testing.T) {
 		Description:        "Long body",
 		AcceptanceCriteria: []string{"works", "tested"},
 		Notes:              "tracking notes",
+		Schedule: &contracts.TicketSchedule{
+			At:          now.Add(3 * time.Hour),
+			CreatedAt:   now,
+			CreatedBy:   contracts.Actor("human:owner"),
+			TriggeredAt: now.Add(3 * time.Hour),
+			WakeupID:    "wakeup_APP-1_schedule",
+		},
 	}
 	raw, err := EncodeTicketMarkdown(ticket)
 	if err != nil {

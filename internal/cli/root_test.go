@@ -14,11 +14,49 @@ func TestRootCommandIncludesRequiredTopLevelCommands(t *testing.T) {
 		"init", "doctor", "reindex", "config", "project", "agent", "run", "worktree", "dispatch", "approvals", "gate", "inbox", "change", "checks", "evidence", "handoff", "ticket",
 		"permission-profile", "permissions", "import", "export", "archive", "compact", "dashboard", "timeline",
 		"board", "backlog", "next", "blocked", "queue", "review-queue", "owner-queue",
-		"who", "sweep", "inspect", "automation", "notify", "git", "views", "watch", "unwatch", "bulk", "templates", "integrations", "search", "render", "version", "shell", "mcp", "tui",
+		"who", "sweep", "inspect", "automation", "notify", "git", "views", "watch", "unwatch", "bulk", "templates", "integrations", "search", "render", "web", "version", "shell", "mcp", "tui",
 	}
 	for _, name := range required {
 		if _, _, err := root.Find([]string{name}); err != nil {
 			t.Fatalf("expected top-level command %q to exist: %v", name, err)
+		}
+	}
+}
+
+func TestWebCommandContract(t *testing.T) {
+	root := NewRootCommand()
+	for _, path := range [][]string{
+		{"web"},
+		{"web", "serve"},
+		{"web", "open"},
+		{"web", "status"},
+	} {
+		cmd, _, err := root.Find(path)
+		if err != nil {
+			t.Fatalf("expected command %q to exist: %v", path, err)
+		}
+		if cmd.Short == "" {
+			t.Fatalf("expected command %q to have help text", path)
+		}
+	}
+
+	serve, _, err := root.Find([]string{"web", "serve"})
+	if err != nil {
+		t.Fatalf("find web serve: %v", err)
+	}
+	for _, flag := range []string{"host", "port", "project", "actor", "open", "no-browser", "read-only", "token-mode"} {
+		if serve.Flag(flag) == nil {
+			t.Fatalf("expected web serve to expose --%s", flag)
+		}
+	}
+
+	status, _, err := root.Find([]string{"web", "status"})
+	if err != nil {
+		t.Fatalf("find web status: %v", err)
+	}
+	for _, flag := range []string{"pretty", "md", "json"} {
+		if status.Flag(flag) == nil {
+			t.Fatalf("expected web status to expose --%s", flag)
 		}
 	}
 }

@@ -660,3 +660,82 @@ func TestTemplatesAndQueueAwareNext(t *testing.T) {
 		t.Fatalf("unexpected ticket detail output: %s", detail)
 	}
 }
+
+func TestCompletingBlockerReadiesTheAgentsDependentEndToEnd(t *testing.T) {
+	// the shipped bug: the wakeup fired, but next/available/queue were all
+	// empty because the dependent was still sitting in backlog
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("agent", "create", "builder-1", "--name", "Builder", "--provider", "codex", "--actor", "human:owner", "--reason", "test")
+	must("ticket", "create", "--project", "APP", "--title", "Blocker", "--type", "task", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Dependent", "--type", "task", "--assignee", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "link", "APP-2", "--blocked-by", "APP-1", "--actor", "human:owner", "--reason", "needs the blocker first")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner", "--reason", "groomed")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner", "--reason", "working")
+	must("ticket", "request-review", "APP-1", "--actor", "human:owner", "--reason", "ready for review")
+	must("ticket", "approve", "APP-1", "--actor", "human:owner", "--reason", "approved")
+	must("ticket", "complete", "APP-1", "--actor", "human:owner", "--reason", "shipped")
+
+	view := must("ticket", "view", "APP-2", "--json")
+	if !strings.Contains(view, `"status": "ready"`) {
+		t.Fatalf("dependent should have been promoted to ready, got:\n%s", view)
+	}
+	next := must("next", "--actor", "agent:builder-1", "--json")
+	if !strings.Contains(next, `"APP-2"`) || !strings.Contains(next, `"ready_for_me"`) {
+		t.Fatalf("next should list APP-2 as ready_for_me, got:\n%s", next)
+	}
+	available := must("agent", "available", "builder-1", "--json")
+	if !strings.Contains(available, `"APP-2"`) {
+		t.Fatalf("agent available should list APP-2, got:\n%s", available)
+	}
+	// the wakeup event is agent:atlas too, so only the promotion's own reason
+	// proves the move was the system's
+	history := must("ticket", "history", "APP-2", "--json")
+	if !strings.Contains(history, `unblocked: APP-1 completed by human:owner`) {
+		t.Fatalf("history should show the system promotion, got:\n%s", history)
+	}
+}
+
+func TestUnblockedHumanTicketShowsInQueueWithoutAutoPromotion(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Blocker", "--type", "task", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Dependent", "--type", "task", "--assignee", "human:dev", "--actor", "human:owner")
+	must("ticket", "link", "APP-2", "--blocked-by", "APP-1", "--actor", "human:owner", "--reason", "needs the blocker first")
+	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner", "--reason", "groomed")
+	must("ticket", "move", "APP-1", "in_progress", "--actor", "human:owner", "--reason", "working")
+	must("ticket", "request-review", "APP-1", "--actor", "human:owner", "--reason", "ready for review")
+	must("ticket", "approve", "APP-1", "--actor", "human:owner", "--reason", "approved")
+	must("ticket", "complete", "APP-1", "--actor", "human:owner", "--reason", "shipped")
+
+	view := must("ticket", "view", "APP-2", "--json")
+	if !strings.Contains(view, `"status": "backlog"`) {
+		t.Fatalf("human-assigned dependent must not be auto-promoted, got:\n%s", view)
+	}
+	queueJSON := must("queue", "--actor", "human:dev", "--json")
+	if !strings.Contains(queueJSON, `"unblocked_for_me"`) || !strings.Contains(queueJSON, `"APP-2"`) {
+		t.Fatalf("queue json should list APP-2 under unblocked_for_me, got:\n%s", queueJSON)
+	}
+	queuePretty := must("queue", "--actor", "human:dev", "--pretty")
+	if !strings.Contains(queuePretty, "unblocked_for_me") || !strings.Contains(queuePretty, "APP-2") {
+		t.Fatalf("pretty queue should print the unblocked_for_me row, got:\n%s", queuePretty)
+	}
+}

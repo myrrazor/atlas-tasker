@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 import re
+import queue
+import threading
 import shlex
 import shutil
 import subprocess
@@ -515,7 +517,68 @@ def check_cross_surface_parity(tracker: Path, workspace: Path) -> None:
     missing = sorted(required - names)
     if missing:
         raise ValidationError(f"MCP read profile missing expected read tools: {missing}")
+    check_mcp_stdio(tracker, workspace)
     print("cross_surface_parity=ok")
+
+
+def check_mcp_stdio(tracker: Path, workspace: Path) -> None:
+    unrelated = workspace.parent / "mcp-client-cwd"
+    unrelated.mkdir(exist_ok=True)
+    rejected = subprocess.run([str(tracker), "mcp", "serve"], cwd=unrelated,
+                              input="", text=True, capture_output=True, timeout=20)
+    if rejected.returncode == 0 or (unrelated / ".tracker").exists():
+        raise ValidationError("MCP default startup accepted an uninitialized cwd")
+    proc = subprocess.Popen([str(tracker), "mcp", "serve", "--workspace", str(workspace)],
+                            cwd=unrelated, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True)
+    responses: queue.Queue[str] = queue.Queue()
+    def read_responses() -> None:
+        for line in proc.stdout:
+            responses.put(line)
+        responses.put("")
+    reader = threading.Thread(target=read_responses, daemon=True)
+    reader.start()
+    def send(message: dict) -> None:
+        proc.stdin.write(json.dumps(message) + "\n")
+        proc.stdin.flush()
+    def response(request_id: int) -> dict:
+        deadline = time.monotonic() + 20
+        while True:
+            try:
+                line = responses.get(timeout=max(0, deadline-time.monotonic()))
+            except queue.Empty as exc:
+                raise ValidationError("MCP stdio response timed out") from exc
+            if not line:
+                raise ValidationError("MCP stdio closed before responding")
+            payload = json.loads(line)
+            if payload.get("id") == request_id:
+                if "error" in payload:
+                    raise ValidationError(f"MCP error: {payload['error']}")
+                return payload.get("result", {})
+    try:
+        send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-03-26", "capabilities": {},
+            "clientInfo": {"name": "atlas-rc-validation", "version": "1"}}})
+        response(1)
+        send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        send({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+              "params": {"name": "atlas.board", "arguments": {}}})
+        result = response(2)
+        if result.get("isError") or "APP-1" not in json.dumps(result):
+            raise ValidationError("MCP board did not read the pinned release workspace")
+        if (unrelated / ".tracker").exists():
+            raise ValidationError("MCP created state in its client cwd")
+    finally:
+        proc.stdin.close()
+        try:
+            proc.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        reader.join(timeout=20)
+        proc.stdout.close()
+        proc.stderr.close()
+    print("mcp_stdio_workspace=ok")
 
 
 def strip_volatile_json(value: object) -> object:
