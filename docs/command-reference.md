@@ -181,9 +181,9 @@ Behavior:
 - agent profiles live under `.tracker/agents/`
 - eligibility is deterministic and returns the same ranking order used later by dispatch
 - disabled agents and capability mismatches are reported explicitly in JSON mode
-- `available` lists tickets an agent can start, continue, review, or complete now
-- `pending` lists relevant tickets that are blocked by dependencies, review, owner gates, claims, capacity, or policy
-- wake-ups are event-driven records created under `.tracker/runtime/agent-wakeups/` when a `done` ticket unblocks assigned agent work
+- `available` lists tickets an agent can start, continue, review, promote, or complete now; `promote` is a backlog ticket whose blockers are all `done`, and its first suggested command is the `ticket move <ID> ready`
+- `pending` lists relevant tickets that are blocked by dependencies, review, owner gates, claims, capacity, or policy; `not_ready_status` means backlog that never had blockers or someone else's `in_progress` work; a backlog ticket whose blockers are all `done` is listed under `available` as `promote` instead
+- wake-ups are event-driven records created under `.tracker/runtime/agent-wakeups/` when a `done` ticket unblocks assigned agent work; a `backlog` dependent assigned to an agent is promoted to `ready` first (a `ticket.moved` by `agent:atlas`), a hand-set `blocked` one is only woken, and a failed promotion still leaves the wake-up with `promoted=false` and `promotion_error` in its metadata (a move that died after its canonical write leaves the wake-up `failed` and pointing at `tracker doctor --repair`, which replays the move)
 - scheduled wake-ups use the same store and command path; `{scheduled_at}` expands to the UTC due instant
 - `agent.work_available` events use reserved actor `agent:atlas`
 - auto mode defaults to `notify`; command mode stores argv items and refuses shell interpreters
@@ -670,6 +670,8 @@ Dependency rules:
 - `tracker search <QUERY>`
 - `tracker search --view <NAME>`
 - `tracker render <ID>`
+
+Queue categories, in the order `next` walks them: `ready_for_me`, `unblocked_for_me` (backlog tickets whose blockers are all `done` but that nobody moved to `ready` yet), `claimed_by_me`, `needs_review`, `awaiting_owner`, `blocked_for_me`, `stale_claims`, `policy_violations`. Backlog that never had blockers is not queued.
 
 Search query terms:
 

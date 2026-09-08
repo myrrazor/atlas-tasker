@@ -1662,7 +1662,7 @@ func runProjectPolicySet(cmd *cobra.Command, args []string) error {
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
-	ctx := context.Background()
+	ctx := commandContext(cmd)
 	root, err := os.Getwd()
 	if err != nil {
 		return err
@@ -1677,6 +1677,22 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	repair, _ := cmd.Flags().GetBool("repair")
+	if repair {
+		return service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
+			return runDoctorAtRoot(cmd, ctx, root, true)
+		})
+	}
+	return runDoctorAtRoot(cmd, ctx, root, false)
+}
+
+func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repair bool) error {
+	pending, err := (service.MutationJournal{Root: root, Clock: defaultNow}).List()
+	if err != nil {
+		return err
+	}
+	if !repair && len(pending) > 0 {
+		return apperr.New(apperr.CodeRepairNeeded, fmt.Sprintf("%d pending mutation journal entries; run 'tracker doctor --repair'", len(pending)))
+	}
 	projectStore := mdstore.ProjectStore{RootDir: root}
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
 	eventLog := &eventstore.Log{RootDir: root}
@@ -1704,6 +1720,9 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			if sqlitestore.IsCorrupt(err) {
 				return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection index is unreadable; rerun as 'tracker doctor --repair' to rebuild it")
 			}
+			return err
+		}
+		if !sqlitestore.IsCorrupt(err) {
 			return err
 		}
 		for _, candidate := range []string{projectionPath, projectionPath + "-wal", projectionPath + "-shm"} {
@@ -1748,10 +1767,18 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	repairReport := service.RepairReport{}
+	projection.Root = root
+	indexReport := map[string]any{
+		"stale_before_repair": false,
+		"rebuilt":             false,
+		"stored_fingerprint":  "",
+		"current_fingerprint": "",
+	}
 	if _, err := projection.QueryBoard(ctx, contracts.BoardQueryOptions{}); err != nil {
 		if !repair {
 			return apperr.Wrap(apperr.CodeRepairNeeded, err, "projection index failed its health check; rerun as 'tracker doctor --repair' to rebuild it")
 		}
+		indexReport["stale_before_repair"] = true
 		if rebuildErr := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 			var err error
 			repairReport, err = service.RepairWorkspace(ctx, root, defaultNow, eventLog, projection)
@@ -1760,6 +1787,29 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			return rebuildErr
 		}
 	} else {
+		// the index opens and answers queries; now check it's answering from
+		// the same sources that are on disk. A projection that lies is worse
+		// than one that is missing.
+		stale, stored, current, err := projection.IsStale(ctx)
+		if err != nil {
+			return err
+		}
+		if _, hasStamp, err := projection.StoredSourceFingerprint(ctx); err != nil {
+			return err
+		} else if !hasStamp {
+			stored = ""
+		}
+		indexReport["stale_before_repair"] = stale
+		indexReport["stored_fingerprint"] = stored
+		indexReport["current_fingerprint"] = current
+		if stale && !repair {
+			drift := fmt.Sprintf("index built from %s, sources now %s", stored, current)
+			if stored == "" {
+				// an index from before the stamp existed, or a freshly recreated file
+				drift = "no recorded fingerprint; sources now " + current
+			}
+			return apperr.New(apperr.CodeRepairNeeded, fmt.Sprintf("projection index is stale (%s); run 'tracker doctor --repair' or 'tracker reindex'", drift))
+		}
 		if repair {
 			if err := service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 				var err error
@@ -1788,6 +1838,12 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	if slices.Contains(repairReport.Actions, "rebuilt projection") {
+		indexReport["rebuilt"] = true
+		if _, _, current, err := projection.IsStale(ctx); err == nil {
+			indexReport["current_fingerprint"] = current
+		}
+	}
 	issueCodes := append([]string{}, orchestrationReport.IssueCodes...)
 	issueCodes = append(issueCodes, migration.ReasonCodes...)
 	sort.Strings(issueCodes)
@@ -1803,6 +1859,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		"repair_pending": repairReport.Pending,
 		"config":         config.MaskTrackerConfig(cfg),
 		"migration":      migration,
+		"index":          indexReport,
 		"issue_codes":    issueCodes,
 		"issues": map[string]any{
 			"project_issues": projectIssues,
@@ -1842,18 +1899,37 @@ func runInspect(cmd *cobra.Command, args []string) error {
 }
 
 func runReindex(cmd *cobra.Command, _ []string) error {
-	ctx := context.Background()
-	workspace, err := openWorkspace()
+	root, err := currentWorkspaceRoot()
 	if err != nil {
 		return err
 	}
-	defer workspace.close()
-	if _, err := config.Load(workspace.root); err != nil {
+	if err := requireInitializedWorkspace(root); err != nil {
 		return err
 	}
-	if err := workspace.withWriteLock(ctx, "reindex projection", func(ctx context.Context) error {
-		return workspace.projection.Rebuild(ctx, "")
-	}); err != nil {
+	if _, err := config.Load(root); err != nil {
+		return err
+	}
+	err = service.WithWriteLock(commandContext(cmd), service.FileLockManager{Root: root}, "reindex projection", func(ctx context.Context) error {
+		tickets := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
+		events := &eventstore.Log{RootDir: root}
+		path := filepath.Join(storage.TrackerDir(root), "index.sqlite")
+		projection, err := sqlitestore.Open(path, tickets, events)
+		if err != nil && sqlitestore.IsCorrupt(err) {
+			for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
+				if err := os.Remove(candidate); err != nil && !os.IsNotExist(err) {
+					return err
+				}
+			}
+			projection, err = sqlitestore.Open(path, tickets, events)
+		}
+		if err != nil {
+			return err
+		}
+		defer projection.Close()
+		projection.SetRoot(root)
+		return projection.Rebuild(ctx, "")
+	})
+	if err != nil {
 		return err
 	}
 	message := "reindex complete"
@@ -3303,6 +3379,7 @@ func queuePrettySelected(queue service.QueueView, categories []string, title str
 func orderedQueueCategories() []service.QueueCategory {
 	return []service.QueueCategory{
 		service.QueueReadyForMe,
+		service.QueueUnblockedForMe,
 		service.QueueClaimedByMe,
 		service.QueueBlockedForMe,
 		service.QueueNeedsReview,

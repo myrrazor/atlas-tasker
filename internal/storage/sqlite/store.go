@@ -4,14 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
-	_ "modernc.org/sqlite"
+	"github.com/myrrazor/atlas-tasker/internal/storage"
+	modernsqlite "modernc.org/sqlite"
 )
 
 const ticketSelectColumns = `
@@ -28,11 +32,19 @@ const ticketSelectColumns = `
 
 // Store is a SQLite-backed projection and query engine.
 type Store struct {
-	Path         string
-	DB           *sql.DB
+	Path string
+	DB   *sql.DB
+	// tx is set only on a private copy while applying an atomic update.
+	tx           *sql.Tx
 	TicketSource contracts.TicketStore
 	EventSource  contracts.EventLog
+	// Root is the workspace root, used to fingerprint the sources this
+	// projection was built from. Leave it empty and none of the freshness
+	// bookkeeping runs — handy for stores opened without sources.
+	Root string
 }
+
+const sourceFingerprintKey = "source_fingerprint"
 
 var _ contracts.ProjectionStore = (*Store)(nil)
 
@@ -53,19 +65,83 @@ func Open(path string, ticketSource contracts.TicketStore, eventSource contracts
 }
 
 func openDB(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path)
+	// Driver DSN pragmas run on every pooled connection, with busy_timeout
+	// first. Match the workspace writer lock's existing five-second wait.
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve sqlite path: %w", err)
+	}
+	dsn := url.URL{Scheme: "file", Path: filepath.ToSlash(abs)}
+	params := url.Values{}
+	params.Set("_txlock", "immediate")
+	params.Add("_pragma", "busy_timeout(5000)")
+	params.Add("_pragma", "synchronous(NORMAL)")
+	dsn.RawQuery = params.Encode()
+	db, err := sql.Open("sqlite", dsn.String())
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("set journal mode: %w", err)
-	}
-	if _, err := db.Exec(`PRAGMA synchronous=NORMAL;`); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("set sync mode: %w", err)
+	// SQLite can reject a concurrent WAL conversion without invoking its busy
+	// handler. Retry that setup step using the workspace lock's existing wait
+	// and poll interval, rather than failing a simultaneous first open.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for {
+		_, err := db.ExecContext(ctx, `PRAGMA journal_mode=WAL;`)
+		if err == nil {
+			break
+		}
+		var sqliteErr *modernsqlite.Error
+		if !errors.As(err, &sqliteErr) || sqliteErr.Code()&0xff != 5 {
+			_ = db.Close()
+			return nil, fmt.Errorf("set journal mode: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			_ = db.Close()
+			return nil, apperr.Wrap(apperr.CodeBusy, err, "index is busy while enabling WAL")
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
 	return db, nil
+}
+
+func (s *Store) execContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if s.tx != nil {
+		return s.tx.ExecContext(ctx, query, args...)
+	}
+	return s.DB.ExecContext(ctx, query, args...)
+}
+
+func (s *Store) queryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if s.tx != nil {
+		return s.tx.QueryContext(ctx, query, args...)
+	}
+	return s.DB.QueryContext(ctx, query, args...)
+}
+
+func (s *Store) queryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if s.tx != nil {
+		return s.tx.QueryRowContext(ctx, query, args...)
+	}
+	return s.DB.QueryRowContext(ctx, query, args...)
+}
+
+func (s *Store) inTransaction(ctx context.Context, update func(*Store) error) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin projection update: %w", err)
+	}
+	defer tx.Rollback()
+	working := *s
+	working.tx = tx
+	if err := update(&working); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit projection update: %w", err)
+	}
+	return nil
 }
 
 // IsCorrupt reports whether err is sqlite refusing the index file itself
@@ -88,6 +164,10 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) migrate() error {
+	return s.inTransaction(context.Background(), func(working *Store) error { return working.migrateSchema() })
+}
+
+func (s *Store) migrateSchema() error {
 	statements := []string{
 		`CREATE TABLE IF NOT EXISTS tickets (
 			id TEXT PRIMARY KEY,
@@ -326,9 +406,13 @@ func (s *Store) migrate() error {
 			PRIMARY KEY (project, event_id)
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_events_ticket ON events(ticket_id);`,
+		`CREATE TABLE IF NOT EXISTS projection_meta (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);`,
 	}
 	for _, stmt := range statements {
-		if _, err := s.DB.Exec(stmt); err != nil {
+		if _, err := s.execContext(context.Background(), stmt); err != nil {
 			return fmt.Errorf("sqlite migrate failed: %w", err)
 		}
 	}
@@ -376,7 +460,7 @@ func (s *Store) migrate() error {
 }
 
 func (s *Store) ensureTicketColumn(name string, definition string) error {
-	rows, err := s.DB.Query(`PRAGMA table_info(tickets)`)
+	rows, err := s.queryContext(context.Background(), `PRAGMA table_info(tickets)`)
 	if err != nil {
 		return fmt.Errorf("inspect tickets schema: %w", err)
 	}
@@ -400,14 +484,14 @@ func (s *Store) ensureTicketColumn(name string, definition string) error {
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate table info: %w", err)
 	}
-	if _, err := s.DB.Exec(`ALTER TABLE tickets ADD COLUMN ` + name + ` ` + definition); err != nil {
+	if _, err := s.execContext(context.Background(), `ALTER TABLE tickets ADD COLUMN `+name+` `+definition); err != nil {
 		return fmt.Errorf("add tickets.%s: %w", name, err)
 	}
 	return nil
 }
 
 func (s *Store) ensureEventColumn(name string, definition string) error {
-	rows, err := s.DB.Query(`PRAGMA table_info(events)`)
+	rows, err := s.queryContext(context.Background(), `PRAGMA table_info(events)`)
 	if err != nil {
 		return fmt.Errorf("inspect events schema: %w", err)
 	}
@@ -431,13 +515,17 @@ func (s *Store) ensureEventColumn(name string, definition string) error {
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate events table info: %w", err)
 	}
-	if _, err := s.DB.Exec(`ALTER TABLE events ADD COLUMN ` + name + ` ` + definition); err != nil {
+	if _, err := s.execContext(context.Background(), `ALTER TABLE events ADD COLUMN `+name+` `+definition); err != nil {
 		return fmt.Errorf("add events.%s: %w", name, err)
 	}
 	return nil
 }
 
 func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
+	return s.inTransaction(ctx, func(working *Store) error { return working.applyEvent(ctx, event) })
+}
+
+func (s *Store) applyEvent(ctx context.Context, event contracts.Event) error {
 	event = contracts.NormalizeEvent(event)
 	if err := event.Validate(); err != nil {
 		return err
@@ -485,14 +573,99 @@ func (s *Store) ApplyEvent(ctx context.Context, event contracts.Event) error {
 			return err
 		}
 	}
+	// the event line and the ticket file are already on disk by the time we
+	// get here, so the counts we stamp are the ones the next open will see
+	if err := s.recordSourceFingerprint(ctx, false); err != nil {
+		return fmt.Errorf("record source fingerprint: %w", err)
+	}
 	return nil
 }
 
-func (s *Store) Rebuild(ctx context.Context, project string) error {
-	if project == "" && s.Path != "" {
-		return s.rebuildBySwap(ctx)
+// SetRoot wires the workspace root in after Open so fingerprints can be
+// computed. Callers that build the store by hand can set Root directly.
+func (s *Store) SetRoot(root string) {
+	s.Root = root
+}
+
+// StoredSourceFingerprint is what the sources looked like the last time this
+// projection was written to. ok is false on an index that predates the
+// watermark or was never written.
+func (s *Store) StoredSourceFingerprint(ctx context.Context) (string, bool, error) {
+	var value string
+	err := s.queryRowContext(ctx, `SELECT value FROM projection_meta WHERE key = ?`, sourceFingerprintKey).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
 	}
-	return s.rebuildInPlace(ctx, project)
+	if err != nil {
+		return "", false, fmt.Errorf("read source fingerprint: %w", err)
+	}
+	return value, true, nil
+}
+
+func (s *Store) recordSourceFingerprint(ctx context.Context, completeRebuild bool) error {
+	if s.Root == "" {
+		return nil
+	}
+	current, err := storage.ComputeSourceFingerprint(s.Root)
+	if err != nil {
+		return err
+	}
+	if !completeRebuild {
+		stored, ok, err := s.StoredSourceFingerprint(ctx)
+		if err != nil {
+			return err
+		}
+		var previous storage.SourceFingerprint
+		if ok {
+			if n, _ := fmt.Sscanf(stored, "events=%d tickets=%d", &previous.EventLines, &previous.TicketFiles); n != 2 {
+				return nil
+			}
+		}
+		// One successful apply can account for one appended source event.
+		// Keep an older watermark if more than one append happened since it;
+		// only a complete replay can prove that gap has been recovered. Use
+		// source counts because imported duplicate events share projection IDs.
+		if current.EventLines != previous.EventLines && current.EventLines != previous.EventLines+1 {
+			return nil
+		}
+	}
+	if _, err := s.execContext(ctx, `
+		INSERT INTO projection_meta (key, value) VALUES (?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value
+	`, sourceFingerprintKey, current.String()); err != nil {
+		return fmt.Errorf("write source fingerprint: %w", err)
+	}
+	return nil
+}
+
+// IsStale compares the stamped fingerprint with the sources on disk. No stamp
+// at all counts as the zero fingerprint: a workspace fresh from `tracker init`
+// (nothing written, nothing stamped) reads as fresh, while an index from
+// before the watermark existed rebuilds exactly once and is then stamped.
+func (s *Store) IsStale(ctx context.Context) (stale bool, stored string, current string, err error) {
+	if s.Root == "" {
+		return false, "", "", nil
+	}
+	fp, err := storage.ComputeSourceFingerprint(s.Root)
+	if err != nil {
+		return false, "", "", err
+	}
+	stored, ok, err := s.StoredSourceFingerprint(ctx)
+	if err != nil {
+		return false, "", "", err
+	}
+	if !ok {
+		stored = storage.SourceFingerprint{}.String()
+	}
+	current = fp.String()
+	return stored != current, stored, current, nil
+}
+
+// Rebuild commits the complete projection atomically in the existing database.
+// Other open processes continue reading their snapshot until commit, then see
+// the rebuilt state without reopening or writing an unlinked database file.
+func (s *Store) Rebuild(ctx context.Context, project string) error {
+	return s.inTransaction(ctx, func(working *Store) error { return working.rebuildInPlace(ctx, project) })
 }
 
 func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
@@ -500,38 +673,38 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 		return fmt.Errorf("rebuild requires ticket and event sources")
 	}
 	if project == "" {
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM tickets`); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM tickets`); err != nil {
 			return fmt.Errorf("clear tickets: %w", err)
 		}
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM agents`); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM agents`); err != nil {
 			return fmt.Errorf("clear agents: %w", err)
 		}
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM runs`); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM runs`); err != nil {
 			return fmt.Errorf("clear runs: %w", err)
 		}
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM changes`); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM changes`); err != nil {
 			return fmt.Errorf("clear changes: %w", err)
 		}
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM checks`); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM checks`); err != nil {
 			return fmt.Errorf("clear checks: %w", err)
 		}
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM gates`); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM gates`); err != nil {
 			return fmt.Errorf("clear gates: %w", err)
 		}
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM evidence`); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM evidence`); err != nil {
 			return fmt.Errorf("clear evidence: %w", err)
 		}
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM handoffs`); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM handoffs`); err != nil {
 			return fmt.Errorf("clear handoffs: %w", err)
 		}
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM events`); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM events`); err != nil {
 			return fmt.Errorf("clear events: %w", err)
 		}
 	} else {
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM tickets WHERE project = ?`, project); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM tickets WHERE project = ?`, project); err != nil {
 			return fmt.Errorf("clear project tickets: %w", err)
 		}
-		if _, err := s.DB.ExecContext(ctx, `DELETE FROM events WHERE project = ?`, project); err != nil {
+		if _, err := s.execContext(ctx, `DELETE FROM events WHERE project = ?`, project); err != nil {
 			return fmt.Errorf("clear project events: %w", err)
 		}
 	}
@@ -596,48 +769,14 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 		}
 	}
 
-	return nil
-}
-
-func (s *Store) rebuildBySwap(ctx context.Context) error {
-	if s.TicketSource == nil || s.EventSource == nil {
-		return fmt.Errorf("rebuild requires ticket and event sources")
-	}
-	tempPath := s.Path + ".rebuild"
-	for _, candidate := range []string{tempPath, tempPath + "-wal", tempPath + "-shm"} {
-		_ = os.Remove(candidate)
-	}
-	tempStore, err := Open(tempPath, s.TicketSource, s.EventSource)
-	if err != nil {
-		return err
-	}
-	if err := tempStore.rebuildInPlace(ctx, ""); err != nil {
-		_ = tempStore.Close()
-		return err
-	}
-	if err := tempStore.Close(); err != nil {
-		return fmt.Errorf("close rebuilt temp projection: %w", err)
-	}
-	if err := s.Close(); err != nil {
-		return fmt.Errorf("close existing projection: %w", err)
-	}
-	for _, candidate := range []string{s.Path, s.Path + "-wal", s.Path + "-shm"} {
-		_ = os.Remove(candidate)
-	}
-	for _, suffix := range []string{"", "-wal", "-shm"} {
-		src := tempPath + suffix
-		if _, err := os.Stat(src); err == nil {
-			if err := os.Rename(src, s.Path+suffix); err != nil {
-				return fmt.Errorf("swap projection file %s: %w", filepath.Base(src), err)
-			}
+	// project-scoped rebuilds don't stamp: the fingerprint is workspace-wide
+	// and a partial rebuild says nothing about the other projects
+	if project == "" {
+		if err := s.recordSourceFingerprint(ctx, true); err != nil {
+			return fmt.Errorf("record source fingerprint: %w", err)
 		}
 	}
-	db, err := openDB(s.Path)
-	if err != nil {
-		return err
-	}
-	s.DB = db
-	return s.migrate()
+	return nil
 }
 
 func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions) (contracts.BoardView, error) {
@@ -762,7 +901,7 @@ func projectedBoardStatus(ticket contracts.TicketSnapshot, statuses map[string]c
 }
 
 func (s *Store) QueryTicket(ctx context.Context, ticketID string) (contracts.TicketSnapshot, error) {
-	row := s.DB.QueryRowContext(ctx, `SELECT `+ticketSelectColumns+` FROM tickets WHERE id = ?`, ticketID)
+	row := s.queryRowContext(ctx, `SELECT `+ticketSelectColumns+` FROM tickets WHERE id = ?`, ticketID)
 	ticket, err := scanTicket(row)
 	if err != nil {
 		return contracts.TicketSnapshot{}, fmt.Errorf("query ticket %s: %w", ticketID, err)
@@ -923,7 +1062,7 @@ func (s *Store) upsertTicket(ctx context.Context, ticket contracts.TicketSnapsho
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.ExecContext(ctx, `
+	_, err = s.execContext(ctx, `
 		INSERT INTO tickets (
 			id, project, title, type, status, priority, parent, labels_json, assignee, reviewer,
 			blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
@@ -1003,7 +1142,7 @@ func (s *Store) insertTicketIfMissing(ctx context.Context, ticket contracts.Tick
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.ExecContext(ctx, `
+	_, err = s.execContext(ctx, `
 		INSERT INTO tickets (
 			id, project, title, type, status, priority, parent, labels_json, assignee, reviewer,
 			blocked_by_json, blocks_json, created_at, updated_at, schema_version, archived,
@@ -1050,7 +1189,7 @@ func (s *Store) insertEventOnly(ctx context.Context, event contracts.Event) erro
 	} else {
 		return fmt.Errorf("marshal event metadata: %w", err)
 	}
-	_, err := s.DB.ExecContext(ctx, `
+	_, err := s.execContext(ctx, `
 		INSERT INTO events (project, event_id, ticket_id, ts, actor, reason, type, payload_json, metadata_json, schema_version)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(project, event_id) DO NOTHING
@@ -1074,7 +1213,7 @@ func (s *Store) upsertAgent(ctx context.Context, profile contracts.AgentProfile)
 	if err != nil {
 		return fmt.Errorf("marshal agent preferred roles: %w", err)
 	}
-	_, err = s.DB.ExecContext(ctx, `
+	_, err = s.execContext(ctx, `
 		INSERT INTO agents (
 			agent_id, display_name, provider, enabled, capabilities_json, allowed_ticket_types_json,
 			default_runbook, max_active_runs, preferred_roles_json, routing_weight,
@@ -1107,7 +1246,7 @@ func (s *Store) upsertRun(ctx context.Context, run contracts.RunSnapshot) error 
 	if err := run.Validate(); err != nil {
 		return err
 	}
-	_, err := s.DB.ExecContext(ctx, `
+	_, err := s.execContext(ctx, `
 		INSERT INTO runs (
 			run_id, ticket_id, project, agent_id, provider, status, kind, blueprint_stage,
 			worktree_path, branch_name, created_at, started_at, completed_at, last_heartbeat_at,
@@ -1174,7 +1313,7 @@ func (s *Store) upsertChange(ctx context.Context, change contracts.ChangeRef) er
 	if err != nil {
 		return fmt.Errorf("marshal change reviewers: %w", err)
 	}
-	_, err = s.DB.ExecContext(ctx, `
+	_, err = s.execContext(ctx, `
 		INSERT INTO changes (
 			change_id, provider, ticket_id, run_id, branch_name, base_branch, head_ref, url,
 			external_id, status, checks_status, review_requested_from_json, review_summary,
@@ -1224,7 +1363,7 @@ func (s *Store) upsertCheck(ctx context.Context, check contracts.CheckResult) er
 	if err := check.Validate(); err != nil {
 		return err
 	}
-	_, err := s.DB.ExecContext(ctx, `
+	_, err := s.execContext(ctx, `
 		INSERT INTO checks (
 			check_id, source, provider, scope, scope_id, name, status, conclusion,
 			summary, url, started_at, completed_at, external_id, updated_at, schema_version
@@ -1279,7 +1418,7 @@ func (s *Store) upsertGate(ctx context.Context, gate contracts.GateSnapshot) err
 	if err != nil {
 		return fmt.Errorf("marshal gate related runs: %w", err)
 	}
-	_, err = s.DB.ExecContext(ctx, `
+	_, err = s.execContext(ctx, `
 		INSERT INTO gates (
 			gate_id, ticket_id, run_id, kind, state, required_role, required_agent_id,
 			created_by, decided_by, decision_reason, evidence_requirements_json,
@@ -1329,7 +1468,7 @@ func (s *Store) upsertEvidence(ctx context.Context, evidence contracts.EvidenceI
 	if err := evidence.Validate(); err != nil {
 		return err
 	}
-	_, err := s.DB.ExecContext(ctx, `
+	_, err := s.execContext(ctx, `
 		INSERT INTO evidence (
 			evidence_id, run_id, ticket_id, type, title, body, artifact_path,
 			supersedes_evidence_id, actor, created_at, schema_version
@@ -1372,7 +1511,7 @@ func (s *Store) upsertHandoff(ctx context.Context, handoff contracts.HandoffPack
 	if err != nil {
 		return fmt.Errorf("marshal handoff payload: %w", err)
 	}
-	_, err = s.DB.ExecContext(ctx, `
+	_, err = s.execContext(ctx, `
 		INSERT INTO handoffs (
 			handoff_id, source_run_id, ticket_id, actor, payload_json, generated_at, schema_version
 		) VALUES (?, ?, ?, ?, ?, ?, ?)

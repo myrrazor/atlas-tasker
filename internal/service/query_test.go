@@ -591,3 +591,63 @@ Map the UX.
 		t.Fatalf("unexpected next entries: %#v", next.Entries)
 	}
 }
+
+func TestQueueListsUnblockedBacklogTicketsAndNextOrdersThemAfterReady(t *testing.T) {
+	ctx, queries, tickets, _, _, now, cleanup := setupAgentWorkTest(t)
+	defer cleanup()
+
+	actor := contracts.Actor("agent:builder-1")
+	doneBlocker := testAgentWorkTicket("APP-1", "Done blocker", contracts.StatusDone, now)
+	unblocked := testAgentWorkTicket("APP-2", "Unblocked", contracts.StatusBacklog, now)
+	unblocked.Assignee = actor
+	unblocked.BlockedBy = []string{doneBlocker.ID}
+	ready := testAgentWorkTicket("APP-3", "Ready", contracts.StatusReady, now)
+	ready.Assignee = actor
+	plainBacklog := testAgentWorkTicket("APP-4", "Never blocked", contracts.StatusBacklog, now)
+	plainBacklog.Assignee = actor
+	openBlocker := testAgentWorkTicket("APP-5", "Open blocker", contracts.StatusInProgress, now)
+	stillBlocked := testAgentWorkTicket("APP-6", "Still blocked", contracts.StatusBacklog, now)
+	stillBlocked.Assignee = actor
+	stillBlocked.BlockedBy = []string{openBlocker.ID}
+	for _, ticket := range []contracts.TicketSnapshot{doneBlocker, unblocked, ready, plainBacklog, openBlocker, stillBlocked} {
+		if err := tickets.CreateTicket(ctx, ticket); err != nil {
+			t.Fatalf("create ticket %s: %v", ticket.ID, err)
+		}
+	}
+
+	queue, err := queries.Queue(ctx, actor)
+	if err != nil {
+		t.Fatalf("queue: %v", err)
+	}
+	entries := queue.Categories[QueueUnblockedForMe]
+	if len(entries) != 1 || entries[0].Ticket.ID != unblocked.ID {
+		t.Fatalf("expected only %s under unblocked_for_me, got %#v", unblocked.ID, entries)
+	}
+	if entries[0].Reason != "blockers resolved; promote to ready" {
+		t.Fatalf("unexpected unblocked_for_me reason %q", entries[0].Reason)
+	}
+	for category, items := range queue.Categories {
+		for _, entry := range items {
+			if entry.Ticket.ID == plainBacklog.ID {
+				t.Fatalf("backlog ticket without blockers must not be queued, found under %s", category)
+			}
+		}
+	}
+	if blocked := queue.Categories[QueueBlockedForMe]; len(blocked) != 1 || blocked[0].Ticket.ID != stillBlocked.ID {
+		t.Fatalf("ticket with an open blocker should stay blocked_for_me, got %#v", blocked)
+	}
+
+	next, err := queries.Next(ctx, actor)
+	if err != nil {
+		t.Fatalf("next: %v", err)
+	}
+	if len(next.Entries) < 2 {
+		t.Fatalf("expected ready and unblocked entries, got %#v", next.Entries)
+	}
+	if next.Entries[0].Category != QueueReadyForMe || next.Entries[0].Entry.Ticket.ID != ready.ID {
+		t.Fatalf("ready work should come first, got %#v", next.Entries[0])
+	}
+	if next.Entries[1].Category != QueueUnblockedForMe || next.Entries[1].Entry.Ticket.ID != unblocked.ID {
+		t.Fatalf("unblocked work should follow ready work, got %#v", next.Entries[1])
+	}
+}

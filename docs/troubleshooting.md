@@ -84,12 +84,19 @@ tracker init
 
 Run `tracker init` only in the repo or directory that should own the task workspace.
 
-## Projection corruption
+## Projection missing, stale, or corrupt
 
-SQLite projection state is derived. Rebuild it before editing files by hand:
+SQLite projection state is derived. A missing or stale `index.sqlite` is not something you need to fix: the next command that opens the workspace notices the fingerprint mismatch, rebuilds the index from markdown and events under the write lock, and prints one line on stderr saying so:
+
+```
+[tracker] index.sqlite was missing or stale; rebuilt it from markdown and events (events=13 tickets=5)
+```
+
+Read-only `doctor` reports the same drift as `repair_needed` (exit 7) with both fingerprints instead of blessing the index, so a script that runs `doctor` before trusting the board gets an honest answer.
+
+A byte-corrupt index is different: every command except `reindex` stops with exit 7 and `tracker doctor --repair` guidance. Either of these recovers it:
 
 ```bash
-tracker doctor --json
 tracker reindex
 tracker doctor --repair --json
 ```

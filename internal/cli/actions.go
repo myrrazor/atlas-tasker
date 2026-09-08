@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,6 +25,11 @@ import (
 
 const jsonFormatVersion = "v1"
 
+// noticeOut is where one-line operational notices go (the index rebuild
+// message, for now). Execute points it at the caller's stderr so tests can
+// read it; outside Execute it is the process stderr.
+var noticeOut io.Writer = os.Stderr
+
 type workspace struct {
 	root       string
 	project    mdstore.ProjectStore
@@ -35,7 +41,17 @@ type workspace struct {
 	queries    *service.QueryService
 }
 
+type openOptions struct {
+	// skipIndexFreshness: the caller is about to rebuild anyway (reindex), so
+	// don't do it twice
+	skipIndexFreshness bool
+}
+
 func openWorkspace() (*workspace, error) {
+	return openWorkspaceWith(openOptions{})
+}
+
+func openWorkspaceWith(opts openOptions) (*workspace, error) {
 	root, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -49,16 +65,29 @@ func openWorkspace() (*workspace, error) {
 	}
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
 	eventLog := &eventstore.Log{RootDir: root}
-	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
+	indexPath := filepath.Join(storage.TrackerDir(root), "index.sqlite")
+	projection, err := sqlitestore.Open(indexPath, ticketStore, eventLog)
+
 	if err != nil {
 		if sqlitestore.IsCorrupt(err) {
 			return nil, apperr.Wrap(apperr.CodeRepairNeeded, err, "ticket index is unreadable; run 'tracker doctor --repair' to rebuild it")
 		}
 		return nil, err
 	}
+	// every write stamps the source fingerprint through this, so it has to be
+	// set even when the freshness check below is skipped
+	projection.Root = root
+	locks := service.FileLockManager{Root: root}
+	if !opts.skipIndexFreshness {
+		if _, err := service.EnsureFreshProjection(context.Background(), root, locks, projection, noticeOut); err != nil {
+			_ = projection.Close()
+			return nil, err
+		}
+	}
 	projectStore := mdstore.ProjectStore{RootDir: root}
 	cfg, err := config.Load(root)
 	if err != nil {
+		_ = projection.Close()
 		return nil, err
 	}
 	w := &workspace{
@@ -67,7 +96,7 @@ func openWorkspace() (*workspace, error) {
 		ticket:     ticketStore,
 		events:     eventLog,
 		projection: projection,
-		locks:      service.FileLockManager{Root: root},
+		locks:      locks,
 	}
 	w.queries = service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
 	notifier, err := service.BuildNotifier(root, cfg, os.Stderr, service.SubscriptionResolver{
@@ -85,11 +114,8 @@ func openWorkspace() (*workspace, error) {
 	return w, nil
 }
 
-// requireInitializedWorkspace is the wrong-CWD guard. Without it, the sqlite
-// open above scaffolds a stray .tracker in whatever directory the user happens
-// to be in, and every read reports an empty-but-"healthy" board. init and
-// integrations install run ensureInitArtifacts before opening, so they are
-// unaffected.
+// init and integrations install bootstrap explicitly; every other workspace
+// opener shares the same side-effect-free root validation with MCP and the TUI.
 func requireInitializedWorkspace(root string) error {
 	_, err := service.InitializedWorkspaceRoot(root)
 	return err

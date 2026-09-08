@@ -23,11 +23,13 @@ This file is for agents **using** the tracker. If you are contributing to Atlas 
   exist. `backlog -> in_progress` is a forbidden transition and always will be; go through
   `ready`. Retrying the same move gets the same 4.
 - **Do not edit `.tracker/` or the ticket markdown by hand.** Writes go through the CLI or MCP so
-  the event log, the index, and the lease state stay in agreement. If you already hand-edited
+  the event log, the index, and the lease state stay in agreement. The SQLite index rebuilds
+  itself when it is missing or stale (one `[tracker] ...rebuilt it...` line on stderr), and
+  `tracker doctor` reports drift as exit 7 instead of `ok`. If you already hand-edited
   something, `tracker doctor --repair` rebuilds the index from markdown and events.
 - **Run tracker from the workspace root.** A directory that never went through `tracker init`
   is exit 2 — nothing gets scaffolded — and from a subdirectory of a real workspace the error
-  names the root to run from. `init` is the only command that creates a workspace.
+  names the root to run from. `init` and explicit `integrations install` can create a workspace.
 - **Claim before you edit code.** A lease is how two agents avoid the same ticket. Claiming a
   ticket someone else holds is exit 4, not a queue.
 - **The browser board is for humans.** `tracker web serve` mints a random session token per
@@ -89,6 +91,19 @@ Nothing available? `tracker agent pending builder-1 --json` says why, with stabl
 `missing_capability`, `active_run_exists`, `open_gate`. Only a
 dependency reaching `done` clears `dependency_blocked` — `canceled` does not.
 
+When the last blocker of a ticket assigned to an agent reaches `done`, Atlas moves that ticket
+from `backlog` to `ready` itself (actor `agent:atlas`, reason
+`unblocked: APP-1 completed by human:owner`) and wakes the agent, so `agent available`,
+`next`, and `queue` show it straight away. Nothing else is promoted for you: an unassigned
+dependent shows up in `agent available` with `"action": "promote"` (it is claimable) and in
+`queue`/`next` under `unblocked_for_me`, with `ticket move <ID> ready` as the first suggested
+command; a dependent assigned to a human surfaces only in that human's `queue`/`next` under
+`unblocked_for_me`. Your own ticket can show as `promote` too, when the automatic move failed
+(the wake-up's `metadata.promoted` is `"false"`) or the blocker was already `done` when the
+ticket was linked or assigned. `not_ready_status` usually means backlog that never had
+blockers, or someone else's `in_progress` work; a backlog ticket whose blockers are all `done`
+is never pending.
+
 ### Reading state
 
 ```bash
@@ -128,8 +143,8 @@ than `move`, because those commands also run the completion policy and any gates
 | 3 | not_found | no such ticket, project, agent, or view |
 | 4 | conflict | forbidden transition, ticket already claimed, already exists |
 | 5 | permission_denied | policy, separation of duties, or the wrong reviewer |
-| 6 | busy | another writer holds the workspace lock |
-| 7 | repair_needed | index is unreadable; run `tracker doctor --repair` |
+| 6 | busy | another writer holds the workspace lock — a read can hit this too while another process rebuilds a stale index; retry, or run `tracker reindex` |
+| 7 | repair_needed | index is unreadable, or `doctor` found it stale; run `tracker doctor --repair` or `tracker reindex` |
 
 Under `--json` the error is machine-readable too — on **stderr**, with stdout left empty:
 

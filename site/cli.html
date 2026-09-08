@@ -201,7 +201,7 @@
             <tr><td><code>4</code></td><td>conflict</td><td>Forbidden transition, ticket already claimed, already exists.</td></tr>
             <tr><td><code>5</code></td><td>permission_denied</td><td>Policy, separation of duties, or the wrong reviewer.</td></tr>
             <tr><td><code>6</code></td><td>busy</td><td>Another writer holds the workspace lock.</td></tr>
-            <tr><td><code>7</code></td><td>repair_needed</td><td>Index is unreadable. Run <code>tracker doctor --repair</code>.</td></tr>
+            <tr><td><code>7</code></td><td>repair_needed</td><td>Index is unreadable, or <code>doctor</code> found it stale. Run <code>tracker doctor --repair</code> or <code>tracker reindex</code>.</td></tr>
           </tbody>
         </table>
       </div>

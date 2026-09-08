@@ -25,6 +25,11 @@ func executeWithSurface(args []string, stdout io.Writer, stderr io.Writer, surfa
 	root.SetErr(stderr)
 	root.SetArgs(args)
 	root.SetContext(service.WithEventMetadata(context.Background(), service.EventMetaContext{Surface: surface}))
+	// notices follow the stderr we were handed, not the process one, for the
+	// duration of this call
+	previousNotice := noticeOut
+	noticeOut = stderr
+	defer func() { noticeOut = previousNotice }()
 	if wantsPlain(args) {
 		previous, hadPrevious := os.LookupEnv("NO_COLOR")
 		_ = os.Setenv("NO_COLOR", "1")

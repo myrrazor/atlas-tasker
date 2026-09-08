@@ -211,7 +211,7 @@ tracker integrations install generic    <span class="c"># .tracker/integrations/
         </li>
         <li>
           <span class="fact-term">Reason codes</span>
-          <p>When nothing is available, <code>tracker agent pending</code> says why with stable codes: <code>dependency_blocked</code>, <code>waiting_for_review</code>, <code>waiting_for_owner</code>, <code>not_ready_status</code>, <code>claimed_by_other</code>, <code>policy_blocked</code>, <code>agent_at_capacity</code>, <code>missing_capability</code>. No guessing, no polling loops that spiral.</p>
+          <p>When nothing is available, <code>tracker agent pending</code> says why with stable codes: <code>dependency_blocked</code>, <code>waiting_for_review</code>, <code>waiting_for_owner</code>, <code>not_ready_status</code>, <code>claimed_by_other</code>, <code>policy_blocked</code>, <code>agent_at_capacity</code>, <code>missing_capability</code>. No guessing, no polling loops that spiral. A backlog ticket whose blockers are all done is never <code>not_ready_status</code>: when the last blocker of an agent-assigned ticket completes, Atlas promotes it to ready itself, and an unassigned one shows up in <code>available</code> as a claimable <code>promote</code> action (a human-assigned one surfaces in that human's <code>queue</code> instead).</p>
         </li>
         <li>
           <span class="fact-term">Wrong moves fail fast</span>
@@ -234,6 +234,16 @@ tracker integrations install generic    <span class="c"># .tracker/integrations/
           "tracker ticket move APP-12 in_progress --actor agent:builder-1 --reason \"start work\""
         ],
         "ticket": { "id": "APP-12", "status": "ready" }
+      },
+      {
+        "action": "promote",
+        "reason": "blockers resolved; promote to ready",
+        "suggested_commands": [
+          "tracker ticket move APP-14 ready --actor agent:builder-1 --reason \"blockers resolved\"",
+          "tracker ticket claim APP-14 --actor agent:builder-1 --reason \"start work\"",
+          "tracker ticket move APP-14 in_progress --actor agent:builder-1 --reason \"start work\""
+        ],
+        "ticket": { "id": "APP-14", "status": "backlog", "blocked_by": ["APP-9"] }
       }
     ]
   }

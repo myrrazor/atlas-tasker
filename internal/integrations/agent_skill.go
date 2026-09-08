@@ -66,6 +66,7 @@ func genericBlock(guidePath string) string {
 - Start with `+"`tracker agent available <agent-id> --json`"+` and `+"`tracker agent pending <agent-id> --json`"+`.
 - Agents may self-dispatch eligible assigned work with `+"`tracker run dispatch <ticket-id> --agent agent:<agent-id> --actor agent:<agent-id>`"+`.
 - Claim before editing and request review when done.
+- An available entry with action `+"`promote`"+` is a backlog ticket whose blockers are all `+"`done`"+`; run its `+"`ticket move <ID> ready`"+` before claiming.
 - Treat `+"`dependency_blocked`"+` as a stop sign until the blocker reaches `+"`done`"+`.
 - Use explicit `+"`--actor`"+` and `+"`--reason`"+` flags for every write.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
@@ -134,7 +135,7 @@ If the workspace has no agent profiles yet (`+"`tracker agent list --json`"+` is
 2. Run `+"`tracker agent available <agent-id> --json`"+`.
 3. If nothing is available, run `+"`tracker agent pending <agent-id> --json`"+` and report the blocker reason codes.
 4. If you were launched by a wake-up, acknowledge it: `+"`tracker agent wakeups list <agent-id> --json`"+`, then `+"`tracker agent wakeups ack <WAKEUP-ID> --actor agent:<agent-id> --reason \"picked up\"`"+`.
-5. Before editing, claim the ticket and move it to `+"`in_progress`"+` if it is still ready.
+5. Before editing, claim the ticket and move it to `+"`in_progress`"+` if it is still ready. An entry with action `+"`promote`"+` is still in `+"`backlog`"+` with every blocker `+"`done`"+`; its first suggested command moves it to `+"`ready`"+`.
 6. When a run is needed, dispatch yourself with `+"`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`"+`.
 
 ## Work
@@ -155,7 +156,7 @@ func atlasWorkerReference() string {
 
 ## Available Work
 
-`+"`tracker agent available <agent-id> --json`"+` returns tickets the agent can act on now. Entries include an action such as `+"`start`"+`, `+"`continue`"+`, or `+"`review`"+` plus suggested commands.
+`+"`tracker agent available <agent-id> --json`"+` returns tickets the agent can act on now. Entries include an action such as `+"`start`"+`, `+"`continue`"+`, `+"`review`"+`, or `+"`promote`"+` plus suggested commands. `+"`promote`"+` means every blocker is `+"`done`"+` but the ticket is still in `+"`backlog`"+`; the first suggested command is the `+"`ticket move <ID> ready`"+`, and `+"`backlog -> in_progress`"+` is not a legal edge, so run it first.
 
 ## Pending Work
 
@@ -169,6 +170,8 @@ func atlasWorkerReference() string {
 - `+"`policy_blocked`"+`
 - `+"`agent_at_capacity`"+`
 - `+"`missing_capability`"+`
+
+`+"`not_ready_status`"+` means the ticket is not in a state you can act on: usually backlog that never had blockers, or someone else's `+"`in_progress`"+` work. A backlog ticket whose blockers all landed is not pending; it is listed under available as `+"`promote`"+`.
 
 Only `+"`done`"+` unblocks dependencies. `+"`canceled`"+` does not. `+"`--override-deps`"+` is for `+"`human:owner`"+` only and must include a reason.
 
@@ -195,11 +198,11 @@ When no tickets are available, inspect pending items and wait for the next Atlas
 
 ## Wake-ups
 
-When a ticket you are assigned to becomes unblocked (its last `+"`blocked_by`"+` dependency reaches `+"`done`"+`), Atlas emits an `+"`agent.work_available`"+` event and records a wake-up. If the owner enabled auto mode (`+"`tracker agent auto set <agent-id> --mode command ...`"+`), your session may have been launched by that wake-up with the ticket id substituted into the command.
+When a ticket you are assigned to becomes unblocked (its last `+"`blocked_by`"+` dependency reaches `+"`done`"+`), Atlas moves it from `+"`backlog`"+` to `+"`ready`"+` for you (audited as `+"`agent:atlas`"+`), emits an `+"`agent.work_available`"+` event, and records a wake-up. If the owner enabled auto mode (`+"`tracker agent auto set <agent-id> --mode command ...`"+`), your session may have been launched by that wake-up with the ticket id substituted into the command.
 
 1. `+"`tracker agent wakeups list <agent-id> --json`"+` shows pending wake-ups.
 2. Acknowledge before working: `+"`tracker agent wakeups ack <WAKEUP-ID> --actor agent:<agent-id> --reason \"picked up\"`"+`.
-3. Then run the normal worker loop against the wake-up's ticket.
+3. Then run the normal worker loop against the wake-up's ticket. If the wake-up's `+"`metadata.promoted`"+` is `+"`\"false\"`"+`, the automatic move did not go through: when `+"`tracker agent available`"+` still lists the ticket as `+"`promote`"+`, run that entry's first suggested command; when the wake-up itself is `+"`failed`"+` and its error names `+"`tracker doctor --repair`"+`, stop and let a human run that first.
 
 ## Team Presets
 

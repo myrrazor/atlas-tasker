@@ -66,11 +66,13 @@ Useful keys:
 
 ## Recovery
 
-If the projection is stale or corrupted:
+A missing or stale projection rebuilds itself the next time any command opens the workspace (one `[tracker] index.sqlite was missing or stale; rebuilt it ...` line on stderr, then silence). Read-only `tracker doctor` reports the drift as exit 7 rather than `ok`.
+
+If the projection file is corrupt, every other command stops with exit 7; either of these recovers it:
 
 ```bash
-tracker doctor --repair
 tracker reindex
+tracker doctor --repair
 ```
 
 If a ticket looks wrong, inspect it directly:

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -319,15 +320,67 @@ func (s *ActionService) emitAgentWakeups(ctx context.Context, event contracts.Ev
 		if err != nil || !agentWakeupEligible(view, candidate) {
 			continue
 		}
-		if err := s.createAgentWakeup(ctx, candidate, completed.ID, event); err != nil {
-			s.recordWakeupFailure(candidate, completed.ID, err)
+		notice := agentWakeupNotice{Ticket: candidate, BlockerID: completed.ID, Cause: event, Reason: wakeupReasonWorkAvailable}
+		if candidate.Status == contracts.StatusBacklog {
+			// a persisted `blocked` is left alone -- someone may have set it on
+			// purpose for a reason the tracker can't see
+			notice = s.promoteUnblockedDependent(ctx, notice)
+		}
+		if err := s.createAgentWakeup(ctx, notice); err != nil {
+			s.recordWakeupFailure(notice, err)
 		}
 	}
 }
 
-func (s *ActionService) createAgentWakeup(ctx context.Context, ticket contracts.TicketSnapshot, blockerID string, cause contracts.Event) error {
+const (
+	wakeupReasonWorkAvailable = "dependency completed; assigned work is available"
+	wakeupReasonPromoted      = "dependency completed; ticket promoted to ready"
+)
+
+// what emitAgentWakeups worked out about a dependent before poking its agent
+type agentWakeupNotice struct {
+	Ticket    contracts.TicketSnapshot
+	BlockerID string
+	Cause     contracts.Event
+	Reason    string
+	Metadata  map[string]string
+}
+
+// promoteUnblockedDependent moves a backlog dependent to ready so the woken
+// agent's own queries actually show it. Best-effort on purpose: the blocker
+// completion has already committed, so a failed move degrades to the plain
+// wakeup and records why instead of surfacing an error nobody can act on. If
+// the move died after its canonical write, its journal entry stays behind for
+// doctor and the wakeup commit that follows refuses to reuse the event id, so
+// the wakeup lands as a failed record pointing at doctor --repair.
+func (s *ActionService) promoteUnblockedDependent(ctx context.Context, notice agentWakeupNotice) agentWakeupNotice {
+	cause := notice.Cause
+	rootActor := cause.Metadata.RootActor
+	if rootActor == "" {
+		rootActor = cause.Actor
+	}
+	promoteCtx := WithEventMetadata(ctx, EventMetaContext{CorrelationID: cause.Metadata.CorrelationID, CausationEventID: cause.EventID, RootActor: rootActor})
+	// agent:atlas rather than whoever completed the blocker: they never touched
+	// the dependent. The reason keeps the who-did-what in the audit trail.
+	// ctx still carries the write lock marker, so this nests without deadlock;
+	// the resulting ticket.moved re-enters emitAgentWakeups and bails on the
+	// status != done check.
+	reason := fmt.Sprintf("unblocked: %s completed by %s", notice.BlockerID, cause.Actor)
+	promoted, err := s.MoveTicket(promoteCtx, notice.Ticket.ID, contracts.StatusReady, contracts.ActorAtlasSystem, reason)
+	if err != nil {
+		notice.Metadata = map[string]string{"promoted": "false", "promotion_error": errorWithCauses(err)}
+		return notice
+	}
+	notice.Ticket = promoted
+	notice.Reason = wakeupReasonPromoted
+	notice.Metadata = map[string]string{"promoted": "true"}
+	return notice
+}
+
+func (s *ActionService) createAgentWakeup(ctx context.Context, notice agentWakeupNotice) error {
+	ticket := notice.Ticket
 	store := AgentWakeupStore{Root: s.Root}
-	wakeupID := agentWakeupID(ticket.ID, blockerID)
+	wakeupID := agentWakeupID(ticket.ID, notice.BlockerID)
 	if store.Exists(wakeupID) {
 		return nil
 	}
@@ -336,20 +389,22 @@ func (s *ActionService) createAgentWakeup(ctx context.Context, ticket contracts.
 	if err != nil {
 		auto = AgentAutoConfig{AgentID: agentID, Mode: AgentAutoModeNotify}
 	}
+	metadata := map[string]string{"causation_event_id": fmt.Sprintf("%d", notice.Cause.EventID)}
+	for key, value := range notice.Metadata {
+		metadata[key] = value
+	}
 	wakeup := AgentWakeup{
 		WakeupID:        wakeupID,
 		TicketID:        ticket.ID,
-		BlockerTicketID: blockerID,
+		BlockerTicketID: notice.BlockerID,
 		Actor:           ticket.Assignee,
 		AgentID:         agentID,
 		State:           AgentWakeupPending,
 		Mode:            auto.Mode,
-		Reason:          "dependency completed; assigned work is available",
+		Reason:          notice.Reason,
 		Source:          "dependency",
 		CreatedAt:       s.now(),
-		Metadata: map[string]string{
-			"causation_event_id": fmt.Sprintf("%d", cause.EventID),
-		},
+		Metadata:        metadata,
 	}
 	event, err := s.newEvent(ctx, ticket.Project, wakeup.CreatedAt, contracts.ActorAtlasSystem, wakeup.Reason, contracts.EventAgentWorkAvailable, ticket.ID, map[string]any{"wakeup": wakeup})
 	if err != nil {
@@ -378,10 +433,12 @@ func ticketCompletionEvent(event contracts.Event) bool {
 
 // agentWakeupEligible decides whether the assignee should be poked about this
 // ticket now that its final blocker is done. Anything already available
-// qualifies outright. backlog/blocked tickets qualify too when stale status is
-// all that's left in the way -- promoting the ticket is the woken agent's own
-// first move. Real obstacles (disabled agent, someone else's lease, missing
-// capability, open gate) keep the wakeup suppressed.
+// qualifies outright (an unblocked backlog ticket lands there as a "promote"
+// action). backlog/blocked tickets still parked in pending qualify too when
+// stale status is all that's left in the way -- emitAgentWakeups promotes a
+// backlog one itself before the wakeup goes out. Real obstacles (disabled
+// agent, someone else's lease, missing capability, open gate) keep the wakeup
+// suppressed.
 func agentWakeupEligible(view AgentWorkView, ticket contracts.TicketSnapshot) bool {
 	for _, entry := range view.Available {
 		if entry.Ticket.ID == ticket.ID {
@@ -414,27 +471,53 @@ func agentWakeupID(ticketID, blockerID string) string {
 // recordWakeupFailure keeps a failed wakeup visible in `agent wakeups list`
 // instead of dropping it. Wakeups are post-commit side effects, so there is no
 // mutation left to fail by the time we get here.
-func (s *ActionService) recordWakeupFailure(ticket contracts.TicketSnapshot, blockerID string, cause error) {
+func (s *ActionService) recordWakeupFailure(notice agentWakeupNotice, cause error) {
+	ticket := notice.Ticket
 	store := AgentWakeupStore{Root: s.Root}
-	id := agentWakeupID(ticket.ID, blockerID)
+	id := agentWakeupID(ticket.ID, notice.BlockerID)
 	wakeup, err := store.LoadWakeup(id)
 	if err != nil {
 		wakeup = AgentWakeup{
 			WakeupID:        id,
 			TicketID:        ticket.ID,
-			BlockerTicketID: blockerID,
+			BlockerTicketID: notice.BlockerID,
 			Actor:           ticket.Assignee,
 			AgentID:         agentIDFromActor(ticket.Assignee),
 			Mode:            AgentAutoModeNotify,
-			Reason:          "dependency completed; assigned work is available",
+			Reason:          wakeupReasonWorkAvailable,
 			Source:          "dependency",
 			CreatedAt:       s.now(),
 		}
 	}
+	// keep whatever the promotion attempt found out; a failed record that
+	// says "promoted=false, here's why" beats one that just says failed
+	if len(notice.Metadata) > 0 && wakeup.Metadata == nil {
+		wakeup.Metadata = map[string]string{}
+	}
+	for key, value := range notice.Metadata {
+		wakeup.Metadata[key] = value
+	}
 	wakeup.State = AgentWakeupFailed
-	wakeup.Error = cause.Error()
+	wakeup.Error = errorWithCauses(cause)
 	// nowhere left to report to if even this write fails
 	_ = store.SaveWakeup(wakeup)
+}
+
+// apperr wrappers answer Error() with only their own message, so "event
+// append failed after canonical write" hides the disk-full / sqlite-locked /
+// whatever underneath. Walk the chain so the record says what actually broke.
+func errorWithCauses(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	for cause := errors.Unwrap(err); cause != nil; cause = errors.Unwrap(cause) {
+		text := cause.Error()
+		if text != "" && !strings.Contains(msg, text) {
+			msg += ": " + text
+		}
+	}
+	return msg
 }
 
 func launchAgentWakeupCommand(ctx context.Context, wakeup AgentWakeup, config AgentAutoConfig) AgentWakeup {

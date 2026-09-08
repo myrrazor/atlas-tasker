@@ -64,8 +64,18 @@ func (j MutationJournal) Begin(purpose string, canonicalKind string, event contr
 	if canonicalKind == "" {
 		canonicalKind = "unknown"
 	}
+	id := journalID(event)
+	// An entry already on disk is a write that died between the canonical file
+	// and the event log. Since that event never landed, NextEventID hands the
+	// same id to whoever writes next, and overwriting here would erase the
+	// only record doctor has of the half-applied mutation.
+	if _, err := os.Stat(j.entryPath(id)); err == nil {
+		return MutationJournalEntry{}, apperr.New(apperr.CodeRepairNeeded, fmt.Sprintf("mutation journal %s is still pending from an earlier write; run 'tracker doctor --repair' before writing again", id))
+	} else if !os.IsNotExist(err) {
+		return MutationJournalEntry{}, fmt.Errorf("check mutation journal %s: %w", id, err)
+	}
 	entry := MutationJournalEntry{
-		ID:            journalID(event),
+		ID:            id,
 		Purpose:       purpose,
 		CanonicalKind: canonicalKind,
 		Event:         event,

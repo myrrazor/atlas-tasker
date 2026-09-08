@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,5 +123,89 @@ func testAgentWorkTicket(id string, title string, status contracts.Status, now t
 		CreatedAt:     now,
 		UpdatedAt:     now,
 		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+}
+
+func TestReviewerCannotPromoteAnotherAssigneesBacklog(t *testing.T) {
+	for _, assignee := range []contracts.Actor{"human:alice", "agent:other"} {
+		t.Run(string(assignee), func(t *testing.T) {
+			ctx, queries, tickets, agents, _, now, cleanup := setupAgentWorkTest(t)
+			defer cleanup()
+			actor := contracts.Actor("agent:reviewer-1")
+			if err := agents.SaveAgent(ctx, contracts.AgentProfile{AgentID: "reviewer-1", DisplayName: "Reviewer", Provider: contracts.AgentProviderCodex, Enabled: true}); err != nil {
+				t.Fatal(err)
+			}
+			blocker := testAgentWorkTicket("APP-1", "Done", contracts.StatusDone, now)
+			dependent := testAgentWorkTicket("APP-2", "Assigned elsewhere", contracts.StatusBacklog, now)
+			dependent.Assignee, dependent.Reviewer = assignee, actor
+			dependent.BlockedBy = []string{blocker.ID}
+			for _, ticket := range []contracts.TicketSnapshot{blocker, dependent} {
+				if err := tickets.CreateTicket(ctx, ticket); err != nil {
+					t.Fatal(err)
+				}
+			}
+			view, err := queries.AgentWork(ctx, actor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(view.Available) != 0 {
+				t.Fatalf("reviewer offered someone else's work: %#v", view.Available)
+			}
+			if len(view.Pending) != 1 || len(view.Pending[0].Suggested) != 0 {
+				t.Fatalf("expected pending work without promotion instructions: %#v", view.Pending)
+			}
+		})
+	}
+}
+
+func TestAgentWorkSurfacesUnblockedBacklogTicketAsPromotable(t *testing.T) {
+	// a backlog ticket whose blockers are all done is one move away from
+	// startable; hiding it under not_ready_status left agents with nothing
+	ctx, queries, tickets, agents, _, now, cleanup := setupAgentWorkTest(t)
+	defer cleanup()
+
+	if err := agents.SaveAgent(ctx, contracts.AgentProfile{AgentID: "builder-1", DisplayName: "Builder", Provider: contracts.AgentProviderCodex, Enabled: true}); err != nil {
+		t.Fatalf("save agent: %v", err)
+	}
+	doneBlocker := testAgentWorkTicket("APP-1", "Done blocker", contracts.StatusDone, now)
+	unblocked := testAgentWorkTicket("APP-2", "Unblocked", contracts.StatusBacklog, now)
+	unblocked.Assignee = contracts.Actor("agent:builder-1")
+	unblocked.BlockedBy = []string{doneBlocker.ID}
+	plainBacklog := testAgentWorkTicket("APP-3", "Never blocked", contracts.StatusBacklog, now)
+	plainBacklog.Assignee = contracts.Actor("agent:builder-1")
+	openBlocker := testAgentWorkTicket("APP-4", "Open blocker", contracts.StatusInProgress, now)
+	stillBlocked := testAgentWorkTicket("APP-5", "Still blocked", contracts.StatusBacklog, now)
+	stillBlocked.Assignee = contracts.Actor("agent:builder-1")
+	stillBlocked.BlockedBy = []string{openBlocker.ID}
+	for _, ticket := range []contracts.TicketSnapshot{doneBlocker, unblocked, plainBacklog, openBlocker, stillBlocked} {
+		if err := tickets.CreateTicket(ctx, ticket); err != nil {
+			t.Fatalf("create ticket %s: %v", ticket.ID, err)
+		}
+	}
+
+	view, err := queries.AgentWork(ctx, contracts.Actor("agent:builder-1"))
+	if err != nil {
+		t.Fatalf("agent work: %v", err)
+	}
+	if len(view.Available) != 1 || view.Available[0].Ticket.ID != unblocked.ID {
+		t.Fatalf("expected only %s available, got %#v", unblocked.ID, view.Available)
+	}
+	promotable := view.Available[0]
+	if promotable.Action != "promote" || promotable.Reason != "blockers resolved; promote to ready" {
+		t.Fatalf("unblocked backlog ticket should be a promote action, got %#v", promotable)
+	}
+	if len(promotable.Suggested) == 0 || !strings.Contains(promotable.Suggested[0], "ticket move APP-2 ready") {
+		t.Fatalf("first suggested command must move the ticket to ready, got %#v", promotable.Suggested)
+	}
+
+	pending := map[string][]string{}
+	for _, entry := range view.Pending {
+		pending[entry.Ticket.ID] = entry.ReasonCodes
+	}
+	if got := pending[plainBacklog.ID]; len(got) != 1 || got[0] != AgentWorkReasonNotReadyStatus {
+		t.Fatalf("backlog ticket that never had blockers should stay not_ready_status, got %#v", got)
+	}
+	if got := pending[stillBlocked.ID]; len(got) != 1 || got[0] != AgentWorkReasonDependencyBlocked {
+		t.Fatalf("backlog ticket with an open blocker should stay dependency_blocked, got %#v", got)
 	}
 }

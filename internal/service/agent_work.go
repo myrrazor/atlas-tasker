@@ -193,7 +193,14 @@ func (s *QueryService) classifyAgentWork(ctx context.Context, ticket contracts.T
 	case contracts.StatusBacklog, contracts.StatusBlocked:
 		entry.Action = "wait"
 		if len(entry.ReasonCodes) == 0 {
-			add(AgentWorkReasonNotReadyStatus)
+			if unblockedBacklog(ticket, blockers) && (claimable || ticket.Assignee == actor || actor == contracts.Actor("human:owner")) {
+				entry.State = AgentWorkAvailable
+				entry.Action = "promote"
+				entry.Reason = "blockers resolved; promote to ready"
+				entry.Suggested = suggestedPromoteCommands(ticket.ID, actor)
+			} else {
+				add(AgentWorkReasonNotReadyStatus)
+			}
 		}
 	default:
 		entry.Action = "wait"
@@ -251,6 +258,21 @@ func suggestedWorkCommands(ticketID string, actor contracts.Actor) []string {
 		fmt.Sprintf("tracker ticket claim %s --actor %s --reason \"start work\"", ticketID, actor),
 		fmt.Sprintf("tracker ticket move %s in_progress --actor %s --reason \"start work\"", ticketID, actor),
 	}
+}
+
+// backlog -> in_progress is not a legal edge, so the move to ready has to come
+// before the usual claim-and-start pair
+func suggestedPromoteCommands(ticketID string, actor contracts.Actor) []string {
+	return append([]string{
+		fmt.Sprintf("tracker ticket move %s ready --actor %s --reason \"blockers resolved\"", ticketID, actor),
+	}, suggestedWorkCommands(ticketID, actor)...)
+}
+
+// unblockedBacklog is a backlog ticket whose blockers have all landed but that
+// nobody groomed to ready yet. Backlog that never had blockers is deliberately
+// excluded -- otherwise the whole backlog would pour into every agent's next.
+func unblockedBacklog(ticket contracts.TicketSnapshot, unresolved []string) bool {
+	return ticket.Status == contracts.StatusBacklog && len(ticket.BlockedBy) > 0 && len(unresolved) == 0
 }
 
 func suggestedContinueCommands(ticketID string, actor contracts.Actor) []string {
