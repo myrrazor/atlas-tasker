@@ -553,3 +553,15 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Runtime inspection shows visible overshoot at large drawer widths, interaction latency rises on lower-performance hardware, or users report that frequent card feedback feels busy.
 9. **Affected PRs/Files:** Supersedes the motion timing/feedback portion of DEC-035; `internal/web/static/app.css`, `internal/web/card_interactions_test.go`, `DESIGN.md`, `docs/web-board-screen-brief.md`.
+
+## DEC-053
+
+1. **Decision ID:** DEC-053
+2. **Date:** 2026-09-08
+3. **Question:** Which validation must run for the reconciled v1.10 release train?
+4. **Options Considered:** Rely on historical PR checks; rerun required checks and extend the gaps in the existing workflows.
+5. **Chosen Option:** Use Go 1.26.6 and x/net v0.56.0 (with its required x/term v0.44.0 and x/sys v0.46.0), retaining the audit goldmark v1.7.17 and x/text v0.39.0 fixes. Run tests/vet, workflow policy, browser/site contracts, stabilization, packaged RC and local install rehearsal, vulnerability scanning, full-history secret scanning, and SBOM generation. Include testing pushes in CI and include every YAML workflow in action-pin and least-privilege checks. Exercise an actual stdio MCP initialize/tools call from an unrelated directory using an explicit workspace. Use v1.10.0-rc1 as the local rehearsal version; creation/publication of any tag remains a separate owner action.
+6. **Why We Chose It:** Historical green checks did not prove the current combined tree, testing pushes had no CI, the scheduled vulnerability workflow escaped the new policy, and the packaged validator checked only MCP inventory. Hosted downloads, attestations, owner merges, and stable sign-off cannot be proven by a local rehearsal and remain explicit release gates.
+7. **Confidence:** high
+8. **Revisit Trigger:** The supported platforms, release version, public output contracts, or required CI policy change.
+9. **Affected PRs/Files:** PRs #117, #121, #126; .github/workflows, scripts/check-workflow-security.sh, scripts/validate_rc.py, scripts/*release*.sh, scripts/validate-rc.sh, docs/release/public-release-gates.md
