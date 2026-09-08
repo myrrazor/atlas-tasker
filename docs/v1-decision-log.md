@@ -794,3 +794,15 @@ Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. 
 7. **Confidence:** high
 8. **Revisit Trigger:** Release artifacts stop carrying Go build information or the required SBOM scope expands beyond binary dependencies.
 9. **Affected PRs/Files:** PR #126; scripts/preflight-release.sh
+
+## DEC-056
+
+1. **Decision ID:** DEC-056
+2. **Date:** 2026-09-08
+3. **Question:** How should the owner-merged v1.10 release train become the current stable release?
+4. **Options Considered:** Stop after a published RC; publish stable immediately from local proof; publish and verify the RC before stable.
+5. **Chosen Option:** Follow the owner's explicit “RC then stable” direction: promote the reviewed testing tree through a PR to main, publish the immutable v1.10.0-rc1 tag, verify hosted checksums/provenance/install/packaged smoke, record the evidence and owner acceptance, then publish v1.10.0 from main. Verify the unpinned latest installer and record its results on the stable release page. Keep testing and dev current with the released tree without rewriting unrelated work.
+6. **Why We Chose It:** Hosted assets and their install behavior require direct proof. This executes the owner publication action required by DEC-053 while preserving its checks, the branch promotion flow, and immutable artifact provenance. Keeping post-tag verification on the release page avoids moving a published tag merely to include its own results.
+7. **Confidence:** high
+8. **Revisit Trigger:** A hosted artifact fails verification, the owner changes the release scope, or the release/branch policy changes.
+9. **Affected PRs/Files:** PR #128 and subsequent v1.10 release-documentation/promotion PRs; CHANGELOG.md, README.md, docs/README.md, docs/release.md, docs/release/launch-checklist.md, docs/release/v1.10.0-release-evidence.md, site/changelog.html.

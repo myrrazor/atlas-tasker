@@ -1,6 +1,8 @@
 # Changelog
 
-## v1.10.0 - Local Web UI And Agent-Ready CLI (2026-09-01)
+## v1.10.0 - Local Web UI And Agent-Ready CLI (2026-09-08)
+
+Hosted RC checks, artifact attestations, clean installation, packaged smoke, and the owner stable decision are recorded in [v1.10 release evidence](docs/release/v1.10.0-release-evidence.md).
 
 - Transactional index recovery, consistent workspace guards, webhook JSON redaction, installer symlink rejection, loopback listener validation, and assignment-aware promotion recommendations.
 
