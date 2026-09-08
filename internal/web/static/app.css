@@ -1391,9 +1391,9 @@ button:active,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   color: var(--text-3);
   font-size: 18px;
   transition: background 0.16s var(--ease), color 0.16s var(--ease);
@@ -2405,6 +2405,33 @@ button:disabled {
 }
 
 @media (max-width: 760px) {
+  .brand,
+  .searchbar input,
+  .new-button,
+  .filters-shell > summary,
+  .filters input,
+  .filters select,
+  .filters button,
+  .mobile-columns a,
+  .tabs button,
+  .edit-box summary,
+  .drawer-form input,
+  .drawer-form select,
+  .drawer-form button,
+  .more-actions select,
+  .more-actions button,
+  .more-actions summary,
+  .drawer-actions button,
+  .drawer-actions summary {
+    min-height: 44px;
+  }
+
+  .brand,
+  .edit-box summary {
+    display: flex;
+    align-items: center;
+  }
+
   .topbar {
     height: auto;
     grid-template-columns: 1fr auto;

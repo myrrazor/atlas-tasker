@@ -240,6 +240,101 @@ func TestDrawerMarksFormEcho(t *testing.T) {
 	}
 }
 
+func TestDrawerCloseControlKeepsATouchSizedTarget(t *testing.T) {
+	css, err := embeddedFiles.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatalf("read embedded app css: %v", err)
+	}
+	blockStart := strings.Index(string(css), ".close-button {")
+	if blockStart < 0 {
+		t.Fatal("close button rule is missing")
+	}
+	blockEnd := strings.Index(string(css)[blockStart:], "}")
+	if blockEnd < 0 {
+		t.Fatal("close button rule is malformed")
+	}
+	block := string(css)[blockStart : blockStart+blockEnd]
+	for _, want := range []string{"width: 44px", "height: 44px"} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("close button must keep a 44px touch target; missing %q in:\n%s", want, block)
+		}
+	}
+}
+
+func TestExplicitEmptyTicketSelectionClosesDrawer(t *testing.T) {
+	h := newWebHarness(t, false)
+	res := h.doAuthed(t, http.MethodGet, "/board?ticket=", "", nil)
+	if !strings.Contains(res.body, "No ticket selected") {
+		t.Fatalf("explicit close should render an empty detail drawer:\n%s", excerpt(res.body, "detail-drawer"))
+	}
+	if strings.Contains(res.body, `class="close-button"`) {
+		t.Fatal("explicit close must not immediately auto-select another ticket")
+	}
+	if got := strings.Count(res.body, `href="/board?ticket=" class="close-button"`); got != 0 {
+		t.Fatalf("closed drawer unexpectedly rendered %d close controls", got)
+	}
+
+	open := h.doAuthed(t, http.MethodGet, "/board", "", nil)
+	if !strings.Contains(open.body, `href="/board?ticket=" class="close-button"`) {
+		t.Fatal("auto-selected drawer must link to the explicit closed state")
+	}
+}
+
+func TestMobileControlsKeepTouchFriendlyTargets(t *testing.T) {
+	css, err := embeddedFiles.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatalf("read embedded app css: %v", err)
+	}
+
+	mobileStart := strings.Index(string(css), "@media (max-width: 760px)")
+	if mobileStart < 0 {
+		t.Fatal("mobile breakpoint is missing")
+	}
+	mobile := string(css)[mobileStart:]
+	targetStart := strings.Index(mobile, ".brand,")
+	if targetStart < 0 {
+		t.Fatal("mobile touch-target rule is missing")
+	}
+	targetEnd := strings.Index(mobile[targetStart:], "}\n")
+	if targetEnd < 0 {
+		t.Fatal("mobile touch-target rule is malformed")
+	}
+	targets := mobile[targetStart : targetStart+targetEnd]
+	for _, want := range []string{
+		".brand",
+		".new-button",
+		".filters-shell > summary",
+		".filters input",
+		".filters select",
+		".filters button",
+		".mobile-columns a",
+		".tabs button",
+		".edit-box summary",
+		".drawer-form input",
+		".drawer-form select",
+		".drawer-form button",
+		".more-actions select",
+		".more-actions button",
+		".more-actions summary",
+		".drawer-actions button",
+		".drawer-actions summary",
+		"min-height: 44px",
+	} {
+		if !strings.Contains(targets, want) {
+			t.Fatalf("mobile controls must keep 44px touch targets; missing %q in:\n%s", want, targets)
+		}
+	}
+	for _, want := range []string{
+		".brand,\n  .edit-box summary",
+		"display: flex",
+		"align-items: center",
+	} {
+		if !strings.Contains(mobile, want) {
+			t.Fatalf("mobile compact controls must vertically center their expanded targets; missing %q", want)
+		}
+	}
+}
+
 func TestActionTargetParsing(t *testing.T) {
 	for _, tt := range []struct {
 		path   string

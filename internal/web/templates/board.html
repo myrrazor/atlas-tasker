@@ -117,7 +117,7 @@
     <span class="eyeline">{{t "board.new.eyeline"}}</span>
     <h1>{{t "board.new.title"}}</h1>
   </div>
-  <a href="/board" class="close-button" aria-label="{{t "common.close"}}">×</a>
+  <a href="/board?ticket=" class="close-button" aria-label="{{t "common.close"}}">×</a>
 </div>
 <form class="drawer-form" method="post" action="/actions/tickets/create">
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -164,7 +164,7 @@
     <p class="drawer-meta"><span class="status-pill st-{{statusKey $d.BoardStatus}}">{{t (statusMessageKey $d.BoardStatus)}}</span>{{if $d.Ticket.Assignee}} <span class="meta-pair">{{t "board.field.assignee"}} <b>{{$d.Ticket.Assignee}}</b></span>{{end}}{{if $d.EffectiveReviewer}} <span class="meta-pair">{{t "board.field.reviewer"}} <b>{{$d.EffectiveReviewer}}</b></span>{{end}}</p>
     {{if $d.Ticket.Labels}}<div class="drawer-labels" aria-label="{{t "board.field.labels"}}">{{range $d.Ticket.Labels}}<span>{{.}}</span>{{end}}</div>{{end}}
   </div>
-  <a href="/board" class="close-button" aria-label="{{t "common.close"}}">×</a>
+  <a href="/board?ticket=" class="close-button" aria-label="{{t "common.close"}}">×</a>
 </div>
 
 {{range .Detail.Warnings}}

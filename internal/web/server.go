@@ -35,19 +35,18 @@ type Services struct {
 }
 
 type Config struct {
-	Root       string
-	Workspace  string
-	Host       string
-	Port       int
-	Project    string
-	Actor      contracts.Actor
-	ReadOnly   bool
-	UnsafeHost bool
-	TokenMode  string
-	Token      string
-	CSRFToken  string
-	Clock      func() time.Time
-	Location   *time.Location
+	Root      string
+	Workspace string
+	Host      string
+	Port      int
+	Project   string
+	Actor     contracts.Actor
+	ReadOnly  bool
+	TokenMode string
+	Token     string
+	CSRFToken string
+	Clock     func() time.Time
+	Location  *time.Location
 }
 
 type Server struct {
@@ -92,8 +91,8 @@ func NewServer(services Services, cfg Config) (*Server, error) {
 	if cfg.TokenMode != "random" {
 		return nil, apperr.New(apperr.CodeInvalidInput, "only token-mode=random is supported")
 	}
-	if !isLoopbackHost(cfg.Host) && !cfg.UnsafeHost {
-		return nil, apperr.New(apperr.CodePermissionDenied, "non-loopback web host requires --unsafe-host")
+	if !isLoopbackHost(cfg.Host) {
+		return nil, apperr.New(apperr.CodePermissionDenied, "web host must be loopback")
 	}
 	if cfg.Token == "" {
 		cfg.Token = randomToken()
@@ -196,6 +195,9 @@ func (s *Server) SessionURL(port int) string {
 }
 
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	if err := validateLoopbackListener(ln); err != nil {
+		return err
+	}
 	server := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	done := make(chan error, 1)
 	go func() {

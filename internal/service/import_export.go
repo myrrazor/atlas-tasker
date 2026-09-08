@@ -469,6 +469,9 @@ func collectExportFiles(root string) ([]string, error) {
 	seen := map[string]struct{}{}
 	for _, candidate := range candidates {
 		full := filepath.Join(root, filepath.FromSlash(candidate))
+		if err := rejectSymlinkedExportPath(root, full); err != nil {
+			return nil, err
+		}
 		info, err := os.Stat(full)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -484,6 +487,9 @@ func collectExportFiles(root string) ([]string, error) {
 		walkErr := filepath.WalkDir(full, func(path string, entry fs.DirEntry, err error) error {
 			if err != nil {
 				return err
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return apperr.New(apperr.CodeInvalidInput, "export_symlink_rejected: symlink entries are not allowed")
 			}
 			if entry.IsDir() {
 				if strings.Contains(filepath.ToSlash(path), "/runtime") || strings.Contains(filepath.ToSlash(path), "/archives") || strings.Contains(filepath.ToSlash(path), "/exports") || strings.Contains(filepath.ToSlash(path), "/mutations") {
@@ -515,6 +521,35 @@ func collectExportFiles(root string) ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
+}
+
+func rejectSymlinkedExportPath(root string, path string) error {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return apperr.New(apperr.CodeInvalidInput, "export_path_rejected: export inputs must stay inside the workspace")
+	}
+
+	current := root
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		if part == "" || part == "." {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return apperr.New(apperr.CodeInvalidInput, "export_symlink_rejected: symlink entries are not allowed")
+		}
+	}
+	return nil
 }
 
 func buildBundleManifest(root string, bundleID string, scope string, createdAt time.Time, files []string) (bundleManifest, error) {

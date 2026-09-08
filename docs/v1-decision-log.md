@@ -554,6 +554,107 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 8. **Revisit Trigger:** Runtime inspection shows visible overshoot at large drawer widths, interaction latency rises on lower-performance hardware, or users report that frequent card feedback feels busy.
 9. **Affected PRs/Files:** Supersedes the motion timing/feedback portion of DEC-035; `internal/web/static/app.css`, `internal/web/card_interactions_test.go`, `DESIGN.md`, `docs/web-board-screen-brief.md`.
 
+## DEC-039
+
+1. **Decision ID:** DEC-039
+2. **Date:** 2026-08-28
+3. **Question:** How should the atlas.pen visual direction reach the browser board — as a full restructure, or as a restyle of the layout people already use?
+4. **Options Considered:**
+   - Keep the soft charcoal skin and treat the pen design as non-binding inspiration.
+   - Ship the Survey Ledger restructure (`feat/pen-design-frontend`): arrival-question headers, a workflow route line, no default drawer, selection-driven detail.
+   - Keep the existing layout — topbar shell, filter row, six columns, right drawer — and restyle it to the pen tokens and type.
+5. **Chosen Option:** Restyle the existing layout to the pen visual system: the #0B0F14/#111821/#18222D surface scale, #68A9FF accent, vendored Geist and Geist Mono variable fonts (Inter removed), semantic color reserved for compact indicators. The Survey Ledger implementation stays on its own branch as a complete alternative and does not ship in v1.10.
+6. **Why We Chose It:** The owner asked for the layout to stay put. The board's interaction contracts (drag, filters, drawer, saved views) are pinned by tests and by muscle memory; the restructure changed where selection lives and how detail opens, which is a product change dressed as a restyle. Matching the pen tokens and type on the existing shell gets the look without renegotiating the loop, in a diff a reviewer can read in one sitting. Keeping Survey Ledger on a branch preserves the work for a deliberate product decision later instead of losing it in a merge conflict.
+7. **Confidence:** high
+8. **Revisit Trigger:** Owners cannot identify selected work without opening detail, or horizontal scanning of six columns is measurably slower on common screens — the two problems the Survey Ledger structure was built to solve.
+9. **Affected PRs/Files:** `internal/web/static/app.css`, `internal/web/static/vendor/*`, `internal/web/templates/board.html`, `internal/web/templates/schedule.html`, `internal/web/viewmodels.go`, `DESIGN.md`, `docs/web-board.md`.
+
+## DEC-040
+
+1. **Decision ID:** DEC-040
+2. **Date:** 2026-08-10
+3. **Question:** How should Atlas handle symlinks found while collecting workspace files for export-derived artifacts?
+4. **Options Considered:**
+   - Follow symlinks and include their targets.
+   - Silently omit symlinked inputs.
+   - Reject the operation before writing an artifact.
+5. **Chosen Option:** Reject the operation before writing an artifact.
+6. **Why We Chose It:** The export collector is shared by normal and redacted exports, backups, audit artifacts, and goal artifacts. Following a link can copy data outside the workspace into a shareable artifact, while silently omitting it would produce an incomplete artifact without telling the operator. A fail-closed error preserves the documented boundary that private material must never enter export-derived artifacts.
+7. **Confidence:** high
+8. **Revisit Trigger:** Atlas adopts a separately reviewed, explicit link-materialization policy with target containment and clear artifact provenance.
+9. **Affected PRs/Files:** `internal/service/import_export.go`, `internal/service/security_boundary_test.go`, `docs/v1-decision-log.md`.
+
+## DEC-041
+
+1. **Decision ID:** DEC-041
+2. **Date:** 2026-08-12
+3. **Question:** How should Atlas keep its CI and release automation from silently changing underneath a reviewed commit?
+4. **Options Considered:**
+   - Keep mutable major-version action tags and repository-default token permissions.
+   - Pin every third-party action to a reviewed commit and declare least-privilege workflow permissions.
+   - Vendor every action into this repository.
+5. **Chosen Option:** Pin actions to immutable commits, declare `contents: read` at workflow scope, and let only the publish job elevate the three permissions it needs.
+6. **Why We Chose It:** Immutable action references make the reviewed automation the automation that runs. An executable policy check prevents a later mutable tag or mismatched Go bootstrap from quietly reopening the same supply-chain gap without taking on the maintenance and audit burden of vendoring action code.
+7. **Confidence:** high
+8. **Revisit Trigger:** GitHub changes action pinning or token-permission semantics, or Atlas moves release execution to a different CI provider.
+9. **Affected PRs/Files:** `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `scripts/check-workflow-security.sh`, `scripts/preflight-release-proof.sh`.
+
+## DEC-042
+
+1. **Decision ID:** DEC-042
+2. **Date:** 2026-08-12
+3. **Question:** Should the web drawer's close control optimize for a compact desktop silhouette or a reliable phone touch target?
+4. **Options Considered:**
+   - Keep the 28-by-28-pixel control because it clears the WCAG 2.5.8 minimum.
+   - Give the existing control a 44-by-44-pixel hit area while keeping the same icon and visual treatment.
+5. **Chosen Option:** Use a 44-by-44-pixel close control at every viewport.
+6. **Why We Chose It:** The drawer is a primary phone interaction and its close action should not demand precise tapping. A consistent target across viewports avoids a second responsive rule while preserving the existing icon, color, and hover language.
+7. **Confidence:** high
+8. **Revisit Trigger:** Rendered QA finds that the larger target collides with long drawer titles at the narrowest supported width.
+9. **Affected PRs/Files:** `internal/web/static/app.css`, `internal/web/fixes_test.go`.
+
+## DEC-043
+
+1. **Decision ID:** DEC-043
+2. **Date:** 2026-08-12
+3. **Question:** How should Atlas respond when its required Go runtime or a reachable transitive module has a published vulnerability?
+4. **Options Considered:**
+   - Record the advisories and wait for the next feature release.
+   - Patch only the modules and keep the vulnerable Go runtime.
+   - Move the runtime and every reachable vulnerable module to the first fixed versions, then require CI and release jobs to use the same runtime as `go.mod`.
+5. **Chosen Option:** Move the runtime and all reachable vulnerable modules to fixed versions and keep the workflow toolchain synchronized with `go.mod`.
+6. **Why We Chose It:** `govulncheck` traced the affected standard-library TLS code, Markdown renderer, and text renderer into Atlas. Updating all three boundaries closes the reachable paths without carrying a partial exception, while the workflow policy prevents a future runtime mismatch.
+7. **Confidence:** high
+8. **Revisit Trigger:** A fixed version causes a reproducible compatibility regression or a future Go release changes how the module directive maps to CI toolchains.
+9. **Affected PRs/Files:** `go.mod`, `go.sum`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `scripts/check-workflow-security.sh`.
+
+## DEC-044
+
+1. **Decision ID:** DEC-044
+2. **Date:** 2026-08-12
+3. **Question:** Should the local web board retain an explicit escape hatch for plaintext non-loopback serving?
+4. **Options Considered:**
+   - Keep `--unsafe-host` with a warning.
+   - Add authentication and TLS to turn the board into a network product.
+   - Reject non-loopback hosts and keep the board local-only.
+5. **Chosen Option:** Reject non-loopback hosts and remove `--unsafe-host`.
+6. **Why We Chose It:** The current board uses a bearer session URL but has no remote-user identity, authorization, or TLS lifecycle. A warning does not contain exposure on an untrusted network. Loopback-only serving matches the product boundary without inventing a partial hosted security model.
+7. **Confidence:** high
+8. **Revisit Trigger:** Atlas intentionally designs and tests a remote web product with TLS, authenticated identities, authorization, session revocation, and deployment guidance.
+9. **Affected PRs/Files:** `internal/cli/web.go`, `internal/cli/root_test.go`, `internal/web/server.go`, `internal/web/server_test.go`, `docs/command-reference.md`, `docs/web-board-security.md`.
+
+## DEC-051
+
+1. **Decision ID:** DEC-051
+2. **Date:** 2026-09-08
+3. **Question:** How should the v1.10 interfaces enforce their existing local workspace and secret boundaries?
+4. **Options Considered:** Keep surface-specific checks; share initialized-root validation and preflight every integration destination.
+5. **Chosen Option:** Use a shared initialized-root check for CLI config/reads, MCP serving/approvals, and TUI. Keep init and explicit integration installation as bootstrap operations, and version/help/MCP schema/tools as workspace-independent discovery. Mask config-set JSON exactly like config-get. Normalize web bind hosts before listening and validate the actual loopback listener. Reject symlink components in every integration output path before writing any file.
+6. **Why We Chose It:** The review reproduced silent workspace creation through implicit MCP/TUI startup, default config reads from the wrong directory, webhook secrets echoed by the JSON setter, a wildcard listener created by an empty host, and integration writes escaping through symlinks. These changes enforce DEC-044 and DEC-047 without adding remote serving or shared-skill installation.
+7. **Confidence:** high
+8. **Revisit Trigger:** A future explicitly approved remote web mode or shared integration installer requires a separate trust model.
+9. **Affected PRs/Files:** PRs #121, #122, #127; internal/service/workspace.go, internal/cli, internal/mcp/workspace.go, internal/tui/app.go, internal/web/listener.go, internal/integrations/install.go, AGENTS.md
+
 ## DEC-053
 
 1. **Decision ID:** DEC-053
