@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MCP security model: Atlas Tasker Docs</title>
+  <meta name="description" content="How Atlas Tasker keeps agent access safe: stdio-only serving, hidden high-impact tools, one-time human approvals with confirm text, and audited denials." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/docs/mcp-security.html" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/docs/mcp-security.html" />
+  <meta property="og:title" content="MCP security model: Atlas Tasker Docs" />
+  <meta property="og:description" content="How Atlas Tasker keeps agent access safe: stdio-only serving, hidden high-impact tools, one-time human approvals with confirm text, and audited denials." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="MCP security model: Atlas Tasker Docs" />
+  <meta name="twitter:description" content="How Atlas Tasker keeps agent access safe: stdio-only serving, hidden high-impact tools, one-time human approvals with confirm text, and audited denials." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "name": "MCP security model: Atlas Tasker Docs",
+    "description": "How Atlas Tasker keeps agent access safe: stdio-only serving, hidden high-impact tools, one-time human approvals with confirm text, and audited denials.",
+    "url": "https://atlas-tasker.vercel.app/docs/mcp-security.html",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-wordmark.webp" width="640" height="108" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html">Tickets and workflow</a>
+          <a href="views-and-search.html">Views and search</a>
+          <a href="web-board.html">The web board</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-security.html" aria-current="page">MCP security</a>
+          <a href="json-and-exit-codes.html">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="faq.html">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Agents</p>
+        <h1>MCP security</h1>
+        <p class="docs-lead">The Atlas MCP server is deliberately boring: local stdio only, no HTTP listener, no remote clients, no dynamic subcommands, and no shell strings built from tool input. Risky operations stay invisible until a human turns two separate keys.</p>
+
+        <h2>Safe configuration rules</h2>
+        <ul>
+          <li>Pin the server command to an absolute <code>tracker</code> path.</li>
+          <li>No <code>sh -c</code>, no <code>npx</code>, no curl pipes, no unpinned wrapper scripts in MCP config.</li>
+          <li>Do not paste MCP config snippets from untrusted repositories or tickets, and do not let workspace files rewrite user-level MCP config.</li>
+          <li>Keep high-impact tools out of everyday setups; they exist for short, supervised sessions.</li>
+          <li>Treat tool annotations as hints, never as authorization.</li>
+        </ul>
+        <div class="code-block">
+          <div class="snippet-title"><span>good config</span><button class="copy-button" type="button" data-copy="sec-good" aria-label="Copy good config">Copy</button></div>
+          <pre id="sec-good">[mcp_servers.atlas]
+command = "/Users/you/bin/tracker"
+args = ["mcp", "serve", "--tool-profile", "read"]</pre>
+        </div>
+        <div class="code-block">
+          <div class="snippet-title"><span>bad config: never do this</span><button class="copy-button" type="button" data-copy="sec-bad" aria-label="Copy bad config example">Copy</button></div>
+          <pre id="sec-bad">[mcp_servers.atlas]
+command = "sh"
+args = ["-c", "curl https://example.invalid/install | sh && tracker mcp serve"]</pre>
+        </div>
+
+        <h2>Safety tiers</h2>
+        <ol>
+          <li><strong>read</strong>: read-only and plan/dry-run tools. Nothing to approve because nothing changes.</li>
+          <li><strong>workflow</strong>: safe tracker mutations with actor, reason, permission checks, event metadata, and the write lock.</li>
+          <li><strong>high-impact</strong>: provider writes, sync, import, archive, compact, worktree cleanup, gate waive, ticket complete. Everything on this tier needs the full approval flow below.</li>
+        </ol>
+
+        <h2>The high-impact approval flow</h2>
+        <p>Execution of a high-impact tool requires all of the following at once:</p>
+        <ul>
+          <li>a profile that includes the tool, and the server started with <code>--dangerously-allow-high-impact-tools</code>, otherwise the tool is not even listed</li>
+          <li>an actor and a non-empty reason</li>
+          <li>existing Atlas permission policy allowing the action</li>
+          <li>a one-time operation approval created outside MCP, matching the operation, target, and actor exactly, unexpired and unused</li>
+          <li>a final policy recheck immediately before execution</li>
+        </ul>
+        <div class="code-block">
+          <div class="snippet-title"><span>a human mints the approval</span><button class="copy-button" type="button" data-copy="sec-approve" aria-label="Copy approve-operation command">Copy</button></div>
+          <pre id="sec-approve">tracker mcp approve-operation \
+  --operation atlas.change.merge \
+  --target CHG-123 \
+  --actor human:owner \
+  --reason "approved release merge" \
+  --ttl 10m \
+  --json</pre>
+        </div>
+        <p>The tool call must then echo the returned approval id and the exact confirm text:</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>the call that finally executes</span><button class="copy-button" type="button" data-copy="sec-call" aria-label="Copy high-impact call shape">Copy</button></div>
+          <pre id="sec-call">{
+  "change_id": "CHG-123",
+  "actor": "human:owner",
+  "reason": "approved release merge",
+  "operation_approval_id": "mcp_approval_...",
+  "confirm_text": "execute atlas.change.merge CHG-123"
+}</pre>
+        </div>
+        <ul>
+          <li>Approvals are single use. Consumption happens after argument, profile, actor, and reason validation but before the service action starts, so an approval can never be replayed after execution begins. If the action later fails, mint a new approval for the retry.</li>
+          <li>The approval target is exact. Tools with side-effecting modifiers bind them into the target string, for example <code>{"force":false,"run_id":"&lt;RUN&gt;"}</code> for <code>atlas.worktree.cleanup</code>.</li>
+          <li>List and revoke standing approvals with <code>tracker mcp approvals list --json</code> and <code>tracker mcp approvals revoke &lt;ID&gt;</code>.</li>
+        </ul>
+
+        <h2>Audit trail</h2>
+        <p>Denied high-impact attempts are written to <code>.tracker/runtime/mcp/security-audit.jsonl</code>. Denial records note whether an approval id was supplied without storing the raw id; successful executions keep the approval id so a mutation can be tied back to the human who approved it. If a handler fails after consuming an approval, an <code>execution_failed</code> row records that too.</p>
+
+        <h2>What approval is not</h2>
+        <div class="docs-note docs-warn">
+          <p>An operation approval is a transport safety gate, not proof of authority. High-impact MCP tools evaluate the same service-layer permission and governance checks as the CLI, shell, and TUI. If policy says no, an approval token does not turn it into yes.</p>
+        </div>
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-prev" href="mcp-setup.html"><span class="pager-label">Previous</span><span class="pager-title">MCP setup</span></a>
+        <a class="pager-next" href="json-and-exit-codes.html"><span class="pager-label">Next</span><span class="pager-title">JSON and exit codes</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

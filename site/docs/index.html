@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas Tasker Docs</title>
+  <meta name="description" content="Documentation for Atlas Tasker, the local-first ticketing system for humans and AI agents: setup, workflow, views, the web board, MCP, and JSON." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/docs/" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/docs/" />
+  <meta property="og:title" content="Atlas Tasker Docs" />
+  <meta property="og:description" content="Documentation for Atlas Tasker, the local-first ticketing system for humans and AI agents: setup, workflow, views, the web board, MCP, and JSON." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Atlas Tasker Docs" />
+  <meta name="twitter:description" content="Documentation for Atlas Tasker, the local-first ticketing system for humans and AI agents: setup, workflow, views, the web board, MCP, and JSON." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "name": "Atlas Tasker Docs",
+    "description": "Documentation for Atlas Tasker, the local-first ticketing system for humans and AI agents: setup, workflow, views, the web board, MCP, and JSON.",
+    "url": "https://atlas-tasker.vercel.app/docs/",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-wordmark.webp" width="640" height="108" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./" aria-current="page">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html">Tickets and workflow</a>
+          <a href="views-and-search.html">Views and search</a>
+          <a href="web-board.html">The web board</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-security.html">MCP security</a>
+          <a href="json-and-exit-codes.html">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="faq.html">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Documentation</p>
+        <h1>Atlas Tasker Docs</h1>
+        <p class="docs-lead">Everything you need to run Atlas Tasker: a lightweight, local-first ticketing system that lives in your repository and works equally well for you, your team, and your AI agents. Tickets are plain Markdown, every change is an audited event, and one <code>tracker</code> binary serves the CLI, the TUI, the local web board, and an MCP server.</p>
+
+        <h2>Start here</h2>
+        <p>New to Atlas? Two pages get you from nothing to a working board with an agent on it.</p>
+        <div class="docs-cards">
+          <a href="getting-started.html">
+            <span class="card-title">Getting started</span>
+            <p class="card-blurb">Install the binary, initialize a workspace, create a project and a ticket, and open the board.</p>
+          </a>
+          <a href="agents-and-dispatch.html">
+            <span class="card-title">Agents and dispatch</span>
+            <p class="card-blurb">Register an agent, apply a team preset, and hand over tickets with evidence and review gates.</p>
+          </a>
+        </div>
+
+        <h2>How Atlas thinks</h2>
+        <p>Three ideas explain most of the design. Once they click, every command makes sense.</p>
+        <ul>
+          <li><strong>The repo is the database.</strong> Tickets are Markdown files under <code>projects/</code>, and every change appends an event under <code>.tracker/</code>. A small disposable index keeps queries instant, and <code>tracker doctor --repair</code> rebuilds it from the files at any time. The <a href="faq.html">FAQ</a> covers the storage internals honestly.</li>
+          <li><strong>Every write is attributed.</strong> Mutations name an <code>--actor</code> and a <code>--reason</code>, and that pair lands in the audit trail. Reviewers and agents read it later to understand what happened and why.</li>
+          <li><strong>Machines are first-class users.</strong> Every command takes <code>--json</code>, exit codes are stable, nothing ever prompts, and an MCP server exposes typed tools behind escalating permission profiles. Humans get the same tracker with nicer pixels.</li>
+        </ul>
+
+        <h2>The manual</h2>
+        <div class="docs-cards">
+          <a href="tickets-and-workflow.html">
+            <span class="card-title">Tickets and workflow</span>
+            <p class="card-blurb">Statuses and legal edges, claims, dependencies, review gates, and bulk operations.</p>
+          </a>
+          <a href="views-and-search.html">
+            <span class="card-title">Views and search</span>
+            <p class="card-blurb">Boards, queues, the search syntax, saved views, watchers, and the full-screen TUI.</p>
+          </a>
+          <a href="web-board.html">
+            <span class="card-title">The web board</span>
+            <p class="card-blurb">The local kanban: drag and drop, the ticket drawer, session tokens, and read-only mode.</p>
+          </a>
+          <a href="mcp-setup.html">
+            <span class="card-title">MCP setup</span>
+            <p class="card-blurb">Connect Claude Code, Codex, OpenClaw, or any MCP client, and budget what tools return.</p>
+          </a>
+          <a href="mcp-security.html">
+            <span class="card-title">MCP security</span>
+            <p class="card-blurb">Profiles, hidden high-impact tools, one-time approvals, and the audit trail behind denials.</p>
+          </a>
+          <a href="json-and-exit-codes.html">
+            <span class="card-title">JSON and exit codes</span>
+            <p class="card-blurb">The machine contract: envelopes, error shapes, exit codes 0 to 7, and pending reason codes.</p>
+          </a>
+        </div>
+
+        <h2>Deeper reference</h2>
+        <p>These pages distill the essentials. The exhaustive, always-current reference ships with the source:</p>
+        <ul>
+          <li><a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Command reference</a>: every command and flag, including governance, sync, signing, backups, and goal manifests.</li>
+          <li><a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md</a>: the operating guide written for agents themselves. Point your agent at it, or install it with <code>tracker integrations install</code>.</li>
+          <li><a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">The full docs tree</a>: architecture, threat model, storage transactions, and release engineering.</li>
+        </ul>
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-next" href="getting-started.html"><span class="pager-label">Next</span><span class="pager-title">Getting started</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

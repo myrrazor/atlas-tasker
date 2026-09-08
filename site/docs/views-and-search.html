@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Views and search: Atlas Tasker Docs</title>
+  <meta name="description" content="Read the board from every angle: queues, backlog, blocked, review and owner views, the search query syntax, saved views, watchers, and the full-screen TUI." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/docs/views-and-search.html" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/docs/views-and-search.html" />
+  <meta property="og:title" content="Views and search: Atlas Tasker Docs" />
+  <meta property="og:description" content="Read the board from every angle: queues, backlog, blocked, review and owner views, the search query syntax, saved views, watchers, and the full-screen TUI." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Views and search: Atlas Tasker Docs" />
+  <meta name="twitter:description" content="Read the board from every angle: queues, backlog, blocked, review and owner views, the search query syntax, saved views, watchers, and the full-screen TUI." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "name": "Views and search: Atlas Tasker Docs",
+    "description": "Read the board from every angle: queues, backlog, blocked, review and owner views, the search query syntax, saved views, watchers, and the full-screen TUI.",
+    "url": "https://atlas-tasker.vercel.app/docs/views-and-search.html",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-wordmark.webp" width="640" height="108" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html">Tickets and workflow</a>
+          <a href="views-and-search.html" aria-current="page">Views and search</a>
+          <a href="web-board.html">The web board</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-security.html">MCP security</a>
+          <a href="json-and-exit-codes.html">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="faq.html">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Core</p>
+        <h1>Views and search</h1>
+        <p class="docs-lead">One set of tickets, many angles. Views are read commands: they never mutate, they all take <code>--json</code>, and the useful ones can be saved and replayed by name.</p>
+
+        <h2>The standard views</h2>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr><th scope="col">Command</th><th scope="col">What it answers</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>tracker board</code></td><td>The kanban, grouped by status. <code>--view</code> replays a saved board.</td></tr>
+              <tr><td><code>tracker backlog</code></td><td>Everything not yet groomed to ready.</td></tr>
+              <tr><td><code>tracker blocked</code></td><td>Tickets whose blockers are unresolved right now, derived from live status.</td></tr>
+              <tr><td><code>tracker next</code></td><td>The single best next ticket for an actor.</td></tr>
+              <tr><td><code>tracker queue</code></td><td>An actor's ordered work queue.</td></tr>
+              <tr><td><code>tracker review-queue</code></td><td>What is waiting on review, per reviewer.</td></tr>
+              <tr><td><code>tracker owner-queue</code></td><td>Decisions only a human owner can make.</td></tr>
+              <tr><td><code>tracker who</code></td><td>Who holds what, across the workspace.</td></tr>
+              <tr><td><code>tracker dashboard</code></td><td>The delivery summary across projects and runs.</td></tr>
+              <tr><td><code>tracker timeline</code></td><td>A ticket's event timeline.</td></tr>
+              <tr><td><code>tracker inbox</code></td><td>Derived human to-dos: open gates and handoff-ready runs.</td></tr>
+              <tr><td><code>tracker approvals</code></td><td>Open approval work in one list.</td></tr>
+              <tr><td><code>tracker mentions</code></td><td>Where an actor was mentioned.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Inbox items are derived, not stored: open gates surface as <code>gate:&lt;id&gt;</code> and handoff-ready runs as <code>handoff:&lt;id&gt;</code>. Nothing to clean up.</p>
+
+        <h2>Search syntax</h2>
+        <p>Search is a tiny query language over indexed fields plus free text.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>query terms</span><button class="copy-button" type="button" data-copy="vs-search" aria-label="Copy search examples">Copy</button></div>
+          <pre id="vs-search">tracker search 'status=in_progress'
+tracker search 'project=AUTH text~logout flow'
+tracker search 'type=bug label=security assignee=agent:builder-1'
+tracker search 'text~"scenario 1000"'</pre>
+        </div>
+        <ul>
+          <li>Fields: <code>status=</code>, <code>type=</code>, <code>project=</code>, <code>assignee=</code>, <code>label=</code>.</li>
+          <li>Free text: <code>text~</code>. Multi-word values work bare (<code>text~logout flow</code>) or quoted.</li>
+          <li>A malformed query is exit 2 with a JSON error under <code>--json</code>, so scripts fail loudly.</li>
+        </ul>
+
+        <h2>Saved views</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>save an angle, replay it anywhere</span><button class="copy-button" type="button" data-copy="vs-views" aria-label="Copy saved view commands">Copy</button></div>
+          <pre id="vs-views">tracker views save sprint-42 --kind search --query 'project=APP label=sprint-42'
+tracker views run sprint-42
+tracker views list
+tracker views delete sprint-42</pre>
+        </div>
+        <p>Kinds: <code>board</code>, <code>search</code>, <code>queue</code>, <code>next</code>. Saved views also power other tools: <code>bulk --view</code> expands one into ticket IDs, and the web board can load one from its URL state.</p>
+
+        <h2>Watchers</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>subscribe to changes</span><button class="copy-button" type="button" data-copy="vs-watch" aria-label="Copy watcher commands">Copy</button></div>
+          <pre id="vs-watch">tracker watch ticket APP-1 --actor human:owner
+tracker watch project APP --actor human:owner --event ticket.moved
+tracker watch list
+tracker unwatch ticket APP-1 --actor human:owner</pre>
+        </div>
+        <p>Watchers feed notification audience resolution. If a watched ticket, project, or view disappears, the watcher is marked inactive instead of dropped, so nothing silently unsubscribes.</p>
+
+        <h2>The TUI</h2>
+        <p><code>tracker tui</code> is the full-screen cockpit: Board, Queues, Detail, Search, Review, Owner, Inbox, Views, and Ops tabs in one screen.</p>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr><th scope="col">Key</th><th scope="col">Action</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>/</code></td><td>Open the slash command palette.</td></tr>
+              <tr><td><code>n</code> / <code>e</code></td><td>Create or edit a ticket.</td></tr>
+              <tr><td><code>m</code> / <code>s</code></td><td>Move or assign the selected ticket.</td></tr>
+              <tr><td><code>c</code></td><td>Toggle claim and release.</td></tr>
+              <tr><td><code>o</code></td><td>Comment.</td></tr>
+              <tr><td><code>p</code> / <code>v</code> / <code>x</code> / <code>d</code></td><td>Request review, approve, reject, complete.</td></tr>
+              <tr><td><code>l</code> / <code>u</code></td><td>Link and unlink dependencies.</td></tr>
+              <tr><td><code>b</code> then <code>y</code></td><td>Preview a bulk action, then apply the preview.</td></tr>
+              <tr><td><code>tab</code> / <code>shift+tab</code></td><td>Switch tabs.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The palette accepts the same slash commands as <code>tracker shell</code>, so muscle memory transfers between the two.</p>
+
+        <div class="docs-note">
+          <p>Rendering a single ticket for a PR description or a handoff? <code>tracker render APP-1</code> prints clean Markdown for exactly one ticket.</p>
+        </div>
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-prev" href="tickets-and-workflow.html"><span class="pager-label">Previous</span><span class="pager-title">Tickets and workflow</span></a>
+        <a class="pager-next" href="web-board.html"><span class="pager-label">Next</span><span class="pager-title">The web board</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>
