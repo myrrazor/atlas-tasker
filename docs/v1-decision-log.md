@@ -402,3 +402,62 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 7. **Confidence:** high
 8. **Revisit Trigger:** Terminal compatibility or accessibility reports show box rendering is unreliable, or users need a persistent table style setting beyond `--plain`/`NO_COLOR`.
 9. **Affected PRs/Files:** `internal/render/render.go`, `internal/cli/root.go`, `internal/cli/run.go`, `internal/tui/app.go`, renderer/CLI/TUI tests, terminal output docs.
+
+## DEC-029
+
+1. **Decision ID:** DEC-029
+2. **Date:** 2026-06-16
+3. **Question:** How should Atlas expose a browser Kanban board without weakening the local-first storage and security model?
+4. **Options Considered:**
+   - Add a server-rendered local web board over existing services.
+   - Add a SPA with a broad local JSON API.
+   - Add hosted/server mode with login.
+5. **Chosen Option:** Add a server-rendered local web board over existing services.
+6. **Why We Chose It:** The browser board should make Atlas easier to inspect and demo while preserving Markdown snapshots, JSONL events, SQLite projection, `ActionService` writes, `QueryService` reads, and local-only security defaults.
+7. **Confidence:** high
+8. **Revisit Trigger:** Future product direction requires remote collaboration or a public API surface.
+9. **Affected PRs/Files:** `internal/web/*`, `internal/cli/*`, `internal/contracts/events.go`, web board docs, tests.
+
+## DEC-030
+
+1. **Decision ID:** DEC-030
+2. **Date:** 2026-07-03
+3. **Question:** Which referrer policy should the web board send, given that its origin check rejects mutations whose `Origin` does not match the host?
+4. **Options Considered:**
+   - Keep `Referrer-Policy: no-referrer`.
+   - Switch to `Referrer-Policy: same-origin`.
+   - Drop the origin check and rely on the CSRF token alone.
+5. **Chosen Option:** Switch to `Referrer-Policy: same-origin` and keep the origin check.
+6. **Why We Chose It:** Under `no-referrer` the Fetch spec serializes `Origin` as `null` on same-origin form POSTs, so the board rejected its own create/edit/comment/approve/complete/move forms in real browsers (reproduced in Chromium; httptest could not catch it). `same-origin` keeps referrers private cross-origin while restoring `Origin`/`Referer` on the board's own requests, and `Origin: null` remains rejected as cross-origin. Session cookies are additionally scoped per port so concurrent workspace boards on 127.0.0.1 keep separate sessions.
+7. **Confidence:** high
+8. **Revisit Trigger:** A browser changes `Origin` serialization semantics, or the board ever runs behind TLS/proxy setups that alter origin handling.
+9. **Affected PRs/Files:** `internal/web/server.go`, `internal/web/server_test.go`, `internal/web/fixes_test.go`, `docs/web-board-security.md`.
+
+## DEC-031
+
+1. **Decision ID:** DEC-031
+2. **Date:** 2026-07-03
+3. **Question:** How strictly should web mutations validate input, and how should workflow violations surface over HTTP and in exit codes?
+4. **Options Considered:**
+   - Keep lenient parsing (invalid enums coerced to defaults) and generic 500s.
+   - Mirror CLI validation on the web surface and map workflow violations to conflict semantics everywhere.
+5. **Chosen Option:** Mirror CLI validation and map `forbidden transition` errors to the conflict code.
+6. **Why We Chose It:** The web surface accepted what the CLI refuses: tickets born `done`/`canceled`, invalid enum values silently coerced (an invalid drag status became a `backlog` move attempt), and edits persisting blank titles or malformed actors that later crashed rendering. Web create/edit/move now enforce the same invariants, same-status drops are no-ops, and `apperr.CodeOf` classifies `forbidden transition` as `conflict` — HTTP 409 on the web, exit code 4 (the documented conflict exit) in the CLI instead of the unmapped default 1. Plain form posts redirect back to the board with the error rendered instead of dead-ending on a text/plain page.
+7. **Confidence:** high
+8. **Revisit Trigger:** Scripts are found depending on exit code 1 for forbidden transitions, or a surface needs to create terminal-status tickets legitimately (import/export already bypasses this via its own path).
+9. **Affected PRs/Files:** `internal/web/handlers.go`, `internal/web/server.go`, `internal/web/viewmodels.go`, `internal/apperr/errors.go`, `internal/service/query.go`, `internal/service/types.go`, `internal/storage/sqlite/store.go`, `internal/cli/web.go`, web templates/static, docs.
+
+## DEC-032
+
+1. **Decision ID:** DEC-032
+2. **Date:** 2026-07-03
+3. **Question:** How should the web board respond to a rejected non-JS form submission?
+4. **Options Considered:**
+   - Raw `http.Error` text page (original).
+   - Post/Redirect/Get back to `/board` with the error in the query string.
+   - Re-render the board in place with the error status and the submitted values echoed into the originating form.
+5. **Chosen Option:** Re-render in place with scoped echo.
+6. **Why We Chose It:** The raw text page dead-ends the user; PRG destroys typed content (Cache-Control: no-store disables bfcache) and reads as success to redirect-following clients. Render-in-place keeps the true 4xx status for every client and preserves everything typed. Echoed values are scoped via a FormTarget derived from the action path so a rejected mutation can only prefill the form that produced it — never another ticket's edit form. Known residual: refreshing the error page re-posts the form (inherent to render-in-place), and the browser address bar sits on the action URL until the next navigation; app.js resolves reloads against /board to compensate.
+7. **Confidence:** medium
+8. **Revisit Trigger:** Server-side flash/session state is introduced (enabling PRG without data loss), or users report confusion from the POST URL/refresh-repost behavior.
+9. **Affected PRs/Files:** `internal/web/server.go`, `internal/web/viewmodels.go`, `internal/web/assets.go`, `internal/web/templates/*`, `internal/web/static/app.js`, web tests.

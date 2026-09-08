@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -387,5 +388,56 @@ func TestRebuildRequiresSources(t *testing.T) {
 
 	if err := store.Rebuild(ctx, ""); err == nil {
 		t.Fatal("expected rebuild to fail without sources")
+	}
+}
+
+func TestQueryCommentCountsAcrossChunks(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC)
+	tickets := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return now }}
+	events := &eventstore.Log{RootDir: root}
+	store, err := Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), tickets, events)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	seed := []struct {
+		ticket string
+		n      int
+	}{{"WEB-1", 2}, {"WEB-950", 1}, {"WEB-2400", 3}}
+	eventID := int64(0)
+	for _, s := range seed {
+		for i := 0; i < s.n; i++ {
+			eventID++
+			event := contracts.Event{
+				EventID:       eventID,
+				Timestamp:     now,
+				Actor:         contracts.Actor("human:owner"),
+				Type:          contracts.EventTicketCommented,
+				Project:       "WEB",
+				TicketID:      s.ticket,
+				Payload:       map[string]any{"body": "note"},
+				SchemaVersion: contracts.CurrentSchemaVersion,
+			}
+			if err := store.ApplyEvent(ctx, event); err != nil {
+				t.Fatalf("apply event: %v", err)
+			}
+		}
+	}
+	// 2500 ids forces multiple IN-clause chunks; most ids simply have no rows
+	ids := make([]string, 0, 2500)
+	for i := 1; i <= 2500; i++ {
+		ids = append(ids, fmt.Sprintf("WEB-%d", i))
+	}
+	counts, err := store.QueryCommentCounts(ctx, ids)
+	if err != nil {
+		t.Fatalf("query comment counts: %v", err)
+	}
+	if counts["WEB-1"] != 2 || counts["WEB-950"] != 1 || counts["WEB-2400"] != 3 {
+		t.Fatalf("unexpected counts: %#v", counts)
+	}
+	if len(counts) != 3 {
+		t.Fatalf("expected only commented tickets in result, got %d entries", len(counts))
 	}
 }

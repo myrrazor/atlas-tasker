@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-Nothing yet.
+- Added the v1.10 local web Kanban board work-in-progress: `tracker web serve/open/status`, embedded server-rendered board assets, local session/CSRF protections, docs, and focused web tests.
+- Fixed the web board rejecting its own forms in real browsers: `Referrer-Policy` is now `same-origin` (under `no-referrer`, browsers send `Origin: null` on same-origin form POSTs, which the origin check treated as cross-origin). Create, edit, comment, review, approve, complete, and the move dropdown work again outside of drag-and-drop.
+- Web mutations now enforce CLI-grade validation: no tickets born `done`/`canceled`, invalid status/type/priority values return 400 instead of being silently coerced, and edits reject blank titles and malformed actors (a bare `agent:` assignee used to crash every board render).
+- Workflow violations surface as conflicts: HTTP 409 on the web and exit code 4 in the CLI for `forbidden transition` errors (previously 500/exit 1), for single and bulk operations alike. Dropping a card on its current column is a no-op instead of a "forbidden transition: ready -> ready" error.
+- Rejected form posts re-render the board in place with the real error status, the error banner, and everything the user typed echoed back into exactly the form they submitted — no bare text pages, no redirect that reads as success to scripts, no typed content lost, and no values bleeding into other tickets' forms.
+- Redesigned the web board with a neutral charcoal visual system: vendored Geist type, rounded column trays with per-status color dashes, card plates with avatar clusters and tinted priority pills, vendored Phosphor icon stats that hide at zero, a matching detail drawer, and a mobile layout whose filters collapse behind a pill. Fresh screenshots in `docs/assets/`.
+- Board cards show real comment counts, detail comments show author and timestamp, saved views respect the project/assignee/type filters, session cookies are scoped per port so two workspaces can be served at once, failed drags snap back without wiping the error message, selecting a ticket on narrow screens scrolls the detail drawer into view, `tracker web open` fails fast when the recorded server is down, the runtime state file is removed on shutdown, and `--open` works on Windows.
 
 ## v1.9.1 - Agent Loop README And Table Polish (2026-06-16)
 

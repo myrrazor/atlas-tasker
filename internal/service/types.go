@@ -78,11 +78,19 @@ type BoardViewModel struct {
 	Board contracts.BoardView `json:"board"`
 }
 
+// CommentEntry is a comment with its authorship, sourced from the event log.
+type CommentEntry struct {
+	Body      string          `json:"body"`
+	Actor     contracts.Actor `json:"actor"`
+	Timestamp time.Time       `json:"timestamp"`
+}
+
 type TicketDetailView struct {
 	Ticket            contracts.TicketSnapshot `json:"ticket"`
 	BoardStatus       contracts.Status         `json:"board_status"`
 	EffectiveReviewer contracts.Actor          `json:"effective_reviewer,omitempty"`
 	Comments          []string                 `json:"comments"`
+	CommentEntries    []CommentEntry           `json:"comment_entries,omitempty"`
 	Mentions          []contracts.Mention      `json:"mentions,omitempty"`
 	History           []contracts.Event        `json:"history"`
 	Gates             []contracts.GateSnapshot `json:"gates,omitempty"`

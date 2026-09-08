@@ -56,6 +56,7 @@ type ProjectionStore interface {
 	QueryTicket(ctx context.Context, ticketID string) (TicketSnapshot, error)
 	QuerySearch(ctx context.Context, query SearchQuery) ([]TicketSnapshot, error)
 	QueryHistory(ctx context.Context, ticketID string) ([]Event, error)
+	QueryCommentCounts(ctx context.Context, ticketIDs []string) (map[string]int, error)
 }
 
 type CollaboratorStore interface {

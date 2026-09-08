@@ -44,6 +44,9 @@
 - `tracker integrations install codex [--force]`
 - `tracker integrations install claude [--force]`
 - `tracker integrations install generic [--force]`
+- `tracker web serve [--host 127.0.0.1] [--port 0] [--project <KEY>] [--actor <ACTOR>] [--open|--no-browser] [--read-only] [--unsafe-host]`
+- `tracker web open`
+- `tracker web status [--pretty|--md|--json]`
 - `tracker version [--json]`
 - `tracker tui [--actor <ACTOR>]`
 - `tracker config get [KEY]`
@@ -561,6 +564,20 @@ Palette shortcuts:
 - `/run launch <RUN-ID> [--refresh]`
 - `/bulk ...`
 - `/views run <NAME>`
+
+## Local Web Board
+
+- `tracker web serve [--host 127.0.0.1] [--port 0] [--project <KEY>] [--actor <ACTOR>] [--open|--no-browser] [--read-only] [--unsafe-host]`
+- `tracker web open`
+- `tracker web status [--pretty|--md|--json]`
+
+Rules:
+
+- `serve` binds to loopback by default and chooses a random free port when `--port 0` is used
+- non-loopback hosts require `--unsafe-host` and print a warning
+- runtime status is written without secrets under `.tracker/runtime/web/server.json`
+- browser mutations use the same `ActionService` paths as CLI mutations and record `surface: "web"`
+- descriptions and comments are escaped text in v1.10; raw Markdown HTML is not rendered
 
 ## Project
 
