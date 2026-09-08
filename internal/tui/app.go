@@ -235,6 +235,10 @@ func Run(root string, explicitActor contracts.Actor) error {
 }
 
 func newModel(root string, explicitActor contracts.Actor) (model, error) {
+	root, err := service.InitializedWorkspaceRoot(root)
+	if err != nil {
+		return model{}, err
+	}
 	clock := func() time.Time { return time.Now().UTC() }
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: clock}
 	eventLog := &eventstore.Log{RootDir: root}

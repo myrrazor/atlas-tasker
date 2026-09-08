@@ -44,6 +44,9 @@ func openWorkspace() (*workspace, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := requireInitializedWorkspace(root); err != nil {
+		return nil, err
+	}
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
 	eventLog := &eventstore.Log{RootDir: root}
 	projection, err := sqlitestore.Open(filepath.Join(storage.TrackerDir(root), "index.sqlite"), ticketStore, eventLog)
@@ -80,6 +83,16 @@ func openWorkspace() (*workspace, error) {
 	}
 	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
 	return w, nil
+}
+
+// requireInitializedWorkspace is the wrong-CWD guard. Without it, the sqlite
+// open above scaffolds a stray .tracker in whatever directory the user happens
+// to be in, and every read reports an empty-but-"healthy" board. init and
+// integrations install run ensureInitArtifacts before opening, so they are
+// unaffected.
+func requireInitializedWorkspace(root string) error {
+	_, err := service.InitializedWorkspaceRoot(root)
+	return err
 }
 
 func (w *workspace) close() {

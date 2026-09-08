@@ -111,7 +111,7 @@ func (s *ActionService) normalizeBulkOperation(op BulkOperation) (BulkOperation,
 	switch op.Kind {
 	case BulkOperationMove:
 		if !op.Status.IsValid() {
-			return BulkOperation{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid status: %s", op.Status))
+			return BulkOperation{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid status: %s (valid: %s)", op.Status, strings.Join(contracts.ValidStatusValues(), ", ")))
 		}
 	case BulkOperationAssign:
 		if op.Assignee != "" && !op.Assignee.IsValid() {

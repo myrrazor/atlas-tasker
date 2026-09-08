@@ -532,7 +532,7 @@ func reasonFromForm(r *http.Request, fallback string) string {
 func parseStatusStrict(raw string) (contracts.Status, error) {
 	status := contracts.Status(strings.TrimSpace(raw))
 	if !status.IsValid() {
-		return "", apperr.New(apperr.CodeInvalidInput, "invalid status: "+strings.TrimSpace(raw))
+		return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid status: %s (valid: %s)", strings.TrimSpace(raw), strings.Join(contracts.ValidStatusValues(), ", ")))
 	}
 	return status, nil
 }

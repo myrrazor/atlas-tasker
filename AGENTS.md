@@ -25,6 +25,9 @@ This file is for agents **using** the tracker. If you are contributing to Atlas 
 - **Do not edit `.tracker/` or the ticket markdown by hand.** Writes go through the CLI or MCP so
   the event log, the index, and the lease state stay in agreement. If you already hand-edited
   something, `tracker doctor --repair` rebuilds the index from markdown and events.
+- **Run tracker from the workspace root.** A directory that never went through `tracker init`
+  is exit 2 — nothing gets scaffolded — and from a subdirectory of a real workspace the error
+  names the root to run from. `init` is the only command that creates a workspace.
 - **Claim before you edit code.** A lease is how two agents avoid the same ticket. Claiming a
   ticket someone else holds is exit 4, not a queue.
 - **The browser board is for humans.** `tracker web serve` mints a random session token per

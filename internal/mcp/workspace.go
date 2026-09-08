@@ -31,7 +31,7 @@ func OpenWorkspace(root string, stderr io.Writer, now func() time.Time) (*Worksp
 			return nil, err
 		}
 	}
-	root, err := service.CanonicalWorkspaceRoot(root)
+	root, err := service.InitializedWorkspaceRoot(root)
 	if err != nil {
 		return nil, err
 	}

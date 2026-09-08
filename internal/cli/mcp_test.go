@@ -128,6 +128,65 @@ func TestMCPServeWorkspaceFlagIsChecked(t *testing.T) {
 	}
 }
 
+func TestMCPServeDefaultWorkspaceIsValidated(t *testing.T) {
+	withTempWorkspace(t)
+	cmd := &cobra.Command{}
+	cmd.Flags().String("workspace", "", "")
+	if _, err := requestedWorkspaceRoot(cmd); apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("uninitialized CWD must be rejected, got %v", err)
+	}
+	if _, err := os.Stat(".tracker"); !os.IsNotExist(err) {
+		t.Fatalf("rejected default workspace created state: %v", err)
+	}
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatal(err)
+	}
+	root, err := requestedWorkspaceRoot(cmd)
+	if err != nil || root == "" {
+		t.Fatalf("initialized default workspace must resolve, got %q, %v", root, err)
+	}
+	nested := filepath.Join(root, "src", "deep")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := requestedWorkspaceRoot(cmd); apperr.CodeOf(err) != apperr.CodeInvalidInput || !strings.Contains(err.Error(), root) {
+		t.Fatalf("nested default workspace must name the actual root %q, got %v", root, err)
+	}
+	if _, err := os.Stat(filepath.Join(nested, ".tracker")); !os.IsNotExist(err) {
+		t.Fatalf("rejected nested workspace created state: %v", err)
+	}
+}
+
+func TestMCPDiscoveryDoesNotRequireWorkspace(t *testing.T) {
+	withTempWorkspace(t)
+	for _, command := range []string{"schema", "tools"} {
+		out, err := runCLI(t, "mcp", command, "--json")
+		if err != nil {
+			t.Fatalf("mcp %s outside a workspace: %v", command, err)
+		}
+		if !json.Valid([]byte(out)) {
+			t.Fatalf("mcp %s must emit JSON: %s", command, out)
+		}
+	}
+	if _, err := os.Stat(".tracker"); !os.IsNotExist(err) {
+		t.Fatalf("MCP discovery must not initialize a workspace: %v", err)
+	}
+}
+
+func TestMCPOperationApprovalRequiresInitializedWorkspace(t *testing.T) {
+	withTempWorkspace(t)
+	_, err := runCLI(t, "mcp", "approve-operation", "--operation", "atlas.change.merge", "--target", "CHG-1", "--actor", "human:owner", "--reason", "approve merge", "--json")
+	if apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("MCP approval outside a workspace must fail as invalid_input: %v", err)
+	}
+	if _, err := os.Stat(".tracker"); !os.IsNotExist(err) {
+		t.Fatalf("refused MCP approval must not bootstrap a workspace: %v", err)
+	}
+}
+
 func TestMCPToolsDocsMatchJSONInventory(t *testing.T) {
 	out, err := runCLI(t, "mcp", "tools", "--json", "--tool-profile", "admin", "--dangerously-allow-high-impact-tools")
 	if err != nil {
