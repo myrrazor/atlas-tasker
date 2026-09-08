@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestInstallCodexCreatesManagedFiles(t *testing.T) {
@@ -123,6 +125,134 @@ func TestInstallGenericCreatesPortableSkillPack(t *testing.T) {
 	}
 	if !strings.Contains(string(skill), "Atlas Worker") || !strings.Contains(string(skill), "dependency_blocked") || !strings.Contains(string(skill), "tracker run dispatch <ID> --agent agent:<agent-id>") {
 		t.Fatalf("unexpected generic skill: %s", string(skill))
+	}
+}
+
+// The frontmatter is the whole activation contract: agents match on it before they
+// ever read the body, and a description with a bare ": " in it is not a YAML scalar.
+func TestSkillFrontmatterParses(t *testing.T) {
+	for _, provider := range []string{"codex", "claude", "openclaw", "generic"} {
+		body := atlasWorkerSkill(provider)
+		_, rest, found := strings.Cut(body, "---\n")
+		if !found {
+			t.Fatalf("%s skill has no frontmatter:\n%s", provider, body)
+		}
+		frontmatter, _, found := strings.Cut(rest, "\n---")
+		if !found {
+			t.Fatalf("%s skill frontmatter is unterminated:\n%s", provider, body)
+		}
+		var parsed struct {
+			Name        string         `yaml:"name"`
+			Description string         `yaml:"description"`
+			Metadata    map[string]any `yaml:"metadata"`
+		}
+		if err := yaml.Unmarshal([]byte(frontmatter), &parsed); err != nil {
+			t.Fatalf("%s skill frontmatter is not valid YAML: %v\n%s", provider, err, frontmatter)
+		}
+		if parsed.Name != "atlas-worker" {
+			t.Fatalf("%s skill name is %q", provider, parsed.Name)
+		}
+		// the description is what gets matched, so it has to carry trigger phrases
+		for _, trigger := range []string{"what should I work on", "ready for review", "Atlas Tasker"} {
+			if !strings.Contains(parsed.Description, trigger) {
+				t.Fatalf("%s skill description is missing %q:\n%s", provider, trigger, parsed.Description)
+			}
+		}
+		if provider == "openclaw" && parsed.Metadata["openclaw"] == nil {
+			t.Fatalf("openclaw skill should carry its gating metadata:\n%s", frontmatter)
+		}
+	}
+}
+
+func TestInstallOpenClawUsesRepoLocalSkillRoot(t *testing.T) {
+	root := t.TempDir()
+	result, err := Installer{Root: root}.Install(TargetOpenClaw, false)
+	if err != nil {
+		t.Fatalf("install openclaw: %v", err)
+	}
+	if !strings.HasSuffix(result.InstructionFile, "AGENTS.md") {
+		t.Fatalf("unexpected instruction file: %#v", result)
+	}
+	skillPath := filepath.Join(root, ".agents", "skills", "atlas-worker", "SKILL.md")
+	skill, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatalf("read openclaw skill: %v", err)
+	}
+	content := string(skill)
+	if !strings.Contains(content, "name: atlas-worker") {
+		t.Fatalf("unexpected skill frontmatter: %s", content)
+	}
+	if !strings.Contains(content, `"requires": { "bins": ["tracker"] }`) {
+		t.Fatalf("openclaw skill should gate on the tracker binary: %s", content)
+	}
+	if !strings.Contains(content, "tracker agent available <agent-id> --json") {
+		t.Fatalf("openclaw skill should reuse the shared worker body: %s", content)
+	}
+	if _, err := os.ReadFile(filepath.Join(root, ".agents", "skills", "atlas-worker", "references", "workflow.md")); err != nil {
+		t.Fatalf("openclaw skill should ship its workflow reference: %v", err)
+	}
+	if _, err := os.ReadFile(filepath.Join(root, ".agents", "skills", "atlas-worker", "commands", "atlas-take.md")); err != nil {
+		t.Fatalf("openclaw skill should ship its command templates: %v", err)
+	}
+	// Compare resolved roots because macOS temp paths include system symlinks.
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ~/.openclaw/skills is the user's to manage; a repo command must not write there
+	for _, path := range append(append([]string{}, result.Created...), result.Updated...) {
+		rel, err := filepath.Rel(canonicalRoot, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			t.Fatalf("install wrote outside the workspace: %s", path)
+		}
+	}
+	guide, err := os.ReadFile(filepath.Join(root, ".tracker", "integrations", "openclaw-guide.md"))
+	if err != nil {
+		t.Fatalf("read openclaw guide: %v", err)
+	}
+	for _, needle := range []string{"openclaw skills list", "--global", filepath.Join(".agents", "skills", "atlas-worker")} {
+		if !strings.Contains(string(guide), needle) {
+			t.Fatalf("openclaw guide should mention %q:\n%s", needle, string(guide))
+		}
+	}
+}
+
+func TestCodexAndOpenClawKeepSeparateAgentsBlocks(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "AGENTS.md")
+	if err := os.WriteFile(path, []byte("# House rules\n\nRun the tests.\n"), 0o644); err != nil {
+		t.Fatalf("seed AGENTS.md: %v", err)
+	}
+	for _, target := range []Target{TargetCodex, TargetOpenClaw} {
+		if _, err := (Installer{Root: root}).Install(target, false); err != nil {
+			t.Fatalf("install %s: %v", target, err)
+		}
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	content := string(body)
+	for _, needle := range []string{"# House rules", "Atlas Tasker (Codex)", "Atlas Tasker (OpenClaw)", openclawMarkers.begin, openclawMarkers.end} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("AGENTS.md lost %q after both installs:\n%s", needle, content)
+		}
+	}
+
+	// re-running either target must rewrite only its own block
+	if _, err := (Installer{Root: root}).Install(TargetCodex, false); err != nil {
+		t.Fatalf("reinstall codex: %v", err)
+	}
+	body, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("re-read AGENTS.md: %v", err)
+	}
+	content = string(body)
+	if strings.Count(content, managedBegin) != 1 || strings.Count(content, openclawMarkers.begin) != 1 {
+		t.Fatalf("expected exactly one block per target:\n%s", content)
+	}
+	if !strings.Contains(content, "Atlas Tasker (OpenClaw)") {
+		t.Fatalf("codex reinstall clobbered the openclaw block:\n%s", content)
 	}
 }
 

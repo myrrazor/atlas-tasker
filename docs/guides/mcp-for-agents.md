@@ -12,6 +12,8 @@ tracker mcp schema --json --tool-profile read
 
 The read profile includes core read tools and plan/dry-run tools. It does not expose workflow writes or high-impact tools.
 
+If the MCP client launches the server from somewhere other than the repo, add `--workspace /path/to/repo`. Otherwise the tools answer against whatever directory the client started in.
+
 ## Workflow Sessions
 
 Use the workflow profile only when the human expects the agent to mutate Atlas state:

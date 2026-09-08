@@ -22,7 +22,7 @@ type BoardQueryOptions struct {
 
 // BoardView is a grouped set of tickets by status column.
 type BoardView struct {
-	Columns map[Status][]TicketSnapshot
+	Columns map[Status][]TicketSnapshot `json:"columns"`
 }
 
 // ProjectStore is the source-of-truth project storage contract.

@@ -33,6 +33,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 
 ## Guides
 
+- [AGENTS.md](../AGENTS.md): the file to hand a coding agent — don'ts, the loop, exit codes, MCP registration
 - [Codex](guides/codex.md)
 - [Codex `/goal`](guides/codex-goals.md)
 - [Claude Code](guides/claude-code.md)

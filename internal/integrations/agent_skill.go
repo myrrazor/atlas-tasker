@@ -5,6 +5,61 @@ import (
 	"strings"
 )
 
+func openclawBlock(guidePath string) string {
+	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (OpenClaw)
+
+- Read work with `+"`tracker agent available <agent-id> --json`"+` and `+"`tracker agent pending <agent-id> --json`"+`.
+- Every write takes `+"`--actor`"+` and `+"`--reason`"+`; `+"`tracker project create`"+` takes neither.
+- Claim before editing: `+"`tracker ticket claim <ID> --actor agent:<agent-id> --reason \"start work\"`"+`.
+- Exit 4 on a status change means the transition is forbidden, not that the command broke. Read `+"`tracker inspect <ID> --json`"+` before retrying.
+- The `+"`atlas-worker`"+` skill installs under `+"`.agents/skills/`"+`; confirm it loaded with `+"`openclaw skills list`"+`.
+- The browser board (`+"`tracker web serve`"+`) is for humans. Agents use the CLI or `+"`tracker mcp serve`"+`.
+- Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
+`, guidePath))
+}
+
+func openclawGuide(skillDir string) string {
+	return strings.TrimSpace(fmt.Sprintf(`# Atlas Tasker OpenClaw Guide
+
+OpenClaw reads `+"`AGENTS.md`"+` into every session and loads skills from four roots. Atlas installs into the repo-local one.
+
+## Where things land
+
+- `+"`AGENTS.md`"+` gets an Atlas block between `+"`atlas-tasker:openclaw`"+` markers. Codex writes its own block with different markers, so both can live in the same file.
+- The `+"`atlas-worker`"+` skill goes to `+"`%s`"+`, which OpenClaw picks up as a project-agent skill for this repo only.
+- The skill is gated on the `+"`tracker`"+` binary, so it stays out of the prompt in workspaces that do not have Atlas installed.
+
+## Confirm it loaded
+
+~~~bash
+openclaw skills list
+openclaw skills check
+~~~
+
+`+"`check`"+` is the one that explains a skill that is present but not ready — usually a missing binary or a name collision with a higher-precedence root.
+
+## Sharing it across agents
+
+Repo-local is the right default: the skill travels with the repo and only applies where Atlas is. For every agent on the machine, install the shared copy yourself:
+
+~~~bash
+openclaw skills install %s --as atlas-worker --global
+~~~
+
+That writes to `+"`~/.openclaw/skills/`"+`, which Atlas deliberately never touches — a repo command should not reach into your home directory.
+
+## The loop
+
+1. `+"`tracker agent available <agent-id> --json`"+`
+2. `+"`tracker ticket claim <ID> --actor agent:<agent-id> --reason \"start work\"`"+`
+3. `+"`tracker ticket move <ID> in_progress --actor agent:<agent-id> --reason \"start work\"`"+`
+4. `+"`tracker ticket comment <ID> --body \"what changed\" --actor agent:<agent-id> --reason \"progress note\"`"+`
+5. `+"`tracker ticket request-review <ID> --actor agent:<agent-id> --reason \"ready for review\"`"+`
+
+Read `+"`references/workflow.md`"+` inside the skill for blocker codes, reviewer behavior, and wake-ups.
+`, skillDir, skillDir)) + "\n"
+}
+
 func genericBlock(guidePath string) string {
 	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (Generic Agent)
 
@@ -33,10 +88,32 @@ Atlas does not poll or launch agents unless an owner enables agent auto mode.
 `) + "\n"
 }
 
+// runtime.go has its own providerLabel for launch text; this one reads inside a
+// sentence, so "generic" has to come out as something you can say out loud
+func skillProviderLabel(provider string) string {
+	switch provider {
+	case "codex":
+		return "Codex"
+	case "claude":
+		return "Claude Code"
+	case "openclaw":
+		return "OpenClaw"
+	default:
+		return "generic agent"
+	}
+}
+
 func atlasWorkerSkill(provider string) string {
-	return strings.TrimSpace(fmt.Sprintf(`---
+	// keep the description free of ": " -- a plain YAML scalar cannot hold one and
+	// a skill whose frontmatter will not parse never loads
+	frontmatter := fmt.Sprintf(`---
 name: atlas-worker
-description: Use when working inside an Atlas Tasker workspace as a %s coding agent: find available tickets, claim work, respect blockers, request review, and record durable evidence.
+description: Use inside an Atlas Tasker workspace -- "what should I work on", "pick up the next ticket", "claim APP-12", "why is this blocked", "ready for review", "hand this off". Drives the tracker from %s sessions; finds available work, claims tickets, respects dependency and policy blockers, records evidence, and requests review.`, skillProviderLabel(provider))
+	if provider == "openclaw" {
+		// keeps the skill out of the prompt in workspaces with no tracker binary
+		frontmatter += "\nmetadata: { \"openclaw\": { \"requires\": { \"bins\": [\"tracker\"] } } }"
+	}
+	return strings.TrimSpace(fmt.Sprintf(`%s
 ---
 
 # Atlas Worker
@@ -70,7 +147,7 @@ If the workspace has no agent profiles yet (`+"`tracker agent list --json`"+` is
 ## More Detail
 
 Read `+"`references/workflow.md`"+` when you need the full loop, blocker handling, reviewer behavior, or handoff patterns.
-`, provider)) + "\n"
+`, frontmatter)) + "\n"
 }
 
 func atlasWorkerReference() string {

@@ -8,12 +8,15 @@ The MCP adapter is not a second source of truth. It calls the same service layer
 
 ```bash
 tracker mcp serve --tool-profile read
+tracker mcp serve --workspace /path/to/repo --tool-profile read
 tracker mcp schema --json --tool-profile workflow
 tracker mcp tools --json --tool-profile admin
 tracker mcp approve-operation --operation change.merge --target CHG-123 --actor human:owner --reason "release merge"
 tracker mcp approvals list --json
 tracker mcp approvals revoke <APPROVAL-ID>
 ```
+
+`serve` reads the current directory unless `--workspace` names one. Registrations that live outside a repo — user-scoped `claude mcp add`, a global Codex `mcp_servers` entry — need it, because the client picks the working directory, not you. `schema` and `tools` describe the adapter itself and never open a workspace.
 
 ## Profiles
 

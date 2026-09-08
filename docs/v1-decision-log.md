@@ -643,6 +643,66 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 8. **Revisit Trigger:** Atlas intentionally designs and tests a remote web product with TLS, authenticated identities, authorization, session revocation, and deployment guidance.
 9. **Affected PRs/Files:** `internal/cli/web.go`, `internal/cli/root_test.go`, `internal/web/server.go`, `internal/web/server_test.go`, `docs/command-reference.md`, `docs/web-board-security.md`.
 
+## DEC-045
+
+1. **Decision ID:** DEC-045
+2. **Date:** 2026-07-30
+3. **Question:** How do we make the README's "JSON output on every command" claim true, and keep it true?
+4. **Options Considered:**
+   - Register `--json` on the thirteen ticket write commands the agent skill names and stop there.
+   - Register it everywhere it makes sense and add a tree-walking test with an allowlist.
+   - Move output-flag registration into a shared command constructor so new commands inherit it.
+5. **Chosen Option:** Register the flags on every leaf that produces a result, then walk the cobra tree in a test and fail on any leaf without `--json` outside a documented allowlist.
+6. **Why We Chose It:** The commands were already printing through `writeCommandOutput`; the flags were the only thing missing, so the fix was registration rather than new output paths. A shared constructor would have meant rewriting every command declaration in the package for the same guarantee a twenty-line test gives, and the test also catches the reverse mistake — an allowlist entry that quietly gains the flag or stops being a leaf. The allowlist holds five surfaces that own stdout for something else (`mcp serve` speaks JSON-RPC on it), are interactive (`shell`, `tui`), or are long-running/human-facing (`web serve`, `web open`). `tracker init` gained a result payload at the same time, because bootstrap you cannot verify is not scriptable, and `board --json` lost its lone PascalCase `Columns` key.
+7. **Confidence:** high
+8. **Revisit Trigger:** The allowlist grows past a handful of entries, or a command needs machine output in a shape the versioned envelope cannot carry.
+9. **Affected PRs/Files:** `internal/cli/root.go`, `internal/cli/actions.go`, `internal/cli/json_coverage_test.go`, `internal/config/config.go`, `internal/contracts/interfaces.go`.
+
+## DEC-046
+
+1. **Decision ID:** DEC-046
+2. **Date:** 2026-07-30
+3. **Question:** How should an MCP client that does not control its working directory reach a specific Atlas workspace?
+4. **Options Considered:**
+   - Leave it at the working directory and tell people to register the server per project.
+   - Add `--workspace` to `mcp serve` and validate the path before the server starts.
+   - Read a workspace path from an environment variable or a config file in the user's home.
+5. **Chosen Option:** `tracker mcp serve --workspace <path>`, checked at startup, with the working directory as the fallback.
+6. **Why We Chose It:** User-scoped registrations (`claude mcp add --scope user`, a global Codex `mcp_servers` entry) are the normal way people install a local MCP server, and they start it wherever the client happens to be — which showed up as `not_found` for tickets the human could see in the terminal. An explicit flag keeps the workspace visible in the registration itself rather than hidden in a home-directory file. The path is validated before serving because an MCP client has no terminal to show a failure in: a missing directory is `not_found`, a directory without `.tracker/` says to run `tracker init` there. `mcp schema` and `mcp tools` describe the adapter and never open a workspace, so they do not take the flag.
+7. **Confidence:** high
+8. **Revisit Trigger:** MCP clients gain a standard way to pass a working directory, or Atlas needs one server to answer for several workspaces at once.
+9. **Affected PRs/Files:** `internal/cli/mcp.go`, `internal/cli/mcp_test.go`, `docs/mcp.md`, `docs/mcp-claude-code.md`, `docs/mcp-codex.md`, `docs/guides/mcp-for-agents.md`.
+
+## DEC-047
+
+1. **Decision ID:** DEC-047
+2. **Date:** 2026-07-30
+3. **Question:** Where should `tracker integrations install openclaw` write, given that OpenClaw reads `AGENTS.md` like Codex does?
+4. **Options Considered:**
+   - Share the Codex block in `AGENTS.md` and install the skill to `~/.openclaw/skills`.
+   - Write a second `AGENTS.md` block under its own markers and install the skill to the repo-local `.agents/skills` root.
+   - Give OpenClaw its own instruction file so the two never meet.
+5. **Chosen Option:** A second managed block in `AGENTS.md` with `atlas-tasker:openclaw` markers, plus the skill at `.agents/skills/atlas-worker/`.
+6. **Why We Chose It:** OpenClaw's own precedence table puts repo-local project-agent skills at `<workspace>/.agents/skills`, which matches what the codex and claude targets already do with `.codex/skills` and `.claude/skills` — the skill travels with the repo and only applies where Atlas is. Sharing the Codex block would have made whichever target ran last silently win, and a separate instruction file would be a file OpenClaw does not read. `~/.openclaw/skills` is the shared per-machine root and stays the user's to install; a repo-scoped command reaching into a home directory is a surprise, so the guide prints the `openclaw skills install ... --global` one-liner instead. The generated skill carries `metadata.openclaw.requires.bins`, which gates it on the `tracker` binary and which other agents ignore. The same pass fixed a bare `": "` in the skill description across all four targets — that is not a legal plain YAML scalar, so no agent had been able to parse the frontmatter.
+7. **Confidence:** high
+8. **Revisit Trigger:** OpenClaw changes its skill roots or stops injecting `AGENTS.md`, or a fourth AGENTS.md-reading target makes per-target markers unwieldy.
+9. **Affected PRs/Files:** `internal/integrations/install.go`, `internal/integrations/agent_skill.go`, `internal/integrations/install_test.go`, `internal/cli/root.go`, `docs/command-reference.md`, `docs/guides/team-presets.md`.
+
+## DEC-048
+
+1. **Decision ID:** DEC-048
+2. **Date:** 2026-07-30
+3. **Question:** Who is the root `AGENTS.md` for, now that agents arrive at this repo to use Atlas rather than to build it?
+4. **Options Considered:**
+   - Keep the v1 contributor guide and add a section for agents using the tracker.
+   - Archive the contributor guide and write a new root `AGENTS.md` for agents operating Atlas.
+   - Point `AGENTS.md` at the existing per-provider guides under `docs/guides/`.
+5. **Chosen Option:** Archive the v1 guide as `docs/v1-agents-archive.md` and write a new root `AGENTS.md` for agents driving the tracker, with `CLAUDE.md` importing it via `@AGENTS.md`.
+6. **Why We Chose It:** The old file described the PR-001..PR-009 delivery train and a locked v1 scope — accurate history, useless to an agent asked to work a ticket, and actively misleading as the first thing a coding agent reads. The new file leads with the failure modes rather than a feature tour: every write needs `--actor` and `--reason`, `project create` takes neither, a forbidden transition is a deliberate exit 4 rather than a bug to retry around. The web board is named as human-only in the same list, because its session token is random per process and never persisted — there is no headless path, and an agent that tries to scrape it is working against the design when the CLI and MCP are right there. Claude Code reads `CLAUDE.md` rather than `AGENTS.md`, so the bridge is an import rather than a second copy to drift.
+7. **Confidence:** high
+8. **Revisit Trigger:** The don'ts list stops matching real agent failures, or the web board grows a non-interactive auth path.
+9. **Affected PRs/Files:** `AGENTS.md`, `CLAUDE.md`, `docs/v1-agents-archive.md`, `README.md`, `docs/README.md`.
+
 ## DEC-051
 
 1. **Decision ID:** DEC-051
