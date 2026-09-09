@@ -155,8 +155,17 @@ func (s *ActionService) ApplyArchive(ctx context.Context, target contracts.Reten
 		}
 		moved := make([]movedPath, 0, len(plan.Items))
 		for _, item := range plan.Items {
-			source := filepath.Join(s.Root, item.Path)
-			dest := archivePayloadPath(s.Root, archiveID, item.Path)
+			if _, ok := relativeWorkspacePath(s.Root, item.Path); !ok {
+				return ArchiveApplyResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("archive path escapes workspace: %s", item.Path))
+			}
+			source, err := resolveContainedPath(s.Root, item.Path)
+			if err != nil {
+				return ArchiveApplyResult{}, err
+			}
+			dest, err := archivePayloadPath(s.Root, archiveID, item.Path)
+			if err != nil {
+				return ArchiveApplyResult{}, err
+			}
 			if err := movePath(source, dest); err != nil {
 				rollbackMovedPaths(moved)
 				return ArchiveApplyResult{}, err
@@ -212,18 +221,37 @@ func (s *ActionService) RestoreArchive(ctx context.Context, archiveID string, ac
 			if strings.TrimSpace(rel) == "" {
 				continue
 			}
-			if _, err := os.Stat(filepath.Join(s.Root, rel)); err == nil {
+			if _, ok := relativeWorkspacePath(s.Root, rel); !ok {
+				return ArchiveRestoreResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("restore path escapes workspace: %s", rel))
+			}
+			dest, err := resolveContainedPath(s.Root, rel)
+			if err != nil {
+				return ArchiveRestoreResult{}, err
+			}
+			if _, err := os.Stat(dest); err == nil {
 				return ArchiveRestoreResult{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("restore target already exists: %s", rel))
 			}
 		}
 		created := make([]string, 0, len(record.SourcePaths))
 		for _, rel := range record.SourcePaths {
-			source := archivePayloadPath(s.Root, record.ArchiveID, rel)
+			source, err := archivePayloadPath(s.Root, record.ArchiveID, rel)
+			if err != nil {
+				cleanupCreatedPaths(created)
+				return ArchiveRestoreResult{}, err
+			}
+			if err := rejectSymlinkedFile(source); err != nil {
+				cleanupCreatedPaths(created)
+				return ArchiveRestoreResult{}, err
+			}
 			if _, err := os.Stat(source); err != nil {
 				cleanupCreatedPaths(created)
 				return ArchiveRestoreResult{}, fmt.Errorf("restore source missing: %s", rel)
 			}
-			dest := filepath.Join(s.Root, rel)
+			dest, err := resolveContainedPath(s.Root, rel)
+			if err != nil {
+				cleanupCreatedPaths(created)
+				return ArchiveRestoreResult{}, err
+			}
 			if err := copyPath(source, dest); err != nil {
 				cleanupCreatedPaths(created)
 				return ArchiveRestoreResult{}, err
@@ -512,15 +540,21 @@ func rollbackMovedPaths(moved []movedPath) {
 }
 
 func movePath(source string, dest string) error {
+	if err := rejectSymlinkedFile(source); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return fmt.Errorf("create archive path: %w", err)
 	}
 	if err := os.Rename(source, dest); err == nil {
 		return nil
 	}
-	info, err := os.Stat(source)
+	info, err := os.Lstat(source)
 	if err != nil {
 		return fmt.Errorf("stat move source: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("symlink_rejected: %s", source))
 	}
 	if info.IsDir() {
 		if err := copyDir(source, dest); err != nil {
@@ -535,9 +569,15 @@ func movePath(source string, dest string) error {
 }
 
 func copyPath(source string, dest string) error {
-	info, err := os.Stat(source)
+	if err := rejectSymlinkedFile(source); err != nil {
+		return err
+	}
+	info, err := os.Lstat(source)
 	if err != nil {
 		return fmt.Errorf("stat copy source: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("symlink_rejected: %s", source))
 	}
 	if info.IsDir() {
 		return copyDir(source, dest)
@@ -556,6 +596,9 @@ func copyDir(source string, dest string) error {
 		if err != nil {
 			return err
 		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("symlink_rejected: %s", path))
+		}
 		rel, err := filepath.Rel(source, path)
 		if err != nil {
 			return err
@@ -569,6 +612,9 @@ func copyDir(source string, dest string) error {
 }
 
 func copyFile(source string, dest string) error {
+	if err := rejectSymlinkedFile(source); err != nil {
+		return err
+	}
 	in, err := os.Open(source)
 	if err != nil {
 		return fmt.Errorf("open copy source: %w", err)

@@ -8,8 +8,8 @@ Install with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker
 
 ## Product
 - [Home](https://atlas-tasker.vercel.app/): both boards, the workflow, install, and FAQ
-- [CLI](https://atlas-tasker.vercel.app/cli.html): 72 top-level commands, the JSON contract, and exit codes
-- [For AI agents](https://atlas-tasker.vercel.app/mcp.html): MCP tools, permission profiles, the safety model, and client setup
+- [CLI](https://atlas-tasker.vercel.app/cli.html): the command surface, JSON contract, and stable exit codes
+- [For AI agents](https://atlas-tasker.vercel.app/mcp.html): install guidance, connect MCP, choose a profile, and run the first agent loop
 - [Install](https://atlas-tasker.vercel.app/#install): release installer and Go source build
 - [Guide](https://atlas-tasker.vercel.app/guide.html): the whole workflow on one page
 - [Changelog](https://atlas-tasker.vercel.app/changelog.html): release-by-release highlights
@@ -22,6 +22,7 @@ Install with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker
 - [The web board](https://atlas-tasker.vercel.app/docs/web-board.html): local kanban, session tokens, drawer tabs, read-only mode
 - [Agents and dispatch](https://atlas-tasker.vercel.app/docs/agents-and-dispatch.html): registering agents, team presets, runs, evidence, handoffs, wake-ups
 - [MCP setup](https://atlas-tasker.vercel.app/docs/mcp-setup.html): profiles, client snippets, workspace pinning, response budgets
+- [MCP tools](https://atlas-tasker.vercel.app/docs/mcp-tools.html): current read, workflow, delivery, and high-impact tool groups
 - [MCP security](https://atlas-tasker.vercel.app/docs/mcp-security.html): hidden high-impact tools, one-time approvals, audit trail
 - [JSON and exit codes](https://atlas-tasker.vercel.app/docs/json-and-exit-codes.html): envelopes, error shapes, exit codes 0-7, reason codes
 - [FAQ](https://atlas-tasker.vercel.app/docs/faq.html): storage internals, Git hygiene, multi-machine use, repair
@@ -38,4 +39,4 @@ Install with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker
 - [MIT license](https://github.com/myrrazor/atlas-tasker/blob/main/LICENSE): reuse terms
 
 ## Guidance for agents
-Use this file as a site index, not a full-site corpus. To operate Atlas Tasker on a user's machine, prefer the CLI with `--json` and run `tracker --help` for the current command set; exit codes 0-7 and `error.code` values are stable. Use `tracker mcp serve` when a tool-native MCP connection is available, starting with `--tool-profile read` and pinning `--workspace`. Never mutate tickets without the `--actor` and `--reason` fields required by the command, and do not scrape the local web board; it is for humans.
+Use this file as a site index, not a full-site corpus. To operate Atlas Tasker on a user's machine, prefer the CLI with `--json` and run `tracker --help` for the current command set; exit codes 0-7 and `error.code` values are stable. Use `tracker mcp serve` when a tool-native MCP connection is available, starting with `--tool-profile read` for inspection or `--tool-profile workflow` for authorized ticket work, and pin `--workspace`. Repository guidance from `tracker integrations install` and MCP client registration are separate steps. Never mutate tickets without the actor and reason fields required by the tool or command, and do not scrape the local web board; it is for humans.

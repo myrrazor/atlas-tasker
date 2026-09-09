@@ -44,11 +44,6 @@
       "price": "0",
       "priceCurrency": "USD"
     },
-    "author": {
-      "@type": "Person",
-      "name": "Mayur Darji",
-      "url": "https://mayurdarji.com"
-    },
     "downloadUrl": "https://github.com/myrrazor/atlas-tasker/releases/latest",
     "softwareHelp": "https://atlas-tasker.vercel.app/docs/",
     "license": "https://github.com/myrrazor/atlas-tasker/blob/main/LICENSE"
@@ -96,7 +91,7 @@
         "name": "How do coding agents use it?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Run tracker mcp serve to expose typed tracker tools over MCP, or let agents drive the CLI with --json output and stable exit codes. Agents can read queues, claim tickets, attach evidence, request review, and hand off context. The For agents page has setup for OpenClaw, Codex, and Claude Code."
+          "text": "Run tracker mcp serve to expose typed local tools, or let agents drive the CLI with JSON output and stable exit codes. Agents can read queues, work tickets, attach evidence, request review, and hand off context. The For agents page separates six repository-guidance targets from MCP client registration."
         }
       },
       {
@@ -104,7 +99,7 @@
         "name": "How do I get support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Open a GitHub issue for bugs, setup trouble, and feature requests. For a private question, email the maintainer at merlintailorcorp@gmail.com."
+          "text": "Open a GitHub issue for bugs, setup trouble, documentation problems, and feature requests. Security reports should follow the private reporting instructions in SECURITY.md."
         }
       },
       {
@@ -112,7 +107,7 @@
         "name": "How do I update Atlas Tasker?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Run the curl installer again to fetch and verify the latest release. Export VERSION before running it if you need to pin a specific release."
+          "text": "Run tracker update --check, then tracker update --yes to verify checksums/attestations and replace the binary. Use --version to pin a release, or re-run the curl installer."
         }
       },
       {
@@ -151,7 +146,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="/" aria-label="Atlas Tasker home">
-        <img src="atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+        <img src="atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="cli.html">CLI</a>
@@ -171,7 +166,7 @@
         <p class="hero-lead">Atlas Tasker is a lightweight ticketing system that lives in your repository. Plan on a real kanban board in your browser, ship from the terminal, and hand tickets to AI agents that operate the same tracker through safe, typed tools.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="#install">Install Atlas Tasker</a>
-          <a class="button button-secondary" href="mcp.html">Set up your agents</a>
+          <a class="button button-secondary" href="mcp.html#connect">Connect your agent</a>
         </div>
       </div>
 
@@ -224,8 +219,8 @@
         </div>
       </div>
       <div class="surfaces-agents">
-        <p><strong>And a third surface for your AI agents.</strong> Every command speaks JSON, and an MCP server exposes typed tracker tools to OpenClaw, Codex, Claude Code, and anything else that speaks MCP.</p>
-        <a class="button button-secondary" href="mcp.html">For AI agents</a>
+        <p><strong>And a third surface for your AI agents.</strong> A stable JSON CLI and local stdio MCP server let agents inspect queues, work tickets, attach evidence, and hand off context.</p>
+        <a class="button button-secondary" href="mcp.html#connect">Connect your agent</a>
       </div>
     </section>
 
@@ -328,6 +323,7 @@
               <code id="curl-install" tabindex="0">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
               <button class="copy-button" type="button" data-copy="curl-install" aria-label="Copy release installer command">Copy</button>
             </div>
+            <p class="requirements">With an interactive terminal, the installer offers optional coding-agent guidance for the current directory after the verified binary is installed. It shows the directory and defaults to No. Set <code>SKIP_INTEGRATIONS=1</code> to suppress the offer; unattended installs never prompt.</p>
           </div>
 
           <div class="install-option">
@@ -405,15 +401,15 @@
         </details>
         <details>
           <summary>How do coding agents use it?</summary>
-          <p>Run tracker mcp serve to expose typed tracker tools over MCP, or let agents drive the CLI with --json output and stable exit codes. Agents can read queues, claim tickets, attach evidence, request review, and hand off context. The <a href="mcp.html">For agents</a> page has setup for OpenClaw, Codex, and Claude Code.</p>
+          <p>Run tracker mcp serve to expose typed local tools, or let agents drive the CLI with JSON output and stable exit codes. Agents can read queues, work tickets, attach evidence, request review, and hand off context. The <a href="mcp.html">For agents</a> page separates six repository-guidance targets from MCP client registration.</p>
         </details>
         <details>
           <summary>How do I get support?</summary>
-          <p>Open a <a href="https://github.com/myrrazor/atlas-tasker/issues">GitHub issue</a> for bugs, setup trouble, and feature requests. For a private question, email the maintainer at <a href="mailto:merlintailorcorp@gmail.com">merlintailorcorp@gmail.com</a>.</p>
+          <p>Open a <a href="https://github.com/myrrazor/atlas-tasker/issues">GitHub issue</a> for bugs, setup trouble, documentation problems, and feature requests. Security reports should follow the private reporting instructions in <a href="https://github.com/myrrazor/atlas-tasker/blob/main/SECURITY.md">SECURITY.md</a>.</p>
         </details>
         <details>
           <summary>How do I update Atlas Tasker?</summary>
-          <p>Run the curl installer again to fetch and verify the latest release. Export VERSION before running it if you need to pin a specific release.</p>
+          <p>Run tracker update --check, then tracker update --yes to verify checksums/attestations and replace the binary. Use --version to pin a release, or re-run the curl installer.</p>
         </details>
         <details>
           <summary>Why not just use Jira?</summary>
@@ -438,7 +434,7 @@
       </div>
       <div class="support-actions">
         <a class="button button-primary" href="https://github.com/myrrazor/atlas-tasker">Star on GitHub</a>
-        <a class="button button-secondary" href="https://mayurdarji.com">Built by Mayur</a>
+        <a class="button button-secondary" href="docs/">Read the docs</a>
       </div>
     </section>
   </main>
@@ -456,8 +452,6 @@
         <a href="privacy.html">Privacy</a>
         <a href="terms.html">Terms</a>
         <a href="https://github.com/myrrazor/atlas-tasker/blob/main/LICENSE">License</a>
-        <a href="https://github.com/myrrazor">@myrrazor</a>
-        <a href="https://mayurdarji.com">mayurdarji.com</a>
       </div>
     </div>
   </footer>

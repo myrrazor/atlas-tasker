@@ -16,11 +16,25 @@ go test ./...
 go vet ./...
 ```
 
-If you touched the marketing site under `site/`, also run its contract tests (CI does not run these yet):
+If you touched the marketing site under `site/`, also run its contract tests:
 
 ```bash
 node --test site/_tools/*.test.mjs
 ```
+
+For installation changes, build the binary and run the terminal and unattended
+installer checks. They use isolated local archives and synthetic workspaces;
+they do not modify your installed tracker or agent configuration:
+
+```bash
+go build -o tracker ./cmd/tracker
+python3 scripts/test-install.py --tracker ./tracker
+python3 scripts/verify-mcp-workflow.py --tracker ./tracker
+```
+
+The MCP harness checks both stdio formats, profile boundaries, and an actor-separated
+ticket workflow in a synthetic workspace. CI runs these checks and site/browser
+contracts on macOS and Linux.
 
 If your change affects release scripts, docs snippets, terminal output, MCP, signing, governance, redaction, audit, or backup behavior, add the relevant targeted proof in the PR body.
 

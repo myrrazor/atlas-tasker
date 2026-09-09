@@ -116,8 +116,15 @@ func TestInstallGenericCreatesPortableSkillPack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("install generic: %v", err)
 	}
-	if !strings.HasSuffix(result.InstructionFile, filepath.Join(".tracker", "integrations", "generic-agent-instructions.md")) {
+	if !strings.HasSuffix(result.InstructionFile, "AGENTS.md") {
 		t.Fatalf("unexpected instruction file: %#v", result)
+	}
+	body, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(body), genericMarkers.begin) || !strings.Contains(string(body), "tracker agent available <agent-id> --json") {
+		t.Fatalf("unexpected AGENTS.md body: %s", string(body))
 	}
 	skill, err := os.ReadFile(filepath.Join(root, ".tracker", "integrations", "atlas-agent-skill", "SKILL.md"))
 	if err != nil {
@@ -128,10 +135,32 @@ func TestInstallGenericCreatesPortableSkillPack(t *testing.T) {
 	}
 }
 
+func TestInstallCursorAndGrokWriteAgentsBlocks(t *testing.T) {
+	root := t.TempDir()
+	for _, target := range []Target{TargetCursor, TargetGrok} {
+		if _, err := (Installer{Root: root}).Install(target, false); err != nil {
+			t.Fatalf("install %s: %v", target, err)
+		}
+	}
+	body, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	content := string(body)
+	for _, needle := range []string{cursorMarkers.begin, grokMarkers.begin, "Atlas Tasker (Cursor)", "Atlas Tasker (Grok)"} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("AGENTS.md missing %q:\n%s", needle, content)
+		}
+	}
+	if _, err := os.ReadFile(filepath.Join(root, ".cursor", "skills", "atlas-worker", "SKILL.md")); err != nil {
+		t.Fatalf("cursor skill missing: %v", err)
+	}
+}
+
 // The frontmatter is the whole activation contract: agents match on it before they
 // ever read the body, and a description with a bare ": " in it is not a YAML scalar.
 func TestSkillFrontmatterParses(t *testing.T) {
-	for _, provider := range []string{"codex", "claude", "openclaw", "generic"} {
+	for _, provider := range []string{"codex", "claude", "openclaw", "generic", "cursor", "grok"} {
 		body := atlasWorkerSkill(provider)
 		_, rest, found := strings.Cut(body, "---\n")
 		if !found {

@@ -19,6 +19,13 @@ Columns:
 | `atlas.next` | read | yes | no | no | no | no |
 | `atlas.agent.available` | read | yes | no | no | no | no |
 | `atlas.agent.pending` | read | yes | no | no | no | no |
+| `atlas.agent.list` | read | yes | no | no | no | no |
+| `atlas.agent.view` | read | yes | no | no | no | no |
+| `atlas.agent.wakeup.list` | read | yes | no | no | no | no |
+| `atlas.agent.wakeup.view` | read | yes | no | no | no | no |
+| `atlas.team.list` | read | yes | no | no | no | no |
+| `atlas.team.show` | read | yes | no | no | no | no |
+| `atlas.goal.brief` | read | yes | no | no | no | no |
 | `atlas.search` | read | yes | no | no | no | no |
 | `atlas.board` | read | yes | no | no | no | no |
 | `atlas.ticket.view` | read | yes | no | no | no | no |
@@ -53,6 +60,19 @@ Columns:
 | `atlas.ticket.claim` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.release` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.move` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.create` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.assign` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.link` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.unlink` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.approve` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.reject` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.complete` | workflow | no | yes | yes | no | no |
+| `atlas.agent.create` | workflow | no | yes | yes | no | no |
+| `atlas.agent.edit` | workflow | no | yes | yes | no | no |
+| `atlas.agent.enable` | workflow | no | yes | yes | no | no |
+| `atlas.agent.disable` | workflow | no | yes | yes | no | no |
+| `atlas.agent.wakeup.ack` | workflow | no | yes | yes | no | no |
+| `atlas.team.apply` | workflow | no | yes | yes | no | no |
 | `atlas.schedule.set` | workflow | no | yes | yes | no | no |
 | `atlas.schedule.clear` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.request_review` | workflow | no | yes | yes | no | no |
@@ -69,7 +89,6 @@ Columns:
 | `atlas.change.review_request` | high_impact | no | yes | yes | yes | yes |
 | `atlas.change.merge` | high_impact | no | yes | yes | yes | yes |
 | `atlas.gate.waive` | high_impact | no | yes | yes | yes | yes |
-| `atlas.ticket.complete` | high_impact | no | yes | yes | yes | yes |
 | `atlas.sync.pull` | high_impact | no | yes | yes | yes | yes |
 | `atlas.sync.push` | high_impact | no | yes | yes | yes | yes |
 | `atlas.bundle.import` | high_impact | no | yes | yes | yes | yes |
@@ -79,4 +98,6 @@ Columns:
 | `atlas.compact` | high_impact | no | yes | yes | yes | yes |
 | `atlas.worktree.cleanup` | high_impact | no | yes | yes | yes | yes |
 
-`atlas.ticket.request_review` accepts `reviewer` for parity with `tracker ticket request-review --reviewer`. `atlas.ticket.move`, `atlas.ticket.request_review`, and `atlas.ticket.complete` accept `override_deps` for owner-only dependency override. It requires `actor: "human:owner"` and a non-empty reason, and Atlas records the unresolved blockers in the resulting mutation payload.
+`atlas.ticket.request_review` accepts `reviewer` for parity with `tracker ticket request-review --reviewer`. `atlas.ticket.move`, `atlas.ticket.request_review`, `atlas.ticket.approve`, and `atlas.ticket.complete` accept `override_deps` for owner-only dependency override. The override requires `actor: "human:owner"` and a non-empty reason, and Atlas records the unresolved blockers in the resulting mutation payload.
+
+MCP-first agent loops should use `--tool-profile workflow`. That profile covers create, assign, link, claim, release, move, comment, request review, approve, reject, complete, agent/team setup, schedules, evidence, handoffs, and wake-up ack without a high-impact approval token. Run dispatch plus change creation and change/check synchronization require `delivery`. Provider review/merge and sync push/pull, bundle/import apply, archive apply/restore, compact, worktree cleanup, and gate waiver stay high-impact.

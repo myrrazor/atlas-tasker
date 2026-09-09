@@ -43,6 +43,7 @@ normalize_file() {
     s#goal-[0-9a-f]+#<GOAL-MANIFEST-ID>#g;
     s#[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}#<UUID>#g;
     s#[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z#<TIMESTAMP>#g;
+    s#\n+\z#\n#;
   ' "$in_file" > "$out_file"
 }
 
@@ -191,6 +192,7 @@ You are working inside an Atlas Tasker ticket. Read the goal brief first.
 Rules:
 - stay within the Allowed Actions and Do Not Do sections
 - use `tracker inspect APP-1 --actor agent:builder-1 --json` before changing state
+- self-dispatch eligible work with `tracker run dispatch APP-1 --agent agent:builder-1 --actor agent:builder-1 --reason "start run"` when a run is needed
 - record progress with `tracker run checkpoint <RUN-ID> ...`
 - record test proof with `tracker run evidence add <RUN-ID> --type test_result ...`
 - request review or create a handoff instead of bypassing gates
@@ -208,6 +210,7 @@ Use this when Claude Code is doing implementation work while Atlas owns workflow
 Start by reading the Atlas goal brief and `tracker inspect APP-1 --actor agent:builder-1 --json`.
 
 When you make progress:
+- self-dispatch eligible work with `tracker run dispatch APP-1 --agent agent:builder-1 --actor agent:builder-1 --reason "start run"` when a run is needed
 - checkpoint the run with the current status
 - attach verification as `test_result` evidence
 - do not mark the ticket complete unless Atlas governance allows it
@@ -229,6 +232,7 @@ Before editing:
 1. Run `tracker inspect APP-1 --actor <actor> --json`.
 2. Read `tracker goal brief APP-1 --md`.
 3. Confirm the ticket is claimed or claim it.
+4. Self-dispatch eligible work with `tracker run dispatch APP-1 --agent <actor> --actor <actor> --reason "start run"` when a run is needed.
 
 During work, record checkpoints and evidence. If blocked, write a ticket comment or handoff instead of silently stopping.
 ```
@@ -247,6 +251,27 @@ Recommended panes:
 4. `docs/examples/output/goal-brief.md`
 
 Use a terminal width around 96 columns for board/dashboard captures and 100-110 columns for the goal brief.
+
+## Web screenshots
+
+Create a fresh synthetic workspace for browser captures. This seeds `web.owner_name`
+as `User`, uses demo projects and actors, and refuses a non-empty destination:
+
+```bash
+TRACKER_BIN=/absolute/path/to/tracker sh examples/create-web-demo.sh /tmp/atlas-web-demo
+cd /tmp/atlas-web-demo
+/absolute/path/to/tracker web serve --no-browser
+```
+
+Open the authenticated loopback URL printed by the server. Keep that session URL
+and token out of public files. Capture `/`, `/board?ticket=APP-4`, and `/schedule`
+at 1440 × 900, then the board and schedule at 390 × 844. Save the captures to
+`docs/assets/web-*.png`; encode the desktop board as `site/assets/web-board.webp`.
+Use actual rendered UI and inspect every capture for private names, paths, and tokens.
+
+The README and website wordmark copies come from
+`internal/web/static/brand/atlas-tasker-ascii.svg`. Render
+`assets/brand/social-card.html` at 1200 × 630 to reproduce `site/og.png`.
 EOF
 
 cat > "$generated/fixtures/demo-workspace.md" <<'EOF'

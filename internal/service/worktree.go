@@ -280,6 +280,10 @@ func isAtlasWorkspacePath(path string) bool {
 	if clean == ".tracker" || strings.HasPrefix(clean, ".tracker/") {
 		return true
 	}
+	// tracker init seeds/refreshes a managed local-ignore block in .gitignore.
+	if clean == ".gitignore" {
+		return true
+	}
 	if strings.HasPrefix(clean, "projects/") && strings.HasSuffix(clean, "/project.md") {
 		return true
 	}

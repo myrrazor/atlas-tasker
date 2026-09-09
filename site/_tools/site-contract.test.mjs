@@ -16,6 +16,7 @@ const pageCanonicals = new Map([
   ["docs/web-board.html", `${SITE_ORIGIN}/docs/web-board.html`],
   ["docs/agents-and-dispatch.html", `${SITE_ORIGIN}/docs/agents-and-dispatch.html`],
   ["docs/mcp-setup.html", `${SITE_ORIGIN}/docs/mcp-setup.html`],
+  ["docs/mcp-tools.html", `${SITE_ORIGIN}/docs/mcp-tools.html`],
   ["docs/mcp-security.html", `${SITE_ORIGIN}/docs/mcp-security.html`],
   ["docs/json-and-exit-codes.html", `${SITE_ORIGIN}/docs/json-and-exit-codes.html`],
   ["docs/faq.html", `${SITE_ORIGIN}/docs/faq.html`],
@@ -38,6 +39,17 @@ const css = await readFile(new URL("styles.css", siteRoot), "utf8");
 const sitemap = await readFile(new URL("sitemap.xml", siteRoot), "utf8");
 const robots = await readFile(new URL("robots.txt", siteRoot), "utf8");
 const llms = await readFile(new URL("llms.txt", siteRoot), "utf8");
+const sourceMcpTools = await readFile(new URL("../../docs/mcp-tools.md", import.meta.url), "utf8");
+const readme = await readFile(new URL("../../README.md", import.meta.url), "utf8");
+const canonicalWordmark = await readFile(
+  new URL("../../internal/web/static/brand/atlas-tasker-ascii.svg", import.meta.url),
+);
+const readmeWordmark = await readFile(
+  new URL("../../assets/brand/atlas-tasker-terminal-wordmark.svg", import.meta.url),
+);
+const siteWordmark = await readFile(
+  new URL("../atlas-tasker-terminal-wordmark.svg", import.meta.url),
+);
 
 function visibleMarkup(html) {
   return html
@@ -141,6 +153,18 @@ function hasType(node, type) {
   return types.includes(type);
 }
 
+function objectTree(root) {
+  const nodes = [];
+  const pending = [root];
+  while (pending.length > 0) {
+    const node = pending.pop();
+    if (!node || typeof node !== "object") continue;
+    nodes.push(node);
+    pending.push(...Object.values(node));
+  }
+  return nodes;
+}
+
 function sectionById(html, id) {
   const markup = visibleMarkup(html);
   for (const match of markup.matchAll(/<section\b([^>]*)>/gi)) {
@@ -215,6 +239,73 @@ test("page titles are unique", () => {
   assert.equal(new Set(titles).size, titles.length);
 });
 
+test("internal page links and fragments resolve", () => {
+  const canonicalToFile = new Map(
+    [...pageCanonicals].map(([file, canonical]) => [canonical, file]),
+  );
+
+  for (const [file, html] of pages) {
+    const sourceUrl = pageCanonicals.get(file);
+    for (const anchor of tags(html, "a")) {
+      if (!anchor.href || /^(mailto:|tel:|javascript:)/i.test(anchor.href)) continue;
+      const target = new URL(decodeEntities(anchor.href), sourceUrl);
+      if (target.origin !== SITE_ORIGIN) continue;
+
+      const targetCanonical = `${target.origin}${target.pathname}`;
+      const targetFile = canonicalToFile.get(targetCanonical);
+      assert.ok(targetFile, `${file}: internal link does not resolve: ${anchor.href}`);
+
+      if (target.hash) {
+        const targetHtml = pages.get(targetFile);
+        const id = decodeURIComponent(target.hash.slice(1));
+        const targetElements = [...visibleMarkup(targetHtml).matchAll(/<[a-z][a-z0-9-]*\b([^>]*)>/gi)]
+          .map((match) => parseAttributes(match[1]));
+        assert.ok(
+          targetElements.some((element) => element.id === id),
+          `${file}: fragment does not resolve: ${anchor.href}`,
+        );
+      }
+    }
+  }
+});
+
+test("agent integration tabs expose all six targets with valid relationships", () => {
+  const mcp = pages.get("mcp.html");
+  const tabButtons = tags(mcp, "button").filter((button) => button.role === "tab");
+  const panels = tags(mcp, "div").filter((panel) => panel.role === "tabpanel");
+
+  assert.deepEqual(
+    tabButtons.map((button) => button.id),
+    ["tab-claude", "tab-codex", "tab-cursor", "tab-openclaw", "tab-grok", "tab-generic"],
+  );
+  assert.equal(tabButtons.filter((button) => button["aria-selected"] === "true").length, 1);
+  assert.equal(panels.length, tabButtons.length);
+  for (const button of tabButtons) {
+    const panel = panels.find((item) => item.id === button["aria-controls"]);
+    assert.ok(panel, `${button.id}: missing controlled panel`);
+    assert.equal(panel["aria-labelledby"], button.id);
+  }
+  assert.match(mcp, /ArrowRight/);
+  assert.match(mcp, /ArrowLeft/);
+});
+
+test("MCP tool page covers every source workflow tool", () => {
+  const workflowNames = [...sourceMcpTools.matchAll(/^\| `(atlas\.[^`]+)` \| workflow \|/gm)]
+    .map((match) => match[1]);
+  const rendered = textContent(pages.get("docs/mcp-tools.html"));
+
+  assert.equal(workflowNames.length, 26);
+  for (const name of workflowNames) {
+    assert.match(rendered, new RegExp(`\\b${name.replaceAll(".", "\\.")}\\b`));
+  }
+});
+
+test("README and site wordmarks match the canonical application wordmark", () => {
+  assert.match(readme, /src="assets\/brand\/atlas-tasker-terminal-wordmark\.svg"/);
+  assert.ok(readmeWordmark.equals(canonicalWordmark));
+  assert.ok(siteWordmark.equals(canonicalWordmark));
+});
+
 test("self-hosted fonts use font-display swap", () => {
   const fontFaces = [...css.matchAll(/@font-face\s*{([\s\S]*?)}/g)].map(
     (match) => match[1],
@@ -269,8 +360,31 @@ test("website notices explain actual use without unresolved legal templates", ()
     const html = pages.get(file);
     const rendered = textContent(html);
     assert.doesNotMatch(rendered, /TODO\(launch\)|\{\{LEGAL_ENTITY\}\}|\{\{JURISDICTION\}\}/);
-    assert.match(html, /mailto:merlintailorcorp@gmail\.com/);
+    assert.doesNotMatch(html, /mailto:/);
+    assert.match(html, /github\.com\/myrrazor\/atlas-tasker/);
   }
   assert.match(textContent(pages.get("privacy.html")), /hosting provider/);
   assert.match(textContent(pages.get("terms.html")), /MIT License/);
+});
+
+test("public site omits personal author and direct contact metadata", () => {
+  for (const [file, html] of pages) {
+    const metadata = tags(html, "meta");
+    assert.ok(
+      metadata.every((item) => item.name?.toLowerCase() !== "author"),
+      `${file}: personal author meta tag found`,
+    );
+
+    for (const link of tags(html, "a")) {
+      const relationships = (link.rel ?? "").toLowerCase().split(/\s+/);
+      assert.ok(!relationships.includes("author"), `${file}: author link found`);
+      assert.ok(!relationships.includes("me"), `${file}: personal profile link found`);
+      assert.doesNotMatch(link.href ?? "", /^mailto:/i, `${file}: direct email link found`);
+    }
+
+    for (const node of jsonLdDocuments(html).flatMap(objectTree)) {
+      assert.ok(!hasType(node, "Person"), `${file}: Person JSON-LD found`);
+      assert.ok(!Object.hasOwn(node, "email"), `${file}: email JSON-LD found`);
+    }
+  }
 });

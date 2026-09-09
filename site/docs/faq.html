@@ -52,7 +52,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="../" aria-label="Atlas Tasker home">
-        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="../cli.html">CLI</a>
@@ -83,6 +83,7 @@
           <p class="docs-group-label">Agents</p>
           <a href="agents-and-dispatch.html">Agents and dispatch</a>
           <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-tools.html">MCP tools</a>
           <a href="mcp-security.html">MCP security</a>
           <a href="json-and-exit-codes.html">JSON and exit codes</a>
         </div>
@@ -135,7 +136,7 @@
         <p>Agents use the same commands and tools as humans, with guardrails that are structural rather than polite: illegal moves exit 4, leases prevent double work, review gates block completion, permission profiles can deny actions per agent, and the MCP high-impact tier needs a one-time human approval per call. The <a href="../mcp.html">For agents</a> page is the tour; <a href="mcp-security.html">MCP security</a> is the fine print.</p>
 
         <h2>How do I update or uninstall?</h2>
-        <p>Update by running the release installer again; export <code>VERSION</code> first to pin a release. Uninstall by removing the <code>tracker</code> binary. Your project data stays in the repository until you delete it, and if Git tracked it, history keeps it until you rewrite history.</p>
+        <p>Run <code>tracker update --check</code>, then <code>tracker update --yes</code> to verify and replace the binary (or re-run the release installer). Uninstall by removing the <code>tracker</code> binary. Your project data stays in the repository until you delete it, and if Git tracked it, history keeps it until you rewrite history.</p>
 
         <h2>Something looks corrupted. Now what?</h2>
         <p>Run <code>tracker doctor</code> for the audit, then <code>tracker doctor --repair</code> to rebuild projection state. Exit code 7 from a read or from <code>doctor</code> usually means one of two things: the index is unreadable, or read-only <code>doctor</code> found it stale against the Markdown and events. A missing or stale index heals itself the next time a command opens the workspace; a corrupt one needs <code>tracker reindex</code> or <code>tracker doctor --repair</code>. Repair never invents data; it replays the Markdown and events you already have. It also will not recreate deleted worktrees, runtime files, or evidence artifacts, because those are execution leftovers, not the record.</p>

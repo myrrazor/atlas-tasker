@@ -79,12 +79,13 @@ func TestDispatchRepoDirtyBlockerIgnoresAtlasWorkspaceFiles(t *testing.T) {
 		t.Fatalf("mkdir tracker runtime: %v", err)
 	}
 	writeFile(t, filepath.Join(root, ".tracker", "runtime", "run_1", "brief.md"), "derived\n")
+	writeFile(t, filepath.Join(root, ".gitignore"), "# atlas-tasker:begin-local-ignore\n/.tracker/runtime/\n# atlas-tasker:end-local-ignore\n")
 
 	blocked, err := dispatchRepoDirtyBlocker(context.Background(), root, contracts.Project{Key: "APP"})
 	if err != nil {
 		t.Fatalf("dispatch dirty check with atlas files: %v", err)
 	}
 	if blocked {
-		t.Fatal("expected atlas-managed files to stay out of dirty-repo checks")
+		t.Fatal("expected atlas-managed files (including .gitignore) to stay out of dirty-repo checks")
 	}
 }

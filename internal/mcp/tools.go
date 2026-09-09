@@ -8,6 +8,7 @@ import (
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/domain"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 )
 
@@ -23,6 +24,13 @@ func ToolSpecs() []ToolSpec {
 		readTool("atlas.next", "Read the next recommended ticket for an actor.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor filter.")})), "QueryService.Next", nextTool),
 		readTool("atlas.agent.available", "Read tickets the selected agent can act on now.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor such as agent:builder-1."), "agent_id": stringProp("Optional agent ID; maps to actor agent:<id>.")})), "QueryService.AgentAvailable", agentAvailableTool),
 		readTool("atlas.agent.pending", "Read tickets the selected agent is waiting on.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor such as agent:builder-1."), "agent_id": stringProp("Optional agent ID; maps to actor agent:<id>.")})), "QueryService.AgentPending", agentPendingTool),
+		readTool("atlas.agent.list", "List agent profiles.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), nil)), "QueryService.ListAgents", agentListTool),
+		readTool("atlas.agent.view", "Read one agent profile.", readProfiles, objectSchema([]string{"agent_id"}, map[string]any{"agent_id": stringProp("Agent ID.")}), "QueryService.AgentDetail", agentViewTool),
+		readTool("atlas.agent.wakeup.list", "List agent wake-up records.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"agent_id": stringProp("Optional agent ID filter.")})), "QueryService.AgentWakeups", agentWakeupListTool),
+		readTool("atlas.agent.wakeup.view", "Read one agent wake-up record.", readProfiles, objectSchema([]string{"wakeup_id"}, map[string]any{"wakeup_id": stringProp("Wake-up ID.")}), "QueryService.AgentWakeup", agentWakeupViewTool),
+		readTool("atlas.team.list", "List ready-made agent team presets.", readProfiles, objectSchema(nil, map[string]any{"provider": stringProp("Optional provider: claude, codex, or mixed.")}), "TeamPresets", teamListTool),
+		readTool("atlas.team.show", "Show one agent team preset.", readProfiles, objectSchema([]string{"preset"}, map[string]any{"preset": stringProp("Preset name: solo, pair, swarm, or crossfire."), "provider": stringProp("Optional provider: claude, codex, or mixed.")}), "TeamPresetByName", teamShowTool),
+		readTool("atlas.goal.brief", "Read a pasteable goal brief for a ticket or run.", readProfiles, objectSchema([]string{"target"}, map[string]any{"target": stringProp("Ticket ID or run ID.")}), "ActionService.GoalBrief", goalBriefTool),
 		readTool("atlas.search", "Search tickets with Atlas query syntax.", readProfiles, objectSchema([]string{"query"}, mergeProps(commonReadProps(), map[string]any{"query": stringProp("Atlas ticket search query.")})), "QueryService.Search", searchTool),
 		readTool("atlas.board", "Read the board grouped by status.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_status", "Optional per-status cursors keyed by Atlas status."), map[string]any{"project": stringProp("Optional project key."), "assignee": stringProp("Optional assignee actor."), "type": stringProp("Optional ticket type.")})), "QueryService.Board", boardTool),
 		readTool("atlas.ticket.view", "Read one ticket detail view.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID.")}), "QueryService.TicketDetail", ticketViewTool),
@@ -58,6 +66,19 @@ func ToolSpecs() []ToolSpec {
 		writeTool("atlas.ticket.claim", ClassWorkflow, workflowProfiles, false, "Claim a ticket lease.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.ClaimTicket", "ticket_id", ticketClaimTool),
 		writeTool("atlas.ticket.release", ClassWorkflow, workflowProfiles, false, "Release a ticket lease.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.ReleaseTicket", "ticket_id", ticketReleaseTool),
 		writeTool("atlas.ticket.move", ClassWorkflow, workflowProfiles, false, "Move a ticket among non-terminal workflow statuses.", objectSchema([]string{"ticket_id", "status", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "status": stringProp("Target status."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.MoveTicket", "ticket_id", ticketMoveTool),
+		writeTool("atlas.ticket.create", ClassWorkflow, workflowProfiles, false, "Create a ticket.", objectSchema([]string{"project", "title", "type", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"project": stringProp("Project key."), "title": stringProp("Ticket title."), "type": stringProp("Ticket type: epic, task, bug, or subtask."), "status": stringProp("Optional initial status."), "priority": stringProp("Optional priority."), "parent": stringProp("Optional parent ticket ID."), "labels": stringArrayProp("Optional labels."), "assignee": stringProp("Optional assignee actor."), "reviewer": stringProp("Optional reviewer actor."), "description": stringProp("Optional description."), "acceptance": stringArrayProp("Optional acceptance criteria."), "template": stringProp("Optional template name."), "protected": boolProp("Mark the ticket as protected."), "sensitive": boolProp("Mark the ticket as sensitive.")})), "ActionService.CreateTrackedTicket", "project", ticketCreateTool),
+		writeTool("atlas.ticket.assign", ClassWorkflow, workflowProfiles, false, "Set a ticket assignee.", objectSchema([]string{"ticket_id", "assignee", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "assignee": stringProp("Assignee actor.")})), "ActionService.AssignTicket", "ticket_id", ticketAssignTool),
+		writeTool("atlas.ticket.link", ClassWorkflow, workflowProfiles, false, "Link two tickets.", objectSchema([]string{"ticket_id", "other_id", "kind", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "other_id": stringProp("Other ticket ID."), "kind": stringProp("Relationship: blocks, blocked_by, or parent.")})), "ActionService.LinkTickets", "ticket_id", ticketLinkTool),
+		writeTool("atlas.ticket.unlink", ClassWorkflow, workflowProfiles, false, "Remove a ticket relationship.", objectSchema([]string{"ticket_id", "other_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "other_id": stringProp("Other ticket ID.")})), "ActionService.UnlinkTickets", "ticket_id", ticketUnlinkTool),
+		writeTool("atlas.ticket.approve", ClassWorkflow, workflowProfiles, false, "Approve a ticket in review.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.ApproveTicket", "ticket_id", ticketApproveTool),
+		writeTool("atlas.ticket.reject", ClassWorkflow, workflowProfiles, false, "Reject a ticket in review.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.RejectTicket", "ticket_id", ticketRejectTool),
+		writeTool("atlas.ticket.complete", ClassWorkflow, workflowProfiles, false, "Complete an approved ticket, or close in-progress work when completion_mode is open.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.CompleteTicket", "ticket_id", ticketCompleteTool),
+		writeTool("atlas.agent.create", ClassWorkflow, workflowProfiles, false, "Create an agent profile.", objectSchema([]string{"agent_id", "name", "provider", "actor", "reason"}, mergeProps(actorReasonProps(), agentProfileProps(true))), "ActionService.SaveAgentProfile", "agent_id", agentCreateTool),
+		writeTool("atlas.agent.edit", ClassWorkflow, workflowProfiles, false, "Edit an agent profile.", objectSchema([]string{"agent_id", "actor", "reason"}, mergeProps(actorReasonProps(), agentProfileProps(false))), "ActionService.SaveAgentProfile", "agent_id", agentEditTool),
+		writeTool("atlas.agent.enable", ClassWorkflow, workflowProfiles, false, "Enable an agent profile.", objectSchema([]string{"agent_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"agent_id": stringProp("Agent ID.")})), "ActionService.SetAgentEnabled", "agent_id", agentEnableTool),
+		writeTool("atlas.agent.disable", ClassWorkflow, workflowProfiles, false, "Disable an agent profile.", objectSchema([]string{"agent_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"agent_id": stringProp("Agent ID.")})), "ActionService.SetAgentEnabled", "agent_id", agentDisableTool),
+		writeTool("atlas.agent.wakeup.ack", ClassWorkflow, workflowProfiles, false, "Acknowledge an agent wake-up.", objectSchema([]string{"wakeup_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"wakeup_id": stringProp("Wake-up ID.")})), "ActionService.AckAgentWakeup", "wakeup_id", agentWakeupAckTool),
+		writeTool("atlas.team.apply", ClassWorkflow, workflowProfiles, false, "Apply a ready-made agent team preset.", objectSchema([]string{"preset", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"preset": stringProp("Preset name: solo, pair, swarm, or crossfire."), "provider": stringProp("Optional provider: claude, codex, or mixed."), "dry_run": boolProp("Preview without creating profiles.")})), "ActionService.ApplyTeamPreset", "preset", teamApplyTool),
 		writeTool("atlas.schedule.set", ClassWorkflow, workflowProfiles, false, "Set or replace a one-time ticket schedule.", objectSchema([]string{"ticket_id", "at", "runner", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "at": stringProp("RFC3339 schedule instant."), "runner": stringProp("Human or agent actor that will own the ticket.")})), "ActionService.SetTicketSchedule", "ticket_id", scheduleSetTool),
 		writeTool("atlas.schedule.clear", ClassWorkflow, workflowProfiles, false, "Remove a ticket schedule without changing its assignee.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.ClearTicketSchedule", "ticket_id", scheduleClearTool),
 		writeTool("atlas.ticket.request_review", ClassWorkflow, workflowProfiles, false, "Request review for a ticket.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "reviewer": stringProp("Optional reviewer actor."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.RequestReviewWithReviewer", "ticket_id", ticketRequestReviewTool),
@@ -75,7 +96,6 @@ func ToolSpecs() []ToolSpec {
 		highImpactTool("atlas.change.review_request", deliveryHighProfiles, "Request provider-side review for a change.", objectSchema([]string{"change_id", "actor", "reason", "operation_approval_id", "confirm_text"}, mergeProps(highImpactProps("Change ID."), map[string]any{"change_id": stringProp("Change ID.")})), "ActionService.RequestChangeReview", "change_id", changeReviewRequestTool),
 		highImpactTool("atlas.change.merge", deliveryHighProfiles, "Merge a provider-backed change.", objectSchema([]string{"change_id", "actor", "reason", "operation_approval_id", "confirm_text"}, mergeProps(highImpactProps("Change ID."), map[string]any{"change_id": stringProp("Change ID.")})), "ActionService.MergeChange", "change_id", changeMergeTool),
 		highImpactTool("atlas.gate.waive", adminProfiles, "Waive an approval gate.", objectSchema([]string{"gate_id", "actor", "reason", "operation_approval_id", "confirm_text"}, mergeProps(highImpactProps("Gate ID."), map[string]any{"gate_id": stringProp("Gate ID.")})), "ActionService.WaiveGate", "gate_id", gateWaiveTool),
-		highImpactTool("atlas.ticket.complete", adminProfiles, "Complete a ticket, including protected workflows.", objectSchema([]string{"ticket_id", "actor", "reason", "operation_approval_id", "confirm_text"}, mergeProps(highImpactProps("Ticket ID."), map[string]any{"ticket_id": stringProp("Ticket ID."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.CompleteTicket", "ticket_id", ticketCompleteTool),
 		highImpactTool("atlas.sync.pull", adminProfiles, "Pull remote state into this workspace.", objectSchema([]string{"remote_id", "actor", "reason", "operation_approval_id", "confirm_text"}, mergeProps(highImpactProps("Remote ID."), map[string]any{"remote_id": stringProp("Remote ID."), "source_workspace_id": stringProp("Source workspace ID when needed.")})), "ActionService.SyncPull", "remote_id", syncPullTool),
 		highImpactTool("atlas.sync.push", adminProfiles, "Publish local state to a remote.", objectSchema([]string{"remote_id", "actor", "reason", "operation_approval_id", "confirm_text"}, mergeProps(highImpactProps("Remote ID."), map[string]any{"remote_id": stringProp("Remote ID.")})), "ActionService.SyncPush", "remote_id", syncPushTool),
 		highImpactTool("atlas.bundle.import", adminProfiles, "Import a sync bundle into this workspace.", objectSchema([]string{"bundle_ref", "actor", "reason", "operation_approval_id", "confirm_text"}, mergeProps(highImpactProps("Bundle reference."), map[string]any{"bundle_ref": stringProp("Bundle ID or path.")})), "ActionService.ImportSyncBundle", "bundle_ref", bundleImportTool),
@@ -169,6 +189,42 @@ func agentActorArg(args map[string]any) contracts.Actor {
 		return contracts.Actor("agent:" + agentID)
 	}
 	return ""
+}
+
+func agentListTool(tc ToolContext, args map[string]any) (any, error) {
+	items, err := tc.Server.Workspace.Queries.ListAgents(tc.Context)
+	if err != nil {
+		return nil, err
+	}
+	return paginateSlice(items, args, tc.Server.Options.MaxItems, tc.Server.Options.MaxItems), nil
+}
+
+func agentViewTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Queries.AgentDetail(tc.Context, stringArg(args, "agent_id"))
+}
+
+func agentWakeupListTool(tc ToolContext, args map[string]any) (any, error) {
+	items, err := tc.Server.Workspace.Queries.AgentWakeups(tc.Context, stringArg(args, "agent_id"))
+	if err != nil {
+		return nil, err
+	}
+	return paginateSlice(items, args, tc.Server.Options.MaxItems, tc.Server.Options.MaxItems), nil
+}
+
+func agentWakeupViewTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Queries.AgentWakeup(tc.Context, stringArg(args, "wakeup_id"))
+}
+
+func teamListTool(_ ToolContext, args map[string]any) (any, error) {
+	return service.TeamPresets(stringArg(args, "provider"))
+}
+
+func teamShowTool(_ ToolContext, args map[string]any) (any, error) {
+	return service.TeamPresetByName(stringArg(args, "preset"), stringArg(args, "provider"))
+}
+
+func goalBriefTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Actions.GoalBrief(tc.Context, stringArg(args, "target"))
 }
 
 func searchTool(tc ToolContext, args map[string]any) (any, error) {
@@ -383,10 +439,15 @@ func worktreeCleanupPlanTool(tc ToolContext, args map[string]any) (any, error) {
 }
 
 func ticketCommentTool(tc ToolContext, args map[string]any) (any, error) {
-	if err := tc.Server.Workspace.Actions.CommentTicket(tc.Context, stringArg(args, "ticket_id"), stringArg(args, "body"), contracts.Actor(tc.Actor), tc.Reason); err != nil {
+	body := stringArg(args, "body")
+	if err := tc.Server.Workspace.Actions.CommentTicket(tc.Context, stringArg(args, "ticket_id"), body, contracts.Actor(tc.Actor), tc.Reason); err != nil {
 		return nil, err
 	}
-	return map[string]any{"ok": true}, nil
+	out := map[string]any{"ok": true}
+	if findings := service.SecretLikeFindings(body); len(findings) > 0 {
+		out["warnings"] = []string{"secret_like_content:" + strings.Join(findings, ",")}
+	}
+	return out, nil
 }
 
 func ticketClaimTool(tc ToolContext, args map[string]any) (any, error) {
@@ -407,6 +468,175 @@ func ticketMoveTool(tc ToolContext, args map[string]any) (any, error) {
 		return nil, err
 	}
 	return tc.Server.Workspace.Actions.MoveTicket(ctx, stringArg(args, "ticket_id"), status, contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func ticketCreateTool(tc ToolContext, args map[string]any) (any, error) {
+	now := time.Now().UTC()
+	if tc.Server.Workspace.Actions.Clock != nil {
+		now = tc.Server.Workspace.Actions.Clock().UTC()
+	}
+	status := contracts.StatusBacklog
+	if raw := stringArg(args, "status"); raw != "" {
+		status = contracts.Status(raw)
+	}
+	priority := contracts.PriorityMedium
+	if raw := stringArg(args, "priority"); raw != "" {
+		priority = contracts.Priority(raw)
+	}
+	ticket := contracts.TicketSnapshot{
+		Project:            stringArg(args, "project"),
+		Title:              stringArg(args, "title"),
+		Type:               contracts.TicketType(stringArg(args, "type")),
+		Status:             status,
+		Priority:           priority,
+		Parent:             stringArg(args, "parent"),
+		Labels:             stringSliceArg(args, "labels"),
+		Assignee:           contracts.Actor(stringArg(args, "assignee")),
+		Reviewer:           contracts.Actor(stringArg(args, "reviewer")),
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		SchemaVersion:      contracts.CurrentSchemaVersion,
+		Summary:            stringArg(args, "title"),
+		Description:        stringArg(args, "description"),
+		AcceptanceCriteria: stringSliceArg(args, "acceptance"),
+		Template:           stringArg(args, "template"),
+		Protected:          boolArg(args, "protected"),
+		Sensitive:          boolArg(args, "sensitive"),
+	}
+	created, err := tc.Server.Workspace.Actions.CreateTrackedTicket(tc.Context, ticket, contracts.Actor(tc.Actor), tc.Reason)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{"ticket": created}
+	findings := service.SecretLikeFindings(strings.Join([]string{
+		ticket.Title,
+		ticket.Description,
+		strings.Join(ticket.AcceptanceCriteria, "\n"),
+	}, "\n"))
+	if len(findings) > 0 {
+		out["warnings"] = []string{"secret_like_content:" + strings.Join(findings, ",")}
+	}
+	return out, nil
+}
+
+func ticketAssignTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Actions.AssignTicket(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(stringArg(args, "assignee")), contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func ticketLinkTool(tc ToolContext, args map[string]any) (any, error) {
+	kind := domain.LinkKind(stringArg(args, "kind"))
+	switch kind {
+	case domain.LinkBlocks, domain.LinkBlockedBy, domain.LinkParent:
+	default:
+		return nil, apperr.New(apperr.CodeInvalidInput, "kind must be blocks, blocked_by, or parent")
+	}
+	return tc.Server.Workspace.Actions.LinkTickets(tc.Context, stringArg(args, "ticket_id"), stringArg(args, "other_id"), kind, contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func ticketUnlinkTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Actions.UnlinkTickets(tc.Context, stringArg(args, "ticket_id"), stringArg(args, "other_id"), contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func ticketApproveTool(tc ToolContext, args map[string]any) (any, error) {
+	ctx, err := mcpContextWithDependencyOverride(tc, args)
+	if err != nil {
+		return nil, err
+	}
+	return tc.Server.Workspace.Actions.ApproveTicket(ctx, stringArg(args, "ticket_id"), contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func ticketRejectTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Actions.RejectTicket(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func agentCreateTool(tc ToolContext, args map[string]any) (any, error) {
+	profile, err := agentProfileFromArgs(args, contracts.AgentProfile{Enabled: true}, true)
+	if err != nil {
+		return nil, err
+	}
+	return tc.Server.Workspace.Actions.SaveAgentProfile(tc.Context, profile, contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func agentEditTool(tc ToolContext, args map[string]any) (any, error) {
+	existing, err := tc.Server.Workspace.Queries.Agents.LoadAgent(tc.Context, stringArg(args, "agent_id"))
+	if err != nil {
+		return nil, err
+	}
+	profile, err := agentProfileFromArgs(args, existing, false)
+	if err != nil {
+		return nil, err
+	}
+	return tc.Server.Workspace.Actions.SaveAgentProfile(tc.Context, profile, contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func agentEnableTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Actions.SetAgentEnabled(tc.Context, stringArg(args, "agent_id"), true, contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func agentDisableTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Actions.SetAgentEnabled(tc.Context, stringArg(args, "agent_id"), false, contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func agentWakeupAckTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Actions.AckAgentWakeup(tc.Context, stringArg(args, "wakeup_id"), contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func teamApplyTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Actions.ApplyTeamPreset(tc.Context, stringArg(args, "preset"), stringArg(args, "provider"), boolArg(args, "dry_run"), contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func agentProfileFromArgs(args map[string]any, profile contracts.AgentProfile, create bool) (contracts.AgentProfile, error) {
+	if id := stringArg(args, "agent_id"); id != "" {
+		profile.AgentID = id
+	}
+	if name := stringArg(args, "name"); name != "" || create {
+		if name != "" {
+			profile.DisplayName = name
+		}
+	}
+	if provider := stringArg(args, "provider"); provider != "" {
+		profile.Provider = contracts.AgentProvider(provider)
+	}
+	if caps := stringSliceArg(args, "capability"); len(caps) > 0 {
+		profile.Capabilities = caps
+	}
+	if types := stringSliceArg(args, "ticket_type"); len(types) > 0 {
+		profile.AllowedTicketTypes = make([]contracts.TicketType, 0, len(types))
+		for _, item := range types {
+			profile.AllowedTicketTypes = append(profile.AllowedTicketTypes, contracts.TicketType(item))
+		}
+	}
+	if roles := stringSliceArg(args, "role"); len(roles) > 0 {
+		profile.PreferredRoles = make([]contracts.AgentRole, 0, len(roles))
+		for _, item := range roles {
+			profile.PreferredRoles = append(profile.PreferredRoles, contracts.AgentRole(item))
+		}
+	}
+	if v := stringArg(args, "default_runbook"); v != "" {
+		profile.DefaultRunbook = v
+	}
+	if _, ok := args["max_active_runs"]; ok {
+		profile.MaxActiveRuns = intArg(args, "max_active_runs", profile.MaxActiveRuns)
+	}
+	if _, ok := args["routing_weight"]; ok {
+		profile.RoutingWeight = intArg(args, "routing_weight", profile.RoutingWeight)
+	}
+	if v := stringArg(args, "instruction_profile"); v != "" {
+		profile.InstructionProfile = v
+	}
+	if v := stringArg(args, "launch_target"); v != "" {
+		profile.LaunchTarget = v
+	}
+	if v := stringArg(args, "integration_template"); v != "" {
+		profile.IntegrationTemplate = v
+	}
+	if v := stringArg(args, "notes"); v != "" {
+		profile.Notes = v
+	}
+	if _, ok := args["enabled"]; ok {
+		profile.Enabled = boolArg(args, "enabled")
+	}
+	return profile, nil
 }
 
 func scheduleSetTool(tc ToolContext, args map[string]any) (any, error) {

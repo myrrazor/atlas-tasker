@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — v1.12.0
+
+- The verified shell installer offers optional coding-agent setup in the current directory through the controlling terminal, including `curl | sh`. It defaults to No and supports `SKIP_INTEGRATIONS=1`; unattended installs never wait for input.
+- Integration setup preserves buffered answers and treats `none`, cancellation, and EOF as a successful skip. Invalid or canceled integration installation no longer bootstraps a workspace.
+- `web.lang` accepts every shipped catalog: English, Spanish, Indonesian, Chinese, Japanese, and Korean. The schedule workspace remains English-only.
+- README and public Docs/Connect Your Agent now cover `tracker update`, all six guidance targets, MCP client registration, both stdio formats, exact tool profiles, and the complete ticket/review/wake-up workflow.
+- Public web screenshots use a reproducible synthetic workspace with owner name `User`. README, website, and social preview reuse the current side-by-side web UI wordmark; personal contact and author metadata are removed from current public files.
+- CI adds real terminal installer scenarios and an MCP stdio workflow/profile harness on macOS and Linux. [v1.12 release evidence](docs/release/v1.12.0-release-evidence.md) tracks validation and pending publication gates.
+
+## v1.11.0 - MCP Loop, Self-Update, And Local Hardening (2026-09-09)
+
+Merged release train: [#131](https://github.com/myrrazor/atlas-tasker/pull/131), [#132](https://github.com/myrrazor/atlas-tasker/pull/132), [#133](https://github.com/myrrazor/atlas-tasker/pull/133), [#134](https://github.com/myrrazor/atlas-tasker/pull/134). Hosted RC checks, attestations, clean install, packaged smoke, and the owner stable decision are recorded in [v1.11 release evidence](docs/release/v1.11.0-release-evidence.md).
+
+- Local security hardening: archive/compact path containment and symlink fail-closed checks; OpenClaw `--global` install validates home destinations; init uses `0700` for sensitive `.tracker` paths and seeds a managed `.gitignore` local-ignore block; `config.toml` and MCP approval/audit dirs use private modes; ticket create/comment emit soft secret-like content warnings; security docs refreshed for the current local-first posture.
+- `tracker integrations detect` and interactive `tracker integrations install` discover local coding agents and let you checkbox-select which integrations to write; `tracker init --integrations` / `--skip-integrations` control the post-init prompt.
+- Added `tracker update` for production self-updates: check/dry-run/apply against GitHub releases with checksum verification, optional `gh attestation verify`, and atomic binary replace.
+- MCP workflow profile covers the real agent loop: ticket create/assign/link/unlink/approve/reject/complete, agent create/edit/enable/disable, team apply, goal brief, and wake-up list/view/ack. `atlas.ticket.complete` is a normal workflow write (no operation-approval token); provider merge/sync/archive tools stay high-impact.
+- MCP stdio accepts both newline-delimited JSON-RPC and LSP-style `Content-Length` frames.
+- Same-status `ticket move` is a no-op across CLI, MCP, and bulk (matching the web board). Bulk operations with per-ticket failures exit non-zero (conflict → 4) while still printing the result envelope on stdout.
+- `tracker init` refuses nested workspaces under an existing root, and a plain re-init prints `already bootstrapped`.
+- `ticket show` aliases `ticket view`; unknown ticket/agent/bulk/integrations/mcp subcommands exit 2. `--type` is required on create unless a template supplies it. `ticket create` and `ticket move` resolve `--actor` the same way claim does (no silent `human:owner` flag default).
+- Open completion mode can `ticket complete` from `in_progress` without the three-step request-review → approve → complete path.
+- `integrations install` gains `cursor` and `grok` targets, writes generic/cursor/grok blocks into root `AGENTS.md`, and supports `openclaw --global` for `~/.openclaw/skills`.
+- Docs honesty: KNOWN_LIMITATIONS #100, installation/getting-started RC wording, AGENTS.md actor/same-column notes, and MCP one-liner framing warnings.
+
 ## v1.10.0 - Local Web UI And Agent-Ready CLI (2026-09-08)
 
 Hosted RC checks, artifact attestations, clean installation, packaged smoke, and the owner stable decision are recorded in [v1.10 release evidence](docs/release/v1.10.0-release-evidence.md).

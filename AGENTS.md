@@ -12,16 +12,16 @@ This file is for agents **using** the tracker. If you are contributing to Atlas 
 ## Read this part first
 
 - **Pass `--actor` and `--reason` on every write.** They land in the event log and some
-  policies reject writes without them. Omit `--actor` and the workflow commands (`claim`,
-  `move`, `request-review`, `approve`, `complete`) fail with `actor is required` unless
-  `TRACKER_ACTOR` or `actor.default` fills it in — while `ticket create` and `comment`
-  silently attribute your work to `human:owner`. Either way, pass it. `--actor` is
-  `human:<name>` or `agent:<agent-id>`; a bare `agent:` is exit 2.
+  policies reject writes without them. Omitting `--actor` resolves through `TRACKER_ACTOR`
+  or `actor.default`; if neither is set the command fails with `actor is required` (exit 2).
+  Do not rely on a silent `human:owner` default. `--actor` is `human:<name>` or
+  `agent:<agent-id>`; a bare `agent:` is exit 2.
 - **`tracker project create` takes neither.** Projects are containers, not tracked
   mutations. Passing `--actor` there is an unknown-flag error.
 - **Exit 4 on a status change is the workflow working, not a crash.** Only some status edges
   exist. `backlog -> in_progress` is a forbidden transition and always will be; go through
-  `ready`. Retrying the same move gets the same 4.
+  `ready`. Moving a ticket to the status it already has is a no-op (CLI, MCP, bulk, and web).
+  A real forbidden edge still exits 4.
 - **Do not edit `.tracker/` or the ticket markdown by hand.** Writes go through the CLI or MCP so
   the event log, the index, and the lease state stay in agreement. The SQLite index rebuilds
   itself when it is missing or stale (one `[tracker] ...rebuilt it...` line on stderr), and
@@ -158,12 +158,20 @@ Under `--json` the error is machine-readable too — on **stderr**, with stdout 
 
 Branch on `error.code` or the exit status, not on the message text.
 
-## Nothing prompts
+## Interactive setup and scripted use
 
-Every command is non-interactive. A missing required flag fails immediately naming the flag
-(`required flag(s) "body" not set`) instead of waiting on stdin. If a command appears to hang,
-it is waiting on the workspace write lock for a few seconds, and that ends in exit 6 — not a
-prompt.
+Normal tracker commands are non-interactive. Two setup paths can prompt only when both stdin and
+stdout are terminals:
+
+- `tracker init` asks whether to set up coding-agent integrations after initialization. Use
+  `--skip-integrations` to suppress the question or `--integrations` to go straight to the picker.
+- `tracker integrations install` with no target opens the six-target picker. Use an explicit target
+  or `--targets claude,codex,cursor,openclaw,grok,generic` in scripts.
+
+JSON mode and non-TTY input never prompt. Missing targets or required flags fail immediately instead
+of waiting on stdin. Entering `none` skips integration installation and `q` cancels it without
+installing files. If another command appears to pause, it may be waiting on the workspace write lock;
+that wait ends in exit 6.
 
 ## MCP
 
@@ -172,33 +180,43 @@ second source of truth.
 
 ```bash
 # Claude Code, user scope
-claude mcp add --transport stdio --scope user atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/repo --tool-profile read
+claude mcp add --transport stdio --scope user atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile read
 
 # Codex
-codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/repo --tool-profile read
+codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile read
 
 # OpenClaw (--cwd is its own way of pinning the directory)
-openclaw mcp add atlas --command /usr/local/bin/tracker --arg mcp --arg serve --cwd /path/to/repo
+openclaw mcp add atlas --command /usr/local/bin/tracker --arg mcp --arg serve --cwd /path/to/workspace
 ```
+
+Stdio speaks newline-delimited JSON-RPC by default and also accepts LSP-style
+`Content-Length` frames. Prefer the MCP stdio dialect when you control the client.
 
 `--workspace` is what stops the server from answering against whatever directory the client
 happened to start in. Profiles go `read` (default) -> `workflow` -> `delivery` -> `admin`;
-start at `read` and widen only when the human asks for writes. High-impact tools stay hidden
-unless the server was started with `--dangerously-allow-high-impact-tools`, and executing one
-still needs a one-time approval a human created with `tracker mcp approve-operation`.
+start at `read` and widen to `workflow` for the real agent loop (create/claim/move/review/
+complete). High-impact tools stay hidden unless the server was started with
+`--dangerously-allow-high-impact-tools`, and executing one still needs a one-time approval a
+human created with `tracker mcp approve-operation`.
 
 `tracker mcp tools --json --tool-profile read` lists what a profile actually exposes.
 Full detail: [docs/mcp.md](docs/mcp.md).
 
 ## Installing the skill
 
-`tracker integrations install <codex|claude|openclaw|generic>` writes the `atlas-worker` skill
-and an instruction block into the right place for that agent — `.codex/skills/`,
-`.claude/skills/`, `.agents/skills/`, or `.tracker/integrations/` respectively. It only ever
-writes inside the workspace; the shared per-machine copy is yours to install.
+`tracker integrations install <claude|codex|cursor|openclaw|grok|generic>` writes agent-specific
+project instructions, a generated guide under `.tracker/integrations/`, and the supported skill or
+command files. All six targets are documented in
+[docs/guides/agent-integrations.md](docs/guides/agent-integrations.md). It writes only inside the
+workspace by default; `tracker integrations install openclaw --global` is the one explicit option
+that also copies the OpenClaw skill into `~/.openclaw/skills`.
 
-Re-running is safe: only the Atlas-managed block between the `atlas-tasker` markers changes,
-and `--force` (whole-file replace) is opt-in.
+Re-running refreshes Atlas-generated files and only the managed block between the `atlas-tasker`
+markers in the instruction file; custom instruction content outside the markers is preserved.
+`--force` is the explicit whole-file replacement option.
+
+The integration installer does not edit MCP client configuration. Register `tracker mcp serve`
+separately if the agent should use Atlas tools over MCP.
 
 ## More
 
@@ -206,4 +224,5 @@ and `--force` (whole-file replace) is opt-in.
 - [docs/command-reference.md](docs/command-reference.md) — every command and flag
 - [docs/reference/json-output.md](docs/reference/json-output.md) — envelope shapes
 - [docs/first-agent-workflow.md](docs/first-agent-workflow.md) — the same loop, narrated
+- [docs/guides/agent-integrations.md](docs/guides/agent-integrations.md) — all six setup targets
 - [docs/guides/claude-code.md](docs/guides/claude-code.md), [docs/guides/codex.md](docs/guides/codex.md), [docs/guides/generic-agent.md](docs/guides/generic-agent.md)

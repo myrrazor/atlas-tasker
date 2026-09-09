@@ -18,6 +18,8 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 
 ## DEC-002
 
+Superseded for ongoing release work by DEC-059. The original main-targeted v1 sequence is retained here as history; the owner's current dev/testing/main policy governs new release branches.
+
 1. **Decision ID:** DEC-002
 2. **Date:** 2026-03-21
 3. **Question:** What branch/PR flow should this v1 execution use now?
@@ -511,6 +513,8 @@ This file captures planning and implementation decisions for Atlas Tasker v1 so 
 
 ## DEC-036
 
+The initial three-language scope is superseded by DEC-058. Request precedence and the stored-content boundary remain unchanged.
+
 1. **Decision ID:** DEC-036
 2. **Date:** 2026-07-23
 3. **Question:** How should Atlas pilot multilingual browser chrome without adding a localization dependency or changing stored ticket content?
@@ -806,3 +810,39 @@ Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. 
 7. **Confidence:** high
 8. **Revisit Trigger:** A hosted artifact fails verification, the owner changes the release scope, or the release/branch policy changes.
 9. **Affected PRs/Files:** PR #128 and subsequent v1.10 release-documentation/promotion PRs; CHANGELOG.md, README.md, docs/README.md, docs/release.md, docs/release/launch-checklist.md, docs/release/v1.10.0-release-evidence.md, site/changelog.html.
+
+## DEC-057
+
+1. **Decision ID:** DEC-057
+2. **Date:** 2026-09-09
+3. **Question:** How should a fresh install offer coding-agent setup without creating an unintended workspace or treating cancellation as consent?
+4. **Options Considered:** Leave setup entirely manual; initialize automatically after installation; offer an explicit current-directory prompt through the controlling terminal.
+5. **Chosen Option:** After the binary passes the existing checksum and attestation checks, offer setup only with a terminal, defaulting to No and showing the current directory. `SKIP_INTEGRATIONS=1` suppresses the offer. Explicit consent runs `tracker init --integrations`; older pinned binaries without that option retain manual setup. Keep the existing interactive init offer, preserve buffered answers for its picker, and treat EOF, `none`, and cancellation as a successful skip. Validate a non-empty integration selection and global-target compatibility before integration installation bootstraps a workspace.
+6. **Why We Chose It:** The v1.11 binary offered integrations during init, but the shell installer did not offer it. Testing also reproduced buffered answers being lost, empty input accepting detected defaults, and a canceled or invalid integration install writing workspace files. The new offer makes the user's intended first-install journey real while retaining unattended installation and explicit file-write consent. Repository guidance remains separate from MCP client registration.
+7. **Confidence:** high
+8. **Revisit Trigger:** A new installation platform lacks a controlling terminal, or integration installation gains a distinct configuration destination or authorization model.
+9. **Affected PRs/Files:** v1.12; scripts/install.sh, scripts/test-install.py, internal/cli/integrations_wizard.go, internal/integrations/select.go, CLI/integration regression tests, docs/installation.md, docs/guides/agent-integrations.md, README.md, site/mcp.html.
+
+## DEC-058
+
+1. **Decision ID:** DEC-058
+2. **Date:** 2026-09-09
+3. **Question:** Which web languages and public identity assets should the v1.12 documentation support?
+4. **Options Considered:** Keep the three-language config allowlist and existing captures; accept every shipped catalog and replace public captures with synthetic data.
+5. **Chosen Option:** Accept `en`, `es`, `id`, `zh`, `ja`, and `ko` through the existing config path and validate rendering for every actual catalog. This supersedes DEC-036's initial three-language scope while retaining its precedence and canonical-content rules. Capture the current browser UI in an isolated synthetic workspace with owner name `User`; remove personal contact and author data from current public files. Use byte-identical copies of the existing side-by-side UI wordmark in README and site, with a reproducible social-card render.
+6. **Why We Chose It:** Chinese, Japanese, and Korean already rendered correctly through the language switcher but were rejected as persistent preferences. The owner explicitly requested all six and neutral screenshots. Reusing actual rendered UI and its existing wordmark preserves product identity without fabricating interface content. Rewriting published Git history would invalidate immutable release hashes and provenance, so historical commits and authorship remain intact.
+7. **Confidence:** high
+8. **Revisit Trigger:** A catalog is added or removed, the web UI gains translated schedule content, the product wordmark changes, or the owner separately authorizes a coordinated history rewrite.
+9. **Affected PRs/Files:** v1.12; internal/contracts/domain.go, internal/config/web_languages_test.go, internal/web/configured_languages_test.go, examples/create-web-demo.sh, docs/assets, assets/brand, site/assets/web-board.webp, site/og.png, site public pages, docs/i18n-notes.md, docs/web-board.md, ROADMAP.md.
+
+## DEC-059
+
+1. **Decision ID:** DEC-059
+2. **Date:** 2026-09-09
+3. **Question:** What proves the v1.12 agent setup and documentation release is ready for owner approval?
+4. **Options Considered:** Reuse v1.11's release proof; validate only static documentation; validate the integrated candidate and record remaining hosted gates explicitly.
+5. **Chosen Option:** Run the required fresh Go tests/vet, workflow policy, site/browser contracts, local RC/rehearsal/stability and security checks. Add a Python-standard-library installer PTY harness and a real stdio MCP workflow harness to CI on Linux and macOS. Check both MCP framings, exact profile inventories, read-profile write denial, and the actor-separated ticket loop from an unrelated client directory. Review current docs against source and render Docs/Connect Your Agent at desktop and phone sizes. Prepare a PR to testing from the current dev-based release branch; this supersedes DEC-002's main-targeted v1 implementation sequence for ongoing release work. Require owner approval before promotion and release publication, then verify hosted RC and stable artifacts using the existing immutable-tag release process.
+6. **Why We Chose It:** Static command examples cannot prove the installer reads the correct terminal or that an MCP-only client completes a governed ticket. The owner requested a finished, reviewable result before the approval request. Existing published v1.11 commits are included because main advanced while the dev/testing pipeline remained on v1.10; the new release must preserve those features and reconcile the pipeline.
+7. **Confidence:** high
+8. **Revisit Trigger:** Required CI or branch policy changes, a supported platform fails the terminal harness, or hosted artifact verification fails.
+9. **Affected PRs/Files:** v1.12; .github/workflows/ci.yml, scripts/verify-mcp-workflow.py, scripts/test-install.py, examples/generate-demo-assets.sh, docs/examples, site/_tools, docs/release/public-release-gates.md, docs/release/v1.12.0-release-evidence.md, TEST_STDOUT.log.

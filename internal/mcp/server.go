@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -78,12 +79,18 @@ func serverImplementation() *mcpsdk.Implementation {
 }
 
 func (s *Server) Serve(ctx context.Context) error {
-	return s.SDKServer().Run(ctx, &mcpsdk.StdioTransport{})
+	in, out := NewStdioFraming(io.NopCloser(os.Stdin), nopWriteCloser{os.Stdout})
+	return s.SDKServer().Run(ctx, &mcpsdk.IOTransport{Reader: in, Writer: out})
 }
 
 func (s *Server) ServeIO(ctx context.Context, in io.ReadCloser, out io.WriteCloser) error {
-	return s.SDKServer().Run(ctx, &mcpsdk.IOTransport{Reader: in, Writer: out})
+	framedIn, framedOut := NewStdioFraming(in, out)
+	return s.SDKServer().Run(ctx, &mcpsdk.IOTransport{Reader: framedIn, Writer: framedOut})
 }
+
+type nopWriteCloser struct{ io.Writer }
+
+func (nopWriteCloser) Close() error { return nil }
 
 func (s *Server) CallTool(ctx context.Context, name string, args map[string]any) (map[string]any, error) {
 	spec, ok := ToolSpecByName(name)

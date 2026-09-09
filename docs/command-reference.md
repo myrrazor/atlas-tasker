@@ -2,7 +2,7 @@
 
 ## Top-Level
 
-- `tracker init`
+- `tracker init [--integrations|--skip-integrations]`
 - `tracker help`
 - `tracker doctor [--repair]`
 - `tracker reindex`
@@ -46,17 +46,18 @@
 - `tracker bulk release [--ticket <ID>]... [--view <NAME>] [--dry-run|--yes] [--actor <ACTOR>]`
 - `tracker templates list`
 - `tracker templates view <NAME>`
-- `tracker integrations install codex [--force]`
-- `tracker integrations install claude [--force]`
-- `tracker integrations install openclaw [--force]`
-- `tracker integrations install generic [--force]`
+- `tracker integrations detect [--json]`
+- `tracker integrations install [codex|claude|openclaw|cursor|grok|generic] [--force] [--targets <list>] [--global]`
+- `tracker integrations install` with no target opens an interactive multi-select when stdin/stdout are a TTY
 - `tracker web serve [--host 127.0.0.1] [--port 0] [--project <KEY>] [--actor <ACTOR>] [--open|--no-browser] [--read-only]`
 - `tracker web open`
 - `tracker web status [--pretty|--md|--json]`
+- `tracker update [--check|--dry-run|--yes] [--force] [--version <TAG>] [--skip-attestations] [--json]`
 - `tracker version [--json]`
 - `tracker tui [--actor <ACTOR>]`
 - `tracker config get [KEY]`
 - `tracker config set <KEY> <VALUE>`
+
 - `tracker run list [--ticket <ID>] [--agent <AGENT-ID>] [--status <STATUS>]`
 - `tracker run view <RUN-ID>`
 - `tracker run dispatch <TICKET-ID> --agent <AGENT-ID> [--kind <work|review|qa|release>] [--actor <ACTOR>] [--reason <TEXT>]`
@@ -158,6 +159,18 @@
 - `tracker goal brief <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal manifest <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal verify <MANIFEST-ID|PATH>`
+
+Setup and update behavior:
+
+- plain `tracker init` can offer the six-target integration picker only when stdin and stdout are TTYs; `--skip-integrations` suppresses it
+- `tracker integrations install` accepts `claude`, `codex`, `cursor`, `openclaw`, `grok`, and `generic`; scripts should pass one target or `--targets <list>`
+- `none` and `q` leave integration installation skipped; JSON and non-TTY invocations never prompt
+- integration installation writes project guidance and skills but does not register an MCP client
+- `tracker update --check` and `--dry-run` do not replace the binary; applying an update requires `--yes`
+- update apply verifies `checksums.txt` and, unless explicitly skipped, a GitHub build attestation before replacing the current executable
+- `tracker update` replaces only the binary; rerun the desired integration install to refresh generated skill files
+
+See [coding-agent integrations](guides/agent-integrations.md) and [updating](guides/updating.md).
 
 ## Agents
 
@@ -600,8 +613,8 @@ Template names are path-derived identifiers under `.tracker/templates/` and must
 
 ## Ticket CRUD
 
-- `tracker ticket create --project <KEY> --title <TEXT> [--type <epic|task|bug|subtask>] [--template <NAME>] [flags]`
-- `tracker ticket view <ID>`
+- `tracker ticket create --project <KEY> --title <TEXT> --type <epic|task|bug|subtask> [--template <NAME>] [flags]`
+- `tracker ticket view <ID>` (alias: `show`)
 - `tracker ticket edit <ID> [flags]`
 - `tracker ticket archive <ID>` (`ticket delete` is kept as a compatibility alias)
 - `tracker ticket list [--project <KEY>] [--status <STATUS>] [--assignee <ACTOR>] [--type <TYPE>]`
@@ -888,7 +901,7 @@ Useful config keys:
 `tracker version` prints release metadata in text form:
 
 ```text
-tracker v1.10.0-rc1
+tracker v1.10.0
 commit: abc123
 build date: 2026-08-27T04:00:00Z
 go: go1.26.6
@@ -901,7 +914,7 @@ platform: darwin/arm64
 {
   "format_version": "v1",
   "kind": "tracker_version",
-  "version": "v1.10.0-rc1",
+  "version": "v1.10.0",
   "commit": "abc123",
   "build_date": "2026-08-27T04:00:00Z",
   "go_version": "go1.26.6",

@@ -40,7 +40,7 @@ func TestSaveAndLoadV15ConfigRoundTrip(t *testing.T) {
 	cfg.ImportExport.AllowUpdateExisting = true
 	cfg.Release.BaseMarker = "v1.5-base-4f1782e"
 	cfg.Release.BaseSHA = "4f1782e3ef2eaeed06ae0724bd6dc0162a18d940"
-	cfg.Web.OwnerName = "Master Hit"
+	cfg.Web.OwnerName = "User"
 	cfg.Web.Lang = "es"
 	cfg.Web.AgentColors["merlin"] = "orange"
 
@@ -69,7 +69,7 @@ func TestSaveAndLoadV15ConfigRoundTrip(t *testing.T) {
 	if loaded.Release.BaseSHA != "4f1782e3ef2eaeed06ae0724bd6dc0162a18d940" {
 		t.Fatalf("expected base sha to round-trip, got %s", loaded.Release.BaseSHA)
 	}
-	if loaded.Web.OwnerName != "Master Hit" || loaded.Web.Lang != "es" || loaded.Web.AgentColors["merlin"] != "orange" {
+	if loaded.Web.OwnerName != "User" || loaded.Web.Lang != "es" || loaded.Web.AgentColors["merlin"] != "orange" {
 		t.Fatalf("expected web config to round-trip, got %#v", loaded.Web)
 	}
 }

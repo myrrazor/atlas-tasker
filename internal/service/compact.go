@@ -42,6 +42,12 @@ func (s *ActionService) CompactWorkspace(ctx context.Context, confirmed bool, ac
 			return CompactResult{}, err
 		}
 		for _, path := range removed {
+			if err := rejectSymlinkedFile(path); err != nil {
+				return CompactResult{}, err
+			}
+			if !pathWithinDir(s.Root, path) {
+				return CompactResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("path_rejected: compact path escapes workspace: %s", path))
+			}
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 				return CompactResult{}, fmt.Errorf("remove compacted path %s: %w", filepath.Base(path), err)
 			}
@@ -74,17 +80,26 @@ func compactablePaths(ctx context.Context, root string) ([]string, int64, []stri
 			continue
 		}
 		for _, path := range []string{storage.RuntimeLaunchFile(root, run.RunID, "codex"), storage.RuntimeLaunchFile(root, run.RunID, "claude")} {
-			info, err := os.Stat(path)
+			safePath, err := compactSafeFile(root, path)
+			if err != nil {
+				skipped = append(skipped, "unsafe:"+filepath.Base(path))
+				continue
+			}
+			if safePath == "" {
+				continue
+			}
+			info, err := os.Lstat(safePath)
 			if err != nil {
 				if os.IsNotExist(err) {
 					continue
 				}
 				return nil, 0, nil, err
 			}
-			if info.IsDir() {
+			if info.Mode()&os.ModeSymlink != 0 || info.IsDir() {
+				skipped = append(skipped, "symlink:"+filepath.Base(safePath))
 				continue
 			}
-			paths = append(paths, path)
+			paths = append(paths, safePath)
 			bytesFreed += info.Size()
 		}
 	}
@@ -93,27 +108,51 @@ func compactablePaths(ctx context.Context, root string) ([]string, int64, []stri
 	if err != nil {
 		return nil, 0, nil, err
 	}
+	archivesRoot := canonicalComparablePath(storage.ArchivesDir(root))
 	for _, record := range records {
 		if record.Target != contracts.RetentionTargetRuntime {
+			continue
+		}
+		payloadDir := strings.TrimSpace(record.PayloadDir)
+		if payloadDir == "" {
+			skipped = append(skipped, "archive_payload:"+record.ArchiveID)
+			continue
+		}
+		payloadDir = canonicalComparablePath(payloadDir)
+		if !pathWithinDir(archivesRoot, payloadDir) {
+			skipped = append(skipped, "archive_payload:"+record.ArchiveID)
+			continue
+		}
+		if err := rejectSymlinkComponents(archivesRoot, payloadDir); err != nil {
+			skipped = append(skipped, "archive_symlink:"+record.ArchiveID)
 			continue
 		}
 		for _, rel := range record.SourcePaths {
 			runID := filepath.Base(rel)
 			for _, path := range []string{
-				filepath.Join(record.PayloadDir, storage.TrackerDirName, "runtime", runID, "launch.codex.txt"),
-				filepath.Join(record.PayloadDir, storage.TrackerDirName, "runtime", runID, "launch.claude.txt"),
+				filepath.Join(payloadDir, storage.TrackerDirName, "runtime", runID, "launch.codex.txt"),
+				filepath.Join(payloadDir, storage.TrackerDirName, "runtime", runID, "launch.claude.txt"),
 			} {
-				info, err := os.Stat(path)
+				safePath, err := compactSafeFile(payloadDir, path)
+				if err != nil {
+					skipped = append(skipped, "unsafe:"+filepath.Base(path))
+					continue
+				}
+				if safePath == "" {
+					continue
+				}
+				info, err := os.Lstat(safePath)
 				if err != nil {
 					if os.IsNotExist(err) {
 						continue
 					}
 					return nil, 0, nil, err
 				}
-				if info.IsDir() {
+				if info.Mode()&os.ModeSymlink != 0 || info.IsDir() {
+					skipped = append(skipped, "symlink:"+filepath.Base(safePath))
 					continue
 				}
-				paths = append(paths, path)
+				paths = append(paths, safePath)
 				bytesFreed += info.Size()
 			}
 		}
@@ -141,4 +180,22 @@ func dedupeCompactStrings(values []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+// compactSafeFile returns path when it exists under root without symlink components.
+// Missing paths return ("", nil).
+func compactSafeFile(root string, path string) (string, error) {
+	if !pathWithinDir(root, path) {
+		return "", apperr.New(apperr.CodeInvalidInput, "path_rejected: compact path escapes containment root")
+	}
+	if err := rejectSymlinkComponents(root, path); err != nil {
+		return "", err
+	}
+	if _, err := os.Lstat(path); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return path, nil
 }

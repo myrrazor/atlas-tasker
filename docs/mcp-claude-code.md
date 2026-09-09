@@ -5,13 +5,15 @@ Claude Code manages MCP servers with `/mcp` and `claude mcp` commands. Use an ab
 A user-scoped server starts wherever Claude Code happens to be, so pin the workspace with `--workspace`:
 
 ```bash
-claude mcp add --transport stdio --scope user atlas -- /Users/you/bin/tracker mcp serve --workspace /Users/you/code/my-repo --tool-profile read
+claude mcp add --transport stdio --scope user atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile read
 ```
 
-For a project-scoped workflow profile, Claude Code already launches the server in the project directory, so `--workspace` is optional:
+Stdio speaks newline-delimited JSON-RPC and also accepts LSP-style `Content-Length` frames.
+
+For a project-scoped workflow profile, keep the workspace explicit so the target remains clear:
 
 ```bash
-claude mcp add --transport stdio --scope project atlas-workflow -- /Users/you/bin/tracker mcp serve --tool-profile workflow --max-items 30
+claude mcp add --transport stdio --scope project atlas-workflow -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile workflow --max-items 30
 ```
 
 Without `--workspace` the server reads whatever workspace it was started in — usually the reason a tool answers `not_found` for a ticket you can see in the terminal. A `--workspace` that does not exist or has no `.tracker/` directory fails at startup with the path it tried.
@@ -25,5 +27,9 @@ Check status in Claude Code:
 Do not configure Atlas MCP through `sh -c`, `npx`, or snippets from untrusted workspaces. Keep high-impact tools out of normal Claude Code sessions; use `tracker mcp approve-operation` only when a human explicitly authorizes a specific operation and target.
 
 For the CLI-first Claude Code workflow, read [Claude Code guide](guides/claude-code.md).
+
+`tracker integrations install claude` writes `CLAUDE.md`, `.claude/skills/`, and
+`.claude/commands/` files. It does not create this MCP registration. See
+[coding-agent integrations](guides/agent-integrations.md).
 
 See Claude Code’s MCP docs: <https://docs.claude.com/en/docs/claude-code/mcp>.

@@ -52,7 +52,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="../" aria-label="Atlas Tasker home">
-        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="../cli.html">CLI</a>
@@ -83,6 +83,7 @@
           <p class="docs-group-label">Agents</p>
           <a href="agents-and-dispatch.html">Agents and dispatch</a>
           <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-tools.html">MCP tools</a>
           <a href="mcp-security.html">MCP security</a>
           <a href="json-and-exit-codes.html">JSON and exit codes</a>
         </div>
@@ -122,7 +123,7 @@
         <ul>
           <li><strong>The repo is the database.</strong> Tickets are Markdown files under <code>projects/</code>, and every change appends an event under <code>.tracker/</code>. A small disposable index keeps queries instant, rebuilds itself from the files when it is missing or behind, and <code>tracker doctor --repair</code> rebuilds it on demand. The <a href="faq.html">FAQ</a> covers the storage internals honestly.</li>
           <li><strong>Every write is attributed.</strong> Mutations name an <code>--actor</code> and a <code>--reason</code>, and that pair lands in the audit trail. Reviewers and agents read it later to understand what happened and why.</li>
-          <li><strong>Machines are first-class users.</strong> Every command takes <code>--json</code>, exit codes are stable, nothing ever prompts, and an MCP server exposes typed tools behind escalating permission profiles. Humans get the same tracker with nicer pixels.</li>
+          <li><strong>Machines are first-class users.</strong> Commands support <code>--json</code>, exit codes are stable, and an MCP server exposes typed tools behind escalating profiles. Interactive prompts are confined to workspace and integration setup; JSON and non-TTY paths stay non-interactive. Humans get the same tracker with nicer pixels.</li>
         </ul>
 
         <h2>The manual</h2>
@@ -141,7 +142,11 @@
           </a>
           <a href="mcp-setup.html">
             <span class="card-title">MCP setup</span>
-            <p class="card-blurb">Connect Claude Code, Codex, OpenClaw, or any MCP client, and budget what tools return.</p>
+            <p class="card-blurb">Connect a client, pin its workspace, choose a profile, and verify the local stdio server.</p>
+          </a>
+          <a href="mcp-tools.html">
+            <span class="card-title">MCP tools</span>
+            <p class="card-blurb">Read the board, work tickets, manage agents, deliver changes, and understand the high-impact boundary.</p>
           </a>
           <a href="mcp-security.html">
             <span class="card-title">MCP security</span>

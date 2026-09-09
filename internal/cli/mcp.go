@@ -13,12 +13,12 @@ import (
 )
 
 func newMCPCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "mcp", Short: "Serve and inspect the Atlas MCP adapter"}
+	cmd := &cobra.Command{Use: "mcp", Short: "Serve and inspect the Atlas MCP adapter", RunE: requireKnownSubcommand}
 
 	serve := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve Atlas MCP tools over stdio",
-		Long:  "Serve Atlas MCP tools over stdio. MCP clients launch the server from their own working directory, so pass --workspace to pin it to a repo instead of wherever the client happened to start.",
+		Long:  "Serve Atlas MCP tools over stdio. Stdio is newline-delimited JSON-RPC; Content-Length framed clients are accepted too. MCP clients launch the server from their own working directory, so pass --workspace to pin it to a repo instead of wherever the client happened to start.",
 		RunE:  runMCPServe,
 	}
 	serve.Flags().String("workspace", "", "Atlas workspace root to serve; defaults to the current directory")

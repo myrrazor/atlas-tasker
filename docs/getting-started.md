@@ -4,14 +4,12 @@ This path gets you from a clean checkout to a usable local Atlas workspace.
 
 ## 1. Build The CLI
 
-Until hosted release assets pass the hosted gate, build locally:
-
 ```bash
 go build -o tracker ./cmd/tracker
 ./tracker --help
 ```
 
-If `go build` tries to download a Go toolchain, let it finish or install the pinned Go version from `go.mod`.
+If `go build` tries to download a Go toolchain, let it finish or install the pinned Go version from `go.mod`. Hosted v1.11.0 install is also available; see [installation.md](installation.md).
 
 ## 2. Initialize Atlas
 
@@ -20,6 +18,11 @@ Run this inside the repo or workspace you want Atlas to manage:
 ```bash
 ./tracker init
 ```
+
+In a terminal, Atlas asks whether to install coding-agent integrations after initialization. Detected
+agents are checked in the picker; choose `none` to skip. Use `./tracker init --skip-integrations` for a
+non-interactive bootstrap, or see [coding-agent integrations](guides/agent-integrations.md) for all six
+targets and scripted setup.
 
 Atlas writes local state under `.tracker/`. Keep that directory out of public bug reports unless you have redacted it.
 
@@ -48,6 +51,8 @@ Use `--json` when another tool needs structured output:
 ## 5. Keep Going
 
 - [Quickstart](quickstart.md) gives one copyable flow.
+- [Coding-agent integrations](guides/agent-integrations.md) explains Claude, Codex, Cursor, OpenClaw, Grok, and generic setup.
 - [First agent workflow](first-agent-workflow.md) shows the agent run lifecycle.
+- [Updating](guides/updating.md) explains check, dry-run, version pinning, and verified replacement.
 - [Doctor and repair](guides/doctor-and-repair.md) explains the safe health-check path.
 - [Release verification](guides/release-verification.md) explains why a local build is not the same as a hosted release.

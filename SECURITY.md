@@ -4,7 +4,7 @@ Atlas stores local task state, agent evidence, sync artifacts, signatures, gover
 
 ## Supported Versions
 
-`v1.10.0` is the current stable release. Security reports should name the affected release and include the commit SHA, branch, or PR when the issue is not present in a published tag.
+`v1.11.0` is the current stable release. Security reports should name the affected release and include the commit SHA, branch, or PR when the issue is not present in a published tag.
 
 ## Reporting A Vulnerability
 
@@ -37,11 +37,13 @@ Atlas may claim:
 - signed audit packets
 - side-effect-safe restore planning
 - a strictly loopback-only local web board (non-loopback hosts are refused, sessions are per-process random tokens, mutations require CSRF, no CORS headers)
-- fail-closed rejection of symlinked inputs in exports, bundles, and backups
+- fail-closed rejection of symlinked inputs in exports, bundles, backups, archive restore/compact, and integration installs (workspace and OpenClaw `--global`)
 
 Atlas does not claim OS sandboxing, SaaS-grade identity proof, encrypted-at-rest storage, protection from malicious local filesystem users, formal DLP, full provider-rule enforcement, or full MCP client safety.
 
 ## Handling Sensitive Attachments
+
+Do not store credentials in ticket markdown or comments; prefer environment variables or a secret store. Soft CLI/MCP warnings may flag secret-like text, but they are not a control boundary.
 
 Before sharing output, redact:
 

@@ -1,14 +1,20 @@
 # Roadmap
 
-`v1.10.0` is the current stable release. It shipped the local web console (welcome dashboard, the restyled Kanban board, schedule workspace, read-only settings), six-language web chrome, one-time scheduled tickets across CLI, web, and MCP, the security audit batch, the agent-ready CLI work (`--json` on every command agents run, the rewritten `AGENTS.md`, MCP workspace pinning), and the marketing site. What is left is follow-up work, not new subsystems.
+`v1.11.0` is the current stable release. It added MCP workflow coverage, `tracker update`, coding-agent detection and integration selection, and local security hardening. The local web console, scheduled tickets, agent queues, and six language catalogs remain the foundation.
+
+## v1.12 release preparation
+
+- Accept and validate all six web language codes (`en`, `es`, `id`, `zh`, `ja`, `ko`) through `tracker config set web.lang`, with configuration round-trip and rendered-page coverage.
+- Bring README, MCP references, agent setup instructions, and the website docs in line with the shipped CLI and MCP tools.
+- Offer optional agent guidance setup after a terminal install; make cancellation and unattended installs predictable.
+- Use neutral, reproducible screenshots and the UI's existing Atlas Tasker wordmark across the public product pages.
 
 ## Next
 
-Follow-ups flagged during the v1.10 work:
+Follow-ups beyond this release:
 
-- `tracker config set web.lang` still validates only `en`, `es`, and `id` even though the `zh`, `ja`, and `ko` catalogs already ship — accept all six
 - the schedule workspace renders English-only; bring it into the language catalogs
-- richer screenshots and GIFs, plus packaged examples for common agent workflows
+- additional walkthroughs and packaged examples for common agent workflows
 
 ## Not planned
 

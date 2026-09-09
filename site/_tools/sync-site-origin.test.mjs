@@ -20,6 +20,7 @@ test("keeps every public SEO output on the same origin", () => {
     "docs/web-board.html",
     "docs/agents-and-dispatch.html",
     "docs/mcp-setup.html",
+    "docs/mcp-tools.html",
     "docs/mcp-security.html",
     "docs/json-and-exit-codes.html",
     "docs/faq.html",

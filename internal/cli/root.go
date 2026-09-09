@@ -115,6 +115,7 @@ gets you the same board in a browser.`,
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newWebCommand())
 	root.AddCommand(newVersionCommand())
+	root.AddCommand(newUpdateCommand())
 	root.AddCommand(newShellCommand())
 	root.AddCommand(newMCPCommand())
 	root.AddCommand(newKeyCommand())
@@ -155,9 +156,40 @@ func newInitCommand() *cobra.Command {
 			for _, path := range result.Created {
 				md += "- " + path + "\n"
 			}
-			return writeCommandOutput(cmd, result, md, "initialized")
+			pretty := "initialized"
+			if len(result.Created) == 0 {
+				pretty = "already bootstrapped"
+			}
+			if err := writeCommandOutput(cmd, result, md, pretty); err != nil {
+				return err
+			}
+
+			wantIntegrations, _ := cmd.Flags().GetBool("integrations")
+			skipIntegrations, _ := cmd.Flags().GetBool("skip-integrations")
+			if skipIntegrations {
+				return nil
+			}
+			if !wantIntegrations && !canPromptIntegrations(cmd) {
+				return nil
+			}
+			if !wantIntegrations {
+				ok, err := confirmIntegrationsSetup(cmd)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "skipped integrations; run tracker integrations install later")
+					return nil
+				}
+			}
+			if !canPromptIntegrations(cmd) && wantIntegrations {
+				return apperr.New(apperr.CodeInvalidInput, "tracker init --integrations requires an interactive TTY; use tracker integrations install --targets ... instead")
+			}
+			return runIntegrationsInstallWizard(cmd, nil, false, false, true)
 		},
 	}
+	cmd.Flags().Bool("integrations", false, "After init, open the coding-agent integrations installer")
+	cmd.Flags().Bool("skip-integrations", false, "Never prompt for coding-agent integrations after init")
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
 }
@@ -247,47 +279,69 @@ func newConfigCommand() *cobra.Command {
 }
 
 func newIntegrationsCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "integrations", Short: "Install agent guidance for Atlas Tasker"}
-	install := &cobra.Command{Use: "install", Short: "Install Atlas Tasker guidance into agent files"}
-	for _, target := range []string{"codex", "claude", "openclaw", "generic"} {
+	cmd := &cobra.Command{Use: "integrations", Short: "Install agent guidance for Atlas Tasker", RunE: requireKnownSubcommand}
+
+	detect := &cobra.Command{
+		Use:   "detect",
+		Short: "Detect coding agents installed on this machine",
+		RunE:  runIntegrationsDetect,
+	}
+	addReadOutputFlags(detect, &outputFlags{})
+
+	install := &cobra.Command{
+		Use:   "install [codex|claude|openclaw|generic|cursor|grok]",
+		Short: "Install Atlas Tasker guidance into agent files",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			force, _ := command.Flags().GetBool("force")
+			global, _ := command.Flags().GetBool("global")
+			targetsRaw, _ := command.Flags().GetString("targets")
+			targets, err := integrations.ParseTargetList(targetsRaw)
+			if err != nil {
+				return apperr.New(apperr.CodeInvalidInput, err.Error())
+			}
+			if len(args) == 1 {
+				parsed, err := integrations.ParseTargetList(args[0])
+				if err != nil {
+					return apperr.New(apperr.CodeInvalidInput, err.Error())
+				}
+				targets = append(targets, parsed...)
+			}
+			interactive := len(targets) == 0 && canPromptIntegrations(command)
+			return runIntegrationsInstallWizard(command, targets, force, global, interactive)
+		},
+	}
+	install.Flags().Bool("force", false, "Replace the whole instruction file instead of only the Atlas Tasker managed block")
+	install.Flags().Bool("global", false, "Also copy the atlas-worker skill into ~/.openclaw/skills (openclaw only)")
+	install.Flags().String("targets", "", "Comma-separated targets for non-interactive multi-install (claude,codex,cursor,openclaw,grok,generic)")
+	addReadOutputFlags(install, &outputFlags{})
+
+	// Keep explicit per-target leaves for scripts and discoverability.
+	for _, target := range []string{"codex", "claude", "openclaw", "generic", "cursor", "grok"} {
 		target := target
 		targetCmd := &cobra.Command{
 			Use:   target,
 			Short: fmt.Sprintf("Install %s guidance", target),
 			RunE: func(command *cobra.Command, _ []string) error {
-				rootDir, err := os.Getwd()
-				if err != nil {
-					return err
-				}
-				if _, err := ensureInitArtifacts(rootDir); err != nil {
-					return err
-				}
 				force, _ := command.Flags().GetBool("force")
-				result, err := integrations.Installer{Root: rootDir}.Install(integrations.Target(target), force)
-				if err != nil {
-					return err
-				}
-				pretty := fmt.Sprintf("installed %s guidance into %s", target, result.InstructionFile)
-				md := fmt.Sprintf("# %s integration\n\n- Instructions: %s\n- Guide: %s", target, result.InstructionFile, result.GuideFile)
-				for _, path := range result.SkillFiles {
-					md += fmt.Sprintf("\n- Skill: %s", path)
-				}
-				for _, path := range result.CommandFiles {
-					md += fmt.Sprintf("\n- Command template: %s", path)
-				}
-				return writeCommandOutput(command, result, md, pretty)
+				global, _ := command.Flags().GetBool("global")
+				return runIntegrationsInstallWizard(command, []integrations.Target{integrations.Target(target)}, force, global, false)
 			},
 		}
 		targetCmd.Flags().Bool("force", false, "Replace the whole instruction file instead of only the Atlas Tasker managed block")
+		if target == "openclaw" {
+			targetCmd.Flags().Bool("global", false, "Also copy the atlas-worker skill into ~/.openclaw/skills")
+		}
 		addReadOutputFlags(targetCmd, &outputFlags{})
 		install.AddCommand(targetCmd)
 	}
-	cmd.AddCommand(install)
+
+	cmd.AddCommand(detect, install)
 	return cmd
 }
 
 func newAgentCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "agent", Short: "Manage Atlas worker profiles"}
+	cmd := &cobra.Command{Use: "agent", Short: "Manage Atlas worker profiles", RunE: requireKnownSubcommand}
 	list := &cobra.Command{Use: "list", Short: "List agent profiles", RunE: runAgentList}
 	view := &cobra.Command{Use: "view <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Show one agent profile", RunE: runAgentView}
 	create := &cobra.Command{Use: "create <AGENT-ID>", Args: cobra.ExactArgs(1), Short: "Create an agent profile", RunE: runAgentCreate}
@@ -511,13 +565,13 @@ func newProjectCommand() *cobra.Command {
 const timeRFC3339 = "2006-01-02T15:04:05Z07:00"
 
 func newTicketCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "ticket", Short: "Ticket CRUD and workflow commands"}
+	cmd := &cobra.Command{Use: "ticket", Short: "Ticket CRUD and workflow commands", RunE: requireKnownSubcommand}
 
 	create := &cobra.Command{Use: "create", Short: "Create a ticket", RunE: runTicketCreate}
-	addMutationFlags(create, &mutationFlags{Actor: "human:owner"})
+	addMutationFlags(create, &mutationFlags{})
 	create.Flags().String("project", "", "Project key (required)")
 	create.Flags().String("title", "", "Ticket title (required)")
-	create.Flags().String("type", "", "Ticket type: epic|task|bug|subtask")
+	create.Flags().String("type", "", "Ticket type: epic|task|bug|subtask (required unless --template supplies it)")
 	create.Flags().String("template", "", "Template name from .tracker/templates")
 	create.Flags().String("status", "backlog", "Initial status ("+strings.Join(contracts.ValidStatusValues(), ", ")+")")
 	create.Flags().String("priority", "medium", "Ticket priority")
@@ -532,9 +586,10 @@ func newTicketCommand() *cobra.Command {
 	create.Flags().Bool("sensitive", false, "Mark the ticket as sensitive")
 	_ = create.MarkFlagRequired("project")
 	_ = create.MarkFlagRequired("title")
+	create.PreRunE = requireTicketTypeOrTemplate
 	cmd.AddCommand(create)
 
-	view := &cobra.Command{Use: "view <ID>", Args: cobra.ExactArgs(1), Short: "View ticket", RunE: runTicketView}
+	view := &cobra.Command{Use: "view <ID>", Aliases: []string{"show"}, Args: cobra.ExactArgs(1), Short: "View ticket", RunE: runTicketView}
 	addReadOutputFlags(view, &outputFlags{})
 	cmd.AddCommand(view)
 
@@ -565,7 +620,7 @@ func newTicketCommand() *cobra.Command {
 	cmd.AddCommand(list)
 
 	move := &cobra.Command{Use: "move <ID> <STATUS>", Args: cobra.ExactArgs(2), Short: "Move ticket status", RunE: runTicketMove}
-	addMutationFlags(move, &mutationFlags{Actor: "human:owner"})
+	addMutationFlags(move, &mutationFlags{})
 	addReadOutputFlags(move, &outputFlags{})
 	addDependencyOverrideFlag(move)
 	cmd.AddCommand(move)
@@ -848,7 +903,7 @@ func newUnwatchCommand() *cobra.Command {
 }
 
 func newBulkCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "bulk", Short: "Run one mutation across many tickets"}
+	cmd := &cobra.Command{Use: "bulk", Short: "Run one mutation across many tickets", RunE: requireKnownSubcommand}
 	move := &cobra.Command{Use: "move <STATUS>", Args: cobra.ExactArgs(1), Short: "Move many tickets", RunE: runBulkMove}
 	assign := &cobra.Command{Use: "assign <ACTOR>", Args: cobra.ExactArgs(1), Short: "Assign many tickets", RunE: runBulkAssign}
 	requestReview := &cobra.Command{Use: "request-review", Short: "Request review for many tickets", RunE: runBulkRequestReview}
@@ -893,6 +948,47 @@ func addMutationFlags(cmd *cobra.Command, flags *mutationFlags) {
 	cmd.Flags().StringVar(&flags.Reason, "reason", "", "Reason for change; required by security/protected mutations and recommended for all writes")
 }
 
+func requireKnownSubcommand(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return cmd.Help()
+	}
+	return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath()))
+}
+
+func requireTicketTypeOrTemplate(cmd *cobra.Command, _ []string) error {
+	typeValue, _ := cmd.Flags().GetString("type")
+	templateName, _ := cmd.Flags().GetString("template")
+	if strings.TrimSpace(typeValue) == "" && strings.TrimSpace(templateName) == "" {
+		return apperr.New(apperr.CodeInvalidInput, "--type is required unless --template supplies a type")
+	}
+	return nil
+}
+
+func bulkFailureError(result service.BulkOperationResult) error {
+	code := apperr.CodeInvalidInput
+	rank := map[apperr.Code]int{
+		apperr.CodePermissionDenied: 5,
+		apperr.CodeConflict:         4,
+		apperr.CodeBusy:             3,
+		apperr.CodeRepairNeeded:     3,
+		apperr.CodeNotFound:         2,
+		apperr.CodeInvalidInput:     1,
+		apperr.CodeInternal:         0,
+	}
+	best := -1
+	for _, item := range result.Results {
+		if item.OK || strings.TrimSpace(item.Code) == "" {
+			continue
+		}
+		itemCode := apperr.Code(item.Code)
+		if n, ok := rank[itemCode]; ok && n >= best {
+			best = n
+			code = itemCode
+		}
+	}
+	return apperr.New(code, fmt.Sprintf("bulk operation failed for %d of %d tickets", result.Summary.Failed, result.Summary.Total))
+}
+
 func executeArgs(args []string) error {
 	return executeArgsWithSurface(args, contracts.EventSurfaceCLI)
 }
@@ -910,6 +1006,25 @@ func commandContext(cmd *cobra.Command) context.Context {
 	}
 	return context.Background()
 }
+
+func warnSecretLikeContent(cmd *cobra.Command, fields ...string) {
+	findings := map[string]struct{}{}
+	labels := make([]string, 0)
+	for _, field := range fields {
+		for _, item := range service.SecretLikeFindings(field) {
+			if _, ok := findings[item]; ok {
+				continue
+			}
+			findings[item] = struct{}{}
+			labels = append(labels, item)
+		}
+	}
+	if len(labels) == 0 {
+		return
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "warning: ticket text looks like it may contain secrets (%s); prefer env vars or a secret store — ticket markdown and events are not confidential storage\n", strings.Join(labels, ", "))
+}
+
 
 func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	ctx := commandContext(cmd)
@@ -937,7 +1052,10 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	sensitive, _ := cmd.Flags().GetBool("sensitive")
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
-	actor := normalizeActor(actorRaw)
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
 
 	if _, err := workspace.project.GetProject(ctx, project); err != nil {
 		return err
@@ -954,7 +1072,7 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	}
 	ticketType := contracts.TicketType(typeValue)
 	if !ticketType.IsValid() {
-		return fmt.Errorf("invalid ticket type: %s (valid: %s)", typeValue, strings.Join(contracts.ValidTicketTypeValues(), ", "))
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid ticket type: %s (valid: %s)", typeValue, strings.Join(contracts.ValidTicketTypeValues(), ", ")))
 	}
 	status := contracts.Status(statusValue)
 	if !status.IsValid() {
@@ -1030,6 +1148,7 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	warnSecretLikeContent(cmd, ticket.Title, ticket.Description, strings.Join(ticket.AcceptanceCriteria, "\n"))
 	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s", ticket.ID, ticket.Title), fmt.Sprintf("created %s", ticket.ID))
 }
 
@@ -1374,6 +1493,7 @@ func runTicketComment(cmd *cobra.Command, args []string) error {
 	if err := workspace.actions.CommentTicket(ctx, args[0], body, normalizeActor(actorRaw), reason); err != nil {
 		return err
 	}
+	warnSecretLikeContent(cmd, body)
 	return writeCommandOutput(cmd, map[string]any{"ticket_id": args[0], "body": strings.TrimSpace(body)}, body, fmt.Sprintf("comment added to %s", args[0]))
 }
 
@@ -3109,7 +3229,13 @@ func runBulkOperation(cmd *cobra.Command, base service.BulkOperation) error {
 		return err
 	}
 	md, pretty := bulkOutput(result, source)
-	return writeCommandOutput(cmd, result, md, pretty)
+	if err := writeCommandOutput(cmd, result, md, pretty); err != nil {
+		return err
+	}
+	if result.Preview.DryRun || result.Summary.Failed == 0 {
+		return nil
+	}
+	return bulkFailureError(result)
 }
 
 func bulkTargetTicketIDs(ctx context.Context, workspace *workspace, cmd *cobra.Command) ([]string, string, error) {

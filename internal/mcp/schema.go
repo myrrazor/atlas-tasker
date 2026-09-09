@@ -57,6 +57,30 @@ func actorReasonProps() map[string]any {
 	}
 }
 
+func agentProfileProps(create bool) map[string]any {
+	props := map[string]any{
+		"agent_id":              stringProp("Agent ID."),
+		"name":                  stringProp("Display name."),
+		"provider":              stringProp("Provider: codex, claude, human, or custom."),
+		"capability":            stringArrayProp("Capability tags."),
+		"ticket_type":           stringArrayProp("Allowed ticket types."),
+		"role":                  stringArrayProp("Preferred roles."),
+		"default_runbook":       stringProp("Default runbook."),
+		"max_active_runs":       intProp("Maximum concurrent active runs.", 0),
+		"routing_weight":        intProp("Routing weight.", 0),
+		"instruction_profile":   stringProp("Instruction profile."),
+		"launch_target":         stringProp("Default launch target."),
+		"integration_template":  stringProp("Integration template."),
+		"notes":                 stringProp("Operator notes."),
+		"enabled":               boolProp("Whether the agent starts enabled."),
+	}
+	if !create {
+		props["name"] = stringProp("Optional display name.")
+		props["provider"] = stringProp("Optional provider: codex, claude, human, or custom.")
+	}
+	return props
+}
+
 func highImpactProps(_ string) map[string]any {
 	props := actorReasonProps()
 	props["operation_approval_id"] = stringProp("One-time operation approval created outside MCP.")

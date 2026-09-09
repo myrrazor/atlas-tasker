@@ -770,6 +770,9 @@ func (s *ActionService) MoveTicket(ctx context.Context, ticketID string, to cont
 		if err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
+		if ticket.Status == to {
+			return ticket, nil
+		}
 		if to == contracts.StatusDone {
 			return s.CompleteTicket(ctx, ticketID, actor, reason)
 		}
@@ -1100,9 +1103,6 @@ func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, act
 		if err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
-		if ticket.Status != contracts.StatusInReview {
-			return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be in_review to complete", ticket.ID))
-		}
 		if err := s.requireNoUnresolvedDependencies(ctx, ticket); err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
@@ -1110,8 +1110,14 @@ func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, act
 		if err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
-		if ticket.ReviewState != contracts.ReviewStateApproved {
-			return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be approved before completion", ticket.ID))
+		openSoloClose := policy.CompletionMode == contracts.CompletionModeOpen && ticket.Status == contracts.StatusInProgress
+		if !openSoloClose {
+			if ticket.Status != contracts.StatusInReview {
+				return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be in_review to complete", ticket.ID))
+			}
+			if ticket.ReviewState != contracts.ReviewStateApproved {
+				return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be approved before completion", ticket.ID))
+			}
 		}
 		if len(ticket.OpenGateIDs) > 0 {
 			return contracts.TicketSnapshot{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("ticket %s cannot complete while gates are open", ticket.ID))
@@ -1146,6 +1152,9 @@ func (s *ActionService) CompleteTicket(ctx context.Context, ticketID string, act
 		now := s.now()
 		from := ticket.Status
 		ticket.Status = contracts.StatusDone
+		if openSoloClose && ticket.ReviewState != contracts.ReviewStateApproved {
+			ticket.ReviewState = contracts.ReviewStateApproved
+		}
 		ticket.Lease = contracts.LeaseState{}
 		ticket.UpdatedAt = now
 		payload := map[string]any{"from": from, "to": contracts.StatusDone, "ticket": ticket}

@@ -8,8 +8,8 @@ Any coding agent can use Atlas if it follows a small contract: read before writi
 tracker agent available <agent-id> --json
 tracker agent pending <agent-id> --json
 tracker inspect <TICKET-ID> --actor <actor> --json
-tracker ticket claim <TICKET-ID> --actor <actor>
-tracker ticket move <TICKET-ID> in_progress --actor <actor> --reason "start work"
+tracker ticket claim <TICKET-ID> --actor agent:<agent-id> --reason "start work"
+tracker ticket move <TICKET-ID> in_progress --actor agent:<agent-id> --reason "start work"
 ```
 
 Agents should use `available` for work they can do now and `pending` to explain why they are waiting. Treat `tracker inspect` as the truth for policy, lease, gate, and review state.
@@ -50,7 +50,11 @@ tracker approvals --json
 tracker goal brief <TICKET-ID> --json
 ```
 
-Agents that use MCP should start with `--tool-profile read`. Workflow writes require actor, reason, permissions, and Atlas write locks. High-impact writes also require an external operation approval.
+Use `--tool-profile read` for inspection-only MCP sessions and `--tool-profile workflow` for authorized ticket work. Workflow writes require actor, reason, permissions, and Atlas write locks. High-impact writes also require an external operation approval.
+
+Install the portable agent pack with `tracker integrations install generic`. It writes a managed
+`AGENTS.md` block plus standalone instructions, skill, workflow reference, and command templates under
+`.tracker/integrations/`. This file installation does not register an MCP server.
 
 ## Wake-Ups
 
