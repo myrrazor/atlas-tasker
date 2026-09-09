@@ -1,6 +1,6 @@
 # Atlas Tasker v1.12 Launch Checklist
 
-The [candidate evidence](v1.12.0-release-evidence.md) separates local validation from hosted release proof. v1.11.0 remains the current published stable release.
+The [candidate evidence](v1.12.0-release-evidence.md) separates local validation from hosted release proof. The [latest release page](https://github.com/myrrazor/atlas-tasker/releases/latest) identifies the current published stable release. This checklist records the source-finalization state; post-publication results are recorded on release pages.
 
 ## Candidate preparation
 
@@ -9,14 +9,15 @@ The [candidate evidence](v1.12.0-release-evidence.md) separates local validation
 - [x] Installer consent/cancellation and the real stdio MCP workflow have isolated proof.
 - [x] Current web screenshots use synthetic data; README/site use the UI wordmark.
 - [x] Docs and Connect Your Agent browser interactions have desktop/phone proof.
-- [ ] Fresh required Go, site, stability, local RC, vulnerability, secret and SBOM checks pass.
-- [ ] Final review and decision audit are recorded on the approval-ready PR head.
-- [ ] Owner approval of the final changes and presentation is recorded.
+- [x] Fresh required Go, site, stability, local RC, vulnerability, secret and SBOM checks pass.
+- [x] Feature review and decision audit are recorded on the approval-ready PR head.
+- [x] Owner approval of the feature changes and presentation is recorded in PR #137 and the release instruction.
+- [ ] Final production-domain/contact and release-documentation reconciliation is approved and promoted.
 
 ## Publication
 
-- [ ] Owner-approved testing-to-main promotion is complete.
-- [ ] Hosted settings preflight passes.
+- [x] Owner-approved feature promotion from testing to main is complete in PR #138.
+- [x] Hosted settings preflight passes.
 - [ ] v1.12.0-rc1 publishes all four supported archives, SBOM, checksums and installer.
 - [ ] Hosted RC checksums/attestations, clean install, metadata and packaged workflow pass.
 - [ ] v1.12.0 is published after the hosted RC gate.

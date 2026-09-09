@@ -1,8 +1,8 @@
 # Roadmap
 
-`v1.11.0` is the current stable release. It added MCP workflow coverage, `tracker update`, coding-agent detection and integration selection, and local security hardening. The local web console, scheduled tickets, agent queues, and six language catalogs remain the foundation.
+The [release page](https://github.com/myrrazor/atlas-tasker/releases/latest) identifies the current stable version. Atlas includes MCP workflow coverage, `tracker update`, coding-agent detection and integration selection, and local security hardening. The local web console, scheduled tickets, agent queues, and six language catalogs remain the foundation.
 
-## v1.12 release preparation
+## v1.12
 
 - Accept and validate all six web language codes (`en`, `es`, `id`, `zh`, `ja`, `ko`) through `tracker config set web.lang`, with configuration round-trip and rendered-page coverage.
 - Bring README, MCP references, agent setup instructions, and the website docs in line with the shipped CLI and MCP tools.

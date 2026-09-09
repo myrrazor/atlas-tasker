@@ -1,4 +1,5 @@
-Contact: mailto:tailorcorp@icloud.com
+Contact: https://github.com/myrrazor/atlas-tasker/security/advisories/new
 Expires: 2027-07-31T00:00:00.000Z
 Preferred-Languages: en
-Policy: mailto:tailorcorp@icloud.com?subject=Security%20report
+Canonical: https://atlastasker.com/.well-known/security.txt
+Policy: https://github.com/myrrazor/atlas-tasker/blob/main/SECURITY.md

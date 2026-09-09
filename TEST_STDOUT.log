@@ -563,3 +563,140 @@ files=651
 11:38AM INF no leaks found
 
 exit_code=0 elapsed_seconds=1.409
+
+Publication documentation and production-domain reconciliation checks
+
+$ sh scripts/check-workflow-security.sh
+workflow security policy passed
+
+exit_code=0
+
+$ go test -count=1 ./...
+?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/apperr	0.263s
+?   	github.com/myrrazor/atlas-tasker/internal/buildinfo	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	28.406s
+ok  	github.com/myrrazor/atlas-tasker/internal/config	0.381s
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.179s
+ok  	github.com/myrrazor/atlas-tasker/internal/domain	0.157s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations	0.189s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp	0.381s
+ok  	github.com/myrrazor/atlas-tasker/internal/render	0.235s
+ok  	github.com/myrrazor/atlas-tasker/internal/service	7.091s
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	0.258s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage	0.166s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	0.215s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	0.287s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	0.378s
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	0.188s
+ok  	github.com/myrrazor/atlas-tasker/internal/theme	0.358s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	2.364s
+ok  	github.com/myrrazor/atlas-tasker/internal/update	0.329s
+ok  	github.com/myrrazor/atlas-tasker/internal/web	6.683s
+
+exit_code=0
+
+$ go vet ./...
+
+exit_code=0
+
+$ node --test internal/web/testdata/refresh_board.test.mjs site/_tools/site-contract.test.mjs site/_tools/sync-site-origin.test.mjs
+✔ a successful refresh preserves the move confirmation without retrying (2.395958ms)
+✔ an expired session shows recovery guidance without replacing the board (0.378459ms)
+✔ a transient failure retries and keeps the move confirmation after recovery (0.932917ms)
+✔ index.html satisfies the public-page SEO contract (5.789417ms)
+✔ cli.html satisfies the public-page SEO contract (0.417125ms)
+✔ mcp.html satisfies the public-page SEO contract (0.442375ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.489208ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.287792ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.2565ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.233416ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.265209ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.3285ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.309459ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.542958ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.983584ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.3335ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.294166ms)
+✔ changelog.html satisfies the public-page SEO contract (0.245958ms)
+✔ guide.html satisfies the public-page SEO contract (0.17375ms)
+✔ privacy.html satisfies the public-page SEO contract (0.163875ms)
+✔ terms.html satisfies the public-page SEO contract (0.146917ms)
+✔ page titles are unique (0.324792ms)
+✔ internal page links and fragments resolve (8.42425ms)
+✔ agent integration tabs expose all six targets with valid relationships (0.983333ms)
+✔ MCP tool page covers every source workflow tool (0.632417ms)
+✔ README and site wordmarks match the canonical application wordmark (0.059292ms)
+✔ self-hosted fonts use font-display swap (0.141792ms)
+✔ OG image is a 1200 by 630 PNG (4.379625ms)
+✔ sitemap, robots, and llms cover every public page (0.436791ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.155417ms)
+✔ social card names the configured production domain (0.095375ms)
+✔ visible FAQ questions match FAQPage JSON-LD (16.041667ms)
+✔ website notices explain actual use without unresolved legal templates (0.292542ms)
+✔ public site omits personal author and direct contact metadata (1.542125ms)
+✔ publishes the configured Atlas production domain (0.629541ms)
+✔ keeps every public SEO output on the same origin (0.653083ms)
+✔ normalizes a canonical origin (0.252ms)
+✔ reads the current origin from the canonical link (0.102084ms)
+✔ replaces every rendered origin reference (0.080625ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 137.339208
+
+exit_code=0
+
+$ python3 scripts/validate_rc.py --repo <TASK_ROOT>/publication --tracker <TASK_ROOT>/tracker --work-dir <TASK_ROOT>/publication-docs-validation --version v1.12.0-dev
+version_contract=ok
+docs_links=ok
+snippets=ok
+stale_versions=ok
+leakage=ok
+readme_quickstart=ok
+terminal_accessibility=ok
+mcp_stdio_workspace=ok
+cross_surface_parity=ok
+performance_version_json_ms=16 budget_ms=2000
+performance_board_json_ms=19 budget_ms=3000
+performance_dashboard_json_ms=49 budget_ms=3000
+performance_goal_brief_md_ms=19 budget_ms=3000
+performance_budgets=ok
+
+exit_code=0
+
+Final documentation and exported-source checks
+
+$ python3 scripts/validate_rc.py --repo <TASK_ROOT>/publication --tracker <TASK_ROOT>/tracker --work-dir <TASK_ROOT>/publication-docs-final-validation --version v1.12.0-dev
+version_contract=ok
+docs_links=ok
+snippets=ok
+stale_versions=ok
+leakage=ok
+readme_quickstart=ok
+terminal_accessibility=ok
+mcp_stdio_workspace=ok
+cross_surface_parity=ok
+performance_version_json_ms=16 budget_ms=2000
+performance_board_json_ms=20 budget_ms=3000
+performance_dashboard_json_ms=45 budget_ms=3000
+performance_goal_brief_md_ms=18 budget_ms=3000
+performance_budgets=ok
+
+exit_code=0
+
+$ python3 <TASK_ROOT>/scan-publication-content.py
+scope=tracked_and_unignored_candidate_files
+files=651
+12:25PM INF scanned ~5243897 bytes (5.24 MB) in 717ms
+12:25PM INF no leaks found
+
+exit_code=0
+
+$ git diff --check
+
+exit_code=0

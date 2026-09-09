@@ -1,10 +1,8 @@
 # Atlas Tasker Release Guide
 
-Atlas Tasker v1.11.0 is the current stable release. This guide explains the release workflow and points to its proof gates.
+The [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/latest) lists the current published version and its hosted verification. This guide explains the release workflow and its proof gates.
 
-Current evidence: [v1.11 hosted RC/stable evidence and owner ship decision](release/v1.11.0-release-evidence.md), [launch checklist](release/launch-checklist.md), and [public release gates](release/public-release-gates.md).
-
-The v1.12 candidate is tracked separately in [v1.12 release evidence](release/v1.12.0-release-evidence.md). It is not published until owner approval and hosted verification are recorded.
+The v1.12 cycle is recorded in [release evidence](release/v1.12.0-release-evidence.md), the [launch checklist](release/launch-checklist.md), and [public release gates](release/public-release-gates.md). Source approval, hosted RC proof, and stable publication are separate gates. Post-publication results belong on the release pages so tags remain immutable.
 
 ## Release States
 

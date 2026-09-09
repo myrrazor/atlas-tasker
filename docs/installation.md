@@ -2,9 +2,9 @@
 
 Atlas ships one `tracker` binary for macOS and Linux on Intel/AMD and ARM64. The
 [release page](https://github.com/myrrazor/atlas-tasker/releases/latest) lists the
-current stable archives. This guide describes the current source and v1.12 setup
-flow; [v1.11 release evidence](release/v1.11.0-release-evidence.md) records the
-current published release.
+current stable archives and their verification. This guide describes the current
+source and the setup flow introduced in v1.12; [v1.12 release evidence](release/v1.12.0-release-evidence.md)
+records its preparation and publication gates.
 
 ## Install a release
 

@@ -1,13 +1,14 @@
 # Changelog
 
-## Unreleased — v1.12.0
+## v1.12.0 - Agent Setup And Documentation
 
 - The verified shell installer offers optional coding-agent setup in the current directory through the controlling terminal, including `curl | sh`. It defaults to No and supports `SKIP_INTEGRATIONS=1`; unattended installs never wait for input.
 - Integration setup preserves buffered answers and treats `none`, cancellation, and EOF as a successful skip. Invalid or canceled integration installation no longer bootstraps a workspace.
 - `web.lang` accepts every shipped catalog: English, Spanish, Indonesian, Chinese, Japanese, and Korean. The schedule workspace remains English-only.
 - README and public Docs/Connect Your Agent now cover `tracker update`, all six guidance targets, MCP client registration, both stdio formats, exact tool profiles, and the complete ticket/review/wake-up workflow.
 - Public web screenshots use a reproducible synthetic workspace with owner name `User`. README, website, and social preview reuse the current side-by-side web UI wordmark; personal contact and author metadata are removed from current public files.
-- CI adds real terminal installer scenarios and an MCP stdio workflow/profile harness on macOS and Linux. [v1.12 release evidence](docs/release/v1.12.0-release-evidence.md) tracks validation and pending publication gates.
+- CI adds real terminal installer scenarios and an MCP stdio workflow/profile harness on macOS and Linux. [v1.12 release evidence](docs/release/v1.12.0-release-evidence.md) tracks source validation and approval; hosted verification is recorded on the release pages.
+- Public site metadata uses the production `atlastasker.com` domain, and its security contact uses GitHub private vulnerability reporting.
 
 ## v1.11.0 - MCP Loop, Self-Update, And Local Hardening (2026-09-09)
 
