@@ -8,6 +8,8 @@ CLI setup:
 codex mcp add atlas -- /Users/you/bin/tracker mcp serve --workspace /Users/you/code/my-repo --tool-profile read
 ```
 
+Stdio speaks newline-delimited JSON-RPC and also accepts LSP-style `Content-Length` frames.
+
 Global config. A globally registered server does not inherit your shell's directory, so name the workspace:
 
 ```toml

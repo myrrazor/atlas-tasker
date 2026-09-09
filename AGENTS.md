@@ -12,16 +12,16 @@ This file is for agents **using** the tracker. If you are contributing to Atlas 
 ## Read this part first
 
 - **Pass `--actor` and `--reason` on every write.** They land in the event log and some
-  policies reject writes without them. Omit `--actor` and the workflow commands (`claim`,
-  `move`, `request-review`, `approve`, `complete`) fail with `actor is required` unless
-  `TRACKER_ACTOR` or `actor.default` fills it in — while `ticket create` and `comment`
-  silently attribute your work to `human:owner`. Either way, pass it. `--actor` is
-  `human:<name>` or `agent:<agent-id>`; a bare `agent:` is exit 2.
+  policies reject writes without them. Omitting `--actor` resolves through `TRACKER_ACTOR`
+  or `actor.default`; if neither is set the command fails with `actor is required` (exit 2).
+  Do not rely on a silent `human:owner` default. `--actor` is `human:<name>` or
+  `agent:<agent-id>`; a bare `agent:` is exit 2.
 - **`tracker project create` takes neither.** Projects are containers, not tracked
   mutations. Passing `--actor` there is an unknown-flag error.
 - **Exit 4 on a status change is the workflow working, not a crash.** Only some status edges
   exist. `backlog -> in_progress` is a forbidden transition and always will be; go through
-  `ready`. Retrying the same move gets the same 4.
+  `ready`. Moving a ticket to the status it already has is a no-op (CLI, MCP, bulk, and web).
+  A real forbidden edge still exits 4.
 - **Do not edit `.tracker/` or the ticket markdown by hand.** Writes go through the CLI or MCP so
   the event log, the index, and the lease state stay in agreement. The SQLite index rebuilds
   itself when it is missing or stale (one `[tracker] ...rebuilt it...` line on stderr), and
@@ -181,21 +181,28 @@ codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/rep
 openclaw mcp add atlas --command /usr/local/bin/tracker --arg mcp --arg serve --cwd /path/to/repo
 ```
 
+Stdio speaks newline-delimited JSON-RPC by default and also accepts LSP-style
+`Content-Length` frames. Prefer the MCP stdio dialect when you control the client.
+
 `--workspace` is what stops the server from answering against whatever directory the client
 happened to start in. Profiles go `read` (default) -> `workflow` -> `delivery` -> `admin`;
-start at `read` and widen only when the human asks for writes. High-impact tools stay hidden
-unless the server was started with `--dangerously-allow-high-impact-tools`, and executing one
-still needs a one-time approval a human created with `tracker mcp approve-operation`.
+start at `read` and widen to `workflow` for the real agent loop (create/claim/move/review/
+complete). High-impact tools stay hidden unless the server was started with
+`--dangerously-allow-high-impact-tools`, and executing one still needs a one-time approval a
+human created with `tracker mcp approve-operation`.
 
 `tracker mcp tools --json --tool-profile read` lists what a profile actually exposes.
 Full detail: [docs/mcp.md](docs/mcp.md).
 
 ## Installing the skill
 
-`tracker integrations install <codex|claude|openclaw|generic>` writes the `atlas-worker` skill
-and an instruction block into the right place for that agent — `.codex/skills/`,
-`.claude/skills/`, `.agents/skills/`, or `.tracker/integrations/` respectively. It only ever
-writes inside the workspace; the shared per-machine copy is yours to install.
+`tracker integrations install <codex|claude|openclaw|generic|cursor|grok>` writes the
+`atlas-worker` skill and an instruction block into the right place for that agent —
+`.codex/skills/`, `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, or
+`.tracker/integrations/` respectively. `generic`, `cursor`, and `grok` also write a managed
+block into root `AGENTS.md`. It only ever writes inside the workspace by default; for
+OpenClaw, `tracker integrations install openclaw --global` also copies the skill into
+`~/.openclaw/skills`.
 
 Re-running is safe: only the Atlas-managed block between the `atlas-tasker` markers changes,
 and `--force` (whole-file replace) is opt-in.

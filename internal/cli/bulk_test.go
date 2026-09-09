@@ -192,7 +192,10 @@ func TestBulkMoveRespectsDependencyBlocks(t *testing.T) {
 		t.Fatalf("expected dry-run dependency failure, got %#v", payload)
 	}
 
-	apply := must("bulk", "move", "in_progress", "--ticket", "APP-2", "--yes", "--json")
+	apply, err := runCLI(t, "bulk", "move", "in_progress", "--ticket", "APP-2", "--yes", "--json")
+	if err == nil {
+		t.Fatalf("expected live bulk dependency failure to exit non-zero")
+	}
 	var applied struct {
 		Preview struct {
 			DryRun bool `json:"dry_run"`

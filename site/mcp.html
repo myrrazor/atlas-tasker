@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Atlas Tasker for AI agents: MCP and JSON</title>
-  <meta name="description" content="Plug Atlas Tasker into OpenClaw, Codex, Claude Code, or any MCP client: 63 typed tools in four permission profiles, with human approval on the big red buttons." />
+          <meta name="description" content="Plug Atlas Tasker into OpenClaw, Codex, Claude Code, or any MCP client: 82 typed tools in four permission profiles, with human approval on the big red buttons." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
@@ -18,7 +18,7 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://atlas-tasker.vercel.app/mcp.html" />
   <meta property="og:title" content="Atlas Tasker for AI agents: MCP and JSON" />
-  <meta property="og:description" content="63 typed MCP tools in four permission profiles, plus a JSON CLI. The ticketing system your AI agents can actually operate." />
+  <meta property="og:description" content="82 typed MCP tools in four permission profiles, plus a JSON CLI. The ticketing system your AI agents can actually operate." />
   <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -26,7 +26,7 @@
 
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Atlas Tasker for AI agents: MCP and JSON" />
-  <meta name="twitter:description" content="63 typed MCP tools in four permission profiles, plus a JSON CLI. The ticketing system your AI agents can actually operate." />
+  <meta name="twitter:description" content="82 typed MCP tools in four permission profiles, plus a JSON CLI. The ticketing system your AI agents can actually operate." />
   <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
@@ -35,7 +35,7 @@
     "@context": "https://schema.org",
     "@type": "WebPage",
     "name": "Atlas Tasker for AI agents",
-    "description": "Plug Atlas Tasker into OpenClaw, Codex, Claude Code, or any MCP client: 63 typed tools in four permission profiles, with human approval on the big red buttons.",
+    "description": "Plug Atlas Tasker into OpenClaw, Codex, Claude Code, or any MCP client: 82 typed tools in four permission profiles, with human approval on the big red buttons.",
     "url": "https://atlas-tasker.vercel.app/mcp.html",
     "isPartOf": {
       "@type": "WebSite",
@@ -87,7 +87,7 @@
         </li>
         <li>
           <span class="fact-term">MCP server</span>
-          <p><code>tracker mcp serve</code> exposes 63 typed tools over local stdio. No HTTP server, no remote clients, no shell strings built from tool input. Every mutation still runs Atlas permission checks, the write lock, and event metadata.</p>
+          <p><code>tracker mcp serve</code> exposes 82 typed tools over local stdio. No HTTP server, no remote clients, no shell strings built from tool input. Every mutation still runs Atlas permission checks, the write lock, and event metadata.</p>
         </li>
         <li>
           <span class="fact-term">Self-describing</span>
@@ -103,7 +103,7 @@
     <section class="page-section shell" aria-labelledby="ladder-title">
       <div class="section-heading">
         <p class="section-label">Permission profiles</p>
-        <h2 id="ladder-title">63 tools on an escalating ladder.</h2>
+        <h2 id="ladder-title">82 tools on an escalating ladder.</h2>
         <p class="section-note">Start the server with the smallest profile that does the job. Each rung adds tools on top of the previous one, and the dangerous rung stays invisible until a human turns two separate keys.</p>
       </div>
       <ol class="ladder">
@@ -197,7 +197,9 @@
         <pre id="snippet-integrations">tracker integrations install claude     <span class="c"># .claude/skills/</span>
 tracker integrations install codex      <span class="c"># .codex/skills/</span>
 tracker integrations install openclaw   <span class="c"># .agents/skills/</span>
-tracker integrations install generic    <span class="c"># .tracker/integrations/</span></pre>
+tracker integrations install generic    <span class="c"># AGENTS.md + .tracker/integrations/</span>
+tracker integrations install cursor     <span class="c"># AGENTS.md + .cursor/skills/</span>
+tracker integrations install grok       <span class="c"># AGENTS.md</span></pre>
       </div>
       <p class="section-note">Re-running is safe. Only the Atlas-managed block between markers changes, and whole-file replacement is opt-in behind <code>--force</code>.</p>
       <ul class="fact-list">

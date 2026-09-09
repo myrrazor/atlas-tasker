@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- MCP workflow profile covers the real agent loop: ticket create/assign/link/unlink/approve/reject/complete, agent create/edit/enable/disable, team apply, goal brief, and wake-up list/view/ack. `atlas.ticket.complete` is a normal workflow write (no operation-approval token); provider merge/sync/archive tools stay high-impact.
+- MCP stdio accepts both newline-delimited JSON-RPC and LSP-style `Content-Length` frames.
+- Same-status `ticket move` is a no-op across CLI, MCP, and bulk (matching the web board). Bulk operations with per-ticket failures exit non-zero (conflict → 4) while still printing the result envelope on stdout.
+- `tracker init` refuses nested workspaces under an existing root, and a plain re-init prints `already bootstrapped`.
+- `ticket show` aliases `ticket view`; unknown ticket/agent/bulk/integrations/mcp subcommands exit 2. `--type` is required on create unless a template supplies it. `ticket create` and `ticket move` resolve `--actor` the same way claim does (no silent `human:owner` flag default).
+- Open completion mode can `ticket complete` from `in_progress` without the three-step request-review → approve → complete path.
+- `integrations install` gains `cursor` and `grok` targets, writes generic/cursor/grok blocks into root `AGENTS.md`, and supports `openclaw --global` for `~/.openclaw/skills`.
+- Docs honesty: KNOWN_LIMITATIONS #100, installation/getting-started RC wording, AGENTS.md actor/same-column notes, and MCP one-liner framing warnings.
+
 ## v1.10.0 - Local Web UI And Agent-Ready CLI (2026-09-08)
 
 Hosted RC checks, artifact attestations, clean installation, packaged smoke, and the owner stable decision are recorded in [v1.10 release evidence](docs/release/v1.10.0-release-evidence.md).

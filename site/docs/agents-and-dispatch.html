@@ -206,7 +206,9 @@ tracker agent auto set builder-1 --mode notify --actor human:owner --reason "wir
           <pre id="ad-skill">tracker integrations install claude     <span class="c"># .claude/skills/</span>
 tracker integrations install codex      <span class="c"># .codex/skills/</span>
 tracker integrations install openclaw   <span class="c"># .agents/skills/</span>
-tracker integrations install generic    <span class="c"># .tracker/integrations/</span></pre>
+tracker integrations install generic    <span class="c"># AGENTS.md + .tracker/integrations/</span>
+tracker integrations install cursor     <span class="c"># AGENTS.md + .cursor/skills/</span>
+tracker integrations install grok       <span class="c"># AGENTS.md</span></pre>
         </div>
         <p>Each writes the <code>atlas-worker</code> skill and an instruction block into the right place for that agent runtime, only ever inside the workspace. Re-running updates just the Atlas-managed block between markers; <code>--force</code> whole-file replacement is opt-in. Pair it with <a href="mcp-setup.html">MCP setup</a> for clients that prefer tools over a shell.</p>
       </article>

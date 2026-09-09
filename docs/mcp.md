@@ -18,14 +18,16 @@ tracker mcp approvals revoke <APPROVAL-ID>
 
 `serve` reads the current directory unless `--workspace` names one. Registrations that live outside a repo — user-scoped `claude mcp add`, a global Codex `mcp_servers` entry — need it, because the client picks the working directory, not you. `schema` and `tools` describe the adapter itself and never open a workspace.
 
+Stdio framing: Atlas speaks newline-delimited JSON-RPC and also accepts LSP-style `Content-Length` headers on the same stdio pair. Prefer NDJSON when you control the client; header-framed clients no longer crash the session.
+
 ## Profiles
 
-- `read` is the default. It exposes read tools and dry-run/plan tools only.
-- `workflow` adds safe workflow writes like comments, claims, gate approve/reject, checkpoints, evidence, handoffs, and import preview.
+- `read` is the default. It exposes read tools and dry-run/plan tools only, including goal brief, agent/team reads, and wake-up inspection.
+- `workflow` adds the real agent loop: ticket create/assign/link, claim/move/comment, request review, approve/reject/complete, agent create/edit, team apply, schedule writes, evidence, handoffs, and wake-up ack.
 - `delivery` adds delivery operations such as dispatch, change creation, status sync, check sync, and guarded provider review/merge tools.
 - `admin` adds high-impact admin operations only when `--dangerously-allow-high-impact-tools` is also present.
 
-High-impact tools are hidden unless both the selected profile and server flag allow them.
+High-impact tools are hidden unless both the selected profile and server flag allow them. MCP-first agents should start at `workflow`, not `read`.
 
 ## High-Impact Approval Flow
 

@@ -212,9 +212,34 @@ type initResult struct {
 	Created   []string `json:"created"`
 }
 
+func refuseNestedWorkspaceInit(root string) error {
+	info, err := os.Stat(storage.TrackerDir(root))
+	if err == nil && info.IsDir() {
+		return nil
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for dir := filepath.Dir(root); ; dir = filepath.Dir(dir) {
+		info, err := os.Stat(storage.TrackerDir(dir))
+		if err == nil && info.IsDir() {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is inside existing Atlas workspace %s; run tracker from there", root, dir))
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if filepath.Dir(dir) == dir {
+			return nil
+		}
+	}
+}
+
 func ensureInitArtifacts(root string) (initResult, error) {
 	root, err := service.CanonicalWorkspaceRoot(root)
 	if err != nil {
+		return initResult{}, err
+	}
+	if err := refuseNestedWorkspaceInit(root); err != nil {
 		return initResult{}, err
 	}
 	result := initResult{Kind: "workspace_init", Workspace: root, Created: []string{}}

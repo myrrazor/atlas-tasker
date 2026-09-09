@@ -184,15 +184,17 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 			if err := s.requireNoUnresolvedDependencies(ctx, ticket); err != nil {
 				return "", nil, err
 			}
-			if ticket.Status != contracts.StatusInReview {
-				return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be in_review to complete", ticket.ID))
-			}
 			policy, err := resolveEffectivePolicy(ctx, s.Root, s.Projects, s.Tickets, ticket)
 			if err != nil {
 				return "", nil, err
 			}
-			if ticket.ReviewState != contracts.ReviewStateApproved {
-				return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be approved before completion", ticket.ID))
+			if !openModeSoloCloseable(policy.CompletionMode, ticket) {
+				if ticket.Status != contracts.StatusInReview {
+					return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be in_review to complete", ticket.ID))
+				}
+				if ticket.ReviewState != contracts.ReviewStateApproved {
+					return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be approved before completion", ticket.ID))
+				}
 			}
 			if err := domain.CheckCompletionPermission(policy.CompletionMode, op.Actor, effectiveReviewer(ticket, policy)); err != nil {
 				return "", nil, &apperr.Error{Code: apperr.CodePermissionDenied, Message: err.Error(), Cause: err}
@@ -203,6 +205,9 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 			if err := s.requireNoUnresolvedDependencies(ctx, ticket); err != nil {
 				return "", nil, err
 			}
+		}
+		if ticket.Status == op.Status {
+			return fmt.Sprintf("%s is already %s", ticket.ID, ticket.Status), &ticket, nil
 		}
 		if err := domain.ValidateTransition(ticket.Status, op.Status); err != nil {
 			// already typed: conflict for forbidden edges, invalid_input for bad
@@ -229,11 +234,13 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 		if err != nil {
 			return "", nil, err
 		}
-		if ticket.Status != contracts.StatusInReview {
-			return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be in_review to complete", ticket.ID))
-		}
-		if ticket.ReviewState != contracts.ReviewStateApproved {
-			return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be approved before completion", ticket.ID))
+		if !openModeSoloCloseable(policy.CompletionMode, ticket) {
+			if ticket.Status != contracts.StatusInReview {
+				return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be in_review to complete", ticket.ID))
+			}
+			if ticket.ReviewState != contracts.ReviewStateApproved {
+				return "", nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("ticket %s must be approved before completion", ticket.ID))
+			}
 		}
 		if err := domain.CheckCompletionPermission(policy.CompletionMode, op.Actor, effectiveReviewer(ticket, policy)); err != nil {
 			return "", nil, &apperr.Error{Code: apperr.CodePermissionDenied, Message: err.Error(), Cause: err}
@@ -308,4 +315,8 @@ func (s *ActionService) applyBulkTicket(ctx context.Context, op BulkOperation, t
 	default:
 		return nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unsupported bulk operation: %s", op.Kind))
 	}
+}
+
+func openModeSoloCloseable(mode contracts.CompletionMode, ticket contracts.TicketSnapshot) bool {
+	return mode == contracts.CompletionModeOpen && ticket.Status == contracts.StatusInProgress
 }

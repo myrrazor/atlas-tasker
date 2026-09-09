@@ -12,11 +12,13 @@ tracker mcp schema --json --tool-profile read
 
 The read profile includes core read tools and plan/dry-run tools. It does not expose workflow writes or high-impact tools.
 
+Stdio speaks newline-delimited JSON-RPC and also accepts LSP-style `Content-Length` frames.
+
 If the MCP client launches the server from somewhere other than the repo, add `--workspace /path/to/repo`. Otherwise the tools answer against whatever directory the client started in.
 
 ## Workflow Sessions
 
-Use the workflow profile only when the human expects the agent to mutate Atlas state:
+Use the workflow profile when the human expects the agent to mutate Atlas state. This is the real agent loop profile — create, assign, link, claim, move, review, approve, complete, agents, and wake-ups:
 
 ```bash
 tracker mcp serve --tool-profile workflow --max-items 30 --max-result-bytes 65536

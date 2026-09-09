@@ -23,6 +23,9 @@ type blockMarkers struct {
 var (
 	defaultMarkers  = blockMarkers{begin: managedBegin, end: managedEnd}
 	openclawMarkers = blockMarkers{begin: "<!-- atlas-tasker:openclaw:begin -->", end: "<!-- atlas-tasker:openclaw:end -->"}
+	genericMarkers  = blockMarkers{begin: "<!-- atlas-tasker:generic:begin -->", end: "<!-- atlas-tasker:generic:end -->"}
+	cursorMarkers   = blockMarkers{begin: "<!-- atlas-tasker:cursor:begin -->", end: "<!-- atlas-tasker:cursor:end -->"}
+	grokMarkers     = blockMarkers{begin: "<!-- atlas-tasker:grok:begin -->", end: "<!-- atlas-tasker:grok:end -->"}
 )
 
 type Target string
@@ -32,16 +35,24 @@ const (
 	TargetClaude   Target = "claude"
 	TargetOpenClaw Target = "openclaw"
 	TargetGeneric  Target = "generic"
+	TargetCursor   Target = "cursor"
+	TargetGrok     Target = "grok"
 )
 
 type InstallResult struct {
-	Target          Target   `json:"target"`
-	InstructionFile string   `json:"instruction_file"`
-	GuideFile       string   `json:"guide_file"`
-	SkillFiles      []string `json:"skill_files,omitempty"`
-	CommandFiles    []string `json:"command_files,omitempty"`
-	Created         []string `json:"created"`
-	Updated         []string `json:"updated"`
+	Target           Target   `json:"target"`
+	InstructionFile  string   `json:"instruction_file"`
+	GuideFile        string   `json:"guide_file"`
+	SkillFiles       []string `json:"skill_files,omitempty"`
+	CommandFiles     []string `json:"command_files,omitempty"`
+	GlobalSkillFiles []string `json:"global_skill_files,omitempty"`
+	Created          []string `json:"created"`
+	Updated          []string `json:"updated"`
+}
+
+type InstallOptions struct {
+	Force  bool
+	Global bool
 }
 
 type Installer struct {
@@ -49,6 +60,10 @@ type Installer struct {
 }
 
 func (i Installer) Install(target Target, force bool) (InstallResult, error) {
+	return i.InstallOpts(target, InstallOptions{Force: force})
+}
+
+func (i Installer) InstallOpts(target Target, opts InstallOptions) (InstallResult, error) {
 	root, err := filepath.Abs(i.Root)
 	if err != nil {
 		return InstallResult{}, err
@@ -58,6 +73,9 @@ func (i Installer) Install(target Target, force bool) (InstallResult, error) {
 		return InstallResult{}, err
 	}
 	i.Root = root
+	if opts.Global && target != TargetOpenClaw {
+		return InstallResult{}, fmt.Errorf("--global is only supported for the openclaw target")
+	}
 	spec, err := i.spec(target)
 	if err != nil {
 		return InstallResult{}, err
@@ -84,7 +102,7 @@ func (i Installer) Install(target Target, force bool) (InstallResult, error) {
 	} else if changed == updatedState {
 		result.Updated = append(result.Updated, spec.guidePath)
 	}
-	if changed, err := writeInstructionFile(spec.instructionPath, spec.blockBody, spec.markers, force); err != nil {
+	if changed, err := writeInstructionFile(spec.instructionPath, spec.blockBody, spec.markers, opts.Force); err != nil {
 		return InstallResult{}, err
 	} else if changed == createdState {
 		result.Created = append(result.Created, spec.instructionPath)
@@ -108,6 +126,13 @@ func (i Installer) Install(target Target, force bool) (InstallResult, error) {
 		case "command":
 			result.CommandFiles = append(result.CommandFiles, file.path)
 		}
+	}
+	if opts.Global {
+		globalFiles, err := installOpenClawGlobalSkills(spec.extraFiles)
+		if err != nil {
+			return InstallResult{}, err
+		}
+		result.GlobalSkillFiles = globalFiles
 	}
 	return result, nil
 }
@@ -227,12 +252,13 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "generic-agent-guide.md")
 		skillDir := filepath.Join(i.Root, ".tracker", "integrations", "atlas-agent-skill")
 		return installSpec{
-			instructionPath: filepath.Join(i.Root, ".tracker", "integrations", "generic-agent-instructions.md"),
+			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
 			blockBody:       genericBlock(guidePath),
 			guideBody:       genericGuide(),
-			markers:         defaultMarkers,
+			markers:         genericMarkers,
 			extraFiles: []managedInstallFile{
+				{path: filepath.Join(i.Root, ".tracker", "integrations", "generic-agent-instructions.md"), body: genericBlock(guidePath) + "\n", kind: "command"},
 				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("generic"), kind: "skill"},
 				{path: filepath.Join(skillDir, "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
 				{path: filepath.Join(skillDir, "commands", "atlas-next.md"), body: atlasNextCommandTemplate(), kind: "command"},
@@ -240,9 +266,76 @@ func (i Installer) spec(target Target) (installSpec, error) {
 				{path: filepath.Join(skillDir, "commands", "atlas-review.md"), body: atlasReviewCommandTemplate(), kind: "command"},
 			},
 		}, nil
+	case TargetCursor:
+		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "cursor-guide.md")
+		skillDir := filepath.Join(i.Root, ".cursor", "skills", "atlas-worker")
+		return installSpec{
+			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
+			guidePath:       guidePath,
+			blockBody:       cursorBlock(guidePath),
+			guideBody:       cursorGuide(),
+			markers:         cursorMarkers,
+			extraFiles: []managedInstallFile{
+				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("cursor"), kind: "skill"},
+				{path: filepath.Join(skillDir, "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
+				{path: filepath.Join(skillDir, "commands", "atlas-next.md"), body: atlasNextCommandTemplate(), kind: "command"},
+				{path: filepath.Join(skillDir, "commands", "atlas-take.md"), body: atlasTakeCommandTemplate(), kind: "command"},
+				{path: filepath.Join(skillDir, "commands", "atlas-review.md"), body: atlasReviewCommandTemplate(), kind: "command"},
+			},
+		}, nil
+	case TargetGrok:
+		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "grok-guide.md")
+		return installSpec{
+			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
+			guidePath:       guidePath,
+			blockBody:       grokBlock(guidePath),
+			guideBody:       grokGuide(),
+			markers:         grokMarkers,
+			extraFiles: []managedInstallFile{
+				{path: filepath.Join(i.Root, ".tracker", "integrations", "atlas-agent-skill", "SKILL.md"), body: atlasWorkerSkill("grok"), kind: "skill"},
+				{path: filepath.Join(i.Root, ".tracker", "integrations", "atlas-agent-skill", "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
+			},
+		}, nil
 	default:
 		return installSpec{}, fmt.Errorf("unsupported integration target: %s", target)
 	}
+}
+
+func installOpenClawGlobalSkills(files []managedInstallFile) ([]string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	destRoot := filepath.Join(home, ".openclaw", "skills", "atlas-worker")
+	written := []string{}
+	for _, file := range files {
+		if file.kind != "skill" && file.kind != "command" {
+			continue
+		}
+		rel := ""
+		switch {
+		case strings.HasSuffix(file.path, filepath.Join("atlas-worker", "SKILL.md")):
+			rel = "SKILL.md"
+		case strings.Contains(file.path, filepath.Join("atlas-worker", "references")):
+			rel = filepath.Join("references", filepath.Base(file.path))
+		case strings.Contains(file.path, filepath.Join("atlas-worker", "commands")):
+			rel = filepath.Join("commands", filepath.Base(file.path))
+		default:
+			continue
+		}
+		dest := filepath.Join(destRoot, rel)
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return nil, err
+		}
+		if _, err := writeManagedFile(dest, file.body); err != nil {
+			return nil, err
+		}
+		written = append(written, dest)
+	}
+	if len(written) == 0 {
+		return nil, fmt.Errorf("openclaw --global found no skill files to copy")
+	}
+	return written, nil
 }
 
 func writeManagedFile(path string, body string) (fileChange, error) {

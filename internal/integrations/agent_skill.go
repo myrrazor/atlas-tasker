@@ -99,9 +99,75 @@ func skillProviderLabel(provider string) string {
 		return "Claude Code"
 	case "openclaw":
 		return "OpenClaw"
+	case "cursor":
+		return "Cursor"
+	case "grok":
+		return "Grok"
 	default:
 		return "generic agent"
 	}
+}
+
+func cursorBlock(guidePath string) string {
+	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (Cursor)
+
+- Pull actionable work with `+"`tracker agent available <agent-id> --json`"+`.
+- Explain blockers with `+"`tracker agent pending <agent-id> --json`"+`.
+- Claim before coding: `+"`tracker ticket claim <ID> --actor <actor> --reason \"start work\"`"+`.
+- Use explicit review commands: `+"`request-review`"+`, `+"`approve`"+`, `+"`complete`"+`.
+- Prefer `+"`tracker mcp serve --tool-profile workflow --workspace <path>`"+` when the session is MCP-first.
+- Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
+`, guidePath))
+}
+
+func cursorGuide() string {
+	return strings.TrimSpace(`# Atlas Tasker Cursor Guide
+
+Cursor loads root `+"`AGENTS.md`"+`. Atlas installs a managed block there and a repo-local skill under `+"`.cursor/skills/atlas-worker/`"+`.
+
+## Recommended loop
+
+1. `+"`tracker agent available builder-1 --json`"+`
+2. `+"`tracker ticket claim <ID> --actor agent:builder-1 --reason \"start work\"`"+`
+3. `+"`tracker ticket move <ID> in_progress --actor agent:builder-1 --reason \"start work\"`"+`
+4. `+"`tracker ticket request-review <ID> --actor agent:builder-1 --reason \"ready for review\"`"+`
+5. In open/solo completion mode, `+"`tracker ticket complete <ID> --actor agent:builder-1 --reason \"done\"`"+` can finish from `+"`in_progress`"+` without the three-step review path.
+
+## Notes
+
+- The managed block in `+"`AGENTS.md`"+` uses `+"`atlas-tasker:cursor`"+` markers so Codex/OpenClaw/Grok blocks can coexist.
+- Keep custom house rules outside the managed markers.
+`) + "\n"
+}
+
+func grokBlock(guidePath string) string {
+	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (Grok)
+
+- Start with `+"`tracker agent available <agent-id> --json`"+` and `+"`tracker agent pending <agent-id> --json`"+`.
+- Claim before editing and request review when done.
+- Pass `+"`--actor`"+` and `+"`--reason`"+` on every write.
+- Prefer JSON reads; treat exit 4 as a forbidden workflow edge, not a crash.
+- Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
+`, guidePath))
+}
+
+func grokGuide() string {
+	return strings.TrimSpace(`# Atlas Tasker Grok Guide
+
+Grok-style agents that load root `+"`AGENTS.md`"+` get the managed Atlas block from `+"`tracker integrations install grok`"+`.
+
+## Recommended loop
+
+1. `+"`tracker agent available <agent-id> --json`"+`
+2. `+"`tracker ticket claim <ID> --actor agent:<agent-id> --reason \"start work\"`"+`
+3. `+"`tracker ticket move <ID> in_progress --actor agent:<agent-id> --reason \"start work\"`"+`
+4. Record progress with comments or run evidence.
+5. `+"`tracker ticket request-review <ID> --actor agent:<agent-id> --reason \"ready for review\"`"+`
+
+## Notes
+
+- The managed block uses `+"`atlas-tasker:grok`"+` markers so other install targets do not overwrite it.
+`) + "\n"
 }
 
 func atlasWorkerSkill(provider string) string {
