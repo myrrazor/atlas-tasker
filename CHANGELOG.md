@@ -4,7 +4,7 @@
 
 ## v1.11.0 - MCP Loop, Self-Update, And Local Hardening (2026-09-09)
 
-Merged release train: [#131](https://github.com/myrrazor/atlas-tasker/pull/131), [#132](https://github.com/myrrazor/atlas-tasker/pull/132), [#133](https://github.com/myrrazor/atlas-tasker/pull/133), [#134](https://github.com/myrrazor/atlas-tasker/pull/134). Hosted RC checks, attestations, clean install, packaged smoke, and the owner stable decision are recorded in [v1.11 release evidence](docs/release/v1.11.0-release-evidence.md) once the hosted gates complete.
+Merged release train: [#131](https://github.com/myrrazor/atlas-tasker/pull/131), [#132](https://github.com/myrrazor/atlas-tasker/pull/132), [#133](https://github.com/myrrazor/atlas-tasker/pull/133), [#134](https://github.com/myrrazor/atlas-tasker/pull/134). Hosted RC checks, attestations, clean install, packaged smoke, and the owner stable decision are recorded in [v1.11 release evidence](docs/release/v1.11.0-release-evidence.md).
 
 - Local security hardening: archive/compact path containment and symlink fail-closed checks; OpenClaw `--global` install validates home destinations; init uses `0700` for sensitive `.tracker` paths and seeds a managed `.gitignore` local-ignore block; `config.toml` and MCP approval/audit dirs use private modes; ticket create/comment emit soft secret-like content warnings; security docs refreshed for the current local-first posture.
 - `tracker integrations detect` and interactive `tracker integrations install` discover local coding agents and let you checkbox-select which integrations to write; `tracker init --integrations` / `--skip-integrations` control the post-init prompt.
