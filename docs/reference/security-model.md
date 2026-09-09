@@ -12,4 +12,4 @@ Atlas may claim:
 
 Atlas must not claim OS sandboxing, hosted identity proof, encrypted-at-rest confidentiality, protection from malicious local filesystem users, formal DLP, complete provider-rule enforcement, or full MCP client safety.
 
-Current stable is v1.10.x. Read [../security-limitations.md](../security-limitations.md) before using Atlas with sensitive workspaces.
+Use the [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/latest), and read [security limitations](../security-limitations.md) before using Atlas with sensitive workspaces.

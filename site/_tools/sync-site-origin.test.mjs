@@ -3,10 +3,15 @@ import test from "node:test";
 
 import {
   SITE_FILES,
+  SITE_ORIGIN,
   findCurrentOrigin,
   normalizeOrigin,
   replaceOrigin,
 } from "./sync-site-origin.mjs";
+
+test("publishes the configured Atlas production domain", () => {
+  assert.equal(SITE_ORIGIN, "https://atlastasker.com");
+});
 
 test("keeps every public SEO output on the same origin", () => {
   assert.deepEqual(SITE_FILES, [
@@ -35,8 +40,8 @@ test("keeps every public SEO output on the same origin", () => {
 });
 
 test("normalizes a canonical origin", () => {
-  assert.equal(normalizeOrigin("https://atlas-tasker.vercel.app/"), "https://atlas-tasker.vercel.app");
-  assert.throws(() => normalizeOrigin("http://atlas-tasker.vercel.app"), /https origin/);
+  assert.equal(normalizeOrigin("https://atlastasker.com/"), "https://atlastasker.com");
+  assert.throws(() => normalizeOrigin("http://atlastasker.com"), /https origin/);
   assert.throws(() => normalizeOrigin("https://example.com/docs"), /without a path/);
 });
 

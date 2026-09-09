@@ -7,29 +7,29 @@ Atlas Tasker is a free, MIT-licensed, local-first issue tracker for macOS and Li
 Install with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh`.
 
 ## Product
-- [Home](https://atlas-tasker.vercel.app/): both boards, the workflow, install, and FAQ
-- [CLI](https://atlas-tasker.vercel.app/cli.html): the command surface, JSON contract, and stable exit codes
-- [For AI agents](https://atlas-tasker.vercel.app/mcp.html): install guidance, connect MCP, choose a profile, and run the first agent loop
-- [Install](https://atlas-tasker.vercel.app/#install): release installer and Go source build
-- [Guide](https://atlas-tasker.vercel.app/guide.html): the whole workflow on one page
-- [Changelog](https://atlas-tasker.vercel.app/changelog.html): release-by-release highlights
+- [Home](https://atlastasker.com/): both boards, the workflow, install, and FAQ
+- [CLI](https://atlastasker.com/cli.html): the command surface, JSON contract, and stable exit codes
+- [For AI agents](https://atlastasker.com/mcp.html): install guidance, connect MCP, choose a profile, and run the first agent loop
+- [Install](https://atlastasker.com/#install): release installer and Go source build
+- [Guide](https://atlastasker.com/guide.html): the whole workflow on one page
+- [Changelog](https://atlastasker.com/changelog.html): release-by-release highlights
 
 ## Documentation
-- [Docs overview](https://atlas-tasker.vercel.app/docs/): the manual's front door
-- [Getting started](https://atlas-tasker.vercel.app/docs/getting-started.html): install, init, first project, first ticket, first board
-- [Tickets and workflow](https://atlas-tasker.vercel.app/docs/tickets-and-workflow.html): statuses, edges, claims, dependencies, reviews, bulk ops
-- [Views and search](https://atlas-tasker.vercel.app/docs/views-and-search.html): queues, search syntax, saved views, watchers, the TUI
-- [The web board](https://atlas-tasker.vercel.app/docs/web-board.html): local kanban, session tokens, drawer tabs, read-only mode
-- [Agents and dispatch](https://atlas-tasker.vercel.app/docs/agents-and-dispatch.html): registering agents, team presets, runs, evidence, handoffs, wake-ups
-- [MCP setup](https://atlas-tasker.vercel.app/docs/mcp-setup.html): profiles, client snippets, workspace pinning, response budgets
-- [MCP tools](https://atlas-tasker.vercel.app/docs/mcp-tools.html): current read, workflow, delivery, and high-impact tool groups
-- [MCP security](https://atlas-tasker.vercel.app/docs/mcp-security.html): hidden high-impact tools, one-time approvals, audit trail
-- [JSON and exit codes](https://atlas-tasker.vercel.app/docs/json-and-exit-codes.html): envelopes, error shapes, exit codes 0-7, reason codes
-- [FAQ](https://atlas-tasker.vercel.app/docs/faq.html): storage internals, Git hygiene, multi-machine use, repair
+- [Docs overview](https://atlastasker.com/docs/): the manual's front door
+- [Getting started](https://atlastasker.com/docs/getting-started.html): install, init, first project, first ticket, first board
+- [Tickets and workflow](https://atlastasker.com/docs/tickets-and-workflow.html): statuses, edges, claims, dependencies, reviews, bulk ops
+- [Views and search](https://atlastasker.com/docs/views-and-search.html): queues, search syntax, saved views, watchers, the TUI
+- [The web board](https://atlastasker.com/docs/web-board.html): local kanban, session tokens, drawer tabs, read-only mode
+- [Agents and dispatch](https://atlastasker.com/docs/agents-and-dispatch.html): registering agents, team presets, runs, evidence, handoffs, wake-ups
+- [MCP setup](https://atlastasker.com/docs/mcp-setup.html): profiles, client snippets, workspace pinning, response budgets
+- [MCP tools](https://atlastasker.com/docs/mcp-tools.html): current read, workflow, delivery, and high-impact tool groups
+- [MCP security](https://atlastasker.com/docs/mcp-security.html): hidden high-impact tools, one-time approvals, audit trail
+- [JSON and exit codes](https://atlastasker.com/docs/json-and-exit-codes.html): envelopes, error shapes, exit codes 0-7, reason codes
+- [FAQ](https://atlastasker.com/docs/faq.html): storage internals, Git hygiene, multi-machine use, repair
 
 ## Legal
-- [Privacy](https://atlas-tasker.vercel.app/privacy.html): no cookies, tracking, accounts, payments, or hosted project data
-- [Terms](https://atlas-tasker.vercel.app/terms.html): plain-language website terms and the MIT software license boundary
+- [Privacy](https://atlastasker.com/privacy.html): no cookies, tracking, accounts, payments, or hosted project data
+- [Terms](https://atlastasker.com/terms.html): plain-language website terms and the MIT software license boundary
 
 ## Source
 - [GitHub repository](https://github.com/myrrazor/atlas-tasker): source, issues, and releases

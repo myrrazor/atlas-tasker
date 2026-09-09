@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-export const SITE_ORIGIN = "https://atlas-tasker.vercel.app";
+export const SITE_ORIGIN = "https://atlastasker.com";
 
 const siteRoot = fileURLToPath(new URL("../", import.meta.url));
 
