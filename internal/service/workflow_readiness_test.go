@@ -148,6 +148,13 @@ func TestActionServiceCanceledBlockerDoesNotUnblock(t *testing.T) {
 	}
 }
 
+func TestBoardStatusPreservesCanceledTicket(t *testing.T) {
+	ticket := contracts.TicketSnapshot{Status: contracts.StatusCanceled}
+	if got := boardStatusForDependencies(ticket, true); got != contracts.StatusCanceled {
+		t.Fatalf("canceled ticket must keep its board status even with unresolved blockers, got %s", got)
+	}
+}
+
 func TestActionServiceAllowsAutonomousSelfApprovalByDefault(t *testing.T) {
 	ctx, actions := newWorkflowReadinessActions(t)
 	ticket := createWorkflowTicket(t, ctx, actions, contracts.TicketSnapshot{

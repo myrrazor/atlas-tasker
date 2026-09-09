@@ -94,6 +94,9 @@ func (s *ActionService) SetTicketSchedule(ctx context.Context, ticketID string, 
 		if at.IsZero() {
 			return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, "schedule time is required")
 		}
+		if !at.After(s.now()) {
+			return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, "schedule time must be in the future")
+		}
 		ticket, err := s.Tickets.GetTicket(ctx, strings.TrimSpace(ticketID))
 		if err != nil {
 			return contracts.TicketSnapshot{}, err

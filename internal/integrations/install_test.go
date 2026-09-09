@@ -126,12 +126,69 @@ func TestInstallGenericCreatesPortableSkillPack(t *testing.T) {
 	if !strings.Contains(string(body), genericMarkers.begin) || !strings.Contains(string(body), "tracker agent available <agent-id> --json") {
 		t.Fatalf("unexpected AGENTS.md body: %s", string(body))
 	}
-	skill, err := os.ReadFile(filepath.Join(root, ".tracker", "integrations", "atlas-agent-skill", "SKILL.md"))
+	skill, err := os.ReadFile(filepath.Join(root, ".tracker", "integrations", "generic-agent-skill", "SKILL.md"))
 	if err != nil {
 		t.Fatalf("read generic skill: %v", err)
 	}
 	if !strings.Contains(string(skill), "Atlas Worker") || !strings.Contains(string(skill), "dependency_blocked") || !strings.Contains(string(skill), "tracker run dispatch <ID> --agent agent:<agent-id>") {
 		t.Fatalf("unexpected generic skill: %s", string(skill))
+	}
+}
+
+func TestGenericAndGrokKeepDistinctSkillsAndPreserveLegacyPath(t *testing.T) {
+	root := t.TempDir()
+	legacyPath := filepath.Join(root, ".tracker", "integrations", "atlas-agent-skill", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
+		t.Fatalf("create legacy skill directory: %v", err)
+	}
+	const legacy = "custom legacy skill\n"
+	if err := os.WriteFile(legacyPath, []byte(legacy), 0o644); err != nil {
+		t.Fatalf("seed legacy skill: %v", err)
+	}
+	for _, target := range []Target{TargetGeneric, TargetGrok} {
+		if _, err := (Installer{Root: root}).Install(target, false); err != nil {
+			t.Fatalf("install %s: %v", target, err)
+		}
+	}
+	legacyAfter, err := os.ReadFile(legacyPath)
+	if err != nil {
+		t.Fatalf("read legacy skill: %v", err)
+	}
+	if string(legacyAfter) != legacy {
+		t.Fatalf("provider installs overwrote the legacy shared path: %q", string(legacyAfter))
+	}
+	genericSkill, err := os.ReadFile(filepath.Join(root, ".tracker", "integrations", "generic-agent-skill", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read generic skill: %v", err)
+	}
+	grokSkill, err := os.ReadFile(filepath.Join(root, ".tracker", "integrations", "grok-agent-skill", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read grok skill: %v", err)
+	}
+	if !strings.Contains(string(genericSkill), "from generic agent sessions") || !strings.Contains(string(grokSkill), "from Grok sessions") {
+		t.Fatalf("provider-specific skills were not retained:\ngeneric=%s\ngrok=%s", genericSkill, grokSkill)
+	}
+}
+
+func TestGeneratedIntegrationGuidanceUsesPortableWorkspacePaths(t *testing.T) {
+	root := t.TempDir()
+	installer := Installer{Root: root}
+	for _, target := range []Target{TargetCodex, TargetClaude, TargetOpenClaw, TargetGeneric, TargetCursor, TargetGrok} {
+		result, err := installer.Install(target, false)
+		if err != nil {
+			t.Fatalf("install %s: %v", target, err)
+		}
+		paths := append([]string{result.InstructionFile, result.GuideFile}, result.SkillFiles...)
+		paths = append(paths, result.CommandFiles...)
+		for _, path := range paths {
+			body, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read generated %s file %s: %v", target, path, err)
+			}
+			if strings.Contains(string(body), root) {
+				t.Fatalf("%s guidance embeds temporary workspace root %q in %s:\n%s", target, root, path, body)
+			}
+		}
 	}
 }
 
@@ -228,7 +285,7 @@ func TestInstallOpenClawUsesRepoLocalSkillRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// ~/.openclaw/skills is the user's to manage; a repo command must not write there
+	// The default install remains repository-local; only explicit --global may write there.
 	for _, path := range append(append([]string{}, result.Created...), result.Updated...) {
 		rel, err := filepath.Rel(canonicalRoot, path)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
@@ -239,7 +296,7 @@ func TestInstallOpenClawUsesRepoLocalSkillRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read openclaw guide: %v", err)
 	}
-	for _, needle := range []string{"openclaw skills list", "--global", filepath.Join(".agents", "skills", "atlas-worker")} {
+	for _, needle := range []string{"openclaw skills list", "tracker integrations install openclaw --global", filepath.Join(".agents", "skills", "atlas-worker")} {
 		if !strings.Contains(string(guide), needle) {
 			t.Fatalf("openclaw guide should mention %q:\n%s", needle, string(guide))
 		}

@@ -229,10 +229,10 @@ Use this for any coding agent that can run shell commands.
 Atlas is the source of truth for this task.
 
 Before editing:
-1. Run `tracker inspect APP-1 --actor <actor> --json`.
-2. Read `tracker goal brief APP-1 --md`.
+1. Read `tracker goal brief APP-1 --md` and set TRACKER_ACTOR to the valid agent identity doing the work.
+2. Run `tracker inspect APP-1 --actor "$TRACKER_ACTOR" --json`.
 3. Confirm the ticket is claimed or claim it.
-4. Self-dispatch eligible work with `tracker run dispatch APP-1 --agent <actor> --actor <actor> --reason "start run"` when a run is needed.
+4. Self-dispatch eligible work with `tracker run dispatch APP-1 --agent "$TRACKER_ACTOR" --actor "$TRACKER_ACTOR" --reason "start run"` when a run is needed.
 
 During work, record checkpoints and evidence. If blocked, write a ticket comment or handoff instead of silently stopping.
 ```
@@ -255,7 +255,9 @@ Use a terminal width around 96 columns for board/dashboard captures and 100-110 
 ## Web screenshots
 
 Create a fresh synthetic workspace for browser captures. This seeds `web.owner_name`
-as `User`, uses demo projects and actors, and refuses a non-empty destination:
+as `User`, uses demo projects and actors, and refuses a non-empty destination.
+Schedules default to tomorrow in UTC so every new schedule is in the future;
+use the schedule date picker for that day, or set `DEMO_DATE` to another future date:
 
 ```bash
 TRACKER_BIN=/absolute/path/to/tracker sh examples/create-web-demo.sh /tmp/atlas-web-demo

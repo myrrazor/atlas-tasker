@@ -5,11 +5,12 @@ Any coding agent can use Atlas if it follows a small contract: read before writi
 ## Minimum Contract
 
 ```bash
+export TRACKER_ACTOR='agent:builder-1' # use the identity assigned to this session
 tracker agent available <agent-id> --json
 tracker agent pending <agent-id> --json
-tracker inspect <TICKET-ID> --actor <actor> --json
-tracker ticket claim <TICKET-ID> --actor agent:<agent-id> --reason "start work"
-tracker ticket move <TICKET-ID> in_progress --actor agent:<agent-id> --reason "start work"
+tracker inspect <TICKET-ID> --actor "$TRACKER_ACTOR" --json
+tracker ticket claim <TICKET-ID> --actor "$TRACKER_ACTOR" --reason "start work"
+tracker ticket move <TICKET-ID> in_progress --actor "$TRACKER_ACTOR" --reason "start work"
 ```
 
 Agents should use `available` for work they can do now and `pending` to explain why they are waiting. Treat `tracker inspect` as the truth for policy, lease, gate, and review state.
@@ -39,6 +40,7 @@ The brief is designed to be pasted into any agent prompt. It includes allowed ac
 - Treat `dependency_blocked` as a hard stop unless `human:owner` explicitly uses `--override-deps --reason <TEXT>`.
 - Request review instead of marking work complete directly unless the active policy allows it.
 - Treat `dependency_blocked` as a stop sign. Only `done` unblocks a dependency.
+- Moving a ticket to its current status is a successful no-op across CLI, MCP, bulk, and web paths.
 
 ## Safe Reads
 

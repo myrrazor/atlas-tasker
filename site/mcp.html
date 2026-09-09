@@ -114,17 +114,17 @@
         </li>
         <li>
           <h3>workflow</h3>
-          <span class="ladder-count">+26 tools · 67 total</span>
-          <p>The complete agent loop: create, assign, link, claim, move, comment, review, approve, reject, complete, manage agents and teams, schedule, add evidence, hand off, and acknowledge wake-ups. Writes require an actor and reason.</p>
+          <span class="ladder-count">+32 tools · 73 total</span>
+          <p>The complete agent loop: create projects and tickets, edit, prioritize, label, assign, link, claim, heartbeat, move, comment, review, approve, reject, complete, manage agents and teams, schedule, add evidence, hand off, and acknowledge wake-ups. Ticket and event writes require an actor and reason; key/name-only project creation is the metadata-container exception.</p>
         </li>
         <li>
           <h3>delivery</h3>
-          <span class="ladder-count">+4 tools · 71 total</span>
+          <span class="ladder-count">+4 tools · 77 total</span>
           <p>Dispatch a run, create a change, and sync provider-backed change and check status into the tracker.</p>
         </li>
         <li class="ladder-danger">
           <h3>admin</h3>
-          <span class="ladder-count">+11 tools · 82 total</span>
+          <span class="ladder-count">+2 delivery tools · 79 total; +9 admin tools · 88 total</span>
           <p>Provider review and merge, gate waivers, sync push and pull, import, archive, compact, and worktree cleanup. Requires the danger flag and a one-time human approval per call.</p>
         </li>
       </ol>
@@ -174,7 +174,7 @@
       <ol class="connect-steps">
         <li><span>01</span><div><h3>Install and initialize</h3><p>The verified release installer installs the binary. In an interactive terminal it may offer optional agent setup for the current directory; the prompt defaults to No. Unattended installs and <code>SKIP_INTEGRATIONS=1</code> skip it.</p></div></li>
         <li><span>02</span><div><h3>Teach the repository</h3><p><code>tracker init</code> offers detected integrations in an interactive terminal. Or run <code>tracker integrations install</code> later and choose among all six targets.</p></div></li>
-        <li><span>03</span><div><h3>Register MCP</h3><p>For MCP clients, register an absolute <code>tracker</code> path and pin the initialized workspace. Choose <code>workflow</code> when the agent is expected to work tickets.</p></div></li>
+        <li><span>03</span><div><h3>Register MCP</h3><p>For MCP clients, register an absolute <code>tracker</code> path and pin the workspace. Choose <code>workflow</code> when the agent is expected to work tickets. A fresh existing directory can opt into initialization with <code>--init-if-missing</code>.</p></div></li>
         <li><span>04</span><div><h3>Verify the surface</h3><p>Open the client’s MCP status, then ask for <code>atlas.agent.available</code> or inspect the live profile with <code>tracker mcp tools</code>.</p></div></li>
       </ol>
 
@@ -246,7 +246,7 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
         </li>
         <li>
           <span class="fact-term">New workflow coverage</span>
-          <p>The profile also creates and assigns tickets, links dependencies, manages agent profiles, applies team presets, sets schedules, adds evidence, creates handoffs, and acknowledges wake-ups. <a href="docs/mcp-tools.html#workflow-tools">See every workflow tool.</a></p>
+          <p>The profile also creates project containers and tickets, edits priority and labels, renews active leases, links dependencies, manages agent profiles, applies team presets, sets schedules, adds evidence, creates handoffs, and acknowledges wake-ups. <a href="docs/mcp-tools.html#workflow-tools">See every workflow tool.</a></p>
         </li>
         <li>
           <span class="fact-term">Reason codes</span>

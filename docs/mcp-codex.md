@@ -40,6 +40,19 @@ args = [
 ]
 ```
 
+If that existing directory has not been initialized yet and the user explicitly wants the MCP
+server to bootstrap it, add the opt-in flag to a write-capable profile:
+
+```toml
+[mcp_servers.atlas-bootstrap]
+command = "/usr/local/bin/tracker"
+args = ["mcp", "serve", "--workspace", "/absolute/existing/repo", "--init-if-missing", "--tool-profile", "workflow"]
+```
+
+This form is noninteractive. It refuses relative or missing workspace paths, nested Atlas
+workspaces, `--read-only`, and redirected initialization outputs. It creates normal Atlas workspace
+files only; it does not register another MCP entry or open the integration picker.
+
 For delivery/admin sessions, start narrow and explicit:
 
 ```toml
@@ -58,7 +71,16 @@ args = ["mcp", "serve", "--workspace", "/path/to/workspace", "--tool-profile", "
 
 High-impact calls still require `tracker mcp approve-operation` outside MCP.
 
-`--workspace` must point at a directory that has already been through `tracker init`; anything else fails at startup naming the path it tried, rather than serving an empty board.
+Without `--init-if-missing`, `--workspace` must point at a directory that has already been through
+`tracker init`; anything else fails at startup naming the path it tried, rather than serving an
+empty board.
+
+The workflow profile includes `atlas.project.create`, `atlas.ticket.heartbeat`,
+`atlas.ticket.priority`, `atlas.ticket.label.add`, `atlas.ticket.label.remove`, and
+`atlas.ticket.edit`. The five ticket mutations require `actor` and `reason`.
+`atlas.project.create` takes only `key` and `name` because project creation is an untracked container
+operation. Use the exact tool and argument names returned by `tracker mcp schema --json`; unknown
+arguments are rejected.
 
 For the CLI-first Codex workflow, read [Codex guide](guides/codex.md) and [Codex `/goal` guide](guides/codex-goals.md).
 

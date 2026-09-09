@@ -315,6 +315,7 @@ func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
 		contracts.StatusInReview,
 		contracts.StatusBlocked,
 		contracts.StatusDone,
+		contracts.StatusCanceled,
 	}
 	labels := map[contracts.Status]string{
 		contracts.StatusBacklog:    "Backlog",
@@ -323,6 +324,7 @@ func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
 		contracts.StatusInReview:   "In Review",
 		contracts.StatusBlocked:    "Blocked",
 		contracts.StatusDone:       "Done",
+		contracts.StatusCanceled:   "Canceled",
 	}
 	if width >= 54 {
 		rows := make([][]string, 0)
@@ -348,6 +350,7 @@ func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
 					optionalString(TypeBadge(ticket.Type), "-"),
 					StatusBadge(ticket.Status),
 					PriorityBadge(ticket.Priority),
+					optionalString(SanitizeDisplayLine(string(ticket.Assignee)), "-"),
 					optionalString(SanitizeDisplayLine(ticket.Title), "(untitled)"),
 				})
 			}
@@ -355,7 +358,7 @@ func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
 		if len(rows) == 0 {
 			return EmptyState("Board", "No tickets yet.")
 		}
-		return RenderTable([]string{"Column", "ID", "Type", "Status", "Priority", "Title"}, rows, TableOptions{
+		return RenderTable([]string{"Column", "ID", "Type", "Status", "Priority", "Assignee", "Title"}, rows, TableOptions{
 			Title: "Board",
 			Width: width,
 		})
@@ -376,12 +379,21 @@ func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
 				if summaryWidth < 1 {
 					summaryWidth = 1
 				}
-				section = append(section, TruncateDisplay("  - "+TicketSummary(ticket, summaryWidth), width))
+				section = append(section, TruncateDisplay("  - "+boardTicketSummary(ticket, summaryWidth), width))
 			}
 		}
 		sections = append(sections, strings.Join(section, "\n"))
 	}
 	return strings.Join(sections, "\n\n")
+}
+
+func boardTicketSummary(ticket contracts.TicketSnapshot, width int) string {
+	if ticket.Assignee == "" {
+		return TicketSummary(ticket, width)
+	}
+	prefix := fmt.Sprintf("%s assignee=%s %s %s", SanitizeDisplayLine(ticket.ID), SanitizeDisplayLine(string(ticket.Assignee)), StatusBadge(ticket.Status), PriorityBadge(ticket.Priority))
+	title := optionalString(SanitizeDisplayLine(ticket.Title), "(untitled)")
+	return TruncateDisplay(prefix+" "+title, width)
 }
 
 func sortedTickets(tickets []contracts.TicketSnapshot) []contracts.TicketSnapshot {

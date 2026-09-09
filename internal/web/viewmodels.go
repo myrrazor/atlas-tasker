@@ -157,12 +157,13 @@ var boardStatuses = []contracts.Status{
 	contracts.StatusInReview,
 	contracts.StatusBlocked,
 	contracts.StatusDone,
+	contracts.StatusCanceled,
 }
 
 func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage, error) {
 	query := r.URL.Query()
 	activeColumn := contracts.Status(strings.TrimSpace(query.Get("column")))
-	if !activeColumn.IsValid() || activeColumn == contracts.StatusCanceled {
+	if !activeColumn.IsValid() {
 		activeColumn = contracts.StatusReady
 	}
 	page := BoardPage{

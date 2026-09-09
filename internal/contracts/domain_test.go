@@ -21,6 +21,14 @@ func TestActorValidation(t *testing.T) {
 	}
 }
 
+func TestBoardStatusPreservesTerminalStates(t *testing.T) {
+	for _, status := range []Status{StatusDone, StatusCanceled} {
+		if got := BoardStatus(TicketSnapshot{Status: status}); got != status {
+			t.Fatalf("board status changed %s to %s", status, got)
+		}
+	}
+}
+
 func TestTicketSnapshotValidateForCreate(t *testing.T) {
 	now := time.Now().UTC()
 	ticket := TicketSnapshot{
@@ -110,8 +118,8 @@ func TestNormalizeProjectPreservesLegacyCompletionFallback(t *testing.T) {
 	}
 
 	fresh := NormalizeProject(Project{Key: "NEW", Name: "New"})
-	if fresh.Defaults.CompletionMode != CompletionModeOpen {
-		t.Fatalf("expected fresh project completion mode to default to open, got %s", fresh.Defaults.CompletionMode)
+	if fresh.Defaults.CompletionMode != "" {
+		t.Fatalf("expected fresh project completion mode to inherit the workspace, got %s", fresh.Defaults.CompletionMode)
 	}
 	if fresh.SchemaVersion != CurrentSchemaVersion {
 		t.Fatalf("expected fresh project schema to default to current, got %d", fresh.SchemaVersion)

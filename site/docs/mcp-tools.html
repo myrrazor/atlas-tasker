@@ -117,9 +117,9 @@
             </thead>
             <tbody>
               <tr><td><code>read</code></td><td>41 tools</td><td>Inspection, queues, plans, and dry runs. Default.</td></tr>
-              <tr><td><code>workflow</code></td><td>67 tools</td><td>Read plus 26 attributed workflow writes for everyday agent work.</td></tr>
-              <tr><td><code>delivery</code></td><td>71 tools</td><td>Workflow plus dispatch and provider-backed change/check synchronization.</td></tr>
-              <tr><td><code>admin</code></td><td>82 tools with the danger flag</td><td>High-impact operations. Each call also needs an external one-time approval.</td></tr>
+              <tr><td><code>workflow</code></td><td>73 tools</td><td>Read plus 32 workflow tools for everyday agent work.</td></tr>
+              <tr><td><code>delivery</code></td><td>77 tools; 79 with the danger flag</td><td>Workflow plus dispatch and provider-backed change/check synchronization, with two guarded delivery actions available for supervised sessions.</td></tr>
+              <tr><td><code>admin</code></td><td>77 tools; 88 with the danger flag</td><td>All 11 high-impact operations. Each call also needs an external one-time approval.</td></tr>
             </tbody>
           </table>
         </div>
@@ -159,20 +159,20 @@
         </div>
 
         <h2 id="workflow-tools">Workflow tools</h2>
-        <p>This profile is the practical default when an agent is expected to do ticket work. All 26 mutations require <code>actor</code> and <code>reason</code>; they still run the same service permissions, dependency rules, leases, write lock, and event recording as the CLI.</p>
+        <p>This profile is the practical default when an agent is expected to do ticket work. It adds 32 tools. The 31 ticket and event mutations require <code>actor</code> and <code>reason</code>; they still run the same service permissions, dependency rules, leases, write lock, and event recording as the CLI. <code>atlas.project.create</code> is the narrow exception: it accepts only <code>key</code> and <code>name</code>, creates a metadata container inside the pinned workspace, and does not write an attributed event.</p>
         <div class="tool-groups">
           <section class="tool-group">
             <h3>Create and organize</h3>
-            <p>Create tickets, set ownership, and build dependency or parent relationships without leaving MCP.</p>
+            <p>Create project containers and tickets, edit ordinary ticket fields, set ownership and priority, manage labels, and build dependency or parent relationships without leaving MCP.</p>
             <ul class="tool-list">
-              <li><code>atlas.ticket.create</code></li><li><code>atlas.ticket.assign</code></li><li><code>atlas.ticket.link</code></li><li><code>atlas.ticket.unlink</code></li>
+              <li><code>atlas.project.create</code></li><li><code>atlas.ticket.create</code></li><li><code>atlas.ticket.edit</code></li><li><code>atlas.ticket.assign</code></li><li><code>atlas.ticket.priority</code></li><li><code>atlas.ticket.label.add</code></li><li><code>atlas.ticket.label.remove</code></li><li><code>atlas.ticket.link</code></li><li><code>atlas.ticket.unlink</code></li>
             </ul>
           </section>
           <section class="tool-group">
             <h3>Work the ticket</h3>
-            <p>Acquire and release leases, move through legal states, and leave durable progress notes.</p>
+            <p>Acquire, renew, and release leases, move through legal states, and leave durable progress notes.</p>
             <ul class="tool-list">
-              <li><code>atlas.ticket.claim</code></li><li><code>atlas.ticket.release</code></li><li><code>atlas.ticket.move</code></li><li><code>atlas.ticket.comment</code></li>
+              <li><code>atlas.ticket.claim</code></li><li><code>atlas.ticket.heartbeat</code></li><li><code>atlas.ticket.release</code></li><li><code>atlas.ticket.move</code></li><li><code>atlas.ticket.comment</code></li>
             </ul>
           </section>
           <section class="tool-group">
@@ -203,9 +203,11 @@
           </section>
         </div>
 
+        <p><code>atlas.ticket.edit</code> exposes title, description, acceptance criteria, priority, labels, assignee, and reviewer. Omitted fields remain unchanged; empty descriptions, actor strings, and arrays clear their fields. Description whitespace reaches the service unchanged, while the markdown storage codec applies its normal surrounding-whitespace normalization when it persists the ticket.</p>
+
         <h2>Delivery and high-impact tools</h2>
         <p>The four delivery tools can create provider or runtime side effects: <code>atlas.dispatch.run</code>, <code>atlas.change.create</code>, <code>atlas.change.sync</code>, and <code>atlas.checks.sync</code>.</p>
-        <p>The 11 high-impact tools cover provider review/merge, gate waiver, sync push/pull, bundle/import apply, archive apply/restore, compact, and worktree cleanup. They are not exposed in ordinary sessions. See <a href="mcp-security.html">MCP security</a> for the external approval handshake and exact-target rules.</p>
+        <p>Two high-impact delivery tools bring that profile to 79 when the danger flag is present. Admin adds nine more for a full inventory of 88. The 11 high-impact tools cover provider review/merge, gate waiver, sync push/pull, bundle/import apply, archive apply/restore, compact, and worktree cleanup. They are not exposed in ordinary sessions. See <a href="mcp-security.html">MCP security</a> for the external approval handshake and exact-target rules.</p>
 
         <h2>A practical first loop</h2>
         <div class="code-block">

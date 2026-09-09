@@ -43,7 +43,7 @@ tracker ticket move APP-1 ready --actor human:owner --reason "groomed"
 tracker board
 ```
 
-In a terminal, `tracker init` offers to set up coding-agent integrations after creating the workspace. Choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. The [agent integrations guide](docs/guides/agent-integrations.md) covers every target and scripted setup.
+In a terminal, `tracker init` asks `Set up coding-agent integrations now? [Y/n]`; pressing Enter or answering yes opens the picker. This differs from the shell installer's optional workspace setup prompt, which defaults to **no**. In the picker, choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. The [agent integrations guide](docs/guides/agent-integrations.md) covers every target and scripted setup.
 
 ![Kanban board in the terminal](docs/assets/board.png)
 

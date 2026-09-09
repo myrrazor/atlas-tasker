@@ -56,12 +56,18 @@ Columns:
 | `atlas.import.apply_plan` | read | yes | no | no | no | no |
 | `atlas.compact_plan` | read | yes | no | no | no | no |
 | `atlas.worktree.cleanup_plan` | read | yes | no | no | no | no |
+| `atlas.project.create` | workflow | no | no | no | no | no |
 | `atlas.ticket.comment` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.claim` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.release` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.heartbeat` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.move` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.create` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.edit` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.assign` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.priority` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.label.add` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.label.remove` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.link` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.unlink` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.approve` | workflow | no | yes | yes | no | no |
@@ -98,6 +104,10 @@ Columns:
 | `atlas.compact` | high_impact | no | yes | yes | yes | yes |
 | `atlas.worktree.cleanup` | high_impact | no | yes | yes | yes | yes |
 
+`atlas.project.create` creates a metadata container inside the workspace already pinned when the MCP server starts. Its schema accepts only `key` and `name`. Like `tracker project create`, it does not write an event and therefore does not take `actor` or `reason`; every ticket and workflow event mutation still requires both.
+
+`atlas.ticket.edit` accepts only ordinary ticket fields: `title`, `description`, `acceptance`, `priority`, `labels`, `assignee`, and `reviewer`. Omitted fields stay unchanged. Empty descriptions, assignee or reviewer strings, and empty acceptance or label arrays clear those fields. Description whitespace is preserved. Status, project, identity, timestamps, lease, archive state, policy, protection, and sensitivity remain outside this patch surface.
+
 `atlas.ticket.request_review` accepts `reviewer` for parity with `tracker ticket request-review --reviewer`. `atlas.ticket.move`, `atlas.ticket.request_review`, `atlas.ticket.approve`, and `atlas.ticket.complete` accept `override_deps` for owner-only dependency override. The override requires `actor: "human:owner"` and a non-empty reason, and Atlas records the unresolved blockers in the resulting mutation payload.
 
-MCP-first agent loops should use `--tool-profile workflow`. That profile covers create, assign, link, claim, release, move, comment, request review, approve, reject, complete, agent/team setup, schedules, evidence, handoffs, and wake-up ack without a high-impact approval token. Run dispatch plus change creation and change/check synchronization require `delivery`. Provider review/merge and sync push/pull, bundle/import apply, archive apply/restore, compact, worktree cleanup, and gate waiver stay high-impact.
+MCP-first agent loops should use `--tool-profile workflow`. That profile covers project and ticket creation, ticket edit, priority, labels, assign, link, claim, heartbeat, release, move, comment, request review, approve, reject, complete, agent/team setup, schedules, evidence, handoffs, and wake-up ack without a high-impact approval token. Run dispatch plus change creation and change/check synchronization require `delivery`. Provider review/merge and sync push/pull, bundle/import apply, archive apply/restore, compact, worktree cleanup, and gate waiver stay high-impact.

@@ -639,6 +639,9 @@ func (s *ActionService) ClaimTicket(ctx context.Context, ticketID string, actor 
 		if err != nil {
 			return contracts.TicketSnapshot{}, err
 		}
+		if err := checkClaimAssignee(ticket, actor); err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
 		if ticket.Lease.Actor != "" && !ticket.Lease.Active(s.now()) {
 			if _, err := s.expireLease(ctx, &ticket, "lease expired before claim"); err != nil {
 				return contracts.TicketSnapshot{}, err
@@ -683,6 +686,15 @@ func (s *ActionService) ClaimTicket(ctx context.Context, ticketID string, actor 
 		}
 		return ticket, nil
 	})
+}
+
+func checkClaimAssignee(ticket contracts.TicketSnapshot, actor contracts.Actor) error {
+	// Review work belongs to the reviewer; its implementation assignee remains
+	// on the ticket while the review lease is acquired.
+	if ticket.Status != contracts.StatusInReview && ticket.Assignee != "" && ticket.Assignee != actor {
+		return apperr.New(apperr.CodeConflict, fmt.Sprintf("ticket %s is assigned to %s; reassign it explicitly before claiming", ticket.ID, ticket.Assignee))
+	}
+	return nil
 }
 
 func (s *ActionService) ReleaseTicket(ctx context.Context, ticketID string, actor contracts.Actor, reason string) (contracts.TicketSnapshot, error) {
@@ -964,6 +976,22 @@ func (s *ActionService) ApproveTicket(ctx context.Context, ticketID string, acto
 				return contracts.TicketSnapshot{}, apperr.New(apperr.CodePermissionDenied, "only the assigned reviewer or human:owner can approve")
 			}
 			return contracts.TicketSnapshot{}, apperr.New(apperr.CodePermissionDenied, "only the assignee, active worker, or human:owner can approve when no reviewer is configured")
+		}
+		actorAgent, _ := actorAgentProfile(ctx, s.Agents, actor)
+		changedFiles, known := permissionChangedFilesForTicket(ctx, s.Runs, s.Changes, s.Root, ticket)
+		permissionInput := permissionEvalInput{
+			Action: contracts.PermissionActionGateApprove, Actor: actor, Ticket: ticket,
+			ActorAgent: actorAgent, Runbook: permissionRunbook(ticket, nil),
+			ChangedFiles: changedFiles, ChangedFilesKnown: known,
+		}
+		if _, err := s.requirePermission(ctx, permissionInput); err != nil {
+			return contracts.TicketSnapshot{}, err
+		}
+		if policy.CompletionMode == contracts.CompletionModeReviewGate {
+			permissionInput.Action = contracts.PermissionActionTicketComplete
+			if _, err := s.requirePermission(ctx, permissionInput); err != nil {
+				return contracts.TicketSnapshot{}, err
+			}
 		}
 		governanceInput := GovernanceEvaluationInput{
 			Action:   contracts.ProtectedActionTicketApprove,

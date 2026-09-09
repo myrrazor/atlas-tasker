@@ -247,6 +247,9 @@ func (s *ActionService) previewBulkTicket(ctx context.Context, op BulkOperation,
 		}
 		return fmt.Sprintf("would complete %s", ticket.ID), &ticket, nil
 	case BulkOperationClaim:
+		if err := checkClaimAssignee(ticket, op.Actor); err != nil {
+			return "", nil, err
+		}
 		if ticket.Lease.Actor != "" && ticket.Lease.Active(s.now()) && ticket.Lease.Actor != op.Actor {
 			return "", nil, apperr.New(apperr.CodeConflict, fmt.Sprintf("ticket %s is already claimed by %s", ticket.ID, ticket.Lease.Actor))
 		}

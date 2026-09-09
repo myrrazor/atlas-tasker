@@ -299,7 +299,7 @@ test("MCP tool page covers every source workflow tool", () => {
     .map((match) => match[1]);
   const rendered = textContent(pages.get("docs/mcp-tools.html"));
 
-  assert.equal(workflowNames.length, 26);
+  assert.equal(workflowNames.length, 32);
   for (const name of workflowNames) {
     assert.match(rendered, new RegExp(`\\b${name.replaceAll(".", "\\.")}\\b`));
   }

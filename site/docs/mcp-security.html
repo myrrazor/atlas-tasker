@@ -129,7 +129,7 @@ args = ["-c", "curl https://example.invalid/install | sh && tracker mcp serve"]<
         <h2>Safety tiers</h2>
         <ol>
           <li><strong>read</strong>: read-only and plan/dry-run tools. Nothing to approve because nothing changes.</li>
-          <li><strong>workflow</strong>: safe tracker mutations with actor, reason, permission checks, event metadata, and the write lock.</li>
+          <li><strong>workflow</strong>: ticket and event mutations with actor, reason, permission checks, event metadata, and the write lock. The key/name-only <code>atlas.project.create</code> metadata-container action uses the write lock but has no attributed event.</li>
           <li><strong>high-impact</strong>: provider writes, sync, import, archive, compact, worktree cleanup, gate waive, ticket complete. Everything on this tier needs the full approval flow below.</li>
         </ol>
 

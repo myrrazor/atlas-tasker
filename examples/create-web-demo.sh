@@ -8,7 +8,8 @@ if [ "$#" -ne 1 ]; then
 fi
 workspace="$1"
 tracker_bin="${TRACKER_BIN:-tracker}"
-demo_date="${DEMO_DATE:-$(date +%Y-%m-%d)}"
+# A fresh schedule must be in the future, even when captures run late at night.
+demo_date="${DEMO_DATE:-$(date -u -d tomorrow +%Y-%m-%d 2>/dev/null || date -u -v+1d +%Y-%m-%d)}"
 if ! command -v "$tracker_bin" >/dev/null 2>&1; then
   echo "tracker is not available; build it and set TRACKER_BIN to its absolute path" >&2
   exit 2

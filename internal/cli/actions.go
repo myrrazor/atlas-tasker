@@ -245,12 +245,12 @@ func ensureInitArtifacts(root string) (initResult, error) {
 	result := initResult{Kind: "workspace_init", Workspace: root, Created: []string{}}
 	trackerDir := storage.TrackerDir(root)
 	privateDirs := map[string]struct{}{
-		trackerDir: {},
-		storage.ImportsDir(root): {},
-		storage.ExportsDir(root): {},
-		storage.ArchivesDir(root): {},
+		trackerDir:                            {},
+		storage.ImportsDir(root):              {},
+		storage.ExportsDir(root):              {},
+		storage.ArchivesDir(root):             {},
 		filepath.Join(trackerDir, "evidence"): {},
-		filepath.Join(trackerDir, "runtime"): {},
+		filepath.Join(trackerDir, "runtime"):  {},
 	}
 	for _, dir := range []string{
 		trackerDir,
@@ -580,7 +580,6 @@ func ensureWorkspaceGitignore(root string) (bool, error) {
 	return true, nil
 }
 
-
 func relativeToRoot(root string, path string) string {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
@@ -602,11 +601,7 @@ func loadTicketsMap(ctx context.Context, w *workspace) (map[string]contracts.Tic
 }
 
 func normalizeActor(raw string) contracts.Actor {
-	actor := strings.TrimSpace(raw)
-	if actor == "" {
-		return contracts.Actor("human:owner")
-	}
-	return contracts.Actor(actor)
+	return contracts.Actor(strings.TrimSpace(raw))
 }
 
 func versionedJSONPayload(data any) (any, error) {

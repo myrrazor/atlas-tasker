@@ -51,6 +51,14 @@ func TestBuildRunManifestIncludesVersionedContextAndProviderHints(t *testing.T) 
 	if !strings.Contains(manifest.ClaudeLaunch, "tracker run attach run_123 --provider claude --session-ref <session>") {
 		t.Fatalf("missing claude attach hint: %s", manifest.ClaudeLaunch)
 	}
+	for name, content := range map[string]string{"brief": manifest.BriefMarkdown, "codex launch": manifest.CodexLaunch, "claude launch": manifest.ClaudeLaunch} {
+		if strings.Contains(content, "<actor>") {
+			t.Fatalf("%s should not contain a literal actor placeholder: %s", name, content)
+		}
+		if !strings.Contains(content, "--actor 'agent:builder-1'") {
+			t.Fatalf("%s should use the run agent identity: %s", name, content)
+		}
+	}
 
 	var envelope struct {
 		FormatVersion string `json:"format_version"`
@@ -67,6 +75,37 @@ func TestBuildRunManifestIncludesVersionedContextAndProviderHints(t *testing.T) 
 	}
 	if envelope.FormatVersion != "v1" || envelope.Kind != "run_launch_manifest" || envelope.Payload.Run.RunID != "run_123" {
 		t.Fatalf("unexpected context envelope: %#v", envelope)
+	}
+}
+
+func TestBuildRunManifestFallsBackToExplicitActorEnvironment(t *testing.T) {
+	manifest, err := BuildRunManifest(RunManifestInput{
+		WorkspaceRoot: "/tmp/atlas",
+		Run: contracts.RunSnapshot{
+			RunID:    "run_125",
+			TicketID: "APP-3",
+			Status:   contracts.RunStatusDispatched,
+			Kind:     contracts.RunKindWork,
+		},
+		Ticket:      contracts.TicketSnapshot{ID: "APP-3", Title: "Resolve identity"},
+		Agent:       contracts.AgentProfile{Provider: contracts.AgentProviderCodex},
+		BriefPath:   "/tmp/atlas/.tracker/runtime/run_125/brief.md",
+		ContextPath: "/tmp/atlas/.tracker/runtime/run_125/context.json",
+		EvidenceDir: "/tmp/atlas/.tracker/evidence/run_125",
+	})
+	if err != nil {
+		t.Fatalf("build manifest: %v", err)
+	}
+	for name, content := range map[string]string{"brief": manifest.BriefMarkdown, "codex launch": manifest.CodexLaunch, "claude launch": manifest.ClaudeLaunch} {
+		if strings.Contains(content, "<actor>") || strings.Contains(content, "human:owner") {
+			t.Fatalf("%s should require an explicit identity without impersonating the owner: %s", name, content)
+		}
+		if !strings.Contains(content, `--actor "$TRACKER_ACTOR"`) || !strings.Contains(content, "set TRACKER_ACTOR") && !strings.Contains(content, "Set `TRACKER_ACTOR`") {
+			t.Fatalf("%s should explain the actor environment fallback: %s", name, content)
+		}
+	}
+	if !strings.Contains(manifest.BriefMarkdown, `--next-actor "$TRACKER_REVIEWER"`) || !strings.Contains(manifest.BriefMarkdown, "Set `TRACKER_REVIEWER`") {
+		t.Fatalf("brief should require a real reviewer identity: %s", manifest.BriefMarkdown)
 	}
 }
 

@@ -1,0 +1,66 @@
+{
+  "verified_at_utc": "2026-09-09T20:19:08.480149+00:00",
+  "source_base": "433138300c49eaa3731822664f0d5c0fded0d397",
+  "publication": "local candidate only",
+  "candidate_version": "v1.12.0-workflow-fixes",
+  "platform": "darwin/arm64",
+  "go_version": "go1.26.6",
+  "live_index": {
+    "released_build": {
+      "result": "pass",
+      "binary": "tracker-before",
+      "automatic_rebuild_with_web_open": true,
+      "existing_web_handle_sees_repair": true,
+      "explicit_reindex_with_web_open": true
+    },
+    "fixed_build": {
+      "result": "pass",
+      "binary": "tracker-fixed",
+      "automatic_rebuild_with_web_open": true,
+      "existing_web_handle_sees_repair": true,
+      "explicit_reindex_with_web_open": true
+    }
+  },
+  "browser": {
+    "move_form_to_canceled": "passed",
+    "cli_confirms_canceled": [
+      "APP-7",
+      "APP-8"
+    ],
+    "cli_confirms_done": [
+      "APP-6"
+    ],
+    "assigned_backlog": "APP-1 agent:builder-1",
+    "raw_card_status": "canceled",
+    "visible_assignee": true,
+    "phone_page_horizontal_overflow": false,
+    "phone_drawer_width": 390,
+    "own_page_static_resources": "all six HTTP 200",
+    "console_scope": "shared daemon console is not tab-scoped; not used as a clean-console assertion"
+  },
+  "review": {
+    "rounds": 2,
+    "round_1_findings": 2,
+    "round_2_remaining_findings": 0
+  },
+  "security": {
+    "reachable_vulnerabilities": 0,
+    "imported_package_vulnerabilities": 0,
+    "unreached_module_vulnerabilities": 2,
+    "candidate_ancestry_secret_scan": "passed",
+    "candidate_file_export_secret_scan": "passed",
+    "all_local_refs_scan": "one fileToken finding on unrelated unmerged local design branches; no candidate ancestor or file affected"
+  },
+  "captures": {
+    "board-desktop.png": {
+      "width": 1440,
+      "height": 900,
+      "sha256": "5a54579c79d938653d9967c2214cae2e3090710113c9e26db03f49c9f5603d49"
+    },
+    "board-mobile.png": {
+      "width": 390,
+      "height": 844,
+      "sha256": "c975d4f91f8f392c6d9773c4b8260cc7b89ec0c2b6ef36b6a3b3928c3cc3a80a"
+    }
+  }
+}

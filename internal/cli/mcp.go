@@ -22,6 +22,7 @@ func newMCPCommand() *cobra.Command {
 		RunE:  runMCPServe,
 	}
 	serve.Flags().String("workspace", "", "Atlas workspace root to serve; defaults to the current directory")
+	serve.Flags().Bool("init-if-missing", false, "Initialize the explicit absolute workspace if missing; requires a write-capable tool profile")
 	addMCPRuntimeFlags(serve)
 
 	schema := &cobra.Command{Use: "schema", Short: "Print enabled MCP tool schemas", RunE: runMCPSchema}
@@ -91,7 +92,7 @@ func runMCPServe(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	root, err := requestedWorkspaceRoot(cmd)
+	root, err := prepareMCPWorkspace(cmd, options)
 	if err != nil {
 		return err
 	}

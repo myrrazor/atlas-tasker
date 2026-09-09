@@ -44,8 +44,7 @@ func (s *QueryService) ProjectRollups(ctx context.Context) ([]ProjectRollup, err
 				len(board.Board.Columns[contracts.StatusInProgress]) +
 				len(board.Board.Columns[contracts.StatusInReview]),
 			Backlog: len(board.Board.Columns[contracts.StatusBacklog]),
-			// The board intentionally presents canceled tickets under Done.
-			// Rollups use canonical snapshots so canceled work stays excluded.
+			// Only completed work counts as done; cancellation stays separate.
 			Done:    len(done),
 			Blocked: len(board.Board.Columns[contracts.StatusBlocked]),
 		})

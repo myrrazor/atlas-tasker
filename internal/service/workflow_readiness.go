@@ -68,7 +68,7 @@ func unsafeDependencyProgress(status contracts.Status) bool {
 
 func boardStatusForDependencies(ticket contracts.TicketSnapshot, hasUnresolvedBlocker bool) contracts.Status {
 	if contracts.IsTerminalStatus(ticket.Status) {
-		return contracts.StatusDone
+		return ticket.Status
 	}
 	if ticket.Status == contracts.StatusBlocked || hasUnresolvedBlocker {
 		return contracts.StatusBlocked

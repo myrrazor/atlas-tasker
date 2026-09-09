@@ -14,7 +14,9 @@ Use a terminal width around 96 columns for board/dashboard captures and 100-110 
 ## Web screenshots
 
 Create a fresh synthetic workspace for browser captures. This seeds `web.owner_name`
-as `User`, uses demo projects and actors, and refuses a non-empty destination:
+as `User`, uses demo projects and actors, and refuses a non-empty destination.
+Schedules default to tomorrow in UTC so every new schedule is in the future;
+use the schedule date picker for that day, or set `DEMO_DATE` to another future date:
 
 ```bash
 TRACKER_BIN=/absolute/path/to/tracker sh examples/create-web-demo.sh /tmp/atlas-web-demo

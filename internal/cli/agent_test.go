@@ -19,7 +19,7 @@ func TestAgentCommandsAndEligibility(t *testing.T) {
 	must("init")
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Need builder", "--type", "task", "--actor", "human:owner")
-	must("ticket", "edit", "APP-1", "--labels", "ops")
+	must("ticket", "edit", "APP-1", "--labels", "ops", "--actor", "human:owner")
 	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--capability", "tests", "--max-active-runs", "2", "--actor", "human:owner")
 	must("agent", "create", "builder-2", "--name", "Builder Two", "--provider", "claude", "--capability", "docs", "--enabled=false", "--actor", "human:owner")
 

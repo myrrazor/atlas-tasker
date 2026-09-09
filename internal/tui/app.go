@@ -1005,7 +1005,7 @@ func (m model) itemsForScreen() []contracts.TicketSnapshot {
 	switch m.screen {
 	case screenBoard:
 		items := make([]contracts.TicketSnapshot, 0)
-		for _, status := range []contracts.Status{contracts.StatusReady, contracts.StatusInProgress, contracts.StatusInReview, contracts.StatusBlocked, contracts.StatusBacklog, contracts.StatusDone} {
+		for _, status := range []contracts.Status{contracts.StatusReady, contracts.StatusInProgress, contracts.StatusInReview, contracts.StatusBlocked, contracts.StatusBacklog, contracts.StatusDone, contracts.StatusCanceled} {
 			items = append(items, m.board.Board.Columns[status]...)
 		}
 		return items
@@ -1833,7 +1833,7 @@ func cursorPrefix(active bool) string {
 }
 
 func firstBoardTicketID(board service.BoardViewModel) string {
-	for _, status := range []contracts.Status{contracts.StatusReady, contracts.StatusInProgress, contracts.StatusInReview, contracts.StatusBlocked, contracts.StatusBacklog, contracts.StatusDone} {
+	for _, status := range []contracts.Status{contracts.StatusReady, contracts.StatusInProgress, contracts.StatusInReview, contracts.StatusBlocked, contracts.StatusBacklog, contracts.StatusDone, contracts.StatusCanceled} {
 		tickets := board.Board.Columns[status]
 		if len(tickets) > 0 {
 			return tickets[0].ID

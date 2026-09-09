@@ -53,6 +53,8 @@ func BuildRunManifest(input RunManifestInput) (RunManifest, error) {
 }
 
 func buildBriefMarkdown(input RunManifestInput) string {
+	actor, actorNeedsSetup := runtimeWorkerActor(input)
+	reviewer, reviewerNeedsSetup := runtimeReviewer(input)
 	lines := []string{
 		fmt.Sprintf("# Run %s", input.Run.RunID),
 		"",
@@ -120,15 +122,24 @@ func buildBriefMarkdown(input RunManifestInput) string {
 		"",
 		"## Suggested Atlas Loop",
 		"",
-		fmt.Sprintf("1. `tracker run attach %s --provider %s --session-ref <session> --actor <actor> --reason \"attach session\"`", input.Run.RunID, input.Agent.Provider),
-		fmt.Sprintf("2. `tracker run checkpoint %s --title \"progress\" --body \"what changed\" --actor <actor> --reason \"record progress\"`", input.Run.RunID),
-		fmt.Sprintf("3. `tracker run evidence add %s --type test_result --title \"verification\" --body \"test output\" --actor <actor> --reason \"record verification\"`", input.Run.RunID),
-		fmt.Sprintf("4. `tracker run handoff %s --next-actor <reviewer> --next-gate review --actor <actor> --reason \"ready for review\"`", input.Run.RunID),
+	)
+	if actorNeedsSetup {
+		lines = append(lines, "Set `TRACKER_ACTOR` to the valid `human:...` or `agent:...` identity doing this work before running these commands.", "")
+	}
+	if reviewerNeedsSetup {
+		lines = append(lines, "Set `TRACKER_REVIEWER` to the valid reviewer identity before handing off for review.", "")
+	}
+	lines = append(lines,
+		fmt.Sprintf("1. `tracker run attach %s --provider %s --session-ref <session> --actor %s --reason \"attach session\"`", input.Run.RunID, input.Agent.Provider, actor),
+		fmt.Sprintf("2. `tracker run checkpoint %s --title \"progress\" --body \"what changed\" --actor %s --reason \"record progress\"`", input.Run.RunID, actor),
+		fmt.Sprintf("3. `tracker run evidence add %s --type test_result --title \"verification\" --body \"test output\" --actor %s --reason \"record verification\"`", input.Run.RunID, actor),
+		fmt.Sprintf("4. `tracker run handoff %s --next-actor %s --next-gate review --actor %s --reason \"ready for review\"`", input.Run.RunID, reviewer, actor),
 	)
 	return strings.Join(lines, "\n") + "\n"
 }
 
 func buildProviderLaunch(provider string, input RunManifestInput) string {
+	actor, actorNeedsSetup := runtimeWorkerActor(input)
 	lines := []string{
 		fmt.Sprintf("Atlas Tasker %s launch for %s", providerLabel(provider), input.Run.RunID),
 		"",
@@ -150,13 +161,46 @@ func buildProviderLaunch(provider string, input RunManifestInput) string {
 		lines = append(lines, fmt.Sprintf("%d. work in %s if you need isolated changes", step, input.Run.WorktreePath))
 		step++
 	}
-	lines = append(lines, fmt.Sprintf("%d. when attached, record it with: tracker run attach %s --provider %s --session-ref <session> --actor <actor> --reason \"attach session\"", step, input.Run.RunID, provider))
+	if actorNeedsSetup {
+		lines = append(lines, fmt.Sprintf("%d. set TRACKER_ACTOR to the valid human:... or agent:... identity doing this work", step))
+		step++
+	}
+	lines = append(lines, fmt.Sprintf("%d. when attached, record it with: tracker run attach %s --provider %s --session-ref <session> --actor %s --reason \"attach session\"", step, input.Run.RunID, provider, actor))
 	step++
 	lines = append(lines,
 		fmt.Sprintf("%d. evidence lives under %s", step, input.EvidenceDir),
 		fmt.Sprintf("%d. do not treat runtime files as source of truth; Atlas snapshots and events stay canonical", step+1),
 	)
 	return strings.Join(lines, "\n") + "\n"
+}
+
+func runtimeWorkerActor(input RunManifestInput) (string, bool) {
+	for _, agentID := range []string{input.Run.AgentID, input.Agent.AgentID} {
+		agentID = strings.TrimSpace(agentID)
+		if agentID == "" {
+			continue
+		}
+		actor := contracts.Actor(agentID)
+		if !actor.IsValid() {
+			actor = contracts.Actor("agent:" + agentID)
+		}
+		return shellQuoteCommandValue(string(actor)), false
+	}
+	if input.Ticket.Assignee != "" {
+		return shellQuoteCommandValue(string(input.Ticket.Assignee)), false
+	}
+	return `"$TRACKER_ACTOR"`, true
+}
+
+func runtimeReviewer(input RunManifestInput) (string, bool) {
+	if input.Ticket.Reviewer != "" {
+		return shellQuoteCommandValue(string(input.Ticket.Reviewer)), false
+	}
+	return `"$TRACKER_REVIEWER"`, true
+}
+
+func shellQuoteCommandValue(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func providerLabel(provider string) string {

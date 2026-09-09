@@ -52,8 +52,9 @@ gets you the same board in a browser.`,
   tracker project create APP "My App"
   tracker ticket create --project APP --title "Ship login page" --type task --actor human:owner
   tracker board`,
-		SilenceErrors: true,
-		SilenceUsage:  true,
+		SilenceErrors:     true,
+		SilenceUsage:      true,
+		PersistentPreRunE: resolveMutationActor,
 	}
 	root.PersistentFlags().Bool("plain", false, "Disable terminal styling and print plain text output")
 
@@ -589,7 +590,7 @@ func newTicketCommand() *cobra.Command {
 	create.PreRunE = requireTicketTypeOrTemplate
 	cmd.AddCommand(create)
 
-	view := &cobra.Command{Use: "view <ID>", Aliases: []string{"show"}, Args: cobra.ExactArgs(1), Short: "View ticket", RunE: runTicketView}
+	view := &cobra.Command{Use: "view <ID>", Aliases: []string{"show"}, Args: cobra.ExactArgs(1), Short: "View ticket (alias: show)", RunE: runTicketView}
 	addReadOutputFlags(view, &outputFlags{})
 	cmd.AddCommand(view)
 
@@ -944,8 +945,36 @@ func addReadOutputFlags(cmd *cobra.Command, flags *outputFlags) {
 }
 
 func addMutationFlags(cmd *cobra.Command, flags *mutationFlags) {
-	cmd.Flags().StringVar(&flags.Actor, "actor", flags.Actor, "Mutation actor (e.g. human:owner)")
+	cmd.Flags().StringVar(&flags.Actor, "actor", "", "Mutation actor; resolves from --actor, TRACKER_ACTOR, or actor.default")
 	cmd.Flags().StringVar(&flags.Reason, "reason", "", "Reason for change; required by security/protected mutations and recommended for all writes")
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations["atlas.resolve-actor"] = "true"
+}
+
+func resolveMutationActor(cmd *cobra.Command, _ []string) error {
+	if cmd.Annotations["atlas.resolve-actor"] != "true" {
+		return nil
+	}
+	root, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	root, err = service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return err
+	}
+	if err := requireInitializedWorkspace(root); err != nil {
+		return err
+	}
+	raw, _ := cmd.Flags().GetString("actor")
+	queries := service.QueryService{Root: root}
+	actor, err := queries.ResolveActor(cmd.Context(), contracts.Actor(strings.TrimSpace(raw)))
+	if err != nil {
+		return apperr.Wrap(apperr.CodeInvalidInput, err, "resolve mutation actor: %v", err)
+	}
+	return cmd.Flags().Set("actor", string(actor))
 }
 
 func requireKnownSubcommand(cmd *cobra.Command, args []string) error {
@@ -1024,7 +1053,6 @@ func warnSecretLikeContent(cmd *cobra.Command, fields ...string) {
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "warning: ticket text looks like it may contain secrets (%s); prefer env vars or a secret store — ticket markdown and events are not confidential storage\n", strings.Join(labels, ", "))
 }
-
 
 func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	ctx := commandContext(cmd)
@@ -1199,7 +1227,7 @@ func runTicketView(cmd *cobra.Command, args []string) error {
 	}
 	effectiveReviewer := detail.EffectiveReviewer
 	rawMD += fmt.Sprintf("\n## Review\n\n- Reviewer: %s\n- Effective Reviewer: %s\n- Board Status: %s\n", emptyActorLabel(detail.Ticket.Reviewer), emptyActorLabel(effectiveReviewer), detail.BoardStatus)
-	pretty := fmt.Sprintf("%s [%s/%s] %s reviewer=%s effective_reviewer=%s open_gates=%d change_ready=%s mentions=%d", render.SanitizeDisplayLine(detail.Ticket.ID), detail.Ticket.Status, detail.BoardStatus, render.SanitizeDisplayLine(detail.Ticket.Title), emptyActorLabel(detail.Ticket.Reviewer), emptyActorLabel(effectiveReviewer), len(detail.Ticket.OpenGateIDs), detail.Ticket.ChangeReadyState, len(detail.Mentions))
+	pretty := fmt.Sprintf("%s [%s/%s] %s assignee=%s reviewer=%s effective_reviewer=%s open_gates=%d change_ready=%s mentions=%d", render.SanitizeDisplayLine(detail.Ticket.ID), detail.Ticket.Status, detail.BoardStatus, render.SanitizeDisplayLine(detail.Ticket.Title), emptyActorLabel(detail.Ticket.Assignee), emptyActorLabel(detail.Ticket.Reviewer), emptyActorLabel(effectiveReviewer), len(detail.Ticket.OpenGateIDs), detail.Ticket.ChangeReadyState, len(detail.Mentions))
 	payload := map[string]any{"ticket": detail.Ticket, "board_status": detail.BoardStatus, "comments": detail.Comments, "mentions": detail.Mentions, "gates": detail.Gates, "changes": detail.Changes, "checks": detail.Checks, "effective_policy": detail.EffectivePolicy, "effective_reviewer": effectiveReviewer}
 	return writeCommandOutput(cmd, payload, rawMD, pretty)
 }
@@ -2258,7 +2286,11 @@ func boardMarkdown(title string, board contracts.BoardView, columns []contracts.
 			if typeBadge != "" {
 				typeBadge += " "
 			}
-			markdown += fmt.Sprintf("- %s %s%s\n", render.SanitizeDisplayLine(ticket.ID), typeBadge, render.SanitizeDisplayLine(ticket.Title))
+			assignee := ""
+			if ticket.Assignee != "" {
+				assignee = fmt.Sprintf(" assignee=%s", render.SanitizeDisplayLine(string(ticket.Assignee)))
+			}
+			markdown += fmt.Sprintf("- %s %s%s%s\n", render.SanitizeDisplayLine(ticket.ID), typeBadge, render.SanitizeDisplayLine(ticket.Title), assignee)
 		}
 	}
 	return markdown
@@ -3439,6 +3471,7 @@ func orderedBoardStatuses() []contracts.Status {
 		contracts.StatusInReview,
 		contracts.StatusBlocked,
 		contracts.StatusDone,
+		contracts.StatusCanceled,
 	}
 }
 

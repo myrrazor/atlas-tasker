@@ -212,6 +212,72 @@ func TestGoalBriefAndManifestSupportRunTargets(t *testing.T) {
 	}
 }
 
+func TestGoalBriefUsesRunWorkerAndEffectiveReviewerIdentities(t *testing.T) {
+	ctx, actions, ticket := newGovernanceHarness(t)
+	ticket.Assignee = contracts.Actor("agent:assigned-builder")
+	ticket.Reviewer = contracts.Actor("agent:reviewer-1")
+	ticket.Policy.CompletionMode = contracts.CompletionModeReviewGate
+	if err := actions.Tickets.UpdateTicket(ctx, ticket); err != nil {
+		t.Fatalf("update ticket: %v", err)
+	}
+	run := contracts.RunSnapshot{
+		RunID:         "RUN-IDENTITY",
+		TicketID:      ticket.ID,
+		Project:       ticket.Project,
+		AgentID:       "run-builder",
+		Provider:      contracts.AgentProviderCodex,
+		Status:        contracts.RunStatusActive,
+		Kind:          contracts.RunKindWork,
+		CreatedAt:     defaultTestTime(),
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := actions.Runs.SaveRun(ctx, run); err != nil {
+		t.Fatalf("save run: %v", err)
+	}
+	brief, err := actions.GoalBrief(ctx, run.RunID)
+	if err != nil {
+		t.Fatalf("goal brief: %v", err)
+	}
+	commands := goalSectionText(brief.Brief.Sections, "Suggested Commands")
+	for _, want := range []string{
+		"tracker ticket claim " + ticket.ID + " --actor 'agent:run-builder' --reason \"start work\"",
+		"--next-actor 'agent:reviewer-1'",
+		"the worker requests review; the reviewer approves separately",
+		"tracker ticket approve " + ticket.ID + " --actor 'agent:reviewer-1'",
+		"reviewer approval completes the ticket in review_gate mode",
+		"tracker ticket view " + ticket.ID + " --json",
+	} {
+		if !strings.Contains(commands, want) {
+			t.Fatalf("suggested commands missing %q:\n%s", want, commands)
+		}
+	}
+	if strings.Contains(commands, "agent:assigned-builder") || strings.Contains(commands, "<actor>") || strings.Contains(commands, "<reviewer>") || strings.Contains(commands, "tracker ticket complete") {
+		t.Fatalf("run identity should override the assignee without literal placeholders:\n%s", commands)
+	}
+}
+
+func TestGoalBriefRequiresExplicitIdentityWhenTicketIsUnassigned(t *testing.T) {
+	ctx, actions, ticket := newGovernanceHarness(t)
+	brief, err := actions.GoalBrief(ctx, ticket.ID)
+	if err != nil {
+		t.Fatalf("goal brief: %v", err)
+	}
+	commands := goalSectionText(brief.Brief.Sections, "Suggested Commands")
+	for _, want := range []string{
+		"set TRACKER_ACTOR to the valid",
+		`--actor "$TRACKER_ACTOR"`,
+		"set TRACKER_REVIEWER to the valid reviewer identity",
+		`--reviewer "$TRACKER_REVIEWER"`,
+	} {
+		if !strings.Contains(commands, want) {
+			t.Fatalf("suggested commands missing %q:\n%s", want, commands)
+		}
+	}
+	if strings.Contains(commands, "<actor>") || strings.Contains(commands, "<reviewer>") || strings.Contains(commands, "human:owner") {
+		t.Fatalf("an unassigned open-mode brief must not invent or impersonate an identity:\n%s", commands)
+	}
+}
+
 func TestGoalBriefFailsClosedOnCorruptContext(t *testing.T) {
 	ctx, actions, ticket := newGovernanceHarness(t)
 	if err := os.MkdirAll(storage.GatesDir(actions.Root), 0o755); err != nil {
@@ -277,6 +343,15 @@ func goalSectionContains(sections []contracts.GoalSection, heading string, text 
 		}
 	}
 	return false
+}
+
+func goalSectionText(sections []contracts.GoalSection, heading string) string {
+	for _, section := range sections {
+		if section.Heading == heading {
+			return section.Body + "\n" + strings.Join(section.Items, "\n")
+		}
+	}
+	return ""
 }
 
 func defaultTestTime() time.Time {
