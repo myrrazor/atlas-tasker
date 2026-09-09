@@ -846,3 +846,15 @@ Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. 
 7. **Confidence:** high
 8. **Revisit Trigger:** Required CI or branch policy changes, a supported platform fails the terminal harness, or hosted artifact verification fails.
 9. **Affected PRs/Files:** v1.12; .github/workflows/ci.yml, scripts/verify-mcp-workflow.py, scripts/test-install.py, examples/generate-demo-assets.sh, docs/examples, site/_tools, docs/release/public-release-gates.md, docs/release/v1.12.0-release-evidence.md, TEST_STDOUT.log.
+
+## DEC-060
+
+1. **Decision ID:** DEC-060
+2. **Date:** 2026-09-09
+3. **Question:** Which public origin and security contact should the v1.12 website preserve during publication?
+4. **Options Considered:** Keep the stale staging origin and legacy personal contact from main; copy the older deployed site wholesale; reconcile the current approved site with verified production settings and the repository security policy.
+5. **Chosen Option:** Preserve the existing Vercel project and verified `https://atlastasker.com` domain. Apply that origin to canonical/discovery metadata and the social card. Use the GitHub private vulnerability-reporting URL from SECURITY.md in the hidden security.txt file. Keep current product design, neutral screenshots, and repository routing. Link active release-status prose to the latest published release instead of hardcoding the previous stable version.
+6. **Why We Chose It:** The production-domain change existed in a separate deployment worktree and had not reached the release source. Reconciling only its verified settings avoids regressing the approved UI or reintroducing personal metadata. A hidden contact file must receive the same privacy review as visible pages.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner changes the product domain, hosting project, security-reporting channel, or release policy.
+9. **Affected PRs/Files:** v1.12 publication; site/_tools, site/.well-known/security.txt, site HTML and discovery files, assets/brand/social-card.html, site/og.png, README.md, SECURITY.md, ROADMAP.md, CHANGELOG.md, docs/installation.md, docs/getting-started.md, docs/guides/updating.md, docs/release.md, docs/release.

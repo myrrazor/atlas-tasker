@@ -46,7 +46,8 @@ tracker update --version v1.11.0 --force --yes
 ```
 
 An unstamped source build reports its current version as `dev` and can update to a published release.
-The current stable release is v1.11.0; development documentation is not release evidence for v1.12.
+The examples above pin a historical release. The [latest release page](https://github.com/myrrazor/atlas-tasker/releases/latest)
+identifies the current stable version and records its hosted verification.
 
 ## What Update Does Not Change
 

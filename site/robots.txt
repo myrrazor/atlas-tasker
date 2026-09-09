@@ -17,4 +17,4 @@ Allow: /
 User-agent: Google-Extended
 Allow: /
 
-Sitemap: https://atlas-tasker.vercel.app/sitemap.xml
+Sitemap: https://atlastasker.com/sitemap.xml

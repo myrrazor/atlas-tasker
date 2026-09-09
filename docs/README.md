@@ -1,6 +1,6 @@
 # Atlas Docs
 
-Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for the current stable release, v1.11.0.
+Start here if you are new to Atlas Tasker. This page is the public docs route map for the current source. The [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/latest) lists published builds and their verification; older version plans remain in this directory for reference.
 
 ## First Ten Minutes
 
@@ -73,7 +73,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 
 ## Release Status
 
-`v1.11.0` is the current stable release. It includes the MCP workflow loop, `tracker update`, six-target integration detection and installation, and local security hardening. Local proof and hosted release proof stay separate gates for every release. The [v1.11 release evidence](release/v1.11.0-release-evidence.md) records the hosted RC proof and owner ship decision. Read [public release gates](release/public-release-gates.md) before treating any development build or v1.12 documentation as release-ready.
+Atlas includes the MCP workflow loop, `tracker update`, six-target integration detection and installation, and local security hardening. Local proof and hosted release proof stay separate gates for every release. The [v1.12 release evidence](release/v1.12.0-release-evidence.md) records preparation and owner approval, while release pages record hosted verification. Read [public release gates](release/public-release-gates.md) before treating a development build as release-ready.
 
 ## Security Boundary
 

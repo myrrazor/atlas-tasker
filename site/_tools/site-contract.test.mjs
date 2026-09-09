@@ -39,6 +39,11 @@ const css = await readFile(new URL("styles.css", siteRoot), "utf8");
 const sitemap = await readFile(new URL("sitemap.xml", siteRoot), "utf8");
 const robots = await readFile(new URL("robots.txt", siteRoot), "utf8");
 const llms = await readFile(new URL("llms.txt", siteRoot), "utf8");
+const securityTxt = await readFile(new URL(".well-known/security.txt", siteRoot), "utf8");
+const socialCard = await readFile(
+  new URL("../../assets/brand/social-card.html", import.meta.url),
+  "utf8",
+);
 const sourceMcpTools = await readFile(new URL("../../docs/mcp-tools.md", import.meta.url), "utf8");
 const readme = await readFile(new URL("../../README.md", import.meta.url), "utf8");
 const canonicalWordmark = await readFile(
@@ -332,6 +337,27 @@ test("sitemap, robots, and llms cover every public page", () => {
   assert.deepEqual([...locations].sort(), [...expected].sort());
   assert.match(robots, new RegExp(`Sitemap: ${SITE_ORIGIN}/sitemap\\.xml`));
   for (const canonical of expected) assert.ok(llms.includes(canonical));
+});
+
+test("hidden security contact uses private GitHub vulnerability reporting", () => {
+  assert.match(
+    securityTxt,
+    /^Contact: https:\/\/github\.com\/myrrazor\/atlas-tasker\/security\/advisories\/new$/m,
+  );
+  assert.match(
+    securityTxt,
+    /^Canonical: https:\/\/atlastasker\.com\/\.well-known\/security\.txt$/m,
+  );
+  assert.match(
+    securityTxt,
+    /^Policy: https:\/\/github\.com\/myrrazor\/atlas-tasker\/blob\/main\/SECURITY\.md$/m,
+  );
+  assert.doesNotMatch(securityTxt, /mailto:|@/i);
+});
+
+test("social card names the configured production domain", () => {
+  assert.match(textContent(socialCard), /atlastasker\.com/);
+  assert.doesNotMatch(socialCard, /atlas-tasker\.vercel\.app/);
 });
 
 test("visible FAQ questions match FAQPage JSON-LD", () => {

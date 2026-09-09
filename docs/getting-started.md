@@ -9,7 +9,7 @@ go build -o tracker ./cmd/tracker
 ./tracker --help
 ```
 
-If `go build` tries to download a Go toolchain, let it finish or install the pinned Go version from `go.mod`. Hosted v1.11.0 install is also available; see [installation.md](installation.md).
+If `go build` tries to download a Go toolchain, let it finish or install the pinned Go version from `go.mod`. Prebuilt stable releases are also available; see [installation.md](installation.md).
 
 ## 2. Initialize Atlas
 
