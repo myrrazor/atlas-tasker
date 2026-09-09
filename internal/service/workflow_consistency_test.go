@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -121,6 +122,74 @@ func TestTicketApprovalEnforcesPermissionProfile(t *testing.T) {
 	}
 	if cfg, err := config.Load(root); err != nil || cfg.Workflow.CompletionMode != contracts.CompletionModeOpen {
 		t.Fatalf("test must independently exercise permissions under open completion: %#v %v", cfg, err)
+	}
+}
+
+func TestReviewApprovalRequiresCompletionPermissionOnlyWhenCompleting(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		mode       contracts.CompletionMode
+		deny       bool
+		wantStatus contracts.Status
+	}{
+		{"review gate denied", contracts.CompletionModeReviewGate, true, contracts.StatusInReview},
+		{"review gate allowed", contracts.CompletionModeReviewGate, false, contracts.StatusDone},
+		{"open approval does not complete", contracts.CompletionModeOpen, true, contracts.StatusInReview},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root, ctx, actions, _, tickets, now := setupScheduleTest(t, nil)
+			cfg, err := config.Load(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.Workflow.CompletionMode = test.mode
+			if err := config.Save(root, cfg); err != nil {
+				t.Fatal(err)
+			}
+			profile := contracts.PermissionProfile{
+				ProfileID: "review-only", DisplayName: "Reviewer permissions", Agents: []string{"builder-1"},
+				AllowActions:  []contracts.PermissionAction{contracts.PermissionActionGateApprove, contracts.PermissionActionTicketComplete},
+				SchemaVersion: contracts.CurrentSchemaVersion,
+			}
+			if test.deny {
+				profile.DenyActions = []contracts.PermissionAction{contracts.PermissionActionTicketComplete}
+			}
+			if _, err := actions.SavePermissionProfile(ctx, profile, "human:owner", "configure reviewer authority"); err != nil {
+				t.Fatal(err)
+			}
+			ticket := scheduleTestTicket("APP-1", contracts.StatusInReview, now)
+			ticket.Assignee, ticket.Reviewer = "agent:worker-2", "agent:builder-1"
+			ticket.ReviewState = contracts.ReviewStatePending
+			if err := tickets.CreateTicket(ctx, ticket); err != nil {
+				t.Fatal(err)
+			}
+			before, err := tickets.GetTicket(ctx, ticket.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			eventsBefore, err := actions.Events.StreamEvents(ctx, ticket.Project, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, approvalErr := actions.ApproveTicket(ctx, ticket.ID, ticket.Reviewer, "review passed")
+			after, err := tickets.GetTicket(ctx, ticket.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.mode == contracts.CompletionModeReviewGate && test.deny {
+				if apperr.CodeOf(approvalErr) != apperr.CodePermissionDenied {
+					t.Fatalf("approval must enforce completion permission: %v", approvalErr)
+				}
+				eventsAfter, err := actions.Events.StreamEvents(ctx, ticket.Project, 0)
+				if err != nil || !reflect.DeepEqual(before, after) || !reflect.DeepEqual(eventsBefore, eventsAfter) {
+					t.Fatalf("denied completion mutated ticket or events: before=%#v after=%#v err=%v", before, after, err)
+				}
+				return
+			}
+			if approvalErr != nil || after.Status != test.wantStatus || after.ReviewState != contracts.ReviewStateApproved {
+				t.Fatalf("permitted approval failed: ticket=%#v err=%v", after, approvalErr)
+			}
+		})
 	}
 }
 
