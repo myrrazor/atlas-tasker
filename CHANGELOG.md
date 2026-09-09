@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `tracker integrations detect` and interactive `tracker integrations install` discover local coding agents and let you checkbox-select which integrations to write; `tracker init --integrations` / `--skip-integrations` control the post-init prompt.
 - Added `tracker update` for production self-updates: check/dry-run/apply against GitHub releases with checksum verification, optional `gh attestation verify`, and atomic binary replace.
 - MCP workflow profile covers the real agent loop: ticket create/assign/link/unlink/approve/reject/complete, agent create/edit/enable/disable, team apply, goal brief, and wake-up list/view/ack. `atlas.ticket.complete` is a normal workflow write (no operation-approval token); provider merge/sync/archive tools stay high-impact.
 - MCP stdio accepts both newline-delimited JSON-RPC and LSP-style `Content-Length` frames.
