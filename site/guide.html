@@ -80,7 +80,7 @@
       <section class="shell">
         <h2>2 · Minutes to a working board</h2>
         <p><code>tracker init</code> sets up the workspace in your repo. <code>tracker project create APP "My App"</code> makes a project; projects group tickets and get their own board.</p>
-        <p><code>tracker ticket create --project APP --title "Ship first feature" --type task --actor human:owner --reason "first ticket"</code> creates the first ticket. Every write names an <strong>actor</strong> and a <strong>reason</strong>; that pair is the audit trail agents and reviewers read later.</p>
+        <p><code>tracker ticket create --project APP --title "Ship first feature" --type task --actor human:owner --reason "first ticket"</code> creates the first ticket. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code> and fail before writing if none is set. Include a reason so agents and reviewers can understand why the change happened.</p>
         <p><code>tracker ticket move APP-1 ready --actor human:owner --reason "groomed"</code>, then <code>tracker board</code> for the terminal view, <code>tracker tui</code> for the full-screen one, or <code>tracker web serve --open</code> for the <a href="docs/web-board.html">local kanban board</a>.</p>
       </section>
       <section class="shell">

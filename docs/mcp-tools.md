@@ -110,4 +110,8 @@ Columns:
 
 `atlas.ticket.request_review` accepts `reviewer` for parity with `tracker ticket request-review --reviewer`. `atlas.ticket.move`, `atlas.ticket.request_review`, `atlas.ticket.approve`, and `atlas.ticket.complete` accept `override_deps` for owner-only dependency override. The override requires `actor: "human:owner"` and a non-empty reason, and Atlas records the unresolved blockers in the resulting mutation payload.
 
+In `review_gate` mode, `atlas.ticket.approve` returns the ticket already moved to `done`; callers
+must not follow it with `atlas.ticket.complete`. Other completion modes leave the approved ticket
+in `in_review` until an authorized completion call.
+
 MCP-first agent loops should use `--tool-profile workflow`. That profile covers project and ticket creation, ticket edit, priority, labels, assign, link, claim, heartbeat, release, move, comment, request review, approve, reject, complete, agent/team setup, schedules, evidence, handoffs, and wake-up ack without a high-impact approval token. Run dispatch plus change creation and change/check synchronization require `delivery`. Provider review/merge and sync push/pull, bundle/import apply, archive apply/restore, compact, worktree cleanup, and gate waiver stay high-impact.

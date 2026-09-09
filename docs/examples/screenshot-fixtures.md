@@ -26,7 +26,9 @@ cd /tmp/atlas-web-demo
 
 Open the authenticated loopback URL printed by the server. Keep that session URL
 and token out of public files. Capture `/`, `/board?ticket=APP-4`, and `/schedule`
-at 1440 × 900, then the board and schedule at 390 × 844. Save the captures to
+at 1440 × 900, then `/board` (without an open ticket) and the schedule at
+390 × 844. Set the phone viewport before navigating so filters start collapsed.
+Wait for fonts and drawer transitions to settle before capturing. Save captures to
 `docs/assets/web-*.png`; encode the desktop board as `site/assets/web-board.webp`.
 Use actual rendered UI and inspect every capture for private names, paths, and tokens.
 

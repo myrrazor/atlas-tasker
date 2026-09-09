@@ -321,3 +321,427 @@ exit_code=0
 --- live web and index proof ---
 {"browser": {"assigned_backlog": "APP-1 agent:builder-1", "cli_confirms_canceled": ["APP-7", "APP-8"], "cli_confirms_done": ["APP-6"], "console_scope": "shared daemon console is not tab-scoped; not used as a clean-console assertion", "move_form_to_canceled": "passed", "own_page_static_resources": "all six HTTP 200", "phone_drawer_width": 390, "phone_page_horizontal_overflow": false, "raw_card_status": "canceled", "visible_assignee": true}, "candidate_version": "v1.12.0-workflow-fixes", "captures": {"board-desktop.png": {"height": 900, "sha256": "5a54579c79d938653d9967c2214cae2e3090710113c9e26db03f49c9f5603d49", "width": 1440}, "board-mobile.png": {"height": 844, "sha256": "c975d4f91f8f392c6d9773c4b8260cc7b89ec0c2b6ef36b6a3b3928c3cc3a80a", "width": 390}}, "go_version": "go1.26.6", "live_index": {"fixed_build": {"automatic_rebuild_with_web_open": true, "binary": "tracker-fixed", "existing_web_handle_sees_repair": true, "explicit_reindex_with_web_open": true, "result": "pass"}, "released_build": {"automatic_rebuild_with_web_open": true, "binary": "tracker-before", "existing_web_handle_sees_repair": true, "explicit_reindex_with_web_open": true, "result": "pass"}}, "platform": "darwin/arm64", "publication": "local candidate only", "review": {"round_1_findings": 2, "round_2_remaining_findings": 0, "rounds": 2}, "security": {"all_local_refs_scan": "one fileToken finding on unrelated unmerged local design branches; no candidate ancestor or file affected", "candidate_ancestry_secret_scan": "passed", "candidate_file_export_secret_scan": "passed", "imported_package_vulnerabilities": 0, "reachable_vulnerabilities": 0, "unreached_module_vulnerabilities": 2}, "source_base": "433138300c49eaa3731822664f0d5c0fded0d397", "verified_at_utc": "2026-09-09T20:19:08.480149+00:00"}
 exit_code=0
+
+Atlas v1.13.0 PR and stable preparation
+UTC: 2026-09-09T21:09:55.262918+00:00
+
+--- full Go suite ---
+$ go test -count=1 ./...
+?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/apperr	0.268s
+?   	github.com/myrrazor/atlas-tasker/internal/buildinfo	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	25.446s
+ok  	github.com/myrrazor/atlas-tasker/internal/config	0.356s
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.159s
+ok  	github.com/myrrazor/atlas-tasker/internal/domain	0.147s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations	0.186s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp	0.462s
+ok  	github.com/myrrazor/atlas-tasker/internal/render	0.237s
+ok  	github.com/myrrazor/atlas-tasker/internal/service	6.534s
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	0.169s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage	0.142s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	0.184s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	0.171s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	0.341s
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	0.181s
+ok  	github.com/myrrazor/atlas-tasker/internal/theme	0.147s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	2.092s
+ok  	github.com/myrrazor/atlas-tasker/internal/update	0.217s
+ok  	github.com/myrrazor/atlas-tasker/internal/web	6.311s
+exit_code=0
+
+--- go vet ---
+$ go vet ./...
+exit_code=0
+
+--- web and public-site contracts ---
+$ node --test internal/web/testdata/refresh_board.test.mjs site/_tools/site-contract.test.mjs site/_tools/sync-site-origin.test.mjs
+✔ a successful refresh preserves the move confirmation without retrying (2.234292ms)
+✔ an expired session shows recovery guidance without replacing the board (0.366416ms)
+✔ a transient failure retries and keeps the move confirmation after recovery (2.102708ms)
+✔ index.html satisfies the public-page SEO contract (3.705625ms)
+✔ cli.html satisfies the public-page SEO contract (0.396583ms)
+✔ mcp.html satisfies the public-page SEO contract (1.52525ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.360666ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.341709ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.308959ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.282375ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.274166ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.342125ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.456375ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.301083ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.227709ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.2245ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.213458ms)
+✔ changelog.html satisfies the public-page SEO contract (0.238166ms)
+✔ guide.html satisfies the public-page SEO contract (0.154917ms)
+✔ privacy.html satisfies the public-page SEO contract (0.157375ms)
+✔ terms.html satisfies the public-page SEO contract (0.1475ms)
+✔ page titles are unique (0.365417ms)
+✔ internal page links and fragments resolve (7.264583ms)
+✔ agent integration tabs expose all six targets with valid relationships (0.887708ms)
+✔ MCP tool page covers every source workflow tool (0.647125ms)
+✖ public workflow guidance matches the v1.13 candidate contracts (2.041041ms)
+✔ README and site wordmarks match the canonical application wordmark (0.130209ms)
+✔ self-hosted fonts use font-display swap (0.219833ms)
+✔ OG image is a 1200 by 630 PNG (5.071208ms)
+✔ sitemap, robots, and llms cover every public page (0.205125ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.098ms)
+✔ social card names the configured production domain (0.081916ms)
+✔ visible FAQ questions match FAQPage JSON-LD (13.763375ms)
+✔ website notices explain actual use without unresolved legal templates (0.255458ms)
+✔ public site omits personal author and direct contact metadata (1.22975ms)
+✔ publishes the configured Atlas production domain (0.588958ms)
+✔ keeps every public SEO output on the same origin (0.588583ms)
+✔ normalizes a canonical origin (0.208875ms)
+✔ reads the current origin from the canonical link (0.085416ms)
+✔ replaces every rendered origin reference (0.049458ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 39
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 137.656708
+
+✖ failing tests:
+
+test at site/_tools/site-contract.test.mjs:308:1
+✖ public workflow guidance matches the v1.13 candidate contracts (2.041041ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /approval itself moves the ticket to Done/i. Input:
+
+  `Atlas Tasker for AI agents: MCP and JSON { "@context": "https://schema.org", "@type": "WebPage", "name": "Atlas Tasker for AI agents", "description": "Connect Atlas Tasker to coding agents with local stdio MCP, four scoped tool profiles, workspace pinning, installed guidance, and human-approved risky actions.", "url": "https://atlastasker.com/mcp.html", "isPartOf": { "@type": "WebSite", "name": "Atlas Tasker", "url": "https://atlastasker.com/" } } Skip to content CLI For agents Docs Install GitHub ↗ For AI agents Connect your agent to the work. Atlas gives coding agents a typed local tool surface over the same tickets, dependencies, runs, evidence, and gates that humans see. Start with read access, open the workflow profile for real ticket work, and keep high-impact operations behind a separate human approval. Connect your agent Explore MCP tools Two doors in A JSON CLI and a typed MCP server. Both doors call the same service layer, so neither is a second source of truth. Shell-capable agents get the full CLI. Clients without a shell get MCP. CLI + --json Commands support a machine-readable JSON envelope, errors go to stderr as JSON, and exit codes 0 through 7 are stable. Non-interactive commands do not stop for input. The CLI page has the contract. MCP server tracker mcp serve exposes typed tools over local stdio. There is no HTTP listener or remote client. Every mutation still runs Atlas permission checks, the write lock, and event metadata. Self-describing Every tool declares its underlying_atlas_action and a json_schema_hash, and calls are validated against the schema before they touch the tracker. Unknown arguments are rejected at the boundary. Context budgets Responses are capped by default at 128 KB, 50 items per list, and a rough 4,000-token estimate. Paged tools take limit and cursor, and oversized results come back truncated with a hint to narrow the call. Tool profiles Four profiles, one explicit boundary. Start the server with the smallest profile that does the job. Each profile includes the tools below it. The counts here match the current source; tracker mcp tools remains the live authority for an installed binary. read 41 tools · the default Boards, queues, tickets, schedules, agents, goals, history, runs, evidence, handoffs, sync state, and plan or dry-run tools. No workflow mutations. workflow +32 tools · 73 total The complete agent loop: create projects and tickets, edit, prioritize, label, assign, link, claim, heartbeat, move, comment, review, approve, reject, complete, manage agents and teams, schedule, add evidence, hand off, and acknowledge wake-ups. Ticket and event writes require an actor and reason; key/name-only project creation is the metadata-container exception. delivery +4 tools · 77 total Dispatch a run, create a change, and sync provider-backed change and check status into the tracker. admin +2 delivery tools · 79 total; +9 admin tools · 88 total Provider review and merge, gate waivers, sync push and pull, import, archive, compact, and worktree cleanup. Requires the danger flag and a one-time human approval per call. See the tool groups and the complete workflow profile, or inspect your installed binary with tracker mcp tools --json --tool-profile workflow. The safety model Routine work stays routine. Risky work stays explicit. Workflow writes are attributed and policy checked. Provider, sync, archive, import, compact, and cleanup operations stay in a separate high-impact tier. Hidden by default High-impact tools are not just denied, they are invisible unless the server was started with --dangerously-allow-high-impact-tools and a profile that includes them. Agents cannot ask for what they cannot see. One-time approvals Each high-impact call needs an approval a human created outside MCP with tracker mcp approve-operation, scoped to one operation, one target, one actor, with a TTL. The call must echo the approval id and its exact confirm_text. Single use Approvals are consumed on execution and never replayed. Expired, mismatched, or already-used approvals fail closed, and Atlas rechecks normal policy immediately before running the action. Attributed writes Every mutation names an actor and a reason, which land in the append-only event log. When a ticket moved, you can always answer who, when, and why. Audited denials Denied high-impact attempts are recorded to a local security audit log under.tracker/runtime/mcp/, so a curious agent leaves a paper trail instead of a mystery. Boring config Local stdio only, pinned to an absolute binary path. No sh -c, no npx, no curl pipes, no config snippets from untrusted repos. The security docs spell out the rules. Connect your agent Install, teach, connect, verify. Agent guidance and MCP registration solve different problems. Guidance teaches the Atlas workflow inside a repository. MCP registration gives a compatible client typed tools. Use either surface or both. 01 Install and initialize The verified release installer installs the binary. In an interactive terminal it may offer optional agent setup for the current directory; the prompt defaults to No. Unattended installs and SKIP_INTEGRATIONS=1 skip it. 02 Teach the repository tracker init offers detected integrations in an interactive terminal. Or run tracker integrations install later and choose among all six targets. 03 Register MCP For MCP clients, register an absolute tracker path and pin the workspace. Choose workflow when the agent is expected to work tickets. A fresh existing directory can opt into initialization with --init-if-missing. 04 Verify the surface Open the client’s MCP status, then ask for atlas.agent.available or inspect the live profile with tracker mcp tools. Install repository guidance interactive or explicit Copy tracker integrations detect tracker integrations install # for scripts and CI tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic Claude Code Codex Cursor OpenClaw Grok Generic tracker integrations install claude Adds an Atlas block to CLAUDE.md, a project skill under.claude/skills/atlas-worker/, three commands under.claude/commands/, and a generated guide under.tracker/integrations/. tracker integrations install codex Adds a managed Atlas block to AGENTS.md, a project skill under.codex/skills/atlas-worker/, command templates, and a generated guide. Existing non-Atlas instructions stay in place. tracker integrations install cursor Adds a separately marked Atlas block to AGENTS.md, plus the worker skill and commands under.cursor/skills/atlas-worker/. tracker integrations install openclaw Adds its own block to AGENTS.md and a repository skill under.agents/skills/atlas-worker/. --global is an explicit OpenClaw-only option for a shared home-directory skill. tracker integrations install grok Adds a distinct Atlas block to AGENTS.md and writes the portable worker skill under.tracker/integrations/atlas-agent-skill/. tracker integrations install generic Writes portable instructions, commands, a generated guide, and an atlas-worker skill under.tracker/integrations/, with a managed block in AGENTS.md. Re-running is idempotent: Atlas updates only its managed blocks and generated files. Whole-file replacement remains opt-in behind --force. Register the MCP server These examples use workflow because an agent doing ticket work needs workflow writes. Use read for inspection-only sessions. The binary path and workspace path must be absolute. Claude Code · user scope Copy claude mcp add --transport stdio --scope user atlas -- /absolute/path/to/tracker mcp serve --workspace /absolute/path/to/repo --tool-profile workflow Codex Copy codex mcp add atlas -- /absolute/path/to/tracker mcp serve --workspace /absolute/path/to/repo --tool-profile workflow Using another client? Configure a local stdio command with the same four parts: absolute binary path, mcp serve, absolute --workspace, and a chosen --tool-profile. Open the full MCP setup guide → Run the first tool loop The working loop Call atlas.agent.available, then use atlas.ticket.claim, atlas.ticket.move, and atlas.ticket.comment. Request review with atlas.ticket.request_review. Under review_gate, the required reviewer approves to move the ticket directly to Done, or rejects it back to In Progress. Use atlas.ticket.complete for open-mode work or policies whose separate gates have passed; it cannot bypass review. New workflow coverage The profile also creates project containers and tickets, edits priority and labels, renews active leases, links dependencies, manages agent profiles, applies team presets, sets schedules, adds evidence, creates handoffs, and acknowledges wake-ups. See every workflow tool. Reason codes When nothing is available, tracker agent pending says why with stable codes: dependency_blocked, waiting_for_review, waiting_for_owner, not_ready_status, claimed_by_other, policy_blocked, agent_at_capacity, missing_capability. No guessing, no polling loops that spiral. A backlog ticket whose blockers are all done is never not_ready_status: when the last blocker of an agent-assigned ticket completes, Atlas promotes it to ready itself, and an unassigned one shows up in available as a claimable promote action (a human-assigned one surfaces in that human's queue instead). Wrong moves fail fast Illegal status transitions exit 4. Claiming a ticket someone else holds exits 4. That is the workflow enforcing itself, and the agent simply picks the next available item. Follow MCP setup Learn the agent workflow One boundary The web board is for humans. The browser board mints a random session token per process and never persists it. There is no API key and no headless mode, on purpose. Agents get the CLI and MCP, which are better interfaces for them anyway. Point people at the board and agents at the tools, and everyone works the same tickets. Agent workflow docs MCP security model Atlas Tasker · MIT Home Docs CLI Changelog GitHub Privacy Terms const status = document.querySelector(".copy-status"); do`... 1970 more characters
+
+      at TestContext.<anonymous> (file://<TASK_ROOT>/worktree/site/_tools/site-contract.test.mjs:332:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: `Atlas Tasker for AI agents: MCP and JSON { "@context": "https://schema.org", "@type": "WebPage", "name": "Atlas Tasker for AI agents", "description": "Connect Atlas Tasker to coding agents with local stdio MCP, four scoped tool profiles, workspace pinning, installed guidance, and human-approved risky actions.", "url": "https://atlastasker.com/mcp.html", "isPartOf": { "@type": "WebSite", "name": "Atlas Tasker", "url": "https://atlastasker.com/" } } Skip to content CLI For agents Docs Install GitHub ↗ For AI agents Connect your agent to the work. Atlas gives coding agents a typed local tool surface over the same tickets, dependencies, runs, evidence, and gates that humans see. Start with read access, open the workflow profile for real ticket work, and keep high-impact operations behind a separate human approval. Connect your agent Explore MCP tools Two doors in A JSON CLI and a typed MCP server. Both doors call the same service layer, so neither is a second source of truth. Shell-capable agents get the full CLI. Clients without a shell get MCP. CLI + --json Commands support a machine-readable JSON envelope, errors go to stderr as JSON, and exit codes 0 through 7 are stable. Non-interactive commands do not stop for input. The CLI page has the contract. MCP server tracker mcp serve exposes typed tools over local stdio. There is no HTTP listener or remote client. Every mutation still runs Atlas permission checks, the write lock, and event metadata. Self-describing Every tool declares its underlying_atlas_action and a json_schema_hash, and calls are validated against the schema before they touch the tracker. Unknown arguments are rejected at the boundary. Context budgets Responses are capped by default at 128 KB, 50 items per list, and a rough 4,000-token estimate. Paged tools take limit and cursor, and oversized results come back truncated with a hint to narrow the call. Tool profiles Four profiles, one explicit boundary. Start the server with the smallest profile that does the job. Each profile includes the tools below it. The counts here match the current source; tracker mcp tools remains the live authority for an installed binary. read 41 tools · the default Boards, queues, tickets, schedules, agents, goals, history, runs, evidence, handoffs, sync state, and plan or dry-run tools. No workflow mutations. workflow +32 tools · 73 total The complete agent loop: create projects and tickets, edit, prioritize, label, assign, link, claim, heartbeat, move, comment, review, approve, reject, complete, manage agents and teams, schedule, add evidence, hand off, and acknowledge wake-ups. Ticket and event writes require an actor and reason; key/name-only project creation is the metadata-container exception. delivery +4 tools · 77 total Dispatch a run, create a change, and sync provider-backed change and check status into the tracker. admin +2 delivery tools · 79 total; +9 admin tools · 88 total Provider review and merge, gate waivers, sync push and pull, import, archive, compact, and worktree cleanup. Requires the danger flag and a one-time human approval per call. See the tool groups and the complete workflow profile, or inspect your installed binary with tracker mcp tools --json --tool-profile workflow. The safety model Routine work stays routine. Risky work stays explicit. Workflow writes are attributed and policy checked. Provider, sync, archive, import, compact, and cleanup operations stay in a separate high-impact tier. Hidden by default High-impact tools are not just denied, they are invisible unless the server was started with --dangerously-allow-high-impact-tools and a profile that includes them. Agents cannot ask for what they cannot see. One-time approvals Each high-impact call needs an approval a human created outside MCP with tracker mcp approve-operation, scoped to one operation, one target, one actor, with a TTL. The call must echo the approval id and its exact confirm_text. Single use Approvals are consumed on execution and never replayed. Expired, mismatched, or already-used approvals fail closed, and Atlas rechecks normal policy immediately before running the action. Attributed writes Every mutation names an actor and a reason, which land in the append-only event log. When a ticket moved, you can always answer who, when, and why. Audited denials Denied high-impact attempts are recorded to a local security audit log under.tracker/runtime/mcp/, so a curious agent leaves a paper trail instead of a mystery. Boring config Local stdio only, pinned to an absolute binary path. No sh -c, no npx, no curl pipes, no config snippets from untrusted repos. The security docs spell out the rules. Connect your agent Install, teach, connect, verify. Agent guidance and MCP registration solve different problems. Guidance teaches the Atlas workflow inside a repository. MCP registration gives a compatible client typed tools. Use either surface or both. 01 Install and initialize The verified release installer installs the binary. In an interactive terminal it may offer optional agent setup for the current directory; the prompt defaults to No. Unattended installs and SKIP_INTEGRATIONS=1 skip it. 02 Teach the repository tracker init offers detected integrations in an interactive terminal. Or run tracker integrations install later and choose among all six targets. 03 Register MCP For MCP clients, register an absolute tracker path and pin the workspace. Choose workflow when the agent is expected to work tickets. A fresh existing directory can opt into initialization with --init-if-missing. 04 Verify the surface Open the client’s MCP status, then ask for atlas.agent.available or inspect the live profile with tracker mcp tools. Install repository guidance interactive or explicit Copy tracker integrations detect tracker integrations install # for scripts and CI tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic Claude Code Codex Cursor OpenClaw Grok Generic tracker integrations install claude Adds an Atlas block to CLAUDE.md, a project skill under.claude/skills/atlas-worker/, three commands under.claude/commands/, and a generated guide under.tracker/integrations/. tracker integrations install codex Adds a managed Atlas block to AGENTS.md, a project skill under.codex/skills/atlas-worker/, command templates, and a generated guide. Existing non-Atlas instructions stay in place. tracker integrations install cursor Adds a separately marked Atlas block to AGENTS.md, plus the worker skill and commands under.cursor/skills/atlas-worker/. tracker integrations install openclaw Adds its own block to AGENTS.md and a repository skill under.agents/skills/atlas-worker/. --global is an explicit OpenClaw-only option for a shared home-directory skill. tracker integrations install grok Adds a distinct Atlas block to AGENTS.md and writes the portable worker skill under.tracker/integrations/atlas-agent-skill/. tracker integrations install generic Writes portable instructions, commands, a generated guide, and an atlas-worker skill under.tracker/integrations/, with a managed block in AGENTS.md. Re-running is idempotent: Atlas updates only its managed blocks and generated files. Whole-file replacement remains opt-in behind --force. Register the MCP server These examples use workflow because an agent doing ticket work needs workflow writes. Use read for inspection-only sessions. The binary path and workspace path must be absolute. Claude Code · user scope Copy claude mcp add --transport stdio --scope user atlas -- /absolute/path/to/tracker mcp serve --workspace /absolute/path/to/repo --tool-profile workflow Codex Copy codex mcp add atlas -- /absolute/path/to/tracker mcp serve --workspace /absolute/path/to/repo --tool-profile workflow Using another client? Configure a local stdio command with the same four parts: absolute binary path, mcp serve, absolute --workspace, and a chosen --tool-profile. Open the full MCP setup guide → Run the first tool loop The working loop Call atlas.agent.available, then use atlas.ticket.claim, atlas.ticket.move, and atlas.ticket.comment. Request review with atlas.ticket.request_review. Under review_gate, the required reviewer approves to move the ticket directly to Done, or rejects it back to In Progress. Use atlas.ticket.complete for open-mode work or policies whose separate gates have passed; it cannot bypass review. New workflow coverage The profile also creates project containers and tickets, edits priority and labels, renews active leases, links dependencies, manages agent profiles, applies team presets, sets schedules, adds evidence, creates handoffs, and acknowledges wake-ups. See every workflow tool. Reason codes When nothing is available, tracker agent pending says why with stable codes: dependency_blocked, waiting_for_review, waiting_for_owner, not_ready_status, claimed_by_other, policy_blocked, agent_at_capacity, missing_capability. No guessing, no polling loops that spiral. A backlog ticket whose blockers are all done is never not_ready_status: when the last blocker of an agent-assigned ticket completes, Atlas promotes it to ready itself, and an unassigned one shows up in available as a claimable promote action (a human-assigned one surfaces in that human's queue instead). Wrong moves fail fast Illegal status transitions exit 4. Claiming a ticket someone else holds exits 4. That is the workflow enforcing itself, and the agent simply picks the next available item. Follow MCP setup Learn the agent workflow One boundary The web board is for humans. The browser board mints a random session token per process and never persists it. There is no API key and no headless mode, on purpose. Agents get the CLI and MCP, which are better interfaces for them anyway. Point people at the board and agents at the tools, and everyone works the same tickets. Agent workflow docs MCP security model Atlas Tasker · MIT Home Docs CLI Changelog GitHub Privacy Terms const status = document.querySelector(".copy-status"); do`... 1970 more characters,
+    expected: /approval itself moves the ticket to Done/i,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+exit_code=1
+
+--- web and public-site contracts (rerun) ---
+$ node --test internal/web/testdata/refresh_board.test.mjs site/_tools/site-contract.test.mjs site/_tools/sync-site-origin.test.mjs
+✔ a successful refresh preserves the move confirmation without retrying (2.378791ms)
+✔ an expired session shows recovery guidance without replacing the board (0.382708ms)
+✔ a transient failure retries and keeps the move confirmation after recovery (1.027666ms)
+✔ index.html satisfies the public-page SEO contract (4.290042ms)
+✔ cli.html satisfies the public-page SEO contract (0.4175ms)
+✔ mcp.html satisfies the public-page SEO contract (0.425666ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.466167ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.321ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.273125ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.238792ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.275541ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.344459ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.309208ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.424ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.249042ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.223417ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.210917ms)
+✔ changelog.html satisfies the public-page SEO contract (0.236625ms)
+✔ guide.html satisfies the public-page SEO contract (0.147708ms)
+✔ privacy.html satisfies the public-page SEO contract (0.154208ms)
+✔ terms.html satisfies the public-page SEO contract (0.143083ms)
+✔ page titles are unique (0.296084ms)
+✔ internal page links and fragments resolve (6.229ms)
+✔ agent integration tabs expose all six targets with valid relationships (0.830709ms)
+✔ MCP tool page covers every source workflow tool (1.546458ms)
+✔ public workflow guidance matches the v1.13 candidate contracts (1.236875ms)
+✔ README and site wordmarks match the canonical application wordmark (0.056917ms)
+✔ self-hosted fonts use font-display swap (0.130459ms)
+✔ OG image is a 1200 by 630 PNG (3.728084ms)
+✔ sitemap, robots, and llms cover every public page (0.18125ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.099292ms)
+✔ social card names the configured production domain (0.073708ms)
+✔ visible FAQ questions match FAQPage JSON-LD (6.347958ms)
+✔ website notices explain actual use without unresolved legal templates (0.226542ms)
+✔ public site omits personal author and direct contact metadata (1.1995ms)
+✔ publishes the configured Atlas production domain (0.643417ms)
+✔ keeps every public SEO output on the same origin (0.614958ms)
+✔ normalizes a canonical origin (0.219084ms)
+✔ reads the current origin from the canonical link (0.086791ms)
+✔ replaces every rendered origin reference (0.051416ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 129.282375
+
+exit_code=0
+
+--- web and public-site contracts (final) ---
+$ node --test internal/web/testdata/refresh_board.test.mjs site/_tools/site-contract.test.mjs site/_tools/sync-site-origin.test.mjs
+✔ a successful refresh preserves the move confirmation without retrying (2.36475ms)
+✔ an expired session shows recovery guidance without replacing the board (0.402917ms)
+✔ a transient failure retries and keeps the move confirmation after recovery (0.918875ms)
+✔ index.html satisfies the public-page SEO contract (4.40725ms)
+✔ cli.html satisfies the public-page SEO contract (0.453042ms)
+✔ mcp.html satisfies the public-page SEO contract (0.461667ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.492208ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.302708ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.266083ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.209708ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.272375ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.3145ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.283542ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.38675ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.205542ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.196375ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.2075ms)
+✔ changelog.html satisfies the public-page SEO contract (0.21ms)
+✔ guide.html satisfies the public-page SEO contract (0.140667ms)
+✔ privacy.html satisfies the public-page SEO contract (0.14975ms)
+✔ terms.html satisfies the public-page SEO contract (0.1235ms)
+✔ page titles are unique (0.250875ms)
+✔ internal page links and fragments resolve (6.762292ms)
+✔ agent integration tabs expose all six targets with valid relationships (0.843458ms)
+✔ MCP tool page covers every source workflow tool (0.635417ms)
+✔ public workflow guidance matches the v1.13 candidate contracts (2.166625ms)
+✔ README and site wordmarks match the canonical application wordmark (0.075ms)
+✔ self-hosted fonts use font-display swap (0.166166ms)
+✔ OG image is a 1200 by 630 PNG (3.782042ms)
+✔ sitemap, robots, and llms cover every public page (0.195208ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.099583ms)
+✔ social card names the configured production domain (0.083584ms)
+✔ visible FAQ questions match FAQPage JSON-LD (6.287291ms)
+✔ website notices explain actual use without unresolved legal templates (0.224416ms)
+✔ public site omits personal author and direct contact metadata (1.194208ms)
+✔ publishes the configured Atlas production domain (0.679958ms)
+✔ keeps every public SEO output on the same origin (0.689292ms)
+✔ normalizes a canonical origin (0.228666ms)
+✔ reads the current origin from the canonical link (0.091ms)
+✔ replaces every rendered origin reference (0.053167ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 123.534458
+
+exit_code=0
+
+Atlas v1.13.0 PR and stable preparation
+UTC: 2026-09-09T21:16:47.965928+00:00
+
+--- local release preflight and SBOM ---
+$ env RUN_SBOM=1 sh scripts/preflight-release.sh
+preflight_status=ready
+mode=local
+version=v1.13.0-rc1
+commit=2ca2ee62886b
+build_date=2026-09-09T21:16:48Z
+platform=darwin/arm64
+version_json=ok
+govulncheck_status=skipped
+sbom_status=generated
+sbom_output=<TASK_ROOT>/pr-release/proof/sbom-v1.13.0-rc1.cdx.json
+hosted_preflight=skipped
+message=run 'sh scripts/preflight-release.sh --hosted' when GitHub prerelease proof is available
+exit_code=0
+
+--- offline RC validation ---
+$ sh scripts/validate-rc.sh
+version_contract=ok
+docs_links=ok
+snippets=ok
+stale_versions=ok
+leakage=ok
+readme_quickstart=ok
+terminal_accessibility=ok
+mcp_stdio_workspace=ok
+cross_surface_parity=ok
+performance_version_json_ms=16 budget_ms=2000
+performance_board_json_ms=19 budget_ms=3000
+performance_dashboard_json_ms=45 budget_ms=3000
+performance_goal_brief_md_ms=18 budget_ms=3000
+performance_budgets=ok
+rc_validation=ok version=v1.13.0-rc1
+exit_code=0
+
+--- packaged release rehearsal ---
+$ sh scripts/release-rehearsal.sh
+127.0.0.1 - - [09/Sep/2026 17:16:56] "GET /checksums.txt HTTP/1.1" 200 -
+verified tracker_1.13.0-rc1_darwin_arm64.tar.gz for v1.13.0-rc1
+127.0.0.1 - - [09/Sep/2026 17:16:56] "GET /tracker_1.13.0-rc1_darwin_arm64.tar.gz HTTP/1.1" 200 -
+127.0.0.1 - - [09/Sep/2026 17:16:56] "GET /checksums.txt HTTP/1.1" 200 -
+installed tracker v1.13.0-rc1 to <TASK_ROOT>/pr-release/rehearsal-install/tracker
+Next: run tracker init in your project to set up coding-agent guidance.
+initialized
+created project APP
+created APP-1
+moved APP-1 to ready
+saved agent builder-1
+run=run_18d3c3ab531ce388
+ticket=APP-1
+agent=builder-1
+needs_launch=false
+runtime_dir=<TASK_ROOT>/pr-release/rehearsal-work/.tracker/runtime/run_18d3c3ab531ce388
+brief=<TASK_ROOT>/pr-release/rehearsal-work/.tracker/runtime/run_18d3c3ab531ce388/brief.md
+context=<TASK_ROOT>/pr-release/rehearsal-work/.tracker/runtime/run_18d3c3ab531ce388/context.json
+codex_launch=<TASK_ROOT>/pr-release/rehearsal-work/.tracker/runtime/run_18d3c3ab531ce388/launch.codex.txt
+claude_launch=<TASK_ROOT>/pr-release/rehearsal-work/.tracker/runtime/run_18d3c3ab531ce388/launch.claude.txt
+worktree=<TASK_ROOT>/pr-release/.atlas-tasker-worktrees/rehearsal-work/app-1-run_18d3c3ab531ce388
+evidence_dir=<TASK_ROOT>/pr-release/rehearsal-work/.tracker/evidence/run_18d3c3ab531ce388
+
+created:
+- <TASK_ROOT>/pr-release/rehearsal-work/.tracker/runtime/run_18d3c3ab531ce388/brief.md
+- <TASK_ROOT>/pr-release/rehearsal-work/.tracker/runtime/run_18d3c3ab531ce388/context.json
+- <TASK_ROOT>/pr-release/rehearsal-work/.tracker/runtime/run_18d3c3ab531ce388/launch.claude.txt
+- <TASK_ROOT>/pr-release/rehearsal-work/.tracker/runtime/run_18d3c3ab531ce388/launch.codex.txt
+started run_18d3c3ab531ce388
+moved APP-1 to in_progress
+evidence evidence_eca57138a4f0ccb7
+run=run_18d3c3ab531ce388 ticket=APP-1 type=note
+actor=human:owner created_at=2026-09-09T21:16:57Z
+title=Smoke checkpoint
+
+runtime + worktree ready
+evidence evidence_0e3c288ee3c7efbb
+run=run_18d3c3ab531ce388 ticket=APP-1 type=note
+actor=human:owner created_at=2026-09-09T21:16:57Z
+title=Smoke evidence
+
+packaged rehearsal
+# Handoff handoff_7618fa074bbe06bd
+
+- Ticket: APP-1
+- Run: run_18d3c3ab531ce388
+- Actor: human:owner
+
+## Status
+
+Run `run_18d3c3ab531ce388` for ticket `APP-1`.
+
+## Evidence
+
+- evidence_eca57138a4f0ccb7
+- evidence_0e3c288ee3c7efbb
+
+## Next
+
+- Actor: agent:reviewer-1
+- Gate: review
+# Gate gate_0e204736e1f9410c
+
+- Ticket: APP-1
+- Kind: review
+- State: approved
+- Created By: human:owner
+- Run: run_18d3c3ab531ce388
+- Required Agent: agent:reviewer-1
+- Required Role: reviewer
+
+## Decision
+
+- By: agent:reviewer-1
+- Reason: packaged rehearsal
+
+## Related Runs
+
+- run_18d3c3ab531ce388
+completed run_18d3c3ab531ce388
+[tracker] ticket.review_requested APP-1
+requested review for APP-1
+[tracker] ticket.approved APP-1
+approved APP-1
+completed APP-1
+cleaned up run_18d3c3ab531ce388
+initialized
+initialized
+initialized
+release rehearsal ok: version=v1.13.0-rc1 commit=2ca2ee62886b archive=tracker_1.13.0-rc1_darwin_arm64.tar.gz install_dir=<TASK_ROOT>/pr-release/rehearsal-install work_dir=<TASK_ROOT>/pr-release/rehearsal-work git_remote=<REHEARSAL_TEMP>/sync-remote.git
+exit_code=0
+
+--- final approval permission regression ---
+$ GOMAXPROCS=2 GOFLAGS=-p=2 go test ./internal/service -run ^TestReviewApprovalRequiresCompletionPermissionOnlyWhenCompleting$ -count=1
+ok github.com/myrrazor/atlas-tasker/internal/service 0.359s
+exit_code=0
+
+--- current docs and marketing site browser proof ---
+14 affected public pages x phone/desktop = 28 page/viewport checks passed
+All 5 homepage image instances decoded successfully
+Synthetic board: separate Done/Canceled, visible assignees, settled desktop drawer, phone filters collapsed, no horizontal overflow
+See docs/release/v1.13.0-docs-site-proof.json for detailed checks and asset hashes
+exit_code=0
+
+--- final web/site contracts after homepage wording and asset refresh ---
+$ node --test internal/web/testdata/refresh_board.test.mjs site/_tools/*.test.mjs
+✔ a successful refresh preserves the move confirmation without retrying (2.353542ms)
+✔ an expired session shows recovery guidance without replacing the board (0.36025ms)
+✔ a transient failure retries and keeps the move confirmation after recovery (0.776625ms)
+✔ index.html satisfies the public-page SEO contract (2.506292ms)
+✔ cli.html satisfies the public-page SEO contract (0.51425ms)
+✔ mcp.html satisfies the public-page SEO contract (1.599084ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.575917ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.368ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.342334ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.282917ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.279083ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.343792ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.425375ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.281667ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.232458ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.242208ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.22525ms)
+✔ changelog.html satisfies the public-page SEO contract (0.224125ms)
+✔ guide.html satisfies the public-page SEO contract (0.145916ms)
+✔ privacy.html satisfies the public-page SEO contract (0.150834ms)
+✔ terms.html satisfies the public-page SEO contract (0.129125ms)
+✔ page titles are unique (0.379958ms)
+✔ internal page links and fragments resolve (6.8375ms)
+✔ agent integration tabs expose all six targets with valid relationships (0.84275ms)
+✔ MCP tool page covers every source workflow tool (0.64275ms)
+✔ public workflow guidance matches the v1.13 candidate contracts (1.217875ms)
+✔ README and site wordmarks match the canonical application wordmark (0.049292ms)
+✔ self-hosted fonts use font-display swap (0.126958ms)
+✔ OG image is a 1200 by 630 PNG (4.439083ms)
+✔ sitemap, robots, and llms cover every public page (0.233417ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.099625ms)
+✔ social card names the configured production domain (0.079792ms)
+✔ visible FAQ questions match FAQPage JSON-LD (7.188416ms)
+✔ website notices explain actual use without unresolved legal templates (0.2645ms)
+✔ public site omits personal author and direct contact metadata (1.577542ms)
+✔ publishes the configured Atlas production domain (0.628208ms)
+✔ keeps every public SEO output on the same origin (0.602375ms)
+✔ normalizes a canonical origin (0.222208ms)
+✔ reads the current origin from the canonical link (0.092ms)
+✔ replaces every rendered origin reference (0.050917ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 123.077333
+
+exit_code=0
+
+--- final candidate file secret scan ---
+$ go run github.com/zricethezav/gitleaks/v8@v8.28.0 dir <TASK_ROOT>/pr-release/candidate-export --redact --no-banner
+5:20PM INF scanned ~5442251 bytes (5.44 MB) in 748ms
+5:20PM INF no leaks found
+
+exit_code=0
+
+--- final generated examples and whitespace ---
+$ sh examples/generate-demo-assets.sh --check
+docs/examples is fresh
+$ git diff --check
+exit_code=0

@@ -639,6 +639,10 @@ Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Tick
 - `tracker ticket policy get <ID>`
 - `tracker ticket policy set <ID> [flags]`
 
+`ticket approve` records approval and, in `review_gate` mode, also moves the ticket to `done` in the
+same mutation. In `open`, `owner_gate`, and `dual_gate` modes, the approved ticket remains
+`in_review` until an actor allowed by the active completion policy runs `ticket complete`.
+
 ## Scheduled Work
 
 - `tracker schedule set <ID> --at <RFC3339> --runner <ACTOR> --actor <ACTOR> --reason <TEXT>`
@@ -905,7 +909,7 @@ Mutating commands:
 - `--actor <ACTOR>`
 - `--reason <TEXT>`
 
-For CLI mutations, an explicit `--actor` wins, followed by `TRACKER_ACTOR`, then `actor.default`.
+For tracked CLI mutations, an explicit `--actor` wins, followed by `TRACKER_ACTOR`, then `actor.default`.
 There is no implicit `human:owner` fallback. Supply `--reason` for an auditable explanation; Atlas
 requires it for security-sensitive, protected, scheduling, and other explicitly guarded actions.
 
@@ -915,7 +919,7 @@ Useful config keys:
 - `workflow.required_reviewer`
 - `actor.default`
 - `web.owner_name`
-- `web.lang` (`en`, `es`, or `id`; blank uses the browser language. The board also ships `zh`, `ja`, and `ko` catalogs — reachable from the in-page language switcher or `?lang=` — but `config set web.lang` does not accept them yet)
+- `web.lang` (`en`, `es`, `id`, `zh`, `ja`, or `ko`; blank uses the browser language)
 - `web.agent_colors.<agent>` (`claude=orange` and `codex=blue` by default; unknown color names render uncolored)
 - `notifications.terminal`
 - `notifications.file_enabled`
@@ -937,9 +941,9 @@ preserving stricter completion modes and custom reviewer overrides.
 `tracker version` prints release metadata in text form:
 
 ```text
-tracker v1.10.0
+tracker v1.13.0
 commit: abc123
-build date: 2026-08-27T04:00:00Z
+build date: 2026-09-09T12:00:00Z
 go: go1.26.6
 platform: darwin/arm64
 ```
@@ -950,9 +954,9 @@ platform: darwin/arm64
 {
   "format_version": "v1",
   "kind": "tracker_version",
-  "version": "v1.10.0",
+  "version": "v1.13.0",
   "commit": "abc123",
-  "build_date": "2026-08-27T04:00:00Z",
+  "build_date": "2026-09-09T12:00:00Z",
   "go_version": "go1.26.6",
   "platform": "darwin/arm64"
 }

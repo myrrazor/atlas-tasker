@@ -122,7 +122,7 @@
         <p>Three ideas explain most of the design. Once they click, every command makes sense.</p>
         <ul>
           <li><strong>The repo is the database.</strong> Tickets are Markdown files under <code>projects/</code>, and every change appends an event under <code>.tracker/</code>. A small disposable index keeps queries instant, rebuilds itself from the files when it is missing or behind, and <code>tracker doctor --repair</code> rebuilds it on demand. The <a href="faq.html">FAQ</a> covers the storage internals honestly.</li>
-          <li><strong>Every write is attributed.</strong> Mutations name an <code>--actor</code> and a <code>--reason</code>, and that pair lands in the audit trail. Reviewers and agents read it later to understand what happened and why.</li>
+          <li><strong>Every write is attributed.</strong> CLI mutations resolve <code>--actor</code>, <code>TRACKER_ACTOR</code>, then <code>actor.default</code>, and fail before writing if identity is missing. Reasons explain why; tracked MCP writes and protected operations require them.</li>
           <li><strong>Machines are first-class users.</strong> Commands support <code>--json</code>, exit codes are stable, and an MCP server exposes typed tools behind escalating profiles. Interactive prompts are confined to workspace and integration setup; JSON and non-TTY paths stay non-interactive. Humans get the same tracker with nicer pixels.</li>
         </ul>
 

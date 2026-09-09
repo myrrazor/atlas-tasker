@@ -181,7 +181,7 @@ args = ["mcp", "serve", "--workspace", "/absolute/path/to/repo", "--tool-profile
   "payload": {}
 }</pre>
         </div>
-        <p>Every tool also declares the <code>underlying_atlas_action</code> it maps to and a <code>json_schema_hash</code> for its arguments, and calls are validated against that schema before they reach the tracker. Unknown arguments and wrong JSON types are rejected at the adapter boundary. Ticket and event mutations require <code>actor</code> and <code>reason</code> in the arguments, exactly like the CLI flags. <code>atlas.project.create</code> is the metadata-container exception: its closed schema accepts only <code>key</code> and <code>name</code>, and project creation writes no attributed event.</p>
+        <p>Every tool also declares the <code>underlying_atlas_action</code> it maps to and a <code>json_schema_hash</code> for its arguments, and calls are validated against that schema before they reach the tracker. Unknown arguments and wrong JSON types are rejected at the adapter boundary. Ticket and event mutations require explicit <code>actor</code> and <code>reason</code> arguments. The CLI resolves actor identity from its flag, environment, or config and requires reasons only for protected or security-sensitive actions, so do not infer MCP arguments from CLI optionality. <code>atlas.project.create</code> is the metadata-container exception: its closed schema accepts only <code>key</code> and <code>name</code>, and project creation writes no attributed event.</p>
 
         <div class="docs-note">
           <p>Continue with <a href="mcp-tools.html">MCP tools</a> for the complete workflow profile, then <a href="mcp-security.html">MCP security</a> for the high-impact approval flow.</p>

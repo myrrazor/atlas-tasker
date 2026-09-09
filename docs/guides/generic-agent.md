@@ -39,7 +39,7 @@ The brief is designed to be pasted into any agent prompt. It includes allowed ac
 - Attach test output or artifacts with run-scoped evidence.
 - Treat `dependency_blocked` as a hard stop unless `human:owner` explicitly uses `--override-deps --reason <TEXT>`.
 - Request review instead of marking work complete directly unless the active policy allows it.
-- Treat `dependency_blocked` as a stop sign. Only `done` unblocks a dependency.
+- Only `done` unblocks a dependency; `canceled` remains terminal without satisfying dependents.
 - Moving a ticket to its current status is a successful no-op across CLI, MCP, bulk, and web paths.
 
 ## Safe Reads

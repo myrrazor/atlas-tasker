@@ -41,9 +41,13 @@ ticket APP "Review the import retry fix" in_review critical
 ticket APP "Publish the setup walkthrough" blocked medium
 ticket APP "Add the health endpoint" in_progress low
 ticket APP "Keep example commands current" backlog medium
+ticket APP "Retire the unused import prototype" backlog low
 ticket OPS "Verify release checksums" ready high
 ticket OPS "Record install evidence" backlog medium
 
+"$tracker_bin" ticket move APP-8 canceled --actor human:owner --reason "synthetic canceled work"
+
+"$tracker_bin" ticket assign APP-1 agent:builder-1 --actor human:owner --reason "synthetic demo assignment"
 "$tracker_bin" ticket assign APP-3 agent:builder-1 --actor human:owner --reason "synthetic demo assignment"
 "$tracker_bin" ticket assign APP-4 agent:builder-1 --actor human:owner --reason "synthetic demo assignment"
 "$tracker_bin" ticket edit APP-4 --reviewer agent:reviewer-1 --description "Retry an interrupted local import without creating duplicate tickets." --acceptance "A second import leaves the ticket count unchanged." --acceptance "The failure path is covered by a regression test." --actor human:owner --reason "synthetic demo details"

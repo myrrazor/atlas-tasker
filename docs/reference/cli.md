@@ -11,6 +11,9 @@ Output modes:
 
 Pretty output uses bordered tables for repeated-row views such as boards, queues, agent work, saved views, runs, evidence, and worktrees. `--plain`, `NO_COLOR=1`, and non-interactive output keep ASCII-safe borders.
 
-Mutation commands that affect workspace state generally require `--actor` and a non-empty `--reason`. Examples in public docs include those flags unless the command is read-only.
+Tracked CLI mutations require an actor, resolved from explicit `--actor`, `TRACKER_ACTOR`, then
+`actor.default`. A non-empty `--reason` is recommended for ordinary writes and required for
+security-sensitive, protected, scheduling, and other guarded actions. Public examples include both
+flags so copied agent workflows leave useful audit history.
 
 Terminal output strips control bytes from user-controlled content before display. JSON output preserves stored values.

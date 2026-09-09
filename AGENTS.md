@@ -11,9 +11,10 @@ This file is for agents **using** the tracker. If you are contributing to Atlas 
 
 ## Read this part first
 
-- **Pass `--actor` and `--reason` on every tracked write.** They land in the event log and some
-  policies reject writes without them. Omitting `--actor` resolves through `TRACKER_ACTOR`
-  or `actor.default`; if neither is set the command fails with `actor is required` (exit 2).
+- **Pass `--actor` and `--reason` on every tracked write.** The CLI always requires an actor;
+  omitting `--actor` resolves through `TRACKER_ACTOR` or `actor.default`, and if neither is set the
+  command fails with `actor is required` (exit 2). A reason is recommended for ordinary CLI writes
+  and required for security-sensitive, protected, scheduling, and other guarded actions.
   Do not rely on a silent `human:owner` default. `--actor` is `human:<name>` or
   `agent:<agent-id>`; a bare `agent:` is exit 2. MCP tracked-write tools require `actor` and
   `reason` in the call; they do not use the CLI actor fallback.
@@ -59,8 +60,12 @@ tracker ticket request-review APP-12 --actor agent:builder-1 --reason "ready for
 
 # and as the reviewer
 tracker ticket approve APP-12 --actor agent:reviewer-1 --reason "review passed"
-tracker ticket complete APP-12 --actor agent:reviewer-1 --reason "merged"
+tracker ticket view APP-12 --json
 ```
+
+In `review_gate` mode, approval also moves the ticket to `done`; stop there. In `open`,
+`owner_gate`, or `dual_gate` mode, follow the active policy and run `ticket complete` only if the
+approved ticket remains `in_review`.
 
 Every one of those takes `--json`. `tracker agent available` already hands you the exact next
 commands:

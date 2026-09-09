@@ -242,7 +242,7 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
       <ul class="fact-list">
         <li>
           <span class="fact-term">The working loop</span>
-          <p>Call <code>atlas.agent.available</code>, then use <code>atlas.ticket.claim</code>, <code>atlas.ticket.move</code>, and <code>atlas.ticket.comment</code>. Request review with <code>atlas.ticket.request_review</code>. The reviewer approves or rejects; once the required gates pass, the authorized actor calls <code>atlas.ticket.complete</code>.</p>
+          <p>Call <code>atlas.agent.available</code>, then use <code>atlas.ticket.claim</code>, <code>atlas.ticket.move</code>, and <code>atlas.ticket.comment</code>. Request review with <code>atlas.ticket.request_review</code>. Under <code>review_gate</code>, approval by the required reviewer itself moves the ticket directly to Done; rejection sends it back to In Progress. Use <code>atlas.ticket.complete</code> for open-mode work or policies whose separate gates have passed; it cannot bypass review.</p>
         </li>
         <li>
           <span class="fact-term">New workflow coverage</span>

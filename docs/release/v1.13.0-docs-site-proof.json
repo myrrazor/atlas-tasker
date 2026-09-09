@@ -1,0 +1,269 @@
+{
+  "release_candidate": "v1.13.0-rc1",
+  "asset_source": "actual synthetic web board and actual CLI stdout rendered as monospace text",
+  "files": {
+    "docs/assets/board.png": "4d7177c066c4791228753d16df59bc5bed62affb4a7c3f452d7dda6787dca0f0",
+    "docs/assets/web-board-desktop.png": "3d2b861bd6251ea7f077d229f4a64d2f76b7860b3f6f6e73d9ad74668a912359",
+    "docs/assets/web-board-mobile.png": "2c38c8c849749acc4d7e3b6d9f024a96ab4ac9cf9d0e365cd55f4cc0760823c0",
+    "site/assets/web-board.webp": "0bac86d1c19cd3306de8fe2c653f2d61b2ce0fd0b3de2d11f5684826c9bb227d"
+  },
+  "responsive_pages": [
+    {
+      "page": "index.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": [
+        "assets/agent-queue.webp",
+        "assets/agent-queue.webp"
+      ]
+    },
+    {
+      "page": "index.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": [
+        "assets/web-board.webp",
+        "assets/tui-board.webp",
+        "assets/agent-queue.webp",
+        "assets/agent-queue.webp"
+      ]
+    },
+    {
+      "page": "cli.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "cli.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "mcp.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "mcp.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "guide.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "guide.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "changelog.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "changelog.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/index.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/index.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/getting-started.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/getting-started.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/tickets-and-workflow.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/tickets-and-workflow.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/web-board.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/web-board.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/agents-and-dispatch.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/agents-and-dispatch.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/mcp-setup.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/mcp-setup.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/mcp-tools.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/mcp-tools.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/mcp-security.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/mcp-security.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/faq.html",
+      "width": 390,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    },
+    {
+      "page": "docs/faq.html",
+      "width": 1440,
+      "h1": 1,
+      "overflow": false,
+      "brokenImages": [],
+      "imagesPending": []
+    }
+  ],
+  "homepage_image_decode": {
+    "assetProof": [
+      {
+        "src": "atlas-tasker-terminal-wordmark.svg",
+        "loaded": true
+      },
+      {
+        "src": "assets/web-board.webp",
+        "loaded": true
+      },
+      {
+        "src": "assets/tui-board.webp",
+        "loaded": true
+      },
+      {
+        "src": "assets/agent-queue.webp",
+        "loaded": true
+      },
+      {
+        "src": "assets/agent-queue.webp",
+        "loaded": true
+      }
+    ]
+  },
+  "production_updated": false
+}

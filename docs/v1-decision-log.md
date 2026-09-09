@@ -954,3 +954,15 @@ Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. 
 7. **Confidence:** high
 8. **Revisit Trigger:** The project storage marker changes or doctor gains a dedicated orphan-content report.
 9. **Affected PRs/Files:** internal/storage/markdown/project_store.go, internal/cli/workflow_consistency_test.go.
+
+## DEC-068
+
+1. **Decision ID:** DEC-068
+2. **Date:** 2026-09-09
+3. **Question:** How should the workflow-consistency fixes enter the next stable release while keeping public documentation truthful?
+4. **Options Considered:** Call the local fixes stable immediately; publish a patch without distinguishing new MCP interfaces; prepare a minor candidate through the existing owner-controlled promotion and RC gates.
+5. **Chosen Option:** Prepare v1.13.0 and its first RC, publish the feature PR to `testing`, and keep v1.12.0 as the published stable until approved promotion and hosted RC/stable proof pass. Reconcile current docs, site copy, release helpers, and board images with the candidate, labeling upcoming behavior unreleased. Preserve historical snapshots and link them to published evidence. Add the final permission regression for review approval that implicitly completes a ticket.
+6. **Why We Chose It:** Six new public MCP tools and explicit bootstrap warrant a minor candidate. Local tests and screenshots prove the candidate, while hosted assets and the live site require independent verification after publication. This follows DEC-059's promotion boundary and completes the owner's requested fixes without implying authorization to merge or release during preparation.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner changes the release version/scope, protected-branch requirements change, or hosted RC verification exposes a release defect.
+9. **Affected PRs/Files:** CHANGELOG.md, docs/release.md, docs/release/*, scripts/preflight-release.sh, scripts/validate-rc.sh, scripts/release-rehearsal.sh, current guides/references, site/*, docs/assets/*, examples/create-web-demo.sh, internal/service/workflow_consistency_test.go.

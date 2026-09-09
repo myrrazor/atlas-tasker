@@ -85,9 +85,14 @@ If a gate is opened for `agent:reviewer-1`, that reviewer actor must approve or 
 ./tracker run complete "$RUN_ID" --summary "Implementation and review complete" --actor agent:builder-1 --reason "done"
 ./tracker ticket request-review APP-1 --actor agent:builder-1 --reason "ready for final review"
 ./tracker ticket approve APP-1 --actor human:owner --reason "reviewed"
+./tracker ticket view APP-1 --json
+# The fresh workspace in this tutorial uses open mode, so approval leaves the ticket in_review.
 ./tracker ticket complete APP-1 --actor human:owner --reason "done"
 ```
 
 Completing a run does not complete the ticket. The ticket has to pass through `in_review` first, and with no reviewer configured, approval falls to the assignee, active worker, or `human:owner`.
+In `review_gate` mode, `ticket approve` also completes the ticket; inspect the returned status and do
+not issue a second `ticket complete`. The final command above is required because this tutorial uses
+the default `open` mode.
 
 The run, evidence, handoff, and gate history stay inspectable through the CLI, TUI, shell, JSON output, and safe MCP read surfaces.

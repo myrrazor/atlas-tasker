@@ -49,6 +49,10 @@ A typical MCP worker uses this sequence:
 5. Record progress with `atlas.ticket.comment` or `atlas.run.checkpoint`.
 6. Attach proof with `atlas.evidence.add`, then call `atlas.ticket.request_review`.
 
+The reviewer calls `atlas.ticket.approve`. Under `review_gate`, that same mutation returns the ticket
+in `done`; call `atlas.ticket.complete` afterward only when another completion mode leaves the
+approved ticket in `in_review` and the active policy permits the actor.
+
 The new ordinary tool names are exact: `atlas.project.create`, `atlas.ticket.heartbeat`,
 `atlas.ticket.priority`, `atlas.ticket.label.add`, `atlas.ticket.label.remove`, and
 `atlas.ticket.edit`. The edit tool accepts optional `title`, `description`, `acceptance`, `priority`,
