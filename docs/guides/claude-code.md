@@ -8,7 +8,7 @@ Use Atlas as the durable workflow layer around Claude Code sessions. Claude can 
 tracker agent available builder-1 --json
 tracker agent pending builder-1 --json
 tracker inspect APP-1 --actor agent:builder-1 --json
-tracker ticket claim APP-1 --actor agent:builder-1
+tracker ticket claim APP-1 --actor agent:builder-1 --reason "start work"
 tracker goal brief APP-1 --md
 ```
 
@@ -27,6 +27,10 @@ Install the Claude guidance and slash-command templates with:
 ```bash
 tracker integrations install claude
 ```
+
+That writes the `atlas-worker` skill under `.claude/skills/`, command templates under
+`.claude/commands/`, and an Atlas-managed block in `CLAUDE.md`. It does not register an MCP server;
+use [Claude Code MCP setup](../mcp-claude-code.md) separately when structured tools are wanted.
 
 If a dependency completion wakes Claude work, inspect the local inbox first:
 

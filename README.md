@@ -8,7 +8,7 @@
 [![Release](https://img.shields.io/github/v/release/myrrazor/atlas-tasker?include_prereleases&label=release)](https://github.com/myrrazor/atlas-tasker/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your repo. You get Jira-grade tickets — boards, dependencies, review gates, audit history — as plain markdown files plus a fast SQLite index, with no server, no account, and no browser tab. Then it goes where Jira can't: your coding agents (Claude Code, Codex, anything that speaks MCP) claim tickets, get blocked on each other, wake up when their dependencies land, attach evidence, and hand work off for review.
+Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your repo. You get Jira-grade tickets — boards, dependencies, review gates, audit history — as plain markdown files plus a fast SQLite index, without a hosted service or an account. Then it goes where Jira can't: your coding agents (Claude Code, Codex, anything that speaks MCP) claim tickets, get blocked on each other, wake up when their dependencies land, attach evidence, and hand work off for review.
 
 ![Atlas Tasker demo](docs/assets/demo.gif)
 
@@ -18,7 +18,7 @@ Atlas Tasker is a local-first issue tracker and orchestration layer that lives i
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
 
-That's it. The installer downloads the latest release for your platform, verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release).
+The installer downloads the latest release for your platform, verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release). In an interactive terminal it can also offer to initialize the current directory and open the coding-agent integration picker; that step defaults to **no**, shows the directory before changing it, and is skipped for non-interactive installs or when `SKIP_INTEGRATIONS=1` is set.
 
 With a Go toolchain (1.26.6 or newer):
 
@@ -42,6 +42,8 @@ tracker ticket create --project APP --title "Ship first feature" --type task --a
 tracker ticket move APP-1 ready --actor human:owner --reason "groomed"
 tracker board
 ```
+
+In a terminal, `tracker init` offers to set up coding-agent integrations after creating the workspace. Choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. The [agent integrations guide](docs/guides/agent-integrations.md) covers every target and scripted setup.
 
 ![Kanban board in the terminal](docs/assets/board.png)
 
@@ -108,22 +110,25 @@ Around that core, agents get the full delivery loop:
 - **MCP** exposes all of it as tools (`tracker mcp serve`), with tiered profiles from read-only to admin and typed approvals for high-impact operations.
 - **Goal manifests** (`tracker goal brief APP-1 --md`) give an agent the full context of a ticket in one shot.
 
-To hand work off, install the Atlas worker skill and give the ticket to Claude Code, Codex, or an OpenClaw-style agent. The skill allows the agent to do this all autonomously: read its queue, claim work, dispatch a run, attach evidence, request review, acknowledge wake-ups, and hand off context while everything is tracked in Atlas Tasker. That gives you an agentic loop that your agents can use while humans choose where to manually intervene through assignments, review gates, owner gates, and explicit handoffs.
+To hand work off, install the Atlas worker skill and give the ticket to Claude Code, Codex, Cursor, OpenClaw, Grok, or another agent. The skill teaches the agent to read its queue, claim work, dispatch a run, attach evidence, request review, acknowledge wake-ups, and hand off context while everything is tracked in Atlas Tasker. Humans still choose where to intervene through assignments, review gates, owner gates, and explicit handoffs.
 
 ```bash
 tracker team apply crossfire --actor human:owner --reason "agentic loop"
-tracker integrations install codex     # or claude, openclaw, generic
+tracker integrations install           # interactive picker in a terminal
+# scripted alternative: --targets claude,codex,cursor,openclaw,grok,generic
 tracker ticket assign APP-2 agent:builder-1 --actor human:owner --reason "agent work"
 tracker run dispatch APP-2 --agent agent:builder-1 --actor human:owner --reason "start tracked run"
 tracker goal brief APP-2 --md
 ```
+
+Integration installation writes project instructions, a guide, and skill or command files for the selected agent. It does **not** register an MCP server. If your agent should call Atlas as MCP tools, configure `tracker mcp serve` in that client separately and pin `--workspace` to this repo. See [agent integrations](docs/guides/agent-integrations.md) and [MCP for agents](docs/guides/mcp-for-agents.md).
 
 **[AGENTS.md](AGENTS.md) is the file to hand an agent.** It leads with the things that trip
 them up — every write needs `--actor` and `--reason`, `project create` needs neither, a
 forbidden transition is a deliberate exit 4 — then the loop, the exit-code table, and the MCP
 registration one-liners. `CLAUDE.md` imports it, so Claude Code picks it up too.
 
-For humans setting things up, the [Claude Code guide](docs/guides/claude-code.md), [Codex guide](docs/guides/codex.md), and [generic agent guide](docs/guides/generic-agent.md) walk through real setups.
+For humans setting things up, the [agent integrations guide](docs/guides/agent-integrations.md), [Claude Code guide](docs/guides/claude-code.md), [Codex guide](docs/guides/codex.md), and [generic agent guide](docs/guides/generic-agent.md) walk through real setups.
 
 ### Pick your team
 
@@ -140,7 +145,7 @@ tracker team apply crossfire --actor human:owner --reason "team setup"
 | `swarm` | Three builders pulling by routing weight, QA gate, owner delegate |
 | `crossfire` | Codex builds, Claude reviews (flip it with `--provider claude`) — two different models keeping each other honest |
 
-`tracker team show <preset>` previews the roster, `--dry-run` applies nothing, and re-running is always safe — existing agents are never overwritten. Then install the matching skill (`tracker integrations install claude`, `codex`, `openclaw`, or `generic`), file your tickets, and the agents handle claiming, building, review handoffs, and wake-ups on their own. The [team presets guide](docs/guides/team-presets.md) has the full walkthrough.
+`tracker team show <preset>` previews the roster, `--dry-run` applies nothing, and re-running is always safe — existing agents are never overwritten. Then install the matching integration (`claude`, `codex`, `cursor`, `openclaw`, `grok`, or `generic`), file your tickets, and the agents handle claiming, building, review handoffs, and wake-ups on their own. The [team presets guide](docs/guides/team-presets.md) has the full walkthrough.
 
 ## Everything else you'd expect from a real tracker
 
@@ -150,11 +155,13 @@ For the paranoid (complimentary): signed artifacts and trust keys, governance po
 
 ## Docs
 
-Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [getting started](docs/getting-started.md), [your first agent workflow](docs/first-agent-workflow.md), [scheduled work](docs/scheduling.md), [the local web board](docs/web-board.md), [MCP for agents](docs/guides/mcp-for-agents.md), [the command reference](docs/reference/commands.md), or [troubleshooting](docs/troubleshooting.md).
+Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [updating](docs/guides/updating.md), [getting started](docs/getting-started.md), [agent integrations](docs/guides/agent-integrations.md), [your first agent workflow](docs/first-agent-workflow.md), [scheduled work](docs/scheduling.md), [the local web board](docs/web-board.md), [MCP for agents](docs/guides/mcp-for-agents.md), [the command reference](docs/reference/commands.md), or [troubleshooting](docs/troubleshooting.md).
 
 ## Status
 
 `v1.11.0` is the latest tagged release, and what the installer and `go install ...@latest` give you. It ships MCP workflow loop coverage, `tracker update`, integration detect/install checkboxes, and local security hardening. [CHANGELOG.md](CHANGELOG.md) has the full list.
+
+Development-branch documentation can describe work intended for a later release; it is not evidence that v1.12 has shipped. The release page and release evidence remain authoritative for published versions.
 
 The [v1.11 release evidence](docs/release/v1.11.0-release-evidence.md) records the verified RC, stable proof, and owner ship decision; the [release page](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.11.0) records post-publication verification.
 

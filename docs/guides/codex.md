@@ -8,7 +8,7 @@ Atlas works best with Codex when Atlas owns workflow state and Codex owns code c
 tracker agent available builder-1 --json
 tracker agent pending builder-1 --json
 tracker inspect APP-1 --actor agent:builder-1 --json
-tracker ticket claim APP-1 --actor agent:builder-1
+tracker ticket claim APP-1 --actor agent:builder-1 --reason "start work"
 tracker ticket move APP-1 in_progress --actor agent:builder-1 --reason "start implementation"
 ```
 
@@ -27,6 +27,10 @@ Install the project skill pack with:
 ```bash
 tracker integrations install codex
 ```
+
+That writes the `atlas-worker` skill under `.codex/skills/`, an Atlas-managed block in `AGENTS.md`,
+and generated command prompts under `.tracker/integrations/commands/`. It does not add an MCP server
+to Codex. Use [Codex MCP setup](../mcp-codex.md) separately when structured tools are wanted.
 
 If Atlas creates a wake-up after a blocker reaches `done`, read it with:
 

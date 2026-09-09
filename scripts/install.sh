@@ -115,6 +115,37 @@ detect_arch() {
   esac
 }
 
+offer_integrations() {
+  if [ "${SKIP_INTEGRATIONS:-0}" = "1" ]; then
+    return
+  fi
+  # curl | sh leaves stdin attached to the download. Use the controlling
+  # terminal for optional setup; unattended installs must never read stdin.
+  if [ ! -t 1 ] || ! ( : </dev/tty ) 2>/dev/null; then
+    echo "Next: run tracker init in your project to set up coding-agent guidance."
+    return
+  fi
+  # VERSION can pin older releases that predate the integrations wizard.
+  case "$("$BIN_DIR/$BIN_NAME" init --help 2>/dev/null)" in
+    *--integrations*) ;;
+    *) echo "Next: run tracker init in your project."; return ;;
+  esac
+  printf '\nSet up coding-agent guidance in %s? This initializes an Atlas workspace here. [y/N] ' "$(pwd)" >/dev/tty
+  answer=""
+  if ! IFS= read -r answer </dev/tty; then
+    echo "Skipped setup. Run tracker init in your project when ready."
+    return
+  fi
+  case "$answer" in
+    y|Y|yes|YES|Yes)
+      if ! "$BIN_DIR/$BIN_NAME" init --integrations </dev/tty >/dev/tty; then
+        echo "Tracker is installed, but agent setup did not complete. Run tracker integrations install in your project to try again." >&2
+      fi
+      ;;
+    *) echo "Skipped setup. Run tracker init in your project when ready." ;;
+  esac
+}
+
 need_cmd curl
 need_cmd awk
 need_cmd tar
@@ -149,3 +180,4 @@ install -d "$BIN_DIR"
 install "$TMP_DIR/$BIN_NAME" "$BIN_DIR/$BIN_NAME"
 
 echo "installed ${BIN_NAME} ${TAG} to ${BIN_DIR}/${BIN_NAME}"
+offer_integrations

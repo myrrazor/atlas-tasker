@@ -79,5 +79,4 @@ Demo implementation started
 
 - Actor: agent:reviewer-1
 - Gate: review
-
 ```

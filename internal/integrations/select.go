@@ -19,7 +19,8 @@ type SelectOptions struct {
 
 // SelectTargetsInteractively prints a checkbox-style list and reads a choice.
 // Enter keeps the default selection (detected agents when DefaultToDetected).
-// Users can toggle by number (e.g. "1,3"), type target names, "all", "none", or "q".
+// Users can replace the selection with numbers (e.g. "1,3"), target names,
+// "all", "none", or "q". Closing the input cancels rather than accepting defaults.
 func SelectTargetsInteractively(opts SelectOptions) ([]Target, error) {
 	if opts.Stdout == nil {
 		opts.Stdout = io.Discard
@@ -65,6 +66,9 @@ func SelectTargetsInteractively(opts SelectOptions) ([]Target, error) {
 	if err != nil && err != io.EOF {
 		return nil, err
 	}
+	if err == io.EOF && line == "" {
+		return nil, nil
+	}
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return selectedTargets(opts.Detections, selected), nil
@@ -87,6 +91,9 @@ func SelectTargetsInteractively(opts SelectOptions) ([]Target, error) {
 	parts := strings.FieldsFunc(line, func(r rune) bool {
 		return r == ',' || r == ' ' || r == '\t'
 	})
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("enter an agent name or number, or 'none' to skip")
+	}
 	for _, part := range parts {
 		if n, err := strconv.Atoi(part); err == nil {
 			if n < 1 || n > len(opts.Detections) {

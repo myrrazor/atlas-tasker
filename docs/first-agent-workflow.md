@@ -10,7 +10,19 @@ Atlas treats an agent run as a durable work record, not just a chat transcript. 
 ./tracker ticket move APP-1 ready --actor human:owner --reason "ready for implementation"
 ```
 
-## 2. Register An Agent
+## 2. Install Agent Guidance
+
+Choose the agent that will work in this repository:
+
+```bash
+./tracker integrations install codex
+```
+
+The other targets are `claude`, `cursor`, `openclaw`, `grok`, and `generic`. This writes project
+instructions and an agent-specific skill pack; it does not register MCP. See
+[coding-agent integrations](guides/agent-integrations.md) for the exact files and multi-target setup.
+
+## 3. Register An Agent
 
 ```bash
 ./tracker agent create builder-1 --name "Builder One" --provider codex --capability go --actor human:owner --reason "register builder"
@@ -18,7 +30,7 @@ Atlas treats an agent run as a durable work record, not just a chat transcript. 
 
 The agent profile records routing metadata only. It does not give Atlas control over Codex, Claude Code, or another provider.
 
-## 3. Dispatch The Ticket
+## 4. Dispatch The Ticket
 
 Dispatch requires a clean git workspace because Atlas may create a managed worktree. If you are using a source-built `tracker` binary in the repo root, exclude local build/projection files and commit the tutorial state before dispatching:
 
@@ -39,7 +51,7 @@ RUN_ID=$(./tracker run dispatch APP-1 --agent builder-1 --actor human:owner --re
 
 These examples use `jq`; if it is not installed, copy `payload.run_id` from the JSON output and export it as `RUN_ID`.
 
-## 4. Record Progress And Evidence
+## 5. Record Progress And Evidence
 
 ```bash
 ./tracker run start "$RUN_ID" --summary "Implementation started" --actor agent:builder-1 --reason "begin work"
@@ -52,7 +64,7 @@ These examples use `jq`; if it is not installed, copy `payload.run_id` from the 
 
 Evidence can also copy a file into the run evidence bundle with `--artifact <PATH>`.
 
-## 5. Hand Off For Review
+## 6. Hand Off For Review
 
 ```bash
 ./tracker run handoff "$RUN_ID" --next-actor agent:reviewer-1 --next-gate review --actor agent:builder-1 --reason "ready for review"
@@ -67,7 +79,7 @@ If a gate is opened for `agent:reviewer-1`, that reviewer actor must approve or 
 ./tracker gate approve "$GATE_ID" --actor agent:reviewer-1 --reason "reviewed evidence"
 ```
 
-## 6. Finish The Run
+## 7. Finish The Run
 
 ```bash
 ./tracker run complete "$RUN_ID" --summary "Implementation and review complete" --actor agent:builder-1 --reason "done"

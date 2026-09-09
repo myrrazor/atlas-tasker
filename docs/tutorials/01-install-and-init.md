@@ -1,6 +1,6 @@
 # Tutorial 1: Install And Initialize
 
-Build locally while hosted release assets are pending:
+Build locally from the checkout:
 
 ```bash
 go build -o tracker ./cmd/tracker
@@ -12,6 +12,11 @@ Initialize the workspace:
 ```bash
 ./tracker init
 ```
+
+In a terminal, `init` offers to install project guidance for Claude, Codex, Cursor, OpenClaw, Grok,
+or a generic agent. Choose detected agents, enter `none` to skip, or run
+`./tracker init --skip-integrations` when following this tutorial non-interactively. Integration files
+and MCP client registration are separate; see [coding-agent integrations](../guides/agent-integrations.md).
 
 Check the workspace health in read-only mode:
 

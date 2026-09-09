@@ -52,7 +52,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="./" aria-label="Atlas Tasker home">
-        <img src="atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+        <img src="atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="cli.html">CLI</a>
@@ -69,13 +69,13 @@
       <p class="eyebrow">Guide</p>
       <h1>From empty repo to agent-run board.</h1>
       <p class="legal-summary">The whole workflow in one page. Each step links into the full documentation, which now lives on this site under <a href="docs/">Docs</a>.</p>
-      <p class="legal-updated">Matches Atlas Tasker v1.10+ · The deep manual starts at <a href="docs/">the docs overview</a></p>
+      <p class="legal-updated">Current release line · The deep manual starts at <a href="docs/">the docs overview</a></p>
     </header>
     <div class="legal-content">
       <section class="shell">
         <h2>1 · Install</h2>
         <p><code>curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code></p>
-        <p>The installer fetches the latest release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. Building from source works too: <code>go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>. Details: <a href="docs/getting-started.html">getting started</a>.</p>
+        <p>The installer fetches the latest release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. In an interactive terminal it may then offer coding-agent guidance for the current directory; the offer defaults to No, and unattended installs never prompt. Building from source works too: <code>go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>. Details: <a href="docs/getting-started.html">getting started</a>.</p>
       </section>
       <section class="shell">
         <h2>2 · Minutes to a working board</h2>
@@ -86,7 +86,7 @@
       <section class="shell">
         <h2>3 · Hand work to agents</h2>
         <p><code>tracker agent create builder-1 --name "Builder" --provider claude --capability go --actor human:owner --reason "register"</code> registers an agent, and <code>tracker ticket assign APP-2 agent:builder-1 --actor human:owner --reason "agent work"</code> hands a ticket over. Or skip the assembly and apply a preset: <code>tracker team apply pair --actor human:owner --reason "team setup"</code>. The full loop is in <a href="docs/agents-and-dispatch.html">agents and dispatch</a>.</p>
-        <p><code>tracker integrations install claude</code> (or <code>codex</code>, <code>openclaw</code>, <code>generic</code>, <code>cursor</code>, <code>grok</code>) teaches your agent runtime the loop, and <code>tracker mcp serve</code> exposes typed tools for MCP clients. Setup lives in <a href="docs/mcp-setup.html">MCP setup</a>.</p>
+        <p><code>tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic</code> shows all six repository-guidance targets. Choose only the runtimes this repo uses. Guidance teaches the workflow; registering <code>tracker mcp serve</code> with a compatible client is a separate step. Follow the <a href="mcp.html#connect">Connect your agent journey</a> or the detailed <a href="docs/mcp-setup.html">MCP setup guide</a>.</p>
       </section>
       <section class="shell">
         <h2>4 · Keep it honest</h2>

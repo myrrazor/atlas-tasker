@@ -24,8 +24,11 @@ Re-running `apply` is safe: existing agents, runbooks, and profiles are skipped,
 
 ## After applying
 
-1. Install the skill for your agent runtime: `tracker integrations install claude` (or `codex`, `openclaw`, or `generic`). The skill teaches agents to bootstrap, claim, build, attach evidence, request review, and acknowledge wake-ups without hand-holding.
+1. Install the integration for your agent runtime: `tracker integrations install claude` (or `codex`, `cursor`, `openclaw`, `grok`, or `generic`). The generated skill and instructions teach agents to bootstrap, claim, build, attach evidence, request review, and acknowledge wake-ups. See [coding-agent integrations](agent-integrations.md) for the exact files each target receives.
 2. File tickets and assign them: `tracker ticket assign APP-1 agent:builder-1 --actor human:owner --reason "agent work"`.
 3. Wire dependencies with `tracker ticket link` — when a blocker lands, Atlas wakes the assigned agent (`agent.work_available`), and with `tracker agent auto set` it can launch your agent command automatically with the ticket id substituted in.
 
 From there the loop runs itself: builders claim and implement, the review gate routes work to the reviewer, handoffs carry context across sessions, and the owner only shows up for the decisions that genuinely need a human.
+
+The integration installer does not register Atlas as an MCP server. Configure MCP separately when the
+agent should call the structured `atlas.*` tools.

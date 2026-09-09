@@ -52,7 +52,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="../" aria-label="Atlas Tasker home">
-        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="../cli.html">CLI</a>
@@ -83,6 +83,7 @@
           <p class="docs-group-label">Agents</p>
           <a href="agents-and-dispatch.html">Agents and dispatch</a>
           <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-tools.html">MCP tools</a>
           <a href="mcp-security.html">MCP security</a>
           <a href="json-and-exit-codes.html">JSON and exit codes</a>
         </div>
@@ -116,11 +117,25 @@
         </div>
         <p>Pin a specific release by exporting <code>VERSION</code> before running the installer. Unstamped source builds report <code>version: "dev"</code> in <code>tracker version --json</code>, which is expected.</p>
 
+        <h2>Keep the binary current</h2>
+        <p>Ask Atlas whether a newer release exists, then update when you are ready. The updater verifies the release checksum and GitHub build attestation before it atomically replaces the current binary.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>check, then update</span><button class="copy-button" type="button" data-copy="gs-update" aria-label="Copy update commands">Copy</button></div>
+          <pre id="gs-update">tracker update --check
+tracker update --yes
+
+<span class="c"># install a specific release</span>
+tracker update --version v1.11.0 --yes</pre>
+        </div>
+
         <h2>Initialize a workspace</h2>
-        <p>Run this inside the repository you want Atlas to manage. It writes local state under <code>.tracker/</code> and nothing else.</p>
+        <p>Run this inside the repository you want Atlas to manage. It writes local tracker state under <code>.tracker/</code>. In an interactive terminal, init then offers to detect coding agents and install repository guidance; decline if you only want the tracker workspace.</p>
         <div class="code-block">
           <div class="snippet-title"><span>one-time setup</span><button class="copy-button" type="button" data-copy="gs-init" aria-label="Copy init command">Copy</button></div>
-          <pre id="gs-init">tracker init</pre>
+          <pre id="gs-init">tracker init
+
+<span class="c"># never offer agent setup</span>
+tracker init --skip-integrations</pre>
         </div>
 
         <h2>Create a project and a ticket</h2>
@@ -163,7 +178,8 @@ tracker web serve --open <span class="c"># local kanban in your browser</span></
         <ul>
           <li><a href="tickets-and-workflow.html">Tickets and workflow</a>: statuses, dependencies, reviews, and gates.</li>
           <li><a href="agents-and-dispatch.html">Agents and dispatch</a>: put an AI agent on the board.</li>
-          <li><a href="mcp-setup.html">MCP setup</a>: connect Claude Code, Codex, or OpenClaw.</li>
+          <li><a href="mcp-setup.html">MCP setup</a>: connect a compatible client to the typed local tool server.</li>
+          <li><a href="mcp-tools.html">MCP tools</a>: see what the read, workflow, delivery, and admin profiles expose.</li>
         </ul>
       </article>
       <nav class="docs-pager" aria-label="Docs pages">

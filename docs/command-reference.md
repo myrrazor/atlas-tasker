@@ -57,6 +57,7 @@
 - `tracker tui [--actor <ACTOR>]`
 - `tracker config get [KEY]`
 - `tracker config set <KEY> <VALUE>`
+
 - `tracker run list [--ticket <ID>] [--agent <AGENT-ID>] [--status <STATUS>]`
 - `tracker run view <RUN-ID>`
 - `tracker run dispatch <TICKET-ID> --agent <AGENT-ID> [--kind <work|review|qa|release>] [--actor <ACTOR>] [--reason <TEXT>]`
@@ -158,6 +159,18 @@
 - `tracker goal brief <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal manifest <TICKET-ID|RUN-ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker goal verify <MANIFEST-ID|PATH>`
+
+Setup and update behavior:
+
+- plain `tracker init` can offer the six-target integration picker only when stdin and stdout are TTYs; `--skip-integrations` suppresses it
+- `tracker integrations install` accepts `claude`, `codex`, `cursor`, `openclaw`, `grok`, and `generic`; scripts should pass one target or `--targets <list>`
+- `none` and `q` leave integration installation skipped; JSON and non-TTY invocations never prompt
+- integration installation writes project guidance and skills but does not register an MCP client
+- `tracker update --check` and `--dry-run` do not replace the binary; applying an update requires `--yes`
+- update apply verifies `checksums.txt` and, unless explicitly skipped, a GitHub build attestation before replacing the current executable
+- `tracker update` replaces only the binary; rerun the desired integration install to refresh generated skill files
+
+See [coding-agent integrations](guides/agent-integrations.md) and [updating](guides/updating.md).
 
 ## Agents
 

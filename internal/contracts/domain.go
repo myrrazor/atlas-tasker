@@ -282,9 +282,9 @@ type WebConfig struct {
 
 func (c WebConfig) Validate() error {
 	switch c.Lang {
-	case "", "en", "es", "id":
+	case "", "en", "es", "id", "zh", "ja", "ko":
 	default:
-		return fmt.Errorf("invalid web.lang: %s (supported: en, es, id)", c.Lang)
+		return fmt.Errorf("invalid web.lang: %s (supported: en, es, id, zh, ja, ko)", c.Lang)
 	}
 	for agent := range c.AgentColors {
 		if strings.TrimSpace(agent) == "" {

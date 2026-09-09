@@ -52,7 +52,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="../" aria-label="Atlas Tasker home">
-        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="../cli.html">CLI</a>
@@ -83,6 +83,7 @@
           <p class="docs-group-label">Agents</p>
           <a href="agents-and-dispatch.html">Agents and dispatch</a>
           <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-tools.html">MCP tools</a>
           <a href="mcp-security.html">MCP security</a>
           <a href="json-and-exit-codes.html" aria-current="page">JSON and exit codes</a>
         </div>
@@ -152,8 +153,8 @@
           </table>
         </div>
 
-        <h2>Nothing prompts</h2>
-        <p>Every command is non-interactive. A missing required flag fails immediately naming the flag, for example <code>required flag(s) "body" not set</code>, instead of waiting on stdin. If a command appears to hang, it is waiting a few seconds for the workspace write lock, and that path ends in exit 6, never a prompt.</p>
+        <h2>Automation stays non-interactive</h2>
+        <p>Only setup paths prompt: <code>tracker init</code> may offer agent integrations in a TTY, and bare <code>tracker integrations install</code> opens its picker in a TTY. JSON mode, non-TTY execution, explicit <code>--targets</code>, and <code>tracker init --skip-integrations</code> avoid prompts. Other missing required flags fail immediately naming the flag, for example <code>required flag(s) "body" not set</code>. A command waiting for the workspace write lock ends in exit 6.</p>
 
         <h2>Pending reason codes</h2>
         <p><code>tracker agent pending --json</code> explains blocked work with stable codes, so agents branch instead of guessing:</p>

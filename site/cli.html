@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Atlas Tasker CLI: 72 commands, one binary</title>
-  <meta name="description" content="Tour the Atlas Tasker CLI: 72 top-level commands in nine groups, JSON output on everything, stable exit codes, and the shell, TUI, and web board trio." />
+  <title>Atlas Tasker CLI: 73 commands, one binary</title>
+  <meta name="description" content="Tour the Atlas Tasker CLI: 73 top-level commands in nine groups, machine-readable JSON, stable exit codes, plus shell, TUI, and local web board." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
@@ -17,7 +17,7 @@
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://atlas-tasker.vercel.app/cli.html" />
-  <meta property="og:title" content="Atlas Tasker CLI: 72 commands, one binary" />
+  <meta property="og:title" content="Atlas Tasker CLI: 73 commands, one binary" />
   <meta property="og:description" content="Every tracker command in nine groups, plus the JSON contract and exit codes that make it scriptable." />
   <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
   <meta property="og:image:width" content="1200" />
@@ -25,7 +25,7 @@
   <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Atlas Tasker CLI: 72 commands, one binary" />
+  <meta name="twitter:title" content="Atlas Tasker CLI: 73 commands, one binary" />
   <meta name="twitter:description" content="Every tracker command in nine groups, plus the JSON contract and exit codes that make it scriptable." />
   <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
@@ -35,7 +35,7 @@
     "@context": "https://schema.org",
     "@type": "WebPage",
     "name": "Atlas Tasker CLI",
-    "description": "Tour the Atlas Tasker CLI: 72 top-level commands in nine groups, JSON output on everything, stable exit codes, and the shell, TUI, and web board trio.",
+    "description": "Tour the Atlas Tasker CLI: 73 top-level commands in nine groups, machine-readable JSON, stable exit codes, plus shell, TUI, and local web board.",
     "url": "https://atlas-tasker.vercel.app/cli.html",
     "isPartOf": {
       "@type": "WebSite",
@@ -51,7 +51,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="./" aria-label="Atlas Tasker home">
-        <img src="atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+        <img src="atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="cli.html" aria-current="page">CLI</a>
@@ -67,7 +67,7 @@
     <header class="page-hero shell">
       <p class="kicker">The command line</p>
       <h1>A tracker that speaks shell.</h1>
-      <p class="lead">One <code>tracker</code> binary carries 72 top-level commands: tickets, boards, agents, gates, evidence, governance, sync, and the rest of the delivery loop. Every command takes <code>--json</code>, exits with a stable code, and never stops to prompt.</p>
+      <p class="lead">One <code>tracker</code> binary carries 73 top-level commands: tickets, boards, agents, gates, evidence, governance, sync, and the rest of the delivery loop. Commands support <code>--json</code> and stable exit codes; only explicit interactive setup paths ask for input.</p>
       <div class="page-hero-actions">
         <a class="button button-primary" href="./#install">Install Atlas Tasker</a>
         <a class="button button-secondary" href="docs/getting-started.html">Read the docs</a>
@@ -102,7 +102,7 @@
     <section class="page-section shell" aria-labelledby="map-title">
       <div class="section-heading">
         <p class="section-label">The command map</p>
-        <h2 id="map-title">72 commands, nine neighborhoods.</h2>
+        <h2 id="map-title">73 commands, nine neighborhoods.</h2>
         <p class="section-note">Counted from the release source, not marketing. Run <code>tracker help</code> for the live list or read the <a class="text-link" style="display:inline" href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">full command reference</a> for every flag.</p>
       </div>
       <div class="cmd-groups">
@@ -147,8 +147,8 @@
           <div class="cmd-chips"><code>backup</code><code>archive</code><code>compact</code><code>sweep</code><code>notify</code><code>automation</code></div>
         </div>
         <div class="cmd-group">
-          <h3><span class="cmd-count">4</span>Interactive</h3>
-          <p>The REPL shell, the full-screen TUI, the local web board, and version metadata.</p>
+          <h3><span class="cmd-count">5</span>Interactive</h3>
+          <p>The REPL shell, full-screen TUI, local web board, verified self-update, and version metadata.</p>
           <div class="cmd-chips"><code>shell</code><code>tui</code><code>web</code><code>update</code><code>version</code></div>
         </div>
       </div>
