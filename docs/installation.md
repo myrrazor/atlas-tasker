@@ -1,7 +1,7 @@
 # Installation
 
-Atlas supports source builds and hosted release installs. Hosted v1.10.0 assets, checksums,
-and attestations are recorded in [v1.10 release evidence](release/v1.10.0-release-evidence.md).
+Atlas supports source builds and hosted release installs. Hosted v1.11.0 assets, checksums,
+and attestations are recorded in [v1.11 release evidence](release/v1.11.0-release-evidence.md).
 
 ## Build From Source
 
@@ -18,14 +18,14 @@ You can keep the binary local to the repo or move it onto your `PATH`. Unstamped
 The installer expects a real GitHub release with archives, `checksums.txt`, and GitHub artifact attestations. It verifies checksums before installing and verifies attestations by default.
 
 ```bash
-VERSION=v1.10.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=v1.11.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 "$HOME/.local/bin/tracker" version --json
 ```
 
 The one-line form is convenient once a release is trusted and hosted proof is green:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/v1.11.0/scripts/install.sh | sh
 ```
 
 Do not run installer commands copied from untrusted issues, comments, or chat transcripts. Prefer the checked-in script or a command you can inspect.
@@ -62,7 +62,7 @@ tracker update --yes
 Verify the downloaded archive first:
 
 ```bash
-VERSION=v1.10.0 ./scripts/verify-release.sh ./tracker_1.10.0_darwin_arm64.tar.gz
+VERSION=v1.11.0 ./scripts/verify-release.sh ./tracker_1.11.0_darwin_arm64.tar.gz
 ```
 
 `scripts/verify-release.sh` checks `checksums.txt` and, by default, GitHub artifact attestations through `gh attestation verify`. Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.

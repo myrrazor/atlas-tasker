@@ -154,9 +154,9 @@ Start at the [docs landing page](docs/README.md), or jump to [installation](docs
 
 ## Status
 
-`v1.10.0` is still the latest **published** stable tag until [v1.11 release evidence](docs/release/v1.11.0-release-evidence.md) records a SHIP decision. The v1.11 train is on `main`: MCP workflow loop coverage, `tracker update`, integration detect/install checkboxes, and local security hardening. [CHANGELOG.md](CHANGELOG.md) has the full list.
+`v1.11.0` is the latest tagged release, and what the installer and `go install ...@latest` give you. It ships MCP workflow loop coverage, `tracker update`, integration detect/install checkboxes, and local security hardening. [CHANGELOG.md](CHANGELOG.md) has the full list.
 
-The [v1.10 release evidence](docs/release/v1.10.0-release-evidence.md) records the verified v1.10 RC and owner ship decision; the [v1.10.0 release page](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.10.0) records that publication.
+The [v1.11 release evidence](docs/release/v1.11.0-release-evidence.md) records the verified RC, stable proof, and owner ship decision; the [release page](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.11.0) records post-publication verification.
 
 `v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 

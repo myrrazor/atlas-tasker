@@ -1,8 +1,8 @@
 # Atlas Tasker Release Guide
 
-Atlas Tasker v1.10.0 is the current stable release. This guide explains the release workflow and points to its proof gates.
+Atlas Tasker v1.11.0 is the current stable release. This guide explains the release workflow and points to its proof gates.
 
-Current evidence: [v1.10 hosted RC evidence and owner ship decision](release/v1.10.0-release-evidence.md), [launch checklist](release/launch-checklist.md), and [public release gates](release/public-release-gates.md).
+Current evidence: [v1.11 hosted RC/stable evidence and owner ship decision](release/v1.11.0-release-evidence.md), [launch checklist](release/launch-checklist.md), and [public release gates](release/public-release-gates.md).
 
 ## Release States
 
