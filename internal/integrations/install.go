@@ -306,8 +306,15 @@ func installOpenClawGlobalSkills(files []managedInstallFile) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resolved, err := filepath.EvalSymlinks(home); err == nil {
+		home = resolved
+	}
 	destRoot := filepath.Join(home, ".openclaw", "skills", "atlas-worker")
-	written := []string{}
+	type plannedFile struct {
+		dest string
+		body string
+	}
+	planned := make([]plannedFile, 0, len(files))
 	for _, file := range files {
 		if file.kind != "skill" && file.kind != "command" {
 			continue
@@ -324,16 +331,25 @@ func installOpenClawGlobalSkills(files []managedInstallFile) ([]string, error) {
 			continue
 		}
 		dest := filepath.Join(destRoot, rel)
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return nil, err
-		}
-		if _, err := writeManagedFile(dest, file.body); err != nil {
-			return nil, err
-		}
-		written = append(written, dest)
+		planned = append(planned, plannedFile{dest: dest, body: file.body})
 	}
-	if len(written) == 0 {
+	if len(planned) == 0 {
 		return nil, fmt.Errorf("openclaw --global found no skill files to copy")
+	}
+	for _, item := range planned {
+		if err := validateInstallPath(home, item.dest); err != nil {
+			return nil, err
+		}
+	}
+	written := make([]string, 0, len(planned))
+	for _, item := range planned {
+		if err := os.MkdirAll(filepath.Dir(item.dest), 0o755); err != nil {
+			return nil, err
+		}
+		if _, err := writeManagedFile(item.dest, item.body); err != nil {
+			return nil, err
+		}
+		written = append(written, item.dest)
 	}
 	return written, nil
 }

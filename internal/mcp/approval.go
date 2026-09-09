@@ -77,7 +77,7 @@ func (s ApprovalStore) Create(ctx context.Context, operation string, target stri
 		ExpiresAt:        now.Add(ttl).UTC(),
 	}
 	if err := s.withLock(ctx, "create mcp operation approval", func() error {
-		if err := os.MkdirAll(s.dir(), 0o755); err != nil {
+		if err := os.MkdirAll(s.dir(), 0o700); err != nil {
 			return err
 		}
 		return s.write(approval)

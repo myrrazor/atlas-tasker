@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Local security hardening: archive/compact path containment and symlink fail-closed checks; OpenClaw `--global` install validates home destinations; init uses `0700` for sensitive `.tracker` paths and seeds a managed `.gitignore` local-ignore block; `config.toml` and MCP approval/audit dirs use private modes; ticket create/comment emit soft secret-like content warnings; security docs refreshed for the current local-first posture.
 - `tracker integrations detect` and interactive `tracker integrations install` discover local coding agents and let you checkbox-select which integrations to write; `tracker init --integrations` / `--skip-integrations` control the post-init prompt.
 - Added `tracker update` for production self-updates: check/dry-run/apply against GitHub releases with checksum verification, optional `gh attestation verify`, and atomic binary replace.
 - MCP workflow profile covers the real agent loop: ticket create/assign/link/unlink/approve/reject/complete, agent create/edit/enable/disable, team apply, goal brief, and wake-up list/view/ack. `atlas.ticket.complete` is a normal workflow write (no operation-approval token); provider merge/sync/archive tools stay high-impact.

@@ -215,8 +215,16 @@ func sanitizeRetentionPolicyID(policyID string) string {
 	return policyID
 }
 
-func archivePayloadPath(root string, archiveID string, sourcePath string) string {
-	return filepath.Join(storage.ArchivePayloadDir(root, archiveID), filepath.Clean(sourcePath))
+func archivePayloadPath(root string, archiveID string, sourcePath string) (string, error) {
+	payloadRoot := storage.ArchivePayloadDir(root, archiveID)
+	if err := rejectUnsafeRelPath(payloadRoot, sourcePath); err != nil {
+		return "", err
+	}
+	abs := filepath.Join(payloadRoot, filepath.Clean(sourcePath))
+	if err := rejectSymlinkComponents(payloadRoot, abs); err != nil {
+		return "", err
+	}
+	return abs, nil
 }
 
 func normalizeArchiveRecord(record contracts.ArchiveRecord) contracts.ArchiveRecord {
