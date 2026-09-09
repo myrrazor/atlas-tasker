@@ -8,15 +8,15 @@ The MCP adapter is not a second source of truth. It calls the same service layer
 
 ```bash
 tracker mcp serve --tool-profile read
-tracker mcp serve --workspace /path/to/repo --tool-profile read
+tracker mcp serve --workspace /path/to/workspace --tool-profile read
 tracker mcp schema --json --tool-profile workflow
 tracker mcp tools --json --tool-profile admin
-tracker mcp approve-operation --operation change.merge --target CHG-123 --actor human:owner --reason "release merge"
+tracker mcp approve-operation --operation atlas.change.merge --target CHG-123 --actor human:owner --reason "release merge"
 tracker mcp approvals list --json
 tracker mcp approvals revoke <APPROVAL-ID>
 ```
 
-`serve` reads the current directory unless `--workspace` names one. Registrations that live outside a repo — user-scoped `claude mcp add`, a global Codex `mcp_servers` entry — need it, because the client picks the working directory, not you. `schema` and `tools` describe the adapter itself and never open a workspace.
+`serve` reads the current directory unless `--workspace` names one. Registrations that live outside a repo — user-scoped `claude mcp add`, a global Codex `mcp_servers` entry — need it, because the client picks the working directory, not you. The workspace must already contain Atlas state from `tracker init`. `schema` and `tools` describe the adapter itself and never open a workspace.
 
 Stdio framing: Atlas speaks newline-delimited JSON-RPC and also accepts LSP-style `Content-Length` headers on the same stdio pair. Prefer NDJSON when you control the client; header-framed clients no longer crash the session.
 
@@ -24,8 +24,8 @@ Stdio framing: Atlas speaks newline-delimited JSON-RPC and also accepts LSP-styl
 
 - `read` is the default. It exposes read tools and dry-run/plan tools only, including goal brief, agent/team reads, and wake-up inspection.
 - `workflow` adds the real agent loop: ticket create/assign/link, claim/move/comment, request review, approve/reject/complete, agent create/edit, team apply, schedule writes, evidence, handoffs, and wake-up ack.
-- `delivery` adds delivery operations such as dispatch, change creation, status sync, check sync, and guarded provider review/merge tools.
-- `admin` adds high-impact admin operations only when `--dangerously-allow-high-impact-tools` is also present.
+- `delivery` adds run dispatch, change creation, change/check sync, and the provider review/merge tools. The last two remain hidden unless `--dangerously-allow-high-impact-tools` is also present.
+- `admin` exposes the full read, workflow, and delivery inventory. Its high-impact sync, import, archive, compact, worktree-cleanup, and gate-waiver tools remain hidden unless `--dangerously-allow-high-impact-tools` is also present.
 
 High-impact tools are hidden unless both the selected profile and server flag allow them. MCP-first agents should start at `workflow`, not `read`.
 
@@ -67,7 +67,7 @@ MCP calls are validated against their JSON schema before they reach Atlas servic
 
 `atlas.ticket.request_review` accepts the same optional reviewer actor as the CLI `--reviewer` flag. Workflow tools that can advance blocked tickets accept `override_deps` only for `human:owner` with a non-empty reason. The call still goes through the same service-layer dependency checks and records the unresolved blockers in the mutation payload.
 
-The adapter validator is intentionally small in this RC. It enforces required fields, rejects unknown arguments, checks primitive JSON types, and checks string-array items. It does not implement every JSON Schema keyword such as `enum`, `pattern`, numeric bounds beyond the simple `limit` shape, or semantic existence checks. Domain validation, permission checks, and policy gates still run in the Atlas service layer.
+The adapter validator enforces required fields, rejects unknown arguments, checks primitive JSON types, and checks string-array items. It does not implement every JSON Schema keyword such as `enum`, `pattern`, numeric bounds beyond the simple `limit` shape, or semantic existence checks. Domain validation, permission checks, and policy gates still run in the Atlas service layer.
 
 Approval consumption is single-use and happens after MCP argument/profile/actor/reason validation but before the service action starts. If the provider or service action later fails, the approval remains used; run the plan/dry-run tool again and create a new approval for a retry. This avoids letting an approval be replayed after execution has begun.
 
@@ -86,6 +86,11 @@ tracker mcp serve \
 Paged list tools accept `limit` and `cursor`. Grouped tools keep independent cursors: `atlas.board` accepts `cursor_by_status`, and `atlas.dashboard` accepts `cursor_by_section`. Large results return a truncated summary with a hint to narrow the request.
 
 ## More
+
+Installing an Atlas agent integration does not register this MCP server. Use
+`tracker integrations install ...` for project instructions and skills, then configure
+`tracker mcp serve` separately in clients that should receive structured tools. See
+[coding-agent integrations](guides/agent-integrations.md).
 
 - [MCP security](mcp-security.md)
 - [MCP tool table](mcp-tools.md)

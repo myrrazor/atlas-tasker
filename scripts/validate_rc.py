@@ -86,7 +86,7 @@ SECRET_PATTERNS = [
     re.compile(r"\bsv=[^ \n]+&sig=[^ \n]+"),
     re.compile(r"\bsk-[A-Za-z0-9]{24,}\b"),
     re.compile(r"(?i)\b(secret|token|password)\b\s*[:=]\s*['\"][^'\"]{8,}['\"]"),
-    re.compile(r"/Users/masterhit\b"),
+    re.compile(r"/Users/(?!you(?:/|\b))[^/\s]+(?:/|\b)"),
     re.compile(r"/private/var/folders\b"),
     re.compile(r"/var/folders\b"),
     re.compile(r"/tmp/Test[A-Za-z0-9_/-]*"),

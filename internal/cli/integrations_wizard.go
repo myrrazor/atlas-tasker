@@ -55,10 +55,6 @@ func runIntegrationsInstallWizard(cmd *cobra.Command, targets []integrations.Tar
 	if err != nil {
 		return err
 	}
-	if _, err := ensureInitArtifacts(root); err != nil {
-		return err
-	}
-
 	detections := integrations.Detect(integrations.DetectOptions{Workspace: root})
 	if len(targets) == 0 && interactive {
 		selected, err := integrations.SelectTargetsInteractively(integrations.SelectOptions{
@@ -70,12 +66,12 @@ func runIntegrationsInstallWizard(cmd *cobra.Command, targets []integrations.Tar
 		if err != nil {
 			return err
 		}
-		if selected == nil {
+		if len(selected) == 0 {
 			summary := integrationInstallSummary{
 				Kind:     "integrations_install",
 				Detected: detections,
 				Skipped:  true,
-				Message:  "installation cancelled",
+				Message:  "skipped integrations; run tracker integrations install later",
 				Targets:  []string{},
 				Results:  []integrations.InstallResult{},
 			}
@@ -88,6 +84,9 @@ func runIntegrationsInstallWizard(cmd *cobra.Command, targets []integrations.Tar
 	}
 	if global && (len(targets) != 1 || targets[0] != integrations.TargetOpenClaw) {
 		return apperr.New(apperr.CodeInvalidInput, "--global is only supported when installing openclaw")
+	}
+	if _, err := ensureInitArtifacts(root); err != nil {
+		return err
 	}
 
 	results := make([]integrations.InstallResult, 0, len(targets))
@@ -143,9 +142,14 @@ func canPromptIntegrations(cmd *cobra.Command) bool {
 func confirmIntegrationsSetup(cmd *cobra.Command) (bool, error) {
 	fmt.Fprint(cmd.OutOrStdout(), "Set up coding-agent integrations now? [Y/n] ")
 	reader := bufio.NewReader(cmd.InOrStdin())
+	// Keep buffered input for the picker when both answers arrive together.
+	cmd.SetIn(reader)
 	line, err := reader.ReadString('\n')
 	if err != nil && err != io.EOF {
 		return false, err
+	}
+	if err == io.EOF && line == "" {
+		return false, nil
 	}
 	line = strings.TrimSpace(strings.ToLower(line))
 	if line == "" || line == "y" || line == "yes" {

@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MCP tools: Atlas Tasker Docs</title>
+  <meta name="description" content="Explore Atlas Tasker's MCP tools by profile and job: read the board, run the full agent workflow, deliver changes, and guard high-impact operations." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlas-tasker.vercel.app/docs/mcp-tools.html" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlas-tasker.vercel.app/docs/mcp-tools.html" />
+  <meta property="og:title" content="MCP tools: Atlas Tasker Docs" />
+  <meta property="og:description" content="Explore Atlas Tasker's MCP tools by profile and job: read the board, run the full agent workflow, deliver changes, and guard high-impact operations." />
+  <meta property="og:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="MCP tools: Atlas Tasker Docs" />
+  <meta name="twitter:description" content="Explore Atlas Tasker's MCP tools by profile and job: read the board, run the full agent workflow, deliver changes, and guard high-impact operations." />
+  <meta name="twitter:image" content="https://atlas-tasker.vercel.app/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "name": "MCP tools: Atlas Tasker Docs",
+    "description": "Explore Atlas Tasker's MCP tools by profile and job: read the board, run the full agent workflow, deliver changes, and guard high-impact operations.",
+    "url": "https://atlas-tasker.vercel.app/docs/mcp-tools.html",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "Atlas Tasker",
+      "url": "https://atlas-tasker.vercel.app/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html">Tickets and workflow</a>
+          <a href="views-and-search.html">Views and search</a>
+          <a href="web-board.html">The web board</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-tools.html" aria-current="page">MCP tools</a>
+          <a href="mcp-security.html">MCP security</a>
+          <a href="json-and-exit-codes.html">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="faq.html">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/mcp-tools.md">Complete source table ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Agents</p>
+        <h1>MCP tools</h1>
+        <p class="docs-lead">Atlas groups its local stdio tools by consequence. The default profile can inspect work and plan changes. The workflow profile adds the full ticket loop agents need day to day. Delivery and admin stay separate because they reach provider, sync, archive, import, compact, or worktree state.</p>
+
+        <div class="docs-note">
+          <p><strong>Your installed binary is the authority.</strong> Run <code>tracker mcp tools --json --tool-profile workflow</code> to inspect the exact names and schemas available in that build. This page explains the current source in useful groups.</p>
+        </div>
+
+        <h2>Choose a profile by job</h2>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr><th scope="col">Profile</th><th scope="col">Exposes</th><th scope="col">Use it for</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>read</code></td><td>41 tools</td><td>Inspection, queues, plans, and dry runs. Default.</td></tr>
+              <tr><td><code>workflow</code></td><td>67 tools</td><td>Read plus 26 attributed workflow writes for everyday agent work.</td></tr>
+              <tr><td><code>delivery</code></td><td>71 tools</td><td>Workflow plus dispatch and provider-backed change/check synchronization.</td></tr>
+              <tr><td><code>admin</code></td><td>82 tools with the danger flag</td><td>High-impact operations. Each call also needs an external one-time approval.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Profiles are cumulative. Selecting <code>workflow</code> includes every read tool; selecting <code>delivery</code> includes read and workflow. Admin tools remain hidden unless the server also starts with <code>--dangerously-allow-high-impact-tools</code>.</p>
+
+        <h2>Read tools</h2>
+        <p>The read profile answers “what is true?” and “what would this operation do?” without mutating workflow state.</p>
+        <div class="tool-groups">
+          <section class="tool-group">
+            <h3>Queues and tickets</h3>
+            <p>Find actionable work, inspect policy and dependencies, and read ticket history.</p>
+            <ul class="tool-list">
+              <li><code>atlas.queue</code></li><li><code>atlas.next</code></li><li><code>atlas.search</code></li><li><code>atlas.board</code></li><li><code>atlas.ticket.view</code></li><li><code>atlas.ticket.history</code></li><li><code>atlas.ticket.inspect</code></li>
+            </ul>
+          </section>
+          <section class="tool-group">
+            <h3>Agents and teams</h3>
+            <p>Read what an agent can do now, why it is waiting, its profile, team presets, and wake-ups.</p>
+            <ul class="tool-list">
+              <li><code>atlas.agent.available</code></li><li><code>atlas.agent.pending</code></li><li><code>atlas.agent.list</code></li><li><code>atlas.agent.view</code></li><li><code>atlas.agent.wakeup.list</code></li><li><code>atlas.agent.wakeup.view</code></li><li><code>atlas.team.list</code></li><li><code>atlas.team.show</code></li><li><code>atlas.goal.brief</code></li>
+            </ul>
+          </section>
+          <section class="tool-group">
+            <h3>Runs and review</h3>
+            <p>Follow schedules, delivery state, evidence, handoffs, approvals, and the human inbox.</p>
+            <ul class="tool-list">
+              <li><code>atlas.schedule.list</code></li><li><code>atlas.schedule.history</code></li><li><code>atlas.dashboard</code></li><li><code>atlas.timeline</code></li><li><code>atlas.run.view</code></li><li><code>atlas.evidence.list</code></li><li><code>atlas.evidence.view</code></li><li><code>atlas.handoff.view</code></li><li><code>atlas.approvals</code></li><li><code>atlas.inbox</code></li>
+            </ul>
+          </section>
+          <section class="tool-group">
+            <h3>Delivery state and plans</h3>
+            <p>Inspect changes, checks, sync, conflicts, archive state, and guarded operation plans.</p>
+            <ul class="tool-list">
+              <li><code>atlas.change.status</code></li><li><code>atlas.checks.list</code></li><li><code>atlas.sync.status</code></li><li><code>atlas.conflict.list</code></li><li><code>atlas.conflict.view</code></li><li><code>atlas.archive.plan</code></li><li><code>atlas.dispatch.suggest</code></li><li><code>atlas.dispatch.plan</code></li><li><code>atlas.change.merge_plan</code></li><li><code>atlas.sync.pull_plan</code></li><li><code>atlas.bundle.import_plan</code></li><li><code>atlas.archive.apply_plan</code></li><li><code>atlas.import.apply_plan</code></li><li><code>atlas.compact_plan</code></li><li><code>atlas.worktree.cleanup_plan</code></li>
+            </ul>
+          </section>
+        </div>
+
+        <h2 id="workflow-tools">Workflow tools</h2>
+        <p>This profile is the practical default when an agent is expected to do ticket work. All 26 mutations require <code>actor</code> and <code>reason</code>; they still run the same service permissions, dependency rules, leases, write lock, and event recording as the CLI.</p>
+        <div class="tool-groups">
+          <section class="tool-group">
+            <h3>Create and organize</h3>
+            <p>Create tickets, set ownership, and build dependency or parent relationships without leaving MCP.</p>
+            <ul class="tool-list">
+              <li><code>atlas.ticket.create</code></li><li><code>atlas.ticket.assign</code></li><li><code>atlas.ticket.link</code></li><li><code>atlas.ticket.unlink</code></li>
+            </ul>
+          </section>
+          <section class="tool-group">
+            <h3>Work the ticket</h3>
+            <p>Acquire and release leases, move through legal states, and leave durable progress notes.</p>
+            <ul class="tool-list">
+              <li><code>atlas.ticket.claim</code></li><li><code>atlas.ticket.release</code></li><li><code>atlas.ticket.move</code></li><li><code>atlas.ticket.comment</code></li>
+            </ul>
+          </section>
+          <section class="tool-group">
+            <h3>Review and complete</h3>
+            <p>Request review, decide the ticket, complete approved or open-mode work, and decide normal approval gates.</p>
+            <ul class="tool-list">
+              <li><code>atlas.ticket.request_review</code></li><li><code>atlas.ticket.approve</code></li><li><code>atlas.ticket.reject</code></li><li><code>atlas.ticket.complete</code></li><li><code>atlas.gate.approve</code></li><li><code>atlas.gate.reject</code></li>
+            </ul>
+          </section>
+          <section class="tool-group">
+            <h3>Configure agents</h3>
+            <p>Create and edit profiles, enable or disable them, apply a preset, and acknowledge work wake-ups.</p>
+            <ul class="tool-list">
+              <li><code>atlas.agent.create</code></li><li><code>atlas.agent.edit</code></li><li><code>atlas.agent.enable</code></li><li><code>atlas.agent.disable</code></li><li><code>atlas.team.apply</code></li><li><code>atlas.agent.wakeup.ack</code></li>
+            </ul>
+          </section>
+          <section class="tool-group">
+            <h3>Schedule and prove</h3>
+            <p>Set one-time schedules, record checkpoints and evidence, and create the handoff for the next actor.</p>
+            <ul class="tool-list">
+              <li><code>atlas.schedule.set</code></li><li><code>atlas.schedule.clear</code></li><li><code>atlas.run.checkpoint</code></li><li><code>atlas.evidence.add</code></li><li><code>atlas.handoff.create</code></li>
+            </ul>
+          </section>
+          <section class="tool-group">
+            <h3>Preview imports</h3>
+            <p>Create a local import preview job before any high-impact apply step.</p>
+            <ul class="tool-list"><li><code>atlas.import.preview</code></li></ul>
+          </section>
+        </div>
+
+        <h2>Delivery and high-impact tools</h2>
+        <p>The four delivery tools can create provider or runtime side effects: <code>atlas.dispatch.run</code>, <code>atlas.change.create</code>, <code>atlas.change.sync</code>, and <code>atlas.checks.sync</code>.</p>
+        <p>The 11 high-impact tools cover provider review/merge, gate waiver, sync push/pull, bundle/import apply, archive apply/restore, compact, and worktree cleanup. They are not exposed in ordinary sessions. See <a href="mcp-security.html">MCP security</a> for the external approval handshake and exact-target rules.</p>
+
+        <h2>A practical first loop</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>workflow profile</span><button class="copy-button" type="button" data-copy="mt-loop" aria-label="Copy MCP workflow outline">Copy</button></div>
+          <pre id="mt-loop">1. atlas.agent.available  { "agent_id": "builder-1" }
+2. atlas.ticket.claim    { "ticket_id": "APP-12", "actor": "agent:builder-1", "reason": "start work" }
+3. atlas.ticket.move     { "ticket_id": "APP-12", "status": "in_progress", "actor": "agent:builder-1", "reason": "start work" }
+4. atlas.ticket.comment  { "ticket_id": "APP-12", "body": "implemented retry policy", "actor": "agent:builder-1", "reason": "progress" }
+5. atlas.ticket.request_review { "ticket_id": "APP-12", "actor": "agent:builder-1", "reason": "ready for review" }</pre>
+        </div>
+        <p>Argument schemas are discoverable from the server. Run <code>tracker mcp schema --json --tool-profile workflow</code> rather than copying guessed fields into production calls.</p>
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-prev" href="mcp-setup.html"><span class="pager-label">Previous</span><span class="pager-title">MCP setup</span></a>
+        <a class="pager-next" href="mcp-security.html"><span class="pager-label">Next</span><span class="pager-title">MCP security</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

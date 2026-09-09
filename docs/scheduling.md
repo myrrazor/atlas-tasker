@@ -7,7 +7,7 @@ Atlas schedules a ticket once at an exact RFC3339 instant. The ticket's assignee
 ```bash
 tracker schedule set APP-12 \
   --at 2026-08-10T09:00:00-04:00 \
-  --runner human:alex \
+  --runner human:owner \
   --actor human:owner \
   --reason "Monday follow-up"
 ```

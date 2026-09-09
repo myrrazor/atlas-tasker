@@ -86,6 +86,20 @@ Every mutation requires:
 }
 ```
 
+For example, a workflow-profile claim call uses:
+
+```json
+{
+  "ticket_id": "APP-12",
+  "actor": "agent:builder-1",
+  "reason": "start work"
+}
+```
+
+The same required pair applies to ticket, agent, team, schedule, checkpoint, evidence, and handoff
+workflow tools. Read tools do not require either field; some accept an optional `actor` as query
+context.
+
 Every high-impact mutation also requires:
 
 ```json

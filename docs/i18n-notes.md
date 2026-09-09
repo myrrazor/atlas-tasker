@@ -5,10 +5,12 @@ The browser welcome page, settings, and board chrome ship in English (`en`), Spa
 Language resolution is intentionally small: `?lang=` wins, then `web.lang`, then `Accept-Language`, then English. Set a workspace default with:
 
 ```bash
-tracker config set web.lang es
+tracker config set web.lang ja
 ```
 
-Two known gaps, on purpose rather than by accident: config validation for `web.lang` still only accepts `en`, `es`, and `id`, so the newer three catalogs are reachable through `?lang=` and `Accept-Language` but not yet as a workspace default. And the `/schedule` page is English-only for now — its strings are not in the catalogs, and it does not render the footer language switcher.
+`web.lang` accepts all six catalog codes (`en`, `es`, `id`, `zh`, `ja`, `ko`), normalizes case and surrounding whitespace, and rejects unsupported values without changing the saved preference. An empty value restores automatic language selection.
+
+The `/schedule` page is still English-only: its strings are not in the catalogs, and it does not render the footer language switcher. Setting a workspace language does not translate ticket content or this page.
 
 The status vocabulary is fixed for the pilot so the catalog stays consistent:
 

@@ -136,3 +136,26 @@ func TestSelectTargetsInteractivelyDefaultsAndOverrides(t *testing.T) {
 		t.Fatalf("expected empty selection, got %+v", got)
 	}
 }
+
+func TestSelectTargetsInteractivelyEOFDoesNotInstallDetectedAgents(t *testing.T) {
+	got, err := SelectTargetsInteractively(SelectOptions{
+		Detections:        []Detection{{Target: TargetClaude, Found: true}},
+		Stdin:             strings.NewReader(""),
+		DefaultToDetected: true,
+	})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("EOF selected integrations without consent: %v, %v", got, err)
+	}
+}
+
+func TestSelectTargetsInteractivelyRejectsDelimiterOnlyInput(t *testing.T) {
+	for _, input := range []string{",\n", " , , \t\n"} {
+		_, err := SelectTargetsInteractively(SelectOptions{
+			Detections: []Detection{{Target: TargetCodex, Found: true}},
+			Stdin:      strings.NewReader(input),
+		})
+		if err == nil {
+			t.Fatalf("malformed selection %q reported a successful skip", input)
+		}
+	}
+}

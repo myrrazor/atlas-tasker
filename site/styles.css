@@ -1235,6 +1235,145 @@ figcaption {
   margin-top: 18px;
 }
 
+/* agent connection journey */
+
+.connect-steps {
+  display: grid;
+  padding: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  list-style: none;
+}
+
+.connect-steps li {
+  display: grid;
+  min-width: 0;
+  padding: 0 22px 26px;
+  border-bottom: 1px solid var(--line-strong);
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.connect-steps li + li {
+  border-left: 1px solid var(--line);
+}
+
+.connect-steps li > span {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+
+.connect-steps h3 {
+  margin: -4px 0 0;
+  font-size: 0.96rem;
+  font-weight: 600;
+}
+
+.connect-steps p {
+  margin: 8px 0 0;
+  color: var(--text-2);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.connect-subtitle {
+  margin: 52px 0 18px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.runtime-tabs {
+  margin-top: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--surface-1);
+  overflow: hidden;
+}
+
+.runtime-tablist {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.runtime-tablist button {
+  min-height: 48px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  flex: 1 0 auto;
+  font: inherit;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.runtime-tablist button:hover {
+  color: var(--text);
+}
+
+.runtime-tablist button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.runtime-panel {
+  min-height: 130px;
+  padding: 24px;
+}
+
+.runtime-panel[hidden] {
+  display: none;
+}
+
+.runtime-panel strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.runtime-panel p {
+  max-width: 72ch;
+  margin: 12px 0 0;
+  color: var(--text-2);
+  font-size: 0.9rem;
+}
+
+.docs-jump {
+  display: flex;
+  margin-top: 18px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-1);
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.docs-jump p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.88rem;
+}
+
+.docs-jump a {
+  color: var(--text);
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.agent-doc-actions {
+  margin-top: 26px;
+  justify-content: flex-start;
+}
+
 /* small data tables (exit codes, tool classes) */
 
 .data-table {
@@ -1338,6 +1477,18 @@ figcaption {
   .ladder {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .connect-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .connect-steps li:nth-child(3) {
+    border-left: 0;
+  }
+
+  .connect-steps li:nth-child(n + 3) {
+    padding-top: 26px;
+  }
 }
 
 @media (max-width: 620px) {
@@ -1353,6 +1504,26 @@ figcaption {
   .cmd-groups,
   .ladder {
     grid-template-columns: 1fr;
+  }
+
+  .connect-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .connect-steps li,
+  .connect-steps li + li,
+  .connect-steps li:nth-child(n + 3) {
+    padding: 22px 0;
+    border-left: 0;
+  }
+
+  .docs-jump {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .docs-jump a {
+    white-space: normal;
   }
 
   .fact-list li {

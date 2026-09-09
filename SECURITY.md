@@ -4,7 +4,7 @@ Atlas stores local task state, agent evidence, sync artifacts, signatures, gover
 
 ## Supported Versions
 
-`v1.10.0` is the current stable release. Security reports should name the affected release and include the commit SHA, branch, or PR when the issue is not present in a published tag.
+`v1.11.0` is the current stable release. Security reports should name the affected release and include the commit SHA, branch, or PR when the issue is not present in a published tag.
 
 ## Reporting A Vulnerability
 

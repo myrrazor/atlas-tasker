@@ -3,7 +3,7 @@
 Copy this into a fresh repo checkout after building `tracker`.
 
 ```bash
-./tracker init
+./tracker init --skip-integrations
 ./tracker project create APP "Example App"
 ./tracker ticket create --project APP --title "Ship first feature" --type task --actor human:owner --reason "quickstart"
 ./tracker ticket move APP-1 ready --actor human:owner --reason "start work"
@@ -32,3 +32,7 @@ Useful next commands:
 ```
 
 Use explicit actors and reasons for mutations in examples. Atlas records those fields in the event stream and policy/audit surfaces use them later.
+
+The `--skip-integrations` flag keeps this copyable block non-interactive. Run plain `tracker init` in a
+terminal to choose detected agents during setup, or use `tracker integrations install` later. See
+[coding-agent integrations](guides/agent-integrations.md).

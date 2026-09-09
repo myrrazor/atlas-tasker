@@ -1,11 +1,13 @@
 # Atlas Docs
 
-Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for the current stable release, v1.10.0.
+Start here if you are new to Atlas Tasker. The older version plans are still in this directory, but this page is the public docs route map for the current stable release, v1.11.0.
 
 ## First Ten Minutes
 
 - [Installation](installation.md): source builds, release installs, and verification.
+- [Updating](guides/updating.md): check, preview, and safely replace the current binary.
 - [Getting started](getting-started.md): the shortest path from empty repo to first ticket.
+- [Coding-agent integrations](guides/agent-integrations.md): the six project skill targets and their generated files.
 - [Quickstart](quickstart.md): one copyable terminal flow.
 - [First agent workflow](first-agent-workflow.md): register an agent, dispatch work, attach evidence, and hand off for review.
 - [Scheduled work](scheduling.md): one-time human reminders, agent wakeups, ticking, and completion history.
@@ -38,15 +40,17 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 - [Codex `/goal`](guides/codex-goals.md)
 - [Claude Code](guides/claude-code.md)
 - [Generic agents](guides/generic-agent.md)
+- [Coding-agent integrations](guides/agent-integrations.md)
 - [MCP for agents](guides/mcp-for-agents.md)
 - [MCP](mcp.md): serve modes, tool profiles, and approvals in full
 - [v1.9 agent workflow](v1.9-agent-workflow.md)
 - [Local web board](web-board.md)
 - [Web board security](web-board-security.md)
 - [Web board user guide](web-board-user-guide.md)
-- [Web i18n notes](i18n-notes.md): the six board languages and the known `web.lang` gaps
+- [Web i18n notes](i18n-notes.md): the six configurable board languages and the remaining schedule translation gap
 - [Doctor and repair](guides/doctor-and-repair.md)
 - [Release verification](guides/release-verification.md)
+- [Updating](guides/updating.md)
 - [Operations](guides/operations.md)
 
 ## Reference
@@ -69,7 +73,7 @@ Start here if you are new to Atlas Tasker. The older version plans are still in 
 
 ## Release Status
 
-`v1.10.0` is the current stable release: the optional local web UI, one-time scheduled tickets, the agent-ready CLI, and the security batch. Local proof and hosted release proof stay separate gates for every release. The [v1.10 release evidence](release/v1.10.0-release-evidence.md) records the hosted RC proof and owner ship decision. Read [public release gates](release/public-release-gates.md) before treating any build as release-ready.
+`v1.11.0` is the current stable release. It includes the MCP workflow loop, `tracker update`, six-target integration detection and installation, and local security hardening. Local proof and hosted release proof stay separate gates for every release. The [v1.11 release evidence](release/v1.11.0-release-evidence.md) records the hosted RC proof and owner ship decision. Read [public release gates](release/public-release-gates.md) before treating any development build or v1.12 documentation as release-ready.
 
 ## Security Boundary
 

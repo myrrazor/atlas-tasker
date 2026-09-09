@@ -33,6 +33,17 @@ Agent workflow commands:
 - `tracker run evidence add <RUN-ID> --type note --title <TITLE> --body <TEXT> --actor <ACTOR> --reason <TEXT>`
 - `tracker run handoff <RUN-ID> --next-actor <ACTOR> --next-gate review --actor <ACTOR> --reason <TEXT>`
 
+Agent setup and MCP discovery:
+
+- `tracker integrations detect --json`
+- `tracker integrations install [claude|codex|cursor|openclaw|grok|generic]`
+- `tracker integrations install --targets claude,codex,cursor`
+- `tracker mcp tools --json --tool-profile workflow`
+- `tracker mcp schema --json --tool-profile workflow`
+
+The integration installer writes project instructions and skills; it does not register MCP. See
+[coding-agent integrations](../guides/agent-integrations.md) and [MCP for agents](../guides/mcp-for-agents.md).
+
 GitHub commands (need the `gh` CLI installed and authenticated; `tracker gh status` tells you whether it is):
 
 - `tracker gh status --json`
@@ -51,6 +62,8 @@ tracker ticket --help
 tracker run --help
 tracker goal --help
 tracker mcp --help
+tracker integrations --help
+tracker update --help
 tracker web --help
 tracker version --json
 ```

@@ -10,7 +10,7 @@ The web UI runs from the current workspace and uses the same canonical services 
 
 The root page is a workspace welcome view with per-project active, backlog, done, and blocked counts plus the latest ticket changes. Project links open `/board?project=KEY`; `/board` remains the canonical Kanban route. The settings link shows `web.owner_name`, `web.lang`, `actor.default`, and agent color preferences read-only.
 
-The welcome page, settings, and board chrome ship in English, Spanish, Indonesian, Chinese, Japanese, and Korean. Choose a page language with the footer links or set a workspace default with `tracker config set web.lang es`. A `?lang=` query takes precedence over workspace config, then Atlas checks `Accept-Language` and falls back to English. Two honest gaps remain: `tracker config set web.lang` still validates only `en`, `es`, and `id`, so reach Chinese, Japanese, or Korean through `?lang=` or `Accept-Language` for now, and the `/schedule` page is English-only. Ticket content is never translated.
+The welcome page, settings, and board chrome ship in English, Spanish, Indonesian, Chinese, Japanese, and Korean. Choose a page language with the footer links or set a workspace default with `tracker config set web.lang ja`. All six codes (`en`, `es`, `id`, `zh`, `ja`, `ko`) are accepted. A `?lang=` query takes precedence over workspace config, then Atlas checks `Accept-Language` and falls back to English. The `/schedule` page remains English-only. Ticket content is never translated.
 
 The browser workspace supports:
 
@@ -34,6 +34,8 @@ The “Run due now” action is the browser equivalent of `tracker schedule tick
 Default serve behavior binds to `127.0.0.1` on a random port and opens a session URL when `--open` is used. The session token stays valid for the lifetime of that server process and is printed only by `tracker web serve`; it is never written to disk.
 
 ## Screenshots
+
+These captures use a synthetic workspace and the display name “User.” Reproduce the workspace with [the web demo fixture](../examples/create-web-demo.sh); see [capture instructions](examples/screenshot-fixtures.md).
 
 Welcome dashboard:
 

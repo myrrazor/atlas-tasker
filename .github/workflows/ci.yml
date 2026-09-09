@@ -41,8 +41,14 @@ jobs:
           sh -n scripts/verify-release.sh
       - name: Run tests
         run: go test ./...
+      - name: Check installer terminal and unattended flows
+        run: |
+          go build -o "$RUNNER_TEMP/tracker" ./cmd/tracker
+          python3 scripts/test-install.py --tracker "$RUNNER_TEMP/tracker"
+      - name: Check MCP stdio workflow and profiles
+        run: python3 scripts/verify-mcp-workflow.py --tracker "$RUNNER_TEMP/tracker"
       - name: Check browser and site contracts
-        run: node --test internal/web/testdata/refresh_board.test.mjs site/_tools/site-contract.test.mjs
+        run: node --test internal/web/testdata/refresh_board.test.mjs site/_tools/*.test.mjs
 
   stability:
     needs: workflow-policy

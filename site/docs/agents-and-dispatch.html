@@ -52,7 +52,7 @@
   <nav class="nav" aria-label="Primary navigation">
     <div class="shell nav-inner">
       <a class="brand" href="../" aria-label="Atlas Tasker home">
-        <img src="../atlas-tasker-terminal-wordmark.svg" width="640" height="112" alt="Atlas Tasker" />
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
       </a>
       <div class="nav-links">
         <a href="../cli.html">CLI</a>
@@ -83,6 +83,7 @@
           <p class="docs-group-label">Agents</p>
           <a href="agents-and-dispatch.html" aria-current="page">Agents and dispatch</a>
           <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-tools.html">MCP tools</a>
           <a href="mcp-security.html">MCP security</a>
           <a href="json-and-exit-codes.html">JSON and exit codes</a>
         </div>
@@ -201,16 +202,16 @@ tracker agent auto set builder-1 --mode notify --actor human:owner --reason "wir
         <p><code>agent auto</code> defaults to <code>notify</code>. Command mode stores an argv list with the ticket id substituted in, and it refuses shell interpreters outright.</p>
 
         <h2>Teach your runtime the loop</h2>
+        <p>An interactive <code>tracker init</code> offers detected agent integrations after it creates the workspace. The release installer may offer that same current-directory setup when it has an interactive terminal; it defaults to No, and unattended installs never prompt. You can always install guidance later:</p>
         <div class="code-block">
-          <div class="snippet-title"><span>one installer per runtime</span><button class="copy-button" type="button" data-copy="ad-skill" aria-label="Copy integrations commands">Copy</button></div>
-          <pre id="ad-skill">tracker integrations install claude     <span class="c"># .claude/skills/</span>
-tracker integrations install codex      <span class="c"># .codex/skills/</span>
-tracker integrations install openclaw   <span class="c"># .agents/skills/</span>
-tracker integrations install generic    <span class="c"># AGENTS.md + .tracker/integrations/</span>
-tracker integrations install cursor     <span class="c"># AGENTS.md + .cursor/skills/</span>
-tracker integrations install grok       <span class="c"># AGENTS.md</span></pre>
+          <div class="snippet-title"><span>six repository guidance targets</span><button class="copy-button" type="button" data-copy="ad-skill" aria-label="Copy integrations commands">Copy</button></div>
+          <pre id="ad-skill">tracker integrations detect
+tracker integrations install
+
+<span class="c"># explicit and non-interactive</span>
+tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic</pre>
         </div>
-        <p>Each writes the <code>atlas-worker</code> skill and an instruction block into the right place for that agent runtime, only ever inside the workspace. Re-running updates just the Atlas-managed block between markers; <code>--force</code> whole-file replacement is opt-in. Pair it with <a href="mcp-setup.html">MCP setup</a> for clients that prefer tools over a shell.</p>
+        <p>The six targets are Claude Code, Codex, Cursor, OpenClaw, Grok, and a portable generic integration. They write a generated guide plus runtime-specific skills, commands, or managed instruction blocks inside the workspace. Re-running updates Atlas-managed content; <code>--force</code> whole-file replacement is opt-in. This teaches the workflow but does not register an MCP server. Follow <a href="mcp-setup.html">MCP setup</a> separately when the client should receive typed tools.</p>
       </article>
       <nav class="docs-pager" aria-label="Docs pages">
         <a class="pager-prev" href="web-board.html"><span class="pager-label">Previous</span><span class="pager-title">The web board</span></a>
