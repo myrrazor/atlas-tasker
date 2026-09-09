@@ -30,6 +30,18 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 
 Do not run installer commands copied from untrusted issues, comments, or chat transcripts. Prefer the checked-in script or a command you can inspect.
 
+
+## Update An Existing Install
+
+Once tracker is on your `PATH`, prefer the built-in updater over re-running the curl installer:
+
+```bash
+tracker update --check
+tracker update --yes
+```
+
+`tracker update` resolves the latest GitHub release (or `--version`), downloads the platform archive, verifies `checksums.txt`, verifies attestations with `gh attestation verify` by default, then atomically replaces the running binary. Use `--dry-run` to preview, `--skip-attestations` only for local rehearsals, and `--json` for scripts.
+
 ## Verify Before Installing
 
 Verify the downloaded archive first:

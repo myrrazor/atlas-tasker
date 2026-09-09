@@ -115,6 +115,7 @@ gets you the same board in a browser.`,
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newWebCommand())
 	root.AddCommand(newVersionCommand())
+	root.AddCommand(newUpdateCommand())
 	root.AddCommand(newShellCommand())
 	root.AddCommand(newMCPCommand())
 	root.AddCommand(newKeyCommand())

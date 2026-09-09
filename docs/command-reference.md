@@ -53,6 +53,7 @@
 - `tracker web serve [--host 127.0.0.1] [--port 0] [--project <KEY>] [--actor <ACTOR>] [--open|--no-browser] [--read-only]`
 - `tracker web open`
 - `tracker web status [--pretty|--md|--json]`
+- `tracker update [--check|--dry-run|--yes] [--force] [--version <TAG>] [--skip-attestations] [--json]`
 - `tracker version [--json]`
 - `tracker tui [--actor <ACTOR>]`
 - `tracker config get [KEY]`

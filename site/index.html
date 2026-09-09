@@ -112,7 +112,7 @@
         "name": "How do I update Atlas Tasker?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Run the curl installer again to fetch and verify the latest release. Export VERSION before running it if you need to pin a specific release."
+          "text": "Run tracker update --check, then tracker update --yes to verify checksums/attestations and replace the binary. Use --version to pin a release, or re-run the curl installer."
         }
       },
       {
@@ -413,7 +413,7 @@
         </details>
         <details>
           <summary>How do I update Atlas Tasker?</summary>
-          <p>Run the curl installer again to fetch and verify the latest release. Export VERSION before running it if you need to pin a specific release.</p>
+          <p>Run tracker update --check, then tracker update --yes to verify checksums/attestations and replace the binary. Use --version to pin a release, or re-run the curl installer.</p>
         </details>
         <details>
           <summary>Why not just use Jira?</summary>
