@@ -154,9 +154,9 @@ Start at the [docs landing page](docs/README.md), or jump to [installation](docs
 
 ## Status
 
-`v1.10.0` is the latest tagged release, and what the installer and `go install ...@latest` give you. It is the first release with the local web UI (`tracker web serve`: welcome dashboard, Kanban board, schedule timeline, six languages), one-time ticket schedules (`tracker schedule`, with matching MCP tools), and the agent-facing round: `--json` on every command agents run, `tracker mcp serve --workspace`, and the OpenClaw integration target. It also lands a security batch: the web server is strictly loopback-only, exports and backups fail closed on symlinked inputs, and the CI and release workflows pin every action to a reviewed commit. It also closes the two footguns an outside review found in v1.9.1: a missing or stale `index.sqlite` now rebuilds itself on the next command instead of rendering an empty board, and an agent-assigned ticket is promoted to `ready` the moment its last blocker completes. [CHANGELOG.md](CHANGELOG.md) has the full list, breaking changes included.
+`v1.10.0` is still the latest **published** stable tag until [v1.11 release evidence](docs/release/v1.11.0-release-evidence.md) records a SHIP decision. The v1.11 train is on `main`: MCP workflow loop coverage, `tracker update`, integration detect/install checkboxes, and local security hardening. [CHANGELOG.md](CHANGELOG.md) has the full list.
 
-The [v1.10 release evidence](docs/release/v1.10.0-release-evidence.md) records the verified RC and owner ship decision; the [release page](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.10.0) records post-publication verification.
+The [v1.10 release evidence](docs/release/v1.10.0-release-evidence.md) records the verified v1.10 RC and owner ship decision; the [v1.10.0 release page](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.10.0) records that publication.
 
 `v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 

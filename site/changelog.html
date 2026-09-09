@@ -72,6 +72,16 @@
     </header>
     <div class="legal-content">
       <section class="shell">
+        <h2>v1.11.0 - MCP Loop, Self-Update, And Local Hardening (2026-09-09)</h2>
+        <ul>
+          <li>MCP workflow profile covers the real agent loop (create/assign/link, approve/reject/complete, agents/teams, goal brief, wake-ups), and stdio accepts both newline JSON-RPC and LSP-style framing.</li>
+          <li>`tracker update` self-updates from GitHub releases with checksum and attestation verification and atomic binary replace.</li>
+          <li>`tracker integrations detect` and interactive install checkboxes (plus init flags) for Claude Code, Codex, Cursor, OpenClaw, and Grok.</li>
+          <li>Local security hardening: archive/compact path containment, symlink fail-closed checks, private modes for sensitive paths and config, OpenClaw `--global` destination validation, and soft secret-like warnings on create/comment.</li>
+          <li>CLI honesty: same-status move is a no-op, nested init refusal, `ticket show` alias, required `--type` unless a template supplies it, and consistent actor resolution on create/move.</li>
+        </ul>
+      </section>
+      <section class="shell">
         <h2>v1.10.0 - Local Web UI And Agent-Ready CLI (2026-09-08)</h2>
         <ul>
           <li>Atlas grows a local browser UI: `tracker web serve` starts a loopback-only server with a welcome dashboard, the Kanban board, a schedule workspace, and a read-only settings page — server-rendered through the same services and event log as the CLI. The board wears the atlas.pen restyle: deep-navy surfaces, Geist and Geist Mono, column accent bars, and tinted status and priority pills.</li>
