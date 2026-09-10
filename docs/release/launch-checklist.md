@@ -1,8 +1,9 @@
 # Atlas Tasker v1.13 Launch Checklist
 
 [Candidate evidence](v1.13.0-release-evidence.md) separates local preparation from
-hosted release proof. The current published stable remains
-[v1.12.0](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.12.0).
+hosted release proof. This is the source-approval snapshot; after publication,
+the [v1.13.0 release page](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.13.0)
+records the final hosted results without changing the tag.
 
 ## Candidate preparation
 
@@ -14,8 +15,9 @@ hosted release proof. The current published stable remains
 - [x] Three bounded review rounds are complete with no remaining actionable finding.
 - [x] All 40 web and site contracts pass.
 - [x] Local release preflight, offline validator, and packaged installation rehearsal pass.
-- [ ] Required hosted checks pass on the final PR head.
-- [ ] Owner approves the PR and merges it into `testing`.
+- [x] All five hosted checks pass on PR #141's final head.
+- [x] Owner approves PR #141 and merges it into `testing`.
+- [x] Owner authorizes the remaining reviews, merges, and full release.
 
 ## Publication
 

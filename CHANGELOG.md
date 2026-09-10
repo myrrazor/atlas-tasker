@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased - v1.13.0 Workflow Consistency
+## v1.13.0 - Workflow Consistency
 
 - Canceled work has a separate board column across CLI, JSON, TUI, and web, and the web move control includes canceled. Board and ticket views show assignment directly.
 - CLI mutations consistently resolve explicit, environment, or configured actors, with no silent owner fallback. Non-review claims on another assignee's ticket conflict, and new schedules require future times.

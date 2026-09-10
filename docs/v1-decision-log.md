@@ -957,6 +957,9 @@ Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. 
 
 ## DEC-068
 
+The preparation-only authorization boundary is superseded by DEC-069. The minor
+version, compatibility decisions, and hosted proof requirements remain unchanged.
+
 1. **Decision ID:** DEC-068
 2. **Date:** 2026-09-09
 3. **Question:** How should the workflow-consistency fixes enter the next stable release while keeping public documentation truthful?
@@ -966,3 +969,15 @@ Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. 
 7. **Confidence:** high
 8. **Revisit Trigger:** The owner changes the release version/scope, protected-branch requirements change, or hosted RC verification exposes a release defect.
 9. **Affected PRs/Files:** CHANGELOG.md, docs/release.md, docs/release/*, scripts/preflight-release.sh, scripts/validate-rc.sh, scripts/release-rehearsal.sh, current guides/references, site/*, docs/assets/*, examples/create-web-demo.sh, internal/service/workflow_consistency_test.go.
+
+## DEC-069
+
+1. **Decision ID:** DEC-069
+2. **Date:** 2026-09-10
+3. **Question:** How should the approved v1.13 candidate proceed after the owner merged PR #141 and requested the full release?
+4. **Options Considered:** Keep the earlier preparation-only hold; execute the explicitly authorized promotion and publication while retaining all verification gates.
+5. **Chosen Option:** Complete the remaining PRs and normal protected-branch merges using the owner's authorized accounts for required reviews. Publish an RC from the approved main commit, verify downloaded artifacts, then publish stable from the same commit and verify it independently. Deploy the final site only after stable proof passes. Record post-publication evidence on the release pages without moving tags.
+6. **Why We Chose It:** The owner's explicit full-release request supersedes DEC-068's preparation-only boundary. It authorizes the remaining actions without weakening code-owner review, checksums, provenance, installation, workflow, or production verification.
+7. **Confidence:** high
+8. **Revisit Trigger:** A required check fails, the source or required approvals change, or hosted proof exposes a release defect.
+9. **Affected PRs/Files:** docs/release/v1.13.0-release-evidence.md, docs/release/launch-checklist.md, CHANGELOG.md, site/changelog.html, site/cli.html, site/docs/getting-started.html, site/docs/json-and-exit-codes.html, site/_tools/site-contract.test.mjs.
