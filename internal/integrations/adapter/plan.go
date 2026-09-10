@@ -106,6 +106,9 @@ func (d Detection) Validate() error {
 		if probe.Command.Mutates() {
 			return fmt.Errorf("detection probes must be read-only, got %s", probe.Command.Purpose)
 		}
+		if d.ExecutablePath == "" || probe.Command.Executable != d.ExecutablePath {
+			return fmt.Errorf("detection probes must run the detected client executable %q, got %q", d.ExecutablePath, probe.Command.Executable)
+		}
 	}
 	return nil
 }
@@ -126,11 +129,13 @@ type DetectInput struct {
 	Runner CommandRunner
 }
 
-// PlanInput is what Plan receives.
+// PlanInput is what Plan receives. Home is required: the repository-carried
+// placement rules cannot be checked without it, so an engine that does not
+// know the home directory cannot ask for a plan.
 type PlanInput struct {
 	WorkspaceRoot string          `json:"workspace_root"`
 	WorkspaceID   string          `json:"workspace_id"`
-	Home          string          `json:"home,omitempty"`
+	Home          string          `json:"home"`
 	TrackerPath   string          `json:"tracker_path"`
 	ActorHint     contracts.Actor `json:"actor_hint,omitempty"`
 	Detection     Detection       `json:"detection"`
@@ -138,18 +143,22 @@ type PlanInput struct {
 	// another one explicitly (for example Claude project .mcp.json).
 	Scope ConfigScope `json:"scope,omitempty"`
 	// ConsentedRoots are additional absolute directories the user explicitly
-	// allowed Atlas to write into (generic custom config destinations).
+	// allowed Atlas to write into (generic custom config destinations, the
+	// OpenClaw global skill directory, a named client's user-scope file).
 	ConsentedRoots []string `json:"consented_roots,omitempty"`
 	// Existing is the recorded state from a previous setup, if any.
 	Existing *IntegrationState `json:"existing,omitempty"`
 }
 
 func (p PlanInput) Validate() error {
-	if !filepath.IsAbs(p.WorkspaceRoot) || filepath.Clean(p.WorkspaceRoot) != p.WorkspaceRoot {
+	if !isCleanAbsolute(p.WorkspaceRoot) {
 		return fmt.Errorf("workspace root must be a clean absolute path")
 	}
 	if strings.TrimSpace(p.WorkspaceID) == "" {
 		return fmt.Errorf("workspace id is required")
+	}
+	if !isCleanAbsolute(p.Home) {
+		return fmt.Errorf("home must be a clean absolute path")
 	}
 	if err := validateAbsoluteExecutable(p.TrackerPath); err != nil {
 		return fmt.Errorf("tracker path: %w", err)
@@ -164,7 +173,7 @@ func (p PlanInput) Validate() error {
 		return fmt.Errorf("invalid scope %q", p.Scope)
 	}
 	for _, root := range p.ConsentedRoots {
-		if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		if !isCleanAbsolute(root) {
 			return fmt.Errorf("consented root must be a clean absolute path: %q", root)
 		}
 	}
@@ -183,13 +192,15 @@ const (
 	StepRemoveManagedBlock  StepKind = "remove_managed_block"
 	StepRemoveConfigEntry   StepKind = "remove_config_entry"
 	StepRecordLocalState    StepKind = "record_local_state"
+	StepRemoveLocalState    StepKind = "remove_local_state"
 	StepRenderPortableEntry StepKind = "render_portable_entry"
 )
 
 func (k StepKind) IsValid() bool {
 	switch k {
 	case StepWriteManagedFile, StepUpdateManagedBlock, StepWriteConfigEntry, StepRunClientCommand,
-		StepRemoveManagedFile, StepRemoveManagedBlock, StepRemoveConfigEntry, StepRecordLocalState, StepRenderPortableEntry:
+		StepRemoveManagedFile, StepRemoveManagedBlock, StepRemoveConfigEntry,
+		StepRecordLocalState, StepRemoveLocalState, StepRenderPortableEntry:
 		return true
 	default:
 		return false
@@ -198,10 +209,43 @@ func (k StepKind) IsValid() bool {
 
 // TouchesClientConfig reports whether the step changes the client's own
 // configuration (as opposed to Atlas-owned instruction, skill, or state
-// files). Unsupported client versions forbid these steps.
+// files). Unsupported client versions forbid these steps. The kind is not
+// the only guard: managed-file kinds are additionally confined to Atlas-owned
+// paths, so relabelling a client config write cannot slip past this gate.
 func (k StepKind) TouchesClientConfig() bool {
 	switch k {
 	case StepWriteConfigEntry, StepRemoveConfigEntry, StepRunClientCommand:
+		return true
+	default:
+		return false
+	}
+}
+
+// managedFile reports whether the kind writes or removes an Atlas-owned file
+// (instruction file, skill, command template, generated guide, descriptor).
+func (k StepKind) managedFile() bool {
+	switch k {
+	case StepWriteManagedFile, StepUpdateManagedBlock, StepRemoveManagedFile, StepRemoveManagedBlock:
+		return true
+	default:
+		return false
+	}
+}
+
+// configEntry reports whether the kind edits a client configuration file.
+func (k StepKind) configEntry() bool {
+	return k == StepWriteConfigEntry || k == StepRemoveConfigEntry
+}
+
+// localState reports whether the kind touches the private local state record.
+func (k StepKind) localState() bool {
+	return k == StepRecordLocalState || k == StepRemoveLocalState
+}
+
+// removes reports whether the kind deletes content that existed before apply.
+func (k StepKind) removes() bool {
+	switch k {
+	case StepRemoveManagedFile, StepRemoveManagedBlock, StepRemoveConfigEntry, StepRemoveLocalState:
 		return true
 	default:
 		return false
@@ -239,7 +283,10 @@ const (
 )
 
 // RollbackAction undoes one step. Snapshot restores use the journal's private
-// copy of the pre-write file identified by its SHA-256.
+// copy of the pre-write file identified by its SHA-256. A rollback is bound
+// to its step: file rollbacks name exactly the step's path and command
+// rollbacks run the step's client binary with a remove or reload purpose
+// (see IntegrationPlan.Validate).
 type RollbackAction struct {
 	Kind    RollbackKind `json:"kind"`
 	Path    string       `json:"path,omitempty"`
@@ -262,6 +309,9 @@ func (r RollbackAction) Validate() error {
 		if err := r.Command.Validate(); err != nil {
 			return fmt.Errorf("rollback command: %w", err)
 		}
+		if r.Command.Purpose != CommandPurposeRemove && r.Command.Purpose != CommandPurposeReload {
+			return fmt.Errorf("run_command rollback may only remove or reload, got %s", r.Command.Purpose)
+		}
 	default:
 		return fmt.Errorf("invalid rollback kind %q", r.Kind)
 	}
@@ -272,17 +322,20 @@ func (r RollbackAction) Validate() error {
 // Command; every write carries either a Rollback or an irreversible
 // classification with a reason.
 type PlanStep struct {
-	StepID             string          `json:"step_id"`
-	Kind               StepKind        `json:"kind"`
-	Description        string          `json:"description"`
-	Path               string          `json:"path,omitempty"`
+	StepID      string   `json:"step_id"`
+	Kind        StepKind `json:"kind"`
+	Description string   `json:"description"`
+	Path        string   `json:"path,omitempty"`
+	// Scope is required on config-entry steps and must equal the plan scope;
+	// other steps may carry it only when it equals the plan scope.
 	Scope              ConfigScope     `json:"scope,omitempty"`
 	Command            *Command        `json:"command,omitempty"`
 	Reversibility      Reversibility   `json:"reversibility,omitempty"`
 	IrreversibleReason string          `json:"irreversible_reason,omitempty"`
 	Rollback           *RollbackAction `json:"rollback,omitempty"`
-	// Mode is the file mode for created files (0600 for local state, 0644 for
-	// repository-carried managed files).
+	// Mode is the file mode for created or replaced files: 0600 for local
+	// state, 0644 or 0600 for managed files and config entries, 0 for steps
+	// that create nothing (removals, commands, portable renders).
 	Mode uint32 `json:"mode,omitempty"`
 }
 
@@ -321,11 +374,13 @@ type IntegrationPlan struct {
 	Target          integrations.Target `json:"target"`
 	WorkspaceID     string              `json:"workspace_id"`
 	WorkspaceRoot   string              `json:"workspace_root"`
-	// Home is the user's home directory, used only to refuse home-relative
-	// executables in repository-carried configuration.
+	// Home is the user's home directory. It is required whenever the plan
+	// carries a non-portable registration into repository-carried
+	// configuration, because that is the only way to prove the executable is
+	// not a personal path.
 	Home string `json:"home,omitempty"`
 	// LocalStateRoot is the private machine-local directory (0700) that
-	// record_local_state steps must stay inside.
+	// record_local_state and remove_local_state steps must stay inside.
 	LocalStateRoot string           `json:"local_state_root,omitempty"`
 	Scope          ConfigScope      `json:"scope"`
 	Detection      Detection        `json:"detection"`
@@ -353,14 +408,21 @@ func (p IntegrationPlan) Validate() error {
 	if !isKnownTarget(p.Target) {
 		return fmt.Errorf("unknown plan target %q", p.Target)
 	}
+	caps, err := CapabilitiesFor(p.Target)
+	if err != nil {
+		return err
+	}
 	if strings.TrimSpace(p.WorkspaceID) == "" {
 		return fmt.Errorf("plan workspace id is required")
 	}
-	if !filepath.IsAbs(p.WorkspaceRoot) || filepath.Clean(p.WorkspaceRoot) != p.WorkspaceRoot {
+	if !isCleanAbsolute(p.WorkspaceRoot) {
 		return fmt.Errorf("plan workspace root must be a clean absolute path")
 	}
 	if !p.Scope.IsValid() {
 		return fmt.Errorf("plan scope %q is invalid", p.Scope)
+	}
+	if len(caps.ScopesFor(p.Scope)) == 0 {
+		return fmt.Errorf("%s does not support the %s scope", p.Target, p.Scope)
 	}
 	if err := p.Detection.Validate(); err != nil {
 		return fmt.Errorf("plan detection: %w", err)
@@ -369,18 +431,18 @@ func (p IntegrationPlan) Validate() error {
 		return fmt.Errorf("plan detection target %q does not match plan target %q", p.Detection.Target, p.Target)
 	}
 	for _, root := range p.ConsentedRoots {
-		if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		if !isCleanAbsolute(root) {
 			return fmt.Errorf("consented root must be a clean absolute path: %q", root)
 		}
 		if isWithin(p.WorkspaceRoot, root) || isWithin(root, p.WorkspaceRoot) {
 			return fmt.Errorf("consented root %q overlaps the workspace", root)
 		}
 	}
-	if p.Home != "" && (!filepath.IsAbs(p.Home) || filepath.Clean(p.Home) != p.Home) {
+	if p.Home != "" && !isCleanAbsolute(p.Home) {
 		return fmt.Errorf("plan home must be a clean absolute path")
 	}
 	if p.LocalStateRoot != "" {
-		if !filepath.IsAbs(p.LocalStateRoot) || filepath.Clean(p.LocalStateRoot) != p.LocalStateRoot {
+		if !isCleanAbsolute(p.LocalStateRoot) {
 			return fmt.Errorf("local state root must be a clean absolute path")
 		}
 		if isWithin(p.WorkspaceRoot, p.LocalStateRoot) {
@@ -388,6 +450,9 @@ func (p IntegrationPlan) Validate() error {
 		}
 	}
 	if p.Registration != nil {
+		if p.Scope.RepositoryCarried() && !p.Registration.Portable && p.Home == "" {
+			return fmt.Errorf("a %s plan with a machine-local executable requires home so personal paths can be refused", p.Scope)
+		}
 		if err := p.Registration.ValidateForScope(p.Scope, p.Home); err != nil {
 			return fmt.Errorf("plan registration: %w", err)
 		}
@@ -400,13 +465,13 @@ func (p IntegrationPlan) Validate() error {
 		if err := p.validateRemovalShape(); err != nil {
 			return err
 		}
-	} else if err := p.validateResultingState(unsupported); err != nil {
+	} else if err := p.validateResultingState(caps, unsupported); err != nil {
 		return err
 	}
 	ids := map[string]struct{}{}
 	writes := 0
 	for i, step := range p.Steps {
-		if err := p.validateStep(step, unsupported); err != nil {
+		if err := p.validateStep(step, caps, unsupported); err != nil {
 			return fmt.Errorf("step %d (%s): %w", i, step.StepID, err)
 		}
 		if _, dup := ids[step.StepID]; dup {
@@ -432,15 +497,11 @@ func (p IntegrationPlan) Validate() error {
 }
 
 // validateResultingState applies the setup/repair promises: capability caps,
-// version and installation gates, and the rule that a pending human step can
-// never coexist with a verified or portable promise.
-func (p IntegrationPlan) validateResultingState(unsupported bool) error {
+// version and installation gates, and the rule that approval steps and
+// pending states imply each other exactly.
+func (p IntegrationPlan) validateResultingState(caps Capabilities, unsupported bool) error {
 	if !p.ResultingState.IsValid() {
 		return fmt.Errorf("plan resulting state %q is invalid", p.ResultingState)
-	}
-	caps, err := CapabilitiesFor(p.Target)
-	if err != nil {
-		return err
 	}
 	if !stateAtMost(p.ResultingState, caps.MaxPlannedState) {
 		return fmt.Errorf("%s plans may not promise %s (capability cap %s)", p.Target, p.ResultingState, caps.MaxPlannedState)
@@ -454,6 +515,7 @@ func (p IntegrationPlan) validateResultingState(unsupported bool) error {
 	if !p.Detection.Installed && p.Target != integrations.TargetGeneric && p.ResultingState.Verified() {
 		return fmt.Errorf("a client that is not installed cannot be planned as %s", p.ResultingState)
 	}
+	var expectedPending State
 	for _, approval := range p.ApprovalSteps {
 		pending, ok := approval.Requirement.PendingState()
 		if !ok {
@@ -462,9 +524,17 @@ func (p IntegrationPlan) validateResultingState(unsupported bool) error {
 		if strings.TrimSpace(approval.Instruction) == "" {
 			return fmt.Errorf("approval step %s requires an instruction", approval.Requirement)
 		}
-		if p.ResultingState.Verified() || p.ResultingState == StatePortableReady {
-			return fmt.Errorf("a plan with a pending %s step cannot promise %s; use %s", approval.Requirement, p.ResultingState, pending)
+		// Workspace trust is the earlier gate: until the project is trusted
+		// the client does not even load the file that needs MCP approval.
+		if pending == StatePendingWorkspaceTrust || expectedPending == "" {
+			expectedPending = pending
 		}
+	}
+	if expectedPending != "" && p.ResultingState != expectedPending {
+		return fmt.Errorf("a plan with pending approval steps must promise %s, got %s", expectedPending, p.ResultingState)
+	}
+	if expectedPending == "" && (p.ResultingState == StatePendingWorkspaceTrust || p.ResultingState == StatePendingMCPApproval) {
+		return fmt.Errorf("%s requires an approval step that names the outstanding human action", p.ResultingState)
 	}
 	return nil
 }
@@ -483,7 +553,7 @@ func (p IntegrationPlan) validateRemovalShape() error {
 	}
 	for _, step := range p.Steps {
 		switch step.Kind {
-		case StepRemoveManagedFile, StepRemoveManagedBlock, StepRemoveConfigEntry, StepRunClientCommand, StepRecordLocalState:
+		case StepRemoveManagedFile, StepRemoveManagedBlock, StepRemoveConfigEntry, StepRunClientCommand, StepRecordLocalState, StepRemoveLocalState:
 		default:
 			return fmt.Errorf("removal plans may not contain %s steps", step.Kind)
 		}
@@ -494,7 +564,7 @@ func (p IntegrationPlan) validateRemovalShape() error {
 	return nil
 }
 
-func (p IntegrationPlan) validateStep(step PlanStep, unsupported bool) error {
+func (p IntegrationPlan) validateStep(step PlanStep, caps Capabilities, unsupported bool) error {
 	if strings.TrimSpace(step.StepID) == "" {
 		return fmt.Errorf("step id is required")
 	}
@@ -510,6 +580,9 @@ func (p IntegrationPlan) validateStep(step PlanStep, unsupported bool) error {
 	if unsupported && step.Kind.TouchesClientConfig() {
 		return fmt.Errorf("client version is not verified; %s is not allowed", step.Kind)
 	}
+	if step.Scope != "" && step.Scope != p.Scope {
+		return fmt.Errorf("step scope %q does not match plan scope %q", step.Scope, p.Scope)
+	}
 	switch step.Kind {
 	case StepRunClientCommand:
 		if step.Command == nil {
@@ -518,25 +591,37 @@ func (p IntegrationPlan) validateStep(step PlanStep, unsupported bool) error {
 		if err := step.Command.Validate(); err != nil {
 			return err
 		}
-		if step.Path != "" {
-			return fmt.Errorf("command steps do not carry a path")
+		if step.Path != "" || step.Mode != 0 {
+			return fmt.Errorf("command steps carry neither a path nor a mode")
+		}
+		if p.Detection.ExecutablePath == "" {
+			return fmt.Errorf("command steps require a detected client executable")
+		}
+		if step.Command.Executable != p.Detection.ExecutablePath {
+			return fmt.Errorf("command steps must run the detected client executable %q, got %q", p.Detection.ExecutablePath, step.Command.Executable)
 		}
 		if !step.Command.Mutates() {
+			if step.Rollback != nil || step.Reversibility != "" {
+				return fmt.Errorf("read-only command steps carry no rollback or reversibility")
+			}
 			return nil
 		}
-	case StepRecordLocalState:
+	case StepRecordLocalState, StepRemoveLocalState:
 		if step.Command != nil {
 			return fmt.Errorf("local state steps do not carry a command")
 		}
 		if err := p.validateStepPath(step.Path, true); err != nil {
 			return err
 		}
-		if step.Mode != 0o600 {
+		if step.Kind == StepRecordLocalState && step.Mode != 0o600 {
 			return fmt.Errorf("local state files must be written with mode 0600")
 		}
+		if step.Kind == StepRemoveLocalState && step.Mode != 0 {
+			return fmt.Errorf("removal steps carry no mode")
+		}
 	case StepRenderPortableEntry:
-		if step.Command != nil || step.Rollback != nil {
-			return fmt.Errorf("portable render steps write nothing and need no rollback")
+		if step.Command != nil || step.Rollback != nil || step.Mode != 0 || step.Reversibility != "" {
+			return fmt.Errorf("portable render steps write nothing and need no rollback, mode, or reversibility")
 		}
 		return nil
 	default:
@@ -546,6 +631,26 @@ func (p IntegrationPlan) validateStep(step PlanStep, unsupported bool) error {
 		if err := p.validateStepPath(step.Path, false); err != nil {
 			return err
 		}
+		if step.Kind.managedFile() {
+			if err := p.validateManagedFilePath(step.Path, caps); err != nil {
+				return err
+			}
+		}
+		if step.Kind.configEntry() {
+			if step.Scope == "" {
+				return fmt.Errorf("%s steps must carry the plan scope", step.Kind)
+			}
+			if err := p.validateConfigEntryPath(step.Path, caps); err != nil {
+				return err
+			}
+		}
+		if step.Kind.removes() {
+			if step.Mode != 0 {
+				return fmt.Errorf("removal steps carry no mode")
+			}
+		} else if step.Mode != 0o644 && step.Mode != 0o600 {
+			return fmt.Errorf("%s steps must use mode 0644 or 0600, got %04o", step.Kind, step.Mode)
+		}
 	}
 	switch step.Reversibility {
 	case Reversible:
@@ -553,6 +658,9 @@ func (p IntegrationPlan) validateStep(step PlanStep, unsupported bool) error {
 			return fmt.Errorf("reversible write requires a rollback action")
 		}
 		if err := step.Rollback.Validate(); err != nil {
+			return err
+		}
+		if err := validateRollbackBinding(step, *step.Rollback); err != nil {
 			return err
 		}
 		if step.IrreversibleReason != "" {
@@ -571,19 +679,50 @@ func (p IntegrationPlan) validateStep(step PlanStep, unsupported bool) error {
 	return nil
 }
 
+// validateRollbackBinding ties a rollback to the step it undoes: a file step
+// is undone at its own path (a removal only by restoring the snapshot), and a
+// command step is undone by the same client binary with a remove or reload
+// purpose. The journal engine (AT114-103) therefore never executes a rollback
+// that reaches beyond what the step itself touched.
+func validateRollbackBinding(step PlanStep, rollback RollbackAction) error {
+	if step.Kind == StepRunClientCommand {
+		if rollback.Kind != RollbackRunCommand {
+			return fmt.Errorf("command steps are undone by run_command rollbacks, got %s", rollback.Kind)
+		}
+		if rollback.Command.Executable != step.Command.Executable {
+			return fmt.Errorf("rollback command must run the step's executable %q, got %q", step.Command.Executable, rollback.Command.Executable)
+		}
+		return nil
+	}
+	if rollback.Kind == RollbackRunCommand {
+		return fmt.Errorf("file steps are undone by restore_snapshot or delete_created, not run_command")
+	}
+	if rollback.Path != step.Path {
+		return fmt.Errorf("rollback path %q must equal the step path %q", rollback.Path, step.Path)
+	}
+	if step.Kind.removes() && rollback.Kind != RollbackRestoreSnapshot {
+		return fmt.Errorf("%s is undone by restore_snapshot, got %s", step.Kind, rollback.Kind)
+	}
+	return nil
+}
+
 // validateStepPath requires a clean absolute path contained in the workspace
 // or a consented root; local state paths must stay inside LocalStateRoot.
-// Symlink and ownership checks happen at apply time against the live
-// filesystem; the plan proves containment.
+// Git metadata is never writable, and the tracker's own runtime directory
+// admits only its integrations subtree. Symlink and ownership checks happen
+// at apply time against the live filesystem; the plan proves containment.
 func (p IntegrationPlan) validateStepPath(path string, localState bool) error {
 	if path == "" {
 		return fmt.Errorf("path is required")
 	}
-	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+	if !isCleanAbsolute(path) {
 		return fmt.Errorf("path must be a clean absolute path: %q", path)
 	}
 	if strings.ContainsRune(path, 0) {
 		return fmt.Errorf("path contains a NUL byte")
+	}
+	if hasPathComponent(path, gitDirName) {
+		return fmt.Errorf("path %q is inside Git metadata", path)
 	}
 	if localState {
 		if p.LocalStateRoot == "" {
@@ -595,7 +734,15 @@ func (p IntegrationPlan) validateStepPath(path string, localState bool) error {
 		return nil
 	}
 	if isWithin(p.WorkspaceRoot, path) && path != p.WorkspaceRoot {
+		trackerDir := filepath.Join(p.WorkspaceRoot, trackerDirName)
+		integrationsDir := filepath.Join(trackerDir, trackerIntegrationsDirName)
+		if isWithin(trackerDir, path) && (!isWithin(integrationsDir, path) || path == integrationsDir) {
+			return fmt.Errorf("path %q is inside the tracker runtime directory; only %s/%s is writable by integrations", path, trackerDirName, trackerIntegrationsDirName)
+		}
 		return nil
+	}
+	if hasPathComponent(path, trackerDirName) {
+		return fmt.Errorf("path %q is inside another tracker runtime directory", path)
 	}
 	for _, root := range p.ConsentedRoots {
 		if isWithin(root, path) && path != root {
@@ -605,9 +752,76 @@ func (p IntegrationPlan) validateStepPath(path string, localState bool) error {
 	return fmt.Errorf("path %q is outside the workspace and every consented root", path)
 }
 
+// validateManagedFilePath confines managed-file steps to Atlas-owned
+// locations inside the workspace (instruction file, skill directory, command
+// directory, .tracker/integrations) or to a consented root, and never to a
+// file any supported client loads as configuration.
+func (p IntegrationPlan) validateManagedFilePath(path string, caps Capabilities) error {
+	if _, client := clientConfigPaths(p.WorkspaceRoot, p.Home)[path]; client {
+		return fmt.Errorf("path %q is client configuration; use write_config_entry or remove_config_entry", path)
+	}
+	if !isWithin(p.WorkspaceRoot, path) {
+		return nil // inside a consented root, proven by validateStepPath
+	}
+	for _, rel := range caps.ManagedRoots() {
+		root := filepath.Join(p.WorkspaceRoot, filepath.FromSlash(rel))
+		if path == root && rel == caps.InstructionFile {
+			return nil
+		}
+		if rel != caps.InstructionFile && isWithin(root, path) && path != root {
+			return nil
+		}
+	}
+	return fmt.Errorf("path %q is not an Atlas-owned location for %s (%s)", path, p.Target, strings.Join(caps.ManagedRoots(), ", "))
+}
+
+// validateConfigEntryPath allows config-entry steps only at a file the target
+// documents for the plan scope with the atlas_file_edit write method, or at a
+// user-selected destination inside a consented root.
+func (p IntegrationPlan) validateConfigEntryPath(path string, caps Capabilities) error {
+	inWorkspace := isWithin(p.WorkspaceRoot, path)
+	for _, scope := range caps.ScopesFor(p.Scope) {
+		if scope.WriteMethod != WriteMethodAtlasFileEdit {
+			continue
+		}
+		if scope.UserSelected {
+			if !inWorkspace {
+				return nil // a consented root, proven by validateStepPath
+			}
+			continue
+		}
+		if resolved, ok := scope.ResolvePath(p.WorkspaceRoot, p.Home); ok && resolved == path {
+			return nil
+		}
+	}
+	return fmt.Errorf("path %q is not a %s configuration file %s edits in the %s scope", path, p.Target, WriteMethodAtlasFileEdit, p.Scope)
+}
+
+const (
+	gitDirName                 = ".git"
+	trackerDirName             = ".tracker"
+	trackerIntegrationsDirName = "integrations"
+)
+
+func hasPathComponent(path string, name string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if part == name {
+			return true
+		}
+	}
+	return false
+}
+
+func isCleanAbsolute(path string) bool {
+	return path != "" && filepath.IsAbs(path) && filepath.Clean(path) == path
+}
+
 // stateAtMost orders states by how much they claim so a capability cap can be
-// enforced: verified states claim the most, portable_ready and unverified
-// claim less, and terminal/blocked states claim nothing.
+// enforced: connected claims the most, connected_restart_required less (the
+// client still has to reload), portable_ready and configured_unverified less
+// again, and terminal or blocked states claim nothing. The cap bounds what a
+// plan may promise; Verification reports what a probe proved (see
+// Verification.Validate).
 func stateAtMost(state State, cap State) bool {
 	return stateRank(state) <= stateRank(cap)
 }
@@ -615,7 +829,7 @@ func stateAtMost(state State, cap State) bool {
 func stateRank(state State) int {
 	switch state {
 	case StateConnected:
-		return 4
+		return 5
 	case StateConnectedRestartRequired:
 		return 4
 	case StateConfiguredUnverified:
@@ -641,14 +855,25 @@ func (p IntegrationPlan) Fingerprint() (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+// FileOwner is the numeric owner of a file as the journal saw it. Plan
+// AT114-103 records ownership with mode and hash so that an Atlas-owned file
+// that changed hands is treated as drift, not silently overwritten.
+type FileOwner struct {
+	UID uint32 `json:"uid"`
+	GID uint32 `json:"gid"`
+}
+
 // FileIdentity is the before/after record the journal keeps for every file a
-// step touches. It never includes file contents.
+// step touches. It never includes file contents. Owner is nil only on
+// platforms that do not expose numeric ownership; the journal engine records
+// that as a limitation rather than inventing values.
 type FileIdentity struct {
-	Path   string `json:"path"`
-	Exists bool   `json:"exists"`
-	Mode   uint32 `json:"mode,omitempty"`
-	Size   int64  `json:"size,omitempty"`
-	SHA256 string `json:"sha256,omitempty"`
+	Path   string     `json:"path"`
+	Exists bool       `json:"exists"`
+	Mode   uint32     `json:"mode,omitempty"`
+	Size   int64      `json:"size,omitempty"`
+	Owner  *FileOwner `json:"owner,omitempty"`
+	SHA256 string     `json:"sha256,omitempty"`
 }
 
 // StepStatus is the outcome of one applied step.
@@ -734,22 +959,31 @@ func (r ApplyResult) Validate() error {
 // It lives in the private setup manifest, never in the repository, and never
 // carries credentials or ticket text.
 type IntegrationState struct {
-	Target              integrations.Target `json:"target"`
-	ContractVersion     int                 `json:"contract_version"`
-	State               State               `json:"state"`
-	Scope               ConfigScope         `json:"scope"`
-	WorkspaceID         string              `json:"workspace_id"`
-	WorkspaceRoot       string              `json:"workspace_root"`
-	ConfigPath          string              `json:"config_path,omitempty"`
-	Registration        *MCPRegistration    `json:"registration,omitempty"`
-	EntryFingerprint    string              `json:"entry_fingerprint,omitempty"`
-	SkillVersion        string              `json:"skill_version,omitempty"`
-	ManagedBlockVersion string              `json:"managed_block_version,omitempty"`
-	ClientVersion       ClientVersion       `json:"client_version"`
-	ActorHint           contracts.Actor     `json:"actor_hint,omitempty"`
-	LastVerifiedAt      time.Time           `json:"last_verified_at,omitempty"`
-	RepairReason        string              `json:"repair_reason,omitempty"`
-	UpdatedAt           time.Time           `json:"updated_at"`
+	Target          integrations.Target `json:"target"`
+	ContractVersion int                 `json:"contract_version"`
+	State           State               `json:"state"`
+	Scope           ConfigScope         `json:"scope"`
+	WorkspaceID     string              `json:"workspace_id"`
+	WorkspaceRoot   string              `json:"workspace_root"`
+	ConfigPath      string              `json:"config_path,omitempty"`
+	// ClientExecutable is the client binary detection found; repair compares
+	// it and Verify may only probe with it.
+	ClientExecutable string           `json:"client_executable,omitempty"`
+	Registration     *MCPRegistration `json:"registration,omitempty"`
+	// EntryFingerprint is MCPRegistration.Fingerprint of the entry Atlas
+	// wrote: it proves command identity (name, command, args), not that the
+	// native entry is byte-for-byte unchanged. Adapters that edit files also
+	// record NativeEntryFingerprint so user edits to the Atlas entry are
+	// detected before repair or removal touches it.
+	EntryFingerprint       string          `json:"entry_fingerprint,omitempty"`
+	NativeEntryFingerprint string          `json:"native_entry_fingerprint,omitempty"`
+	SkillVersion           string          `json:"skill_version,omitempty"`
+	ManagedBlockVersion    string          `json:"managed_block_version,omitempty"`
+	ClientVersion          ClientVersion   `json:"client_version"`
+	ActorHint              contracts.Actor `json:"actor_hint,omitempty"`
+	LastVerifiedAt         time.Time       `json:"last_verified_at,omitempty"`
+	RepairReason           string          `json:"repair_reason,omitempty"`
+	UpdatedAt              time.Time       `json:"updated_at"`
 }
 
 func (s IntegrationState) Validate() error {
@@ -768,8 +1002,13 @@ func (s IntegrationState) Validate() error {
 	if strings.TrimSpace(s.WorkspaceID) == "" || !filepath.IsAbs(s.WorkspaceRoot) {
 		return fmt.Errorf("state requires workspace id and absolute workspace root")
 	}
+	if s.ClientExecutable != "" {
+		if err := validateAbsoluteExecutable(s.ClientExecutable); err != nil {
+			return fmt.Errorf("client executable: %w", err)
+		}
+	}
 	if s.Registration != nil {
-		if err := s.Registration.Validate(); err != nil {
+		if err := s.Registration.ValidateForScope(s.Scope, ""); err != nil {
 			return err
 		}
 		if s.Registration.WorkspaceID != s.WorkspaceID {
@@ -800,15 +1039,34 @@ type VerificationCheck struct {
 }
 
 // Verification is what Verify returns. A verified state needs at least one
-// passed probe-class check; a manual client check can never produce one.
+// passed check whose method is evidence for the reported ConnectionKind; a
+// manual client check can never produce one. Verification is deliberately
+// not bounded by Capabilities.MaxPlannedState: that cap limits what a plan
+// may promise before anything ran, whereas Verify reports what a probe
+// proved after the fact (an OpenClaw gateway that was restarted and probed
+// live is connected).
 type Verification struct {
 	Target         integrations.Target `json:"target"`
 	State          State               `json:"state"`
 	ConnectionKind ConnectionKind      `json:"connection_kind,omitempty"`
-	Checks         []VerificationCheck `json:"checks"`
-	Reasons        []string            `json:"reasons,omitempty"`
-	CheckedAt      time.Time           `json:"checked_at"`
-	Probes         []ProbeRecord       `json:"probes,omitempty"`
+	// ClientExecutable and ServerExecutable are the only binaries the probes
+	// may have run: the detected client and the tracker command that was
+	// actually started for the self-probe.
+	ClientExecutable string              `json:"client_executable,omitempty"`
+	ServerExecutable string              `json:"server_executable,omitempty"`
+	Checks           []VerificationCheck `json:"checks"`
+	Reasons          []string            `json:"reasons,omitempty"`
+	CheckedAt        time.Time           `json:"checked_at"`
+	Probes           []ProbeRecord       `json:"probes,omitempty"`
+}
+
+// connectionKindEvidence maps each connection kind to the verification methods
+// that can prove it.
+var connectionKindEvidence = map[ConnectionKind][]VerificationMethod{
+	ConnectionKindClientNative:   {VerificationClientCLIList, VerificationClientCLIGet, VerificationClientCLIDoctor},
+	ConnectionKindSelfProbe:      {VerificationSelfProbe},
+	ConnectionKindStandardConfig: {VerificationConformanceHost},
+	ConnectionKindCustomAdapter:  {VerificationConformanceHost},
 }
 
 func (v Verification) Validate() error {
@@ -824,24 +1082,44 @@ func (v Verification) Validate() error {
 	if v.ConnectionKind != "" && !v.ConnectionKind.IsValid() {
 		return fmt.Errorf("invalid connection kind %q", v.ConnectionKind)
 	}
-	probePassed := false
+	for _, exe := range []string{v.ClientExecutable, v.ServerExecutable} {
+		if exe != "" {
+			if err := validateAbsoluteExecutable(exe); err != nil {
+				return err
+			}
+		}
+	}
+	passedMethods := map[VerificationMethod]bool{}
 	for _, check := range v.Checks {
 		if strings.TrimSpace(check.Name) == "" {
 			return fmt.Errorf("verification check requires a name")
 		}
 		if check.Passed && check.Method != VerificationManualClientCheck {
-			probePassed = true
+			passedMethods[check.Method] = true
 		}
 	}
 	if v.State.Verified() {
-		if !probePassed {
+		if len(passedMethods) == 0 {
 			return fmt.Errorf("%s requires at least one passed probe or client-native check", v.State)
 		}
 		if !v.ConnectionKind.IsValid() {
 			return fmt.Errorf("%s requires a connection kind", v.State)
 		}
-		if v.Target == integrations.TargetGeneric && v.ConnectionKind != ConnectionKindStandardConfig && v.ConnectionKind != ConnectionKindCustomAdapter {
+		generic := v.ConnectionKind == ConnectionKindStandardConfig || v.ConnectionKind == ConnectionKindCustomAdapter
+		if (v.Target == integrations.TargetGeneric) != generic {
+			if generic {
+				return fmt.Errorf("%s is a generic connection kind; named clients report client_native or self_probe", v.ConnectionKind)
+			}
 			return fmt.Errorf("generic connections must be standard_config or custom_adapter")
+		}
+		backed := false
+		for _, method := range connectionKindEvidence[v.ConnectionKind] {
+			if passedMethods[method] {
+				backed = true
+			}
+		}
+		if !backed {
+			return fmt.Errorf("connection kind %s needs a passed check with one of its methods %v", v.ConnectionKind, connectionKindEvidence[v.ConnectionKind])
 		}
 	}
 	for _, probe := range v.Probes {
@@ -851,8 +1129,22 @@ func (v Verification) Validate() error {
 		if probe.Command.Mutates() {
 			return fmt.Errorf("verification probes must be read-only")
 		}
+		expected := v.ClientExecutable
+		if probe.Command.Purpose == CommandPurposeProbe {
+			expected = v.ServerExecutable
+		}
+		if expected == "" || probe.Command.Executable != expected {
+			return fmt.Errorf("verification probe %q must run %s (%q), got %q", probe.Command.Purpose, probeExecutableName(probe.Command.Purpose), expected, probe.Command.Executable)
+		}
 	}
 	return nil
+}
+
+func probeExecutableName(purpose CommandPurpose) string {
+	if purpose == CommandPurposeProbe {
+		return "the registered server executable"
+	}
+	return "the detected client executable"
 }
 
 // RepairPlan wraps the plan that returns a drifted integration to its

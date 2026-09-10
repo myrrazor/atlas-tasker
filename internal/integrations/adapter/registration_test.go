@@ -44,7 +44,6 @@ func TestRegistrationArgsPerBinding(t *testing.T) {
 	}{
 		{WorkspaceBinding{Kind: WorkspaceBindingAbsolutePath, WorkspaceRoot: "/srv/workspace"}, []string{"mcp", "serve", "--workspace", "/srv/workspace"}},
 		{WorkspaceBinding{Kind: WorkspaceBindingClientVariable, Placeholder: "${workspaceFolder}"}, []string{"mcp", "serve", "--workspace", "${workspaceFolder}"}},
-		{WorkspaceBinding{Kind: WorkspaceBindingClientVariable, Placeholder: "${CLAUDE_PROJECT_DIR:-.}"}, []string{"mcp", "serve", "--workspace", "${CLAUDE_PROJECT_DIR:-.}"}},
 		{WorkspaceBinding{Kind: WorkspaceBindingVerifiedCwd}, []string{"mcp", "serve", "--workspace-from-cwd"}},
 	}
 	for _, tc := range cases {
@@ -73,6 +72,9 @@ func TestBindingValidation(t *testing.T) {
 		{Kind: WorkspaceBindingClientVariable},
 		{Kind: WorkspaceBindingClientVariable, Placeholder: "$HOME"},
 		{Kind: WorkspaceBindingClientVariable, Placeholder: "${a} ${b}"},
+		{Kind: WorkspaceBindingClientVariable, Placeholder: "${CLAUDE_PROJECT_DIR:-.}"}, // default forms hide a relative --workspace (finding G)
+		{Kind: WorkspaceBindingClientVariable, Placeholder: "${workspaceFolder:-/tmp}"},
+		{Kind: WorkspaceBindingClientVariable, Placeholder: "${workspace.folder}"},
 		{Kind: WorkspaceBindingClientVariable, Placeholder: "${workspaceFolder}", WorkspaceRoot: "/srv/ws"},
 		{Kind: WorkspaceBindingVerifiedCwd, WorkspaceRoot: "/srv/ws"},
 		{Kind: WorkspaceBindingVerifiedCwd, Placeholder: "${workspaceFolder}"},
@@ -182,8 +184,27 @@ func TestValidateForScopeRefusesMachinePathsInRepositoryCarriedConfig(t *testing
 	if err := homeExe.ValidateForScope(ScopeProjectShared, "/home/someone"); err == nil {
 		t.Fatal("repository-carried scope must refuse executables under the home directory")
 	}
-	if err := homeExe.ValidateForScope(ScopeProjectShared, ""); err != nil {
-		t.Fatalf("without a home hint the executable check is skipped: %v", err)
+	if err := homeExe.ValidateForScope(ScopeProjectShared, ""); err == nil {
+		t.Fatal("an unknown home must not disable the rule: conventional per-user roots are refused heuristically (finding E)")
+	}
+	if err := homeExe.ValidateForScope(ScopeProjectLocal, ""); err != nil {
+		t.Fatalf("machine-local scopes may reference a home executable: %v", err)
+	}
+	for _, personal := range []string{"/Users/someone/bin/tracker", "/root/bin/tracker", "/home/x/tracker"} {
+		reg, err := NewRegistration(personal, testWorkspaceID, WorkspaceBinding{Kind: WorkspaceBindingVerifiedCwd}, "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := reg.ValidateForScope(ScopeProjectShared, "/srv/elsewhere"); err == nil {
+			t.Errorf("%s: per-user executable must be refused in repository-carried scope even when home is elsewhere", personal)
+		}
+	}
+	systemExe, err := NewRegistration("/opt/homebrew/bin/tracker", testWorkspaceID, WorkspaceBinding{Kind: WorkspaceBindingVerifiedCwd}, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := systemExe.ValidateForScope(ScopeProjectShared, ""); err != nil {
+		t.Fatalf("a system-wide executable is allowed without a home hint: %v", err)
 	}
 	if err := homeExe.ValidateForScope("nowhere", "/home/someone"); err == nil {
 		t.Fatal("invalid scope must be rejected")

@@ -440,7 +440,7 @@ func TestRepairAndRemovalPlans(t *testing.T) {
 	removalPlan.ResultingState = ""
 	removalPlan.Steps = []PlanStep{
 		{StepID: "block", Kind: StepRemoveManagedBlock, Description: "remove codex block", Path: testRoot + "/AGENTS.md", Reversibility: Reversible, Rollback: snapshotRollback(testRoot + "/AGENTS.md")},
-		{StepID: "config", Kind: StepRemoveConfigEntry, Description: "remove managed table", Path: testRoot + "/.codex/config.toml", Reversibility: Reversible, Rollback: snapshotRollback(testRoot + "/.codex/config.toml")},
+		{StepID: "config", Kind: StepRemoveConfigEntry, Description: "remove managed table", Path: testRoot + "/.codex/config.toml", Scope: ScopeProjectShared, Reversibility: Reversible, Rollback: snapshotRollback(testRoot + "/.codex/config.toml")},
 	}
 	removal := RemovalPlan{Plan: removalPlan, OwnershipVerified: true}
 	if err := removal.Validate(); err != nil {
@@ -454,7 +454,7 @@ func TestRepairAndRemovalPlans(t *testing.T) {
 	if err := removal.Validate(); err != nil {
 		t.Fatalf("removal with confirmation rejected: %v", err)
 	}
-	removal.Plan.Steps = append(removal.Plan.Steps, PlanStep{StepID: "write", Kind: StepWriteConfigEntry, Description: "sneaky write", Path: testRoot + "/.codex/config.toml", Reversibility: Reversible, Rollback: snapshotRollback(testRoot + "/.codex/config.toml")})
+	removal.Plan.Steps = append(removal.Plan.Steps, PlanStep{StepID: "write", Kind: StepWriteConfigEntry, Description: "sneaky write", Path: testRoot + "/.codex/config.toml", Scope: ScopeProjectShared, Reversibility: Reversible, Rollback: snapshotRollback(testRoot + "/.codex/config.toml"), Mode: 0o644})
 	if err := removal.Validate(); err == nil {
 		t.Fatal("removal plans may not write config entries")
 	}

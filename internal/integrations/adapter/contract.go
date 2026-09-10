@@ -1,7 +1,9 @@
 package adapter
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/myrrazor/atlas-tasker/internal/integrations"
@@ -66,7 +68,7 @@ func (r *Registry) Register(adapter AgentIntegrationAdapter) error {
 	if err != nil {
 		return err
 	}
-	if caps.MaxPlannedState != expected.MaxPlannedState || caps.PreferredScope != expected.PreferredScope {
+	if !capabilitiesEqual(caps, expected) {
 		return fmt.Errorf("adapter %s disagrees with the capability matrix", target)
 	}
 	if err := caps.Validate(); err != nil {
@@ -74,6 +76,15 @@ func (r *Registry) Register(adapter AgentIntegrationAdapter) error {
 	}
 	r.adapters[target] = adapter
 	return nil
+}
+
+// capabilitiesEqual compares two rows field by field through their canonical
+// JSON form, so an adapter cannot report a verification method, approval,
+// restart requirement, source, or support claim the matrix does not make.
+func capabilitiesEqual(a, b Capabilities) bool {
+	rawA, errA := json.Marshal(a)
+	rawB, errB := json.Marshal(b)
+	return errA == nil && errB == nil && bytes.Equal(rawA, rawB)
 }
 
 func (r *Registry) Lookup(target integrations.Target) (AgentIntegrationAdapter, bool) {

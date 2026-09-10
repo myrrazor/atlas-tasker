@@ -37,8 +37,17 @@ func TestMatrixInvariants(t *testing.T) {
 			if scope.Scope.RepositoryCarried() && strings.HasPrefix(scope.Path, "~") {
 				t.Errorf("%s: repository-carried scope %s points at the home directory", row.Target, scope.Path)
 			}
+			if scope.UserSelected {
+				if scope.Path != "" || scope.Scope.RepositoryCarried() || scope.WriteMethod != WriteMethodAtlasFileEdit {
+					t.Errorf("%s: user-selected scope must be a path-less, machine-local, Atlas-edited destination: %+v", row.Target, scope)
+				}
+				continue
+			}
 			if !scope.Scope.RepositoryCarried() && scope.Scope != ScopeGateway && !strings.HasPrefix(scope.Path, "~") {
 				t.Errorf("%s: machine-local scope %s should live under the home directory", row.Target, scope.Path)
+			}
+			if scope.Scope.RepositoryCarried() && scope.Binding == WorkspaceBindingClientVariable && row.Target != integrations.TargetCursor {
+				t.Errorf("%s: only Cursor documents a client-expanded workspace placeholder; %s must use verified_cwd", row.Target, scope.Path)
 			}
 		}
 		preferred, ok := row.Preferred()

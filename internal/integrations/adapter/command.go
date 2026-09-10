@@ -68,18 +68,43 @@ type Command struct {
 }
 
 // shellInterpreters are refused as Executable so an adapter cannot smuggle a
-// shell string through the structured model.
+// shell string, or a program that evaluates one, through the structured
+// model. This denylist is defence in depth: the binding rule that ties every
+// plan, rollback, detection, and verification command to the detected client
+// or the registered server executable is what actually confines execution
+// (see IntegrationPlan.Validate, Detection.Validate, Verification.Validate).
 var shellInterpreters = map[string]struct{}{
 	"sh": {}, "bash": {}, "zsh": {}, "dash": {}, "ksh": {}, "fish": {}, "csh": {}, "tcsh": {}, "ash": {},
 	"cmd": {}, "cmd.exe": {}, "powershell": {}, "powershell.exe": {}, "pwsh": {}, "pwsh.exe": {},
+	"env": {}, "busybox": {}, "python": {}, "python2": {}, "python3": {}, "perl": {}, "ruby": {},
+	"node": {}, "nodejs": {}, "deno": {}, "bun": {},
 }
 
 var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // secretEnvMarkers is a conservative guard, not a classifier: plans are
 // rendered in --json output, so an environment name that announces a secret
-// is refused outright.
-var secretEnvMarkers = []string{"TOKEN", "SECRET", "PASSWORD", "PASSWD", "API_KEY", "APIKEY", "PRIVATE_KEY", "CREDENTIAL"}
+// is refused outright. Values are screened separately for credential URLs.
+var secretEnvMarkers = []string{"TOKEN", "SECRET", "PASS", "KEY", "AUTH", "CREDENTIAL", "BEARER", "COOKIE", "SESSION"}
+
+// secretEnvTokens are matched as whole underscore-separated words because a
+// substring match would also refuse PATH.
+var secretEnvTokens = map[string]struct{}{"PAT": {}}
+
+func looksLikeSecretEnvName(name string) bool {
+	upper := strings.ToUpper(name)
+	for _, marker := range secretEnvMarkers {
+		if strings.Contains(upper, marker) {
+			return true
+		}
+	}
+	for _, token := range strings.Split(upper, "_") {
+		if _, secret := secretEnvTokens[token]; secret {
+			return true
+		}
+	}
+	return false
+}
 
 func (c Command) Validate() error {
 	if !c.Purpose.IsValid() {
@@ -113,14 +138,14 @@ func (c Command) Validate() error {
 			return fmt.Errorf("duplicate environment variable: %s", entry.Name)
 		}
 		seen[entry.Name] = struct{}{}
-		upper := strings.ToUpper(entry.Name)
-		for _, marker := range secretEnvMarkers {
-			if strings.Contains(upper, marker) {
-				return fmt.Errorf("environment variable %s looks like a secret and cannot appear in a plan", entry.Name)
-			}
+		if looksLikeSecretEnvName(entry.Name) {
+			return fmt.Errorf("environment variable %s looks like a secret and cannot appear in a plan", entry.Name)
 		}
 		if strings.ContainsRune(entry.Value, 0) {
 			return fmt.Errorf("environment variable %s contains a NUL byte", entry.Name)
+		}
+		if containsCredentialURL(entry.Value) {
+			return fmt.Errorf("environment variable %s embeds credentials in a URL", entry.Name)
 		}
 	}
 	if c.Timeout <= 0 {

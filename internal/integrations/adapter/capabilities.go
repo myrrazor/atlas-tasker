@@ -2,6 +2,8 @@ package adapter
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/myrrazor/atlas-tasker/internal/integrations"
 )
@@ -141,7 +143,10 @@ const (
 	SupportUnverified Support = "unverified"
 )
 
-// ScopeCapability describes one configuration scope of one client.
+// ScopeCapability describes one configuration scope of one client. Path is
+// workspace-relative for repository-carried scopes, "~/"-relative for
+// machine-local files, descriptive text for client-managed registries
+// (gateway), and empty when UserSelected.
 type ScopeCapability struct {
 	Scope       ConfigScope          `json:"scope"`
 	Path        string               `json:"path"`
@@ -150,30 +155,59 @@ type ScopeCapability struct {
 	Binding     WorkspaceBindingKind `json:"binding"`
 	Approval    ApprovalRequirement  `json:"approval"`
 	Restart     RestartRequirement   `json:"restart"`
-	Notes       string               `json:"notes,omitempty"`
+	// UserSelected marks a scope whose file the user names at setup time (the
+	// generic custom destination of AT114-208). Its path is never in the
+	// matrix; a plan may only write it inside a consented root.
+	UserSelected bool   `json:"user_selected,omitempty"`
+	Notes        string `json:"notes,omitempty"`
 }
+
+// ResolvePath returns the absolute file the scope names for a workspace root
+// and home directory. It reports false for scopes without a file path
+// (gateway registries, user-selected destinations) and for home-relative
+// paths when home is unknown.
+func (s ScopeCapability) ResolvePath(root string, home string) (string, bool) {
+	switch {
+	case s.UserSelected || s.Path == "" || strings.ContainsAny(s.Path, " <>"):
+		return "", false
+	case strings.HasPrefix(s.Path, "~/"):
+		if home == "" {
+			return "", false
+		}
+		return filepath.Join(home, filepath.FromSlash(strings.TrimPrefix(s.Path, "~/"))), true
+	default:
+		return filepath.Join(root, filepath.FromSlash(s.Path)), true
+	}
+}
+
+// AtlasOwnedIntegrationsDir is the workspace-relative directory every target
+// may use for generated guides, command templates, and descriptors.
+const AtlasOwnedIntegrationsDir = ".tracker/integrations"
 
 // Capabilities is one row of the six-target capability matrix. Every field is
 // either verified against the cited official documentation or listed under
 // Unverified for Sprint 114.2 real-client confirmation.
 type Capabilities struct {
-	Target           integrations.Target  `json:"target"`
-	DisplayName      string               `json:"display_name"`
-	ClientExecutable string               `json:"client_executable,omitempty"`
-	VersionArgs      []string             `json:"version_args,omitempty"`
-	InstructionFile  string               `json:"instruction_file"`
-	SkillDir         string               `json:"skill_dir"`
-	MCPSupport       MCPSupport           `json:"mcp_support"`
-	Scopes           []ScopeCapability    `json:"scopes"`
-	PreferredScope   ConfigScope          `json:"preferred_scope"`
-	Verification     []VerificationMethod `json:"verification"`
-	MCPApps          Support              `json:"mcp_apps"`
-	SafeRemoval      Support              `json:"safe_removal"`
-	AlsoLoads        []string             `json:"also_loads,omitempty"`
-	MaxPlannedState  State                `json:"max_planned_state"`
-	VersionPolicy    string               `json:"version_policy"`
-	Sources          []string             `json:"sources"`
-	Unverified       []string             `json:"unverified,omitempty"`
+	Target           integrations.Target `json:"target"`
+	DisplayName      string              `json:"display_name"`
+	ClientExecutable string              `json:"client_executable,omitempty"`
+	VersionArgs      []string            `json:"version_args,omitempty"`
+	InstructionFile  string              `json:"instruction_file"`
+	SkillDir         string              `json:"skill_dir"`
+	// CommandDir is the client-native command template directory Atlas owns,
+	// when it is not inside SkillDir (Claude Code's .claude/commands).
+	CommandDir      string               `json:"command_dir,omitempty"`
+	MCPSupport      MCPSupport           `json:"mcp_support"`
+	Scopes          []ScopeCapability    `json:"scopes"`
+	PreferredScope  ConfigScope          `json:"preferred_scope"`
+	Verification    []VerificationMethod `json:"verification"`
+	MCPApps         Support              `json:"mcp_apps"`
+	SafeRemoval     Support              `json:"safe_removal"`
+	AlsoLoads       []string             `json:"also_loads,omitempty"`
+	MaxPlannedState State                `json:"max_planned_state"`
+	VersionPolicy   string               `json:"version_policy"`
+	Sources         []string             `json:"sources"`
+	Unverified      []string             `json:"unverified,omitempty"`
 }
 
 // Preferred returns the preferred scope's capability row.
@@ -186,6 +220,31 @@ func (c Capabilities) Preferred() (ScopeCapability, bool) {
 	return ScopeCapability{}, false
 }
 
+// ScopesFor returns every row the target documents for one scope (the generic
+// target has more than one project_shared row).
+func (c Capabilities) ScopesFor(scope ConfigScope) []ScopeCapability {
+	var out []ScopeCapability
+	for _, candidate := range c.Scopes {
+		if candidate.Scope == scope {
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
+// ManagedRoots lists the workspace-relative locations Atlas owns for this
+// target: the instruction file (managed block only), the skill directory, the
+// shared .tracker/integrations directory, and the command directory when the
+// client keeps one outside the skill. Managed-file plan steps may not write
+// anywhere else inside the workspace.
+func (c Capabilities) ManagedRoots() []string {
+	roots := []string{c.InstructionFile, c.SkillDir, AtlasOwnedIntegrationsDir}
+	if c.CommandDir != "" {
+		roots = append(roots, c.CommandDir)
+	}
+	return roots
+}
+
 // Validate enforces the matrix invariants every row must satisfy.
 func (c Capabilities) Validate() error {
 	if !isKnownTarget(c.Target) {
@@ -193,6 +252,11 @@ func (c Capabilities) Validate() error {
 	}
 	if c.DisplayName == "" || c.InstructionFile == "" || c.SkillDir == "" {
 		return fmt.Errorf("%s: display name, instruction file, and skill dir are required", c.Target)
+	}
+	for _, rel := range c.ManagedRoots() {
+		if filepath.IsAbs(rel) || filepath.ToSlash(filepath.Clean(rel)) != rel || strings.HasPrefix(rel, "..") || strings.HasPrefix(rel, "~") {
+			return fmt.Errorf("%s: managed root %q must be a clean workspace-relative path", c.Target, rel)
+		}
 	}
 	if len(c.Sources) == 0 {
 		return fmt.Errorf("%s: at least one official source is required", c.Target)
@@ -212,6 +276,16 @@ func (c Capabilities) Validate() error {
 		}
 		if scope.WriteMethod == WriteMethodAtlasFileEdit && scope.Format == ConfigFormatClientManaged {
 			return fmt.Errorf("%s: scope %q is client-managed and cannot be edited by Atlas", c.Target, scope.Scope)
+		}
+		if scope.UserSelected {
+			if scope.Path != "" {
+				return fmt.Errorf("%s: user-selected scope %q must not name a path in the matrix", c.Target, scope.Scope)
+			}
+			if scope.Scope.RepositoryCarried() {
+				return fmt.Errorf("%s: user-selected scope %q cannot be repository-carried", c.Target, scope.Scope)
+			}
+		} else if scope.Path == "" {
+			return fmt.Errorf("%s: scope %q requires a path", c.Target, scope.Scope)
 		}
 	}
 	if !c.MaxPlannedState.IsValid() {
@@ -254,6 +328,32 @@ func CapabilitiesFor(target integrations.Target) (Capabilities, error) {
 	return Capabilities{}, fmt.Errorf("unsupported integration target: %s", target)
 }
 
+// clientConfigPaths resolves every file any supported client loads as MCP
+// configuration (matrix scope paths plus compatibility imports) against a
+// workspace root and home directory. Managed-file plan steps may never name
+// one of these, whatever their kind says. Home-relative paths are dropped
+// when home is unknown; such paths are outside the workspace and fail
+// containment anyway.
+func clientConfigPaths(root string, home string) map[string]struct{} {
+	paths := map[string]struct{}{}
+	for _, row := range Matrix() {
+		for _, scope := range row.Scopes {
+			if scope.WriteMethod == WriteMethodPortableOnly {
+				continue
+			}
+			if resolved, ok := scope.ResolvePath(root, home); ok {
+				paths[resolved] = struct{}{}
+			}
+		}
+		for _, also := range row.AlsoLoads {
+			if resolved, ok := (ScopeCapability{Path: also}).ResolvePath(root, home); ok {
+				paths[resolved] = struct{}{}
+			}
+		}
+	}
+	return paths
+}
+
 func codexCapabilities() Capabilities {
 	return Capabilities{
 		Target:           integrations.TargetCodex,
@@ -283,7 +383,7 @@ func codexCapabilities() Capabilities {
 		VersionPolicy:   "codex --version must parse; the adapter pins the verified range from Sprint 114.2 real-client runs and reports unsupported_client_version otherwise.",
 		Sources: []string{
 			"https://learn.chatgpt.com/docs/extend/mcp",
-			"https://learn.chatgpt.com/docs/config-reference",
+			"https://learn.chatgpt.com/docs/config-file/config-reference",
 		},
 		Unverified: []string{
 			"Effective precedence when the same server name exists in user and project files (official reference calls project files overrides; third-party sources disagree).",
@@ -301,6 +401,7 @@ func claudeCapabilities() Capabilities {
 		VersionArgs:      []string{"--version"},
 		InstructionFile:  "CLAUDE.md",
 		SkillDir:         ".claude/skills/atlas-worker",
+		CommandDir:       ".claude/commands",
 		MCPSupport:       MCPSupportClientCLI,
 		Scopes: []ScopeCapability{
 			{
@@ -310,8 +411,8 @@ func claudeCapabilities() Capabilities {
 			},
 			{
 				Scope: ScopeProjectShared, Path: ".mcp.json", Format: ConfigFormatJSON, WriteMethod: WriteMethodAtlasFileEdit,
-				Binding: WorkspaceBindingClientVariable, Approval: ApprovalWorkspaceTrustThenMCPApprov, Restart: RestartNewSession,
-				Notes: "Explicit shared option only. Requires the workspace trust dialog and then per-server approval (⏸ Pending approval); disabledMcpjsonServers rejects. Use ${CLAUDE_PROJECT_DIR:-.} rather than a machine path.",
+				Binding: WorkspaceBindingVerifiedCwd, Approval: ApprovalWorkspaceTrustThenMCPApprov, Restart: RestartNewSession,
+				Notes: "Explicit shared option only. Requires the workspace trust dialog and then per-server approval (⏸ Pending approval); disabledMcpjsonServers rejects. CLAUDE_PROJECT_DIR is set in the spawned server's environment, not expanded by Claude Code in a project .mcp.json, so ${CLAUDE_PROJECT_DIR:-.} would pass the literal '.' as --workspace; the entry uses --workspace-from-cwd and the server's documented working directory (the project directory the server is declared in).",
 			},
 			{
 				Scope: ScopeUser, Path: "~/.claude.json", Format: ConfigFormatClientManaged, WriteMethod: WriteMethodClientCLI,
@@ -363,7 +464,7 @@ func cursorCapabilities() Capabilities {
 		MaxPlannedState: StateConnected,
 		VersionPolicy:   "cursor --version must parse; Sprint 114.2 pins the verified range.",
 		Sources: []string{
-			"https://cursor.com/docs/context/mcp",
+			"https://cursor.com/docs/mcp",
 		},
 		Unverified: []string{
 			"Whether Cursor picks up a new .cursor/mcp.json entry without restart (docs say custom servers need a restart after updates).",
@@ -444,6 +545,7 @@ func grokCapabilities() Capabilities {
 			"Working directory Grok gives a project-scoped stdio server (drives the verified_cwd binding).",
 			"Whether a running session reloads after config edits without the TUI refresh.",
 			"MCP Apps rendering.",
+			"Compatibility loading of .cursor/mcp.json and .mcp.json passes other clients' placeholders (${workspaceFolder}) literally: ${VAR} expansion is documented for Grok's own config only, so an imported Cursor entry fails closed at --expected-workspace-id rather than serving another workspace (AT114-207/209 duplicate handling).",
 		},
 	}
 }
@@ -465,6 +567,11 @@ func genericCapabilities() Capabilities {
 				Scope: ScopeProjectShared, Path: ".mcp.json", Format: ConfigFormatJSON, WriteMethod: WriteMethodAtlasFileEdit,
 				Binding: WorkspaceBindingVerifiedCwd, Approval: ApprovalNone, Restart: RestartUnverified,
 				Notes: "Optional managed entry in the standard root file; only written when explicitly selected. Also read by Claude Code and Grok Build compatibility loading.",
+			},
+			{
+				Scope: ScopeUser, Format: ConfigFormatJSON, WriteMethod: WriteMethodAtlasFileEdit,
+				Binding: WorkspaceBindingAbsolutePath, Approval: ApprovalNone, Restart: RestartUnverified, UserSelected: true,
+				Notes: "User-supplied config destination selected through setup (AT114-208). The path is never in the matrix: the user names an existing mcpServers-style JSON file outside the workspace, setup records it as a consented root, and the file must pass containment, owner, symlink, and format validation before the managed entry is merged.",
 			},
 		},
 		PreferredScope:  ScopeProjectShared,

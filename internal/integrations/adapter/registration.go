@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -89,10 +90,13 @@ type WorkspaceBinding struct {
 	Placeholder string `json:"placeholder,omitempty"`
 }
 
-// clientVariablePattern accepts the documented client placeholders, including
-// Cursor's ${workspaceFolder} and Claude Code's ${CLAUDE_PROJECT_DIR:-.}
-// default form.
-var clientVariablePattern = regexp.MustCompile(`^\$\{[A-Za-z][A-Za-z0-9_.:\-]*\}$`)
+// clientVariablePattern accepts exactly one bare ${name} placeholder such as
+// Cursor's ${workspaceFolder}. Default forms (${VAR:-.}) are refused: a
+// default silently turns a missing expansion into a relative --workspace, and
+// the one documented case (Claude Code's CLAUDE_PROJECT_DIR, which is set in
+// the server's environment rather than expanded by the client) is modelled as
+// verified_cwd instead.
+var clientVariablePattern = regexp.MustCompile(`^\$\{[A-Za-z][A-Za-z0-9_]*\}$`)
 
 func (b WorkspaceBinding) Validate() error {
 	if !b.Kind.IsValid() {
@@ -249,9 +253,16 @@ func (r MCPRegistration) Validate() error {
 	return nil
 }
 
+// homeDirectoryPrefixes are the conventional per-user directory roots on the
+// supported platforms. They back the repository-carried placement rule when
+// the exact home directory is unknown, so a personal path can never reach a
+// committed file merely because the caller did not learn HOME.
+var homeDirectoryPrefixes = []string{"/home/", "/Users/", "/root/"}
+
 // ValidateForScope adds the placement rules: repository-carried configuration
 // may not embed a machine-specific absolute workspace path or an executable
-// under the user's home directory.
+// under the user's home directory. When home is known the check is exact;
+// otherwise the conventional home roots are refused heuristically.
 func (r MCPRegistration) ValidateForScope(scope ConfigScope, home string) error {
 	if err := r.Validate(); err != nil {
 		return err
@@ -265,20 +276,61 @@ func (r MCPRegistration) ValidateForScope(scope ConfigScope, home string) error 
 	if r.Binding.Kind == WorkspaceBindingAbsolutePath {
 		return fmt.Errorf("%s scope is repository-carried and cannot embed an absolute workspace path", scope)
 	}
-	if !r.Portable && home != "" && isWithin(home, r.Command) {
+	if r.Portable {
+		return nil
+	}
+	if home != "" && isWithin(home, r.Command) {
 		return fmt.Errorf("%s scope is repository-carried and cannot reference an executable under the home directory", scope)
+	}
+	if looksLikeHomePath(r.Command) {
+		return fmt.Errorf("%s scope is repository-carried and cannot reference an executable under a per-user directory (%s)", scope, r.Command)
 	}
 	return nil
 }
 
+func looksLikeHomePath(path string) bool {
+	slashed := filepath.ToSlash(path)
+	for _, prefix := range homeDirectoryPrefixes {
+		if strings.HasPrefix(slashed, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// RequiresDir reports whether the registered server resolves its workspace
+// from the working directory it is started in (verified_cwd) or from a value
+// the client expands at spawn time (client_variable). A self-probe of such a
+// registration must pin the directory explicitly; inheriting the caller's cwd
+// would probe whatever workspace the verifier happened to run from.
+func (r MCPRegistration) RequiresDir() bool {
+	return r.Binding.Kind == WorkspaceBindingVerifiedCwd || r.Binding.Kind == WorkspaceBindingClientVariable
+}
+
 // ServeCommand is the exact process a verifier starts to self-probe the
 // registration. executable resolves a portable registration; dir is the
-// working directory for cwd-bound servers.
+// working directory the server is started in and is required for cwd-bound
+// registrations. For client_variable bindings the placeholder argument is
+// replaced by dir, because Atlas, not the client, spawns the probe.
 func (r MCPRegistration) ServeCommand(executable string, dir string, timeout time.Duration) (Command, error) {
+	if err := r.Validate(); err != nil {
+		return Command{}, err
+	}
 	if executable == "" {
 		executable = r.Command
 	}
-	cmd := Command{Purpose: CommandPurposeProbe, Executable: executable, Args: append([]string(nil), r.Args...), Dir: dir, Timeout: timeout}
+	if r.RequiresDir() && dir == "" {
+		return Command{}, fmt.Errorf("a %s registration can only be probed with an explicit working directory", r.Binding.Kind)
+	}
+	args := append([]string(nil), r.Args...)
+	if r.Binding.Kind == WorkspaceBindingClientVariable {
+		for i, arg := range args {
+			if arg == r.Binding.Placeholder {
+				args[i] = dir
+			}
+		}
+	}
+	cmd := Command{Purpose: CommandPurposeProbe, Executable: executable, Args: args, Dir: dir, Timeout: timeout}
 	if err := cmd.Validate(); err != nil {
 		return Command{}, err
 	}
@@ -289,10 +341,78 @@ func (r MCPRegistration) ServeCommand(executable string, dir string, timeout tim
 // generic hosts) for one stdio server. Cursor documents type as required for
 // stdio entries and Claude Code reads a typeless entry as stdio, so the
 // explicit type is safe for both.
+//
+// Decoding keeps every key Atlas does not own (env, cwd, envFile, headers,
+// ...) in Foreign so ownership checks can tell an untouched Atlas entry from
+// one the user edited; Atlas never writes those keys.
 type StandardServerEntry struct {
 	Type    string   `json:"type"`
 	Command string   `json:"command"`
 	Args    []string `json:"args"`
+	// Foreign holds the raw values of keys outside {type, command, args}.
+	// It is never marshalled, so re-encoding an entry Atlas owns cannot
+	// carry user data along.
+	Foreign map[string]json.RawMessage `json:"-"`
+}
+
+var standardEntryKeys = map[string]struct{}{"type": {}, "command": {}, "args": {}}
+
+// UnmarshalJSON decodes the owned fields and records the rest in Foreign.
+func (e *StandardServerEntry) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*e = StandardServerEntry{}
+	for key, value := range raw {
+		var err error
+		switch key {
+		case "type":
+			err = json.Unmarshal(value, &e.Type)
+		case "command":
+			err = json.Unmarshal(value, &e.Command)
+		case "args":
+			err = json.Unmarshal(value, &e.Args)
+		default:
+			if e.Foreign == nil {
+				e.Foreign = map[string]json.RawMessage{}
+			}
+			e.Foreign[key] = append(json.RawMessage(nil), value...)
+		}
+		if err != nil {
+			return fmt.Errorf("mcpServers entry key %q: %w", key, err)
+		}
+	}
+	return nil
+}
+
+// ForeignKeys lists the keys Atlas does not own, sorted.
+func (e StandardServerEntry) ForeignKeys() []string {
+	keys := make([]string, 0, len(e.Foreign))
+	for key := range e.Foreign {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// Matches reports whether the decoded entry is exactly what Atlas would
+// write for the registration: stdio type, the same command and argv, and no
+// foreign keys. A false result means the entry is not (or no longer) Atlas
+// owned, and removal must ask before touching it.
+func (e StandardServerEntry) Matches(reg MCPRegistration) bool {
+	if e.Type != RegistrationTransportStdio || e.Command != reg.Command || len(e.Foreign) != 0 {
+		return false
+	}
+	if len(e.Args) != len(reg.Args) {
+		return false
+	}
+	for i := range e.Args {
+		if e.Args[i] != reg.Args[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // StandardConfig renders {"mcpServers": {<name>: {command, args}}}.
@@ -310,8 +430,13 @@ func (r MCPRegistration) StandardConfigJSON() ([]byte, error) {
 	return json.MarshalIndent(cfg, "", "  ")
 }
 
-// Fingerprint identifies the Atlas-owned entry so removal and repair can prove
-// ownership before touching client configuration.
+// Fingerprint identifies the command identity of the Atlas-owned entry (server
+// name, command, argv). It proves that an entry with this name was written by
+// Atlas for this registration; it does not prove the native entry is unchanged.
+// Adapters that edit files hash the canonicalised native entry separately
+// (IntegrationState.NativeEntryFingerprint) and check StandardServerEntry
+// Foreign keys, so a user-edited entry is detected before repair or removal
+// touches it.
 func (r MCPRegistration) Fingerprint() string {
 	raw, _ := json.Marshal(struct {
 		Name    string   `json:"name"`

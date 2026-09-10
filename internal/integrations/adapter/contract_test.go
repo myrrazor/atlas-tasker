@@ -101,7 +101,7 @@ func TestRegistryRejectsDisagreementWithMatrix(t *testing.T) {
 
 func TestFakeAdapterPlanValidates(t *testing.T) {
 	adapter := newFakeAdapter(t, integrations.TargetCursor)
-	plan, err := adapter.Plan(context.Background(), PlanInput{WorkspaceRoot: testRoot, WorkspaceID: testWorkspaceID, TrackerPath: testTracker, Detection: Detection{Target: integrations.TargetCursor, VersionSupport: VersionUnknown}})
+	plan, err := adapter.Plan(context.Background(), PlanInput{WorkspaceRoot: testRoot, WorkspaceID: testWorkspaceID, Home: testHome, TrackerPath: testTracker, Detection: Detection{Target: integrations.TargetCursor, VersionSupport: VersionUnknown}})
 	if err != nil {
 		t.Fatal(err)
 	}
