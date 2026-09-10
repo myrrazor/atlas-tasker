@@ -6,16 +6,30 @@ import (
 	"testing"
 )
 
+func mustPolicyForMode(t *testing.T, mode ManagedMode) ManagedModePolicy {
+	t.Helper()
+	policy, err := ManagedModePolicyForMode(mode)
+	if err != nil {
+		t.Fatalf("%s: %v", mode, err)
+	}
+	return policy
+}
+
 func TestManagedModeDefaultsValidateForEveryMode(t *testing.T) {
 	t.Parallel()
 	for _, mode := range []ManagedMode{ManagedModeGuidance, ManagedModeManaged, ManagedModeDelivery, ManagedModeDisabled} {
-		policy := ManagedModePolicyForMode(mode)
+		policy := mustPolicyForMode(t, mode)
 		if err := policy.Validate(); err != nil {
 			t.Fatalf("%s: %v", mode, err)
 		}
 		if policy.MCPPreferred != mode.UsesMCP() {
 			t.Fatalf("%s: mcp_preferred=%v want %v", mode, policy.MCPPreferred, mode.UsesMCP())
 		}
+	}
+	// Review round 1 (M-B): an invalid mode is an error, not a policy that
+	// fails validation later.
+	if _, err := ManagedModePolicyForMode("auto"); err == nil || !strings.Contains(err.Error(), "invalid managed mode") {
+		t.Fatalf("invalid mode must be refused by the constructor, got %v", err)
 	}
 	def := DefaultManagedModePolicy()
 	want := ManagedModePolicy{
@@ -61,6 +75,13 @@ func TestManagedModeValidateRejectsBadVocabularyAndCrossFieldRules(t *testing.T)
 			p.CapturePolicy = CapturePolicyNever
 		}, "disabled mode requires progress policy"},
 		{"guidance prefers mcp", func(p *ManagedModePolicy) { p.Mode = ManagedModeGuidance }, "cannot prefer MCP"},
+		// Review round 1 (M-A): disabled mode registers no server, so a
+		// document that says disabled yet prefers MCP is contradictory.
+		{"disabled prefers mcp", func(p *ManagedModePolicy) {
+			p.Mode = ManagedModeDisabled
+			p.CapturePolicy = CapturePolicyNever
+			p.ProgressPolicy = ProgressPolicyNone
+		}, "cannot prefer MCP"},
 	}
 	for _, tc := range cases {
 		policy := base
@@ -69,6 +90,59 @@ func TestManagedModeValidateRejectsBadVocabularyAndCrossFieldRules(t *testing.T)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Fatalf("%s: err=%v want containing %q", tc.name, err, tc.want)
 		}
+	}
+}
+
+// Review round 1 (M-C): the shared document may declare delivery, but the
+// mode agents follow on a machine is delivery only when that machine's private
+// setup state records the separately registered delivery-profile server. A
+// cloned or restored repository can therefore never switch an agent into
+// advanced operations on its own.
+func TestManagedModeEffectiveModeRequiresLocalDeliveryEnablement(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		mode    ManagedMode
+		enabled bool
+		want    ManagedMode
+	}{
+		{ManagedModeDelivery, false, ManagedModeManaged},
+		{ManagedModeDelivery, true, ManagedModeDelivery},
+		{ManagedModeManaged, true, ManagedModeManaged},
+		{ManagedModeManaged, false, ManagedModeManaged},
+		{ManagedModeGuidance, true, ManagedModeGuidance},
+		{ManagedModeGuidance, false, ManagedModeGuidance},
+		{ManagedModeDisabled, true, ManagedModeDisabled},
+		{ManagedModeDisabled, false, ManagedModeDisabled},
+	}
+	for _, tc := range cases {
+		policy := mustPolicyForMode(t, tc.mode)
+		got, err := policy.EffectiveMode(tc.enabled)
+		if err != nil {
+			t.Fatalf("%s/%v: %v", tc.mode, tc.enabled, err)
+		}
+		if got != tc.want {
+			t.Fatalf("%s/enabled=%v: effective mode %s, want %s", tc.mode, tc.enabled, got, tc.want)
+		}
+		if got.AllowsDelivery() != (tc.mode == ManagedModeDelivery && tc.enabled) {
+			t.Fatalf("%s/enabled=%v: AllowsDelivery=%v", tc.mode, tc.enabled, got.AllowsDelivery())
+		}
+	}
+	// A document that declares delivery still parses and validates: the
+	// downgrade is an evaluation rule, not a rejection of the shared file.
+	declared, err := mustPolicyForMode(t, ManagedModeDelivery).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := ParseManagedModePolicy(declared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Mode != ManagedModeDelivery {
+		t.Fatalf("shared document must keep its declared mode, got %s", parsed.Mode)
+	}
+	// An invalid policy is an error, never a silently downgraded mode.
+	if _, err := (ManagedModePolicy{}).EffectiveMode(true); err == nil {
+		t.Fatalf("invalid policy must error")
 	}
 }
 
@@ -145,7 +219,7 @@ func TestManagedModeCaptureDecisionNeverTracksNonMaterialWork(t *testing.T) {
 	nonMaterial := []WorkIntent{WorkIntentStatusQuery, WorkIntentReadOnlyExplanation, WorkIntentCasualDiscussion, WorkIntentSimpleQuestion, WorkIntentTrackingExcluded}
 	for _, mode := range []ManagedMode{ManagedModeGuidance, ManagedModeManaged, ManagedModeDelivery, ManagedModeDisabled} {
 		for _, capture := range []CapturePolicy{CapturePolicyNever, CapturePolicyAsk, CapturePolicyMaterialWork} {
-			policy := ManagedModePolicyForMode(mode)
+			policy := mustPolicyForMode(t, mode)
 			if mode != ManagedModeDisabled {
 				policy.CapturePolicy = capture
 			}
@@ -183,7 +257,7 @@ func TestManagedModeCaptureDecisionForMaterialWork(t *testing.T) {
 		{ManagedModeDisabled, CapturePolicyNever, CaptureNoTicket},
 	}
 	for _, tc := range cases {
-		policy := ManagedModePolicyForMode(tc.mode)
+		policy := mustPolicyForMode(t, tc.mode)
 		policy.CapturePolicy = tc.capture
 		got, err := policy.CaptureDecision(WorkIntentMaterialWork)
 		if err != nil {
@@ -209,7 +283,7 @@ func TestManagedModeProgressDecisions(t *testing.T) {
 		{ManagedModeDisabled, ProgressPolicyNone, false, false},
 	}
 	for _, tc := range cases {
-		policy := ManagedModePolicyForMode(tc.mode)
+		policy := mustPolicyForMode(t, tc.mode)
 		policy.ProgressPolicy = tc.progress
 		gotMilestone, err := policy.RecordsProgress(ProgressEventMilestone)
 		if err != nil {

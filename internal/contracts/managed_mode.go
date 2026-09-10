@@ -28,7 +28,9 @@ const (
 	ManagedModeManaged ManagedMode = "managed"
 	// ManagedModeDelivery additionally allows separately enabled advanced
 	// operations. Setup never selects it; it requires an explicit power-user
-	// action and a separately registered delivery-profile server.
+	// action and a separately registered delivery-profile server, and that
+	// enablement is machine-local: a shared document declaring delivery is
+	// followed as managed until this machine enabled it (see EffectiveMode).
 	ManagedModeDelivery ManagedMode = "delivery"
 	// ManagedModeDisabled turns automatic tracking off. Skills may remain
 	// installed; agents create, claim, and move nothing on their own.
@@ -51,7 +53,9 @@ func (m ManagedMode) UsesMCP() bool {
 
 // AllowsDelivery reports whether advanced (delivery-profile) operations are
 // part of the agent's expected behavior. Only the delivery mode says yes, and
-// selecting it is never a setup default.
+// selecting it is never a setup default. Callers decide from the mode
+// ManagedModePolicy.EffectiveMode returns, never from the shared document's
+// declared mode alone.
 func (m ManagedMode) AllowsDelivery() bool { return m == ManagedModeDelivery }
 
 // TracksWork reports whether agents are expected to track work at all.
@@ -132,12 +136,20 @@ type ManagedModePolicy struct {
 
 // DefaultManagedModePolicy is the recommended policy tracker setup proposes.
 func DefaultManagedModePolicy() ManagedModePolicy {
-	return ManagedModePolicyForMode(ManagedModeManaged)
+	return recommendedPolicy(ManagedModeManaged)
 }
 
-// ManagedModePolicyForMode returns the recommended policy for one mode. The
-// returned value always validates.
-func ManagedModePolicyForMode(mode ManagedMode) ManagedModePolicy {
+// ManagedModePolicyForMode returns the recommended policy for one valid mode.
+// An invalid mode is an error, so a caller never holds a policy that fails
+// Validate.
+func ManagedModePolicyForMode(mode ManagedMode) (ManagedModePolicy, error) {
+	if !mode.IsValid() {
+		return ManagedModePolicy{}, fmt.Errorf("invalid managed mode %q", mode)
+	}
+	return recommendedPolicy(mode), nil
+}
+
+func recommendedPolicy(mode ManagedMode) ManagedModePolicy {
 	policy := ManagedModePolicy{
 		Format:           ManagedModeFormat,
 		Mode:             mode,
@@ -155,7 +167,7 @@ func ManagedModePolicyForMode(mode ManagedMode) ManagedModePolicy {
 }
 
 // Validate enforces the vocabulary and the cross-field rules:
-//   - disabled mode cannot capture tickets or record progress;
+//   - disabled mode cannot capture tickets, record progress, or prefer MCP;
 //   - guidance mode is skills-only, so it cannot prefer MCP.
 //
 // Nothing here can waive dependencies, governance, review, or approval; those
@@ -186,11 +198,31 @@ func (p ManagedModePolicy) Validate() error {
 		if p.ProgressPolicy != ProgressPolicyNone {
 			return fmt.Errorf("disabled mode requires progress policy %q", ProgressPolicyNone)
 		}
+		if p.MCPPreferred {
+			return fmt.Errorf("disabled mode tracks nothing and cannot prefer MCP")
+		}
 	}
 	if p.Mode == ManagedModeGuidance && p.MCPPreferred {
 		return fmt.Errorf("guidance mode is skills-only and cannot prefer MCP")
 	}
 	return nil
+}
+
+// EffectiveMode returns the mode agents follow on this machine. The shared
+// document may declare delivery, but delivery is enabled machine-locally: the
+// private setup state records the separately registered delivery-profile
+// server (plan locked decision 3), and deliveryEnabledLocally reports that
+// record. Without it a cloned, imported, or restored delivery declaration is
+// followed as managed, so the repository alone can never switch an agent into
+// advanced operations. Local enablement never upgrades a non-delivery mode.
+func (p ManagedModePolicy) EffectiveMode(deliveryEnabledLocally bool) (ManagedMode, error) {
+	if err := p.Validate(); err != nil {
+		return "", err
+	}
+	if p.Mode == ManagedModeDelivery && !deliveryEnabledLocally {
+		return ManagedModeManaged, nil
+	}
+	return p.Mode, nil
 }
 
 // Encode renders the canonical on-disk form: two-space indented JSON with a
