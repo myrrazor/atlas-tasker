@@ -3,6 +3,8 @@ package setup
 import (
 	"strings"
 	"testing"
+
+	"github.com/myrrazor/atlas-tasker/internal/integrations/adapter"
 )
 
 func TestOperationStatesMatchThePlanExactly(t *testing.T) {
@@ -44,23 +46,122 @@ func TestOperationClassification(t *testing.T) {
 		t.Fatalf("invalid state is not resting")
 	}
 	for _, state := range []OperationState{StateConnected, StatePendingApproval} {
-		if !state.Succeeded() {
-			t.Fatalf("%s must count as success", state)
+		if !state.KeepsWrites() {
+			t.Fatalf("%s must keep its writes", state)
 		}
 	}
 	for _, state := range []OperationState{StatePlanned, StateFailed, StateRolledBack, StateRepairRequired, StateApplied} {
-		if state.Succeeded() {
-			t.Fatalf("%s must not count as success", state)
+		if state.KeepsWrites() {
+			t.Fatalf("%s must not count as kept writes", state)
+		}
+	}
+	final := map[OperationState]bool{StateRolledBack: true, StateRepairRequired: true}
+	for _, state := range States() {
+		if state.Final() != final[state] {
+			t.Fatalf("%s Final=%v want %v", state, state.Final(), final[state])
+		}
+		if state.Final() && len(transitions[state]) != 0 {
+			t.Fatalf("%s is final but has edges %v", state, transitions[state])
+		}
+		if !state.Final() && len(transitions[state]) == 0 {
+			t.Fatalf("%s is not final but has no outgoing edge", state)
 		}
 	}
 	if StatePlanned.MayHaveWritten() || StateRolledBack.MayHaveWritten() {
 		t.Fatalf("planned and rolled_back guarantee no writes remain")
 	}
-	if !StateFailed.MayHaveWritten() || !StateApplying.MayHaveWritten() {
-		t.Fatalf("failed and applying may leave writes")
+	if !StateFailed.MayHaveWritten() || !StateApplying.MayHaveWritten() || !StateRepairRequired.MayHaveWritten() {
+		t.Fatalf("failed, applying, and repair_required may leave writes")
 	}
 	if OperationState("bogus").MayHaveWritten() {
 		t.Fatalf("invalid state must not claim writes")
+	}
+}
+
+// Review round 1 (S-A): a state that may hold writes can never re-enter a
+// state that guarantees none, except through the rollback itself.
+func TestOperationNoEdgeErasesWriteEvidence(t *testing.T) {
+	t.Parallel()
+	for _, from := range States() {
+		if !from.MayHaveWritten() {
+			continue
+		}
+		for _, to := range transitions[from] {
+			if to.MayHaveWritten() {
+				continue
+			}
+			if from != StateRollingBack || to != StateRolledBack {
+				t.Fatalf("%s -> %s erases the write evidence without rolling back", from, to)
+			}
+		}
+	}
+	for _, from := range []OperationState{StateFailed, StateRepairRequired, StateRolledBack} {
+		if from.Allows(StatePlanned) {
+			t.Fatalf("%s -> planned must be a new operation, not an edge", from)
+		}
+	}
+}
+
+// Review round 1 (S-B): failed is reached only when a rollback action itself
+// fails; apply and verify errors always pass through rolling_back.
+func TestOperationFailedOnlyThroughRollback(t *testing.T) {
+	t.Parallel()
+	for _, from := range States() {
+		if from == StateFailed {
+			continue
+		}
+		if from.Allows(StateFailed) != (from == StateRollingBack) {
+			t.Fatalf("%s -> failed allowed=%v; only rolling_back may fail", from, from.Allows(StateFailed))
+		}
+	}
+	if action, _ := StateFailed.RecoveryAction(); action != RecoveryNone {
+		t.Fatalf("failed is resting for the operator, got recovery %s", action)
+	}
+	if !StateFailed.Allows(StateRollingBack) {
+		t.Fatalf("an operator may retry the rollback from failed")
+	}
+}
+
+// Review round 1 (S-C): every integration state has exactly one operation
+// state, and the pending/connected distinction is never collapsed.
+func TestOutcomeForIsTotalOverIntegrationStates(t *testing.T) {
+	t.Parallel()
+	want := map[adapter.State]OperationState{
+		adapter.StateConnected:                StateConnected,
+		adapter.StateConnectedRestartRequired: StateConnected,
+		adapter.StatePendingWorkspaceTrust:    StatePendingApproval,
+		adapter.StatePendingMCPApproval:       StatePendingApproval,
+		adapter.StateConfiguredUnverified:     StatePendingApproval,
+		adapter.StatePortableReady:            StatePendingApproval,
+		adapter.StateUnsupportedClientVersion: StatePendingApproval,
+		adapter.StateRepairRequired:           StateRepairRequired,
+		adapter.StateFailed:                   StateRollingBack,
+	}
+	states := adapter.States()
+	if len(states) != len(want) {
+		t.Fatalf("mapping covers %d states, adapter has %d", len(want), len(states))
+	}
+	for _, state := range states {
+		got, err := OutcomeFor(state)
+		if err != nil {
+			t.Fatalf("%s: %v", state, err)
+		}
+		if got != want[state] {
+			t.Fatalf("%s -> %s, want %s", state, got, want[state])
+		}
+		if !StateVerifying.Allows(got) {
+			t.Fatalf("%s -> %s is not a legal verify outcome", state, got)
+		}
+		dropsWrites := state == adapter.StateRepairRequired || state == adapter.StateFailed
+		if got.KeepsWrites() == dropsWrites {
+			t.Fatalf("%s -> %s: kept writes=%v", state, got, got.KeepsWrites())
+		}
+		if state.Verified() != (got == StateConnected) {
+			t.Fatalf("%s: verified=%v but operation %s", state, state.Verified(), got)
+		}
+	}
+	if _, err := OutcomeFor("ready"); err == nil {
+		t.Fatalf("unknown integration state must be an error")
 	}
 }
 
@@ -70,30 +171,32 @@ func TestOperationTransitionsNoWriteBeforePlanAndNoSkipOfVerification(t *testing
 		{StatePlanned, StateApplying},
 		{StateApplying, StateApplied},
 		{StateApplying, StateRollingBack},
-		{StateApplying, StateFailed},
 		{StateApplied, StateVerifying},
 		{StateApplied, StateRollingBack},
 		{StateVerifying, StateConnected},
 		{StateVerifying, StatePendingApproval},
 		{StateVerifying, StateRepairRequired},
 		{StateVerifying, StateRollingBack},
-		{StateVerifying, StateFailed},
 		{StateConnected, StateVerifying},
 		{StateConnected, StateRepairRequired},
 		{StatePendingApproval, StateVerifying},
 		{StatePendingApproval, StateRepairRequired},
 		{StatePendingApproval, StateRollingBack},
 		{StateFailed, StateRollingBack},
-		{StateFailed, StatePlanned},
 		{StateRollingBack, StateRolledBack},
 		{StateRollingBack, StateFailed},
-		{StateRolledBack, StatePlanned},
-		{StateRepairRequired, StatePlanned},
 	}
 	for _, edge := range legal {
 		if _, err := edge[0].Transition(edge[1]); err != nil {
 			t.Fatalf("%s -> %s must be legal: %v", edge[0], edge[1], err)
 		}
+	}
+	edges := 0
+	for _, targets := range transitions {
+		edges += len(targets)
+	}
+	if edges != len(legal) {
+		t.Fatalf("state machine has %d edges, test pins %d", edges, len(legal))
 	}
 	forbidden := [][2]OperationState{
 		{StatePlanned, StateApplied},      // cannot claim writes without applying
@@ -101,11 +204,17 @@ func TestOperationTransitionsNoWriteBeforePlanAndNoSkipOfVerification(t *testing
 		{StateApplying, StateConnected},   // verification cannot be skipped
 		{StateApplied, StateConnected},    // verification cannot be skipped
 		{StateApplying, StateVerifying},   // all steps must finish first
+		{StateApplying, StateFailed},      // an apply error rolls back first (review S-B)
+		{StateVerifying, StateFailed},     // a verify error rolls back first (review S-B)
 		{StateRolledBack, StateConnected}, // nothing left to verify
 		{StateFailed, StateConnected},     // no silent recovery
-		{StateConnected, StateApplying},   // re-apply needs a new plan
+		{StateFailed, StatePlanned},       // a fresh plan is a new operation (review S-A)
+		{StateRolledBack, StatePlanned},   // same
+		{StateRepairRequired, StatePlanned},
+		{StateConnected, StateApplying}, // re-apply needs a new plan
 		{StateRepairRequired, StateApplying},
-		{StatePendingApproval, StateConnected}, // approval must be re-verified, never assumed
+		{StateRepairRequired, StateRollingBack}, // the drifted disk is not this operation's snapshot
+		{StatePendingApproval, StateConnected},  // approval must be re-verified, never assumed
 		{StateRolledBack, StateRollingBack},
 	}
 	for _, edge := range forbidden {
@@ -124,19 +233,20 @@ func TestOperationTransitionsNoWriteBeforePlanAndNoSkipOfVerification(t *testing
 			t.Fatalf("invalid states never transition")
 		}
 	}
-	// Every state except planned is reachable and every non-terminal state has a way forward.
+	// Every state except planned is reachable; planned is entered only by
+	// creating a new operation.
 	reachable := map[OperationState]bool{StatePlanned: true}
 	for _, targets := range transitions {
 		for _, target := range targets {
+			if target == StatePlanned {
+				t.Fatalf("no edge may lead back to planned")
+			}
 			reachable[target] = true
 		}
 	}
 	for _, state := range States() {
 		if !reachable[state] {
 			t.Fatalf("%s is unreachable", state)
-		}
-		if len(transitions[state]) == 0 {
-			t.Fatalf("%s has no outgoing edge", state)
 		}
 	}
 }

@@ -4,13 +4,23 @@
 // arrive in Sprint 114.1 and must use these states unchanged.
 package setup
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/myrrazor/atlas-tasker/internal/integrations/adapter"
+)
 
 // OperationState is the lifecycle state of one setup transaction: one provider
 // integration, the managed-mode write, or the backup configuration group. It
 // is distinct from the integration state an adapter reports (connected,
 // pending_workspace_trust, ...): the operation state says where the
-// transaction is, the integration state says what it produced.
+// transaction is, the integration state says what it produced. OutcomeFor is
+// the one mapping between the two vocabularies.
+//
+// An operation is one journal entry. It never returns to planned: a fresh plan
+// after failed, rolled_back, or repair_required is a new operation whose
+// planning step reads the previous journal entry, so "planned" always means
+// "this operation has written nothing".
 type OperationState string
 
 const (
@@ -26,20 +36,26 @@ const (
 	// StateConnected means verification passed; the integration state is
 	// connected or connected_restart_required.
 	StateConnected OperationState = "connected"
-	// StatePendingApproval means the writes are complete and correct but a
-	// provider trust or approval dialog, or a restart, is outstanding.
+	// StatePendingApproval means the writes are complete, correct, and kept,
+	// but the integration is not proven connected: a provider trust or
+	// approval dialog, a client restart or manual check, a portable descriptor
+	// the user still has to install, or an unsupported client version is
+	// outstanding. The integration state in the journal and the run report
+	// says which.
 	StatePendingApproval OperationState = "pending_approval"
-	// StateFailed means apply or verify failed. If writes happened they were
-	// rolled back; if rollback itself failed the journal says so and the
-	// operation stays failed until an operator runs repair.
+	// StateFailed means a rollback action itself failed, so writes may remain
+	// and the journal lists the exact paths left for the operator. It is
+	// reached only from rolling_back; an apply or verify error always goes
+	// through rolling_back first.
 	StateFailed OperationState = "failed"
 	// StateRollingBack means rollback actions are executing in reverse order.
 	StateRollingBack OperationState = "rolling_back"
 	// StateRolledBack means every reversible write was undone; irreversible
-	// steps are listed in the journal.
+	// steps are listed in the journal. It is final for this operation.
 	StateRolledBack OperationState = "rolled_back"
-	// StateRepairRequired means a later inspection found drift between the
-	// recorded state and disk.
+	// StateRepairRequired means verification or a later inspection found
+	// drift between the recorded state and disk. It is final for this
+	// operation; repair is a new operation planned from this journal entry.
 	StateRepairRequired OperationState = "repair_required"
 )
 
@@ -79,14 +95,25 @@ func (s OperationState) InFlight() bool {
 // Resting is the complement of InFlight for valid states.
 func (s OperationState) Resting() bool { return s.IsValid() && !s.InFlight() }
 
-// Succeeded reports whether the transaction reached a state in which its
-// writes are kept.
-func (s OperationState) Succeeded() bool {
+// KeepsWrites reports whether the transaction reached a resting state in which
+// its writes are kept as correct. It does not mean the integration is
+// connected: pending_approval keeps its writes while a human or client step
+// is still outstanding. Run-level reporting must therefore carry the
+// integration state next to the operation state, never this flag alone.
+func (s OperationState) KeepsWrites() bool {
 	return s == StateConnected || s == StatePendingApproval
 }
 
+// Final reports whether the operation can never move again. A new plan or a
+// repair starts a new operation.
+func (s OperationState) Final() bool {
+	return s == StateRolledBack || s == StateRepairRequired
+}
+
 // MayHaveWritten reports whether the state can coexist with writes on disk
-// that have not been rolled back.
+// that have not been rolled back. Because no edge leads back to planned or
+// rolled_back except the rollback itself, the answer is a property of the
+// state alone.
 func (s OperationState) MayHaveWritten() bool {
 	switch s {
 	case StatePlanned, StateRolledBack:
@@ -98,15 +125,45 @@ func (s OperationState) MayHaveWritten() bool {
 
 var transitions = map[OperationState][]OperationState{
 	StatePlanned:         {StateApplying},
-	StateApplying:        {StateApplied, StateRollingBack, StateFailed},
+	StateApplying:        {StateApplied, StateRollingBack},
 	StateApplied:         {StateVerifying, StateRollingBack},
-	StateVerifying:       {StateConnected, StatePendingApproval, StateRepairRequired, StateRollingBack, StateFailed},
+	StateVerifying:       {StateConnected, StatePendingApproval, StateRepairRequired, StateRollingBack},
 	StateConnected:       {StateVerifying, StateRepairRequired},
 	StatePendingApproval: {StateVerifying, StateRepairRequired, StateRollingBack},
-	StateFailed:          {StateRollingBack, StatePlanned},
+	StateFailed:          {StateRollingBack},
 	StateRollingBack:     {StateRolledBack, StateFailed},
-	StateRolledBack:      {StatePlanned},
-	StateRepairRequired:  {StatePlanned},
+	StateRolledBack:      {},
+	StateRepairRequired:  {},
+}
+
+// OutcomeFor maps the integration state an adapter reported after apply and
+// verify to the operation state the engine journals next. The mapping is
+// total over the nine integration states, so a run report can never show an
+// integration outcome the transaction has no state for:
+//
+//   - connected, connected_restart_required -> connected
+//   - pending_workspace_trust, pending_mcp_approval, configured_unverified,
+//     portable_ready, unsupported_client_version -> pending_approval (writes
+//     kept; the integration state names the outstanding step)
+//   - repair_required -> repair_required
+//   - failed -> rolling_back (the engine undoes the started steps; rolled_back
+//     or failed is decided by the rollback, never by the adapter)
+//
+// A plan with no write steps (a no-op, or an unsupported client for which
+// Atlas writes nothing) creates no operation; its integration state is
+// reported straight from the plan.
+func OutcomeFor(state adapter.State) (OperationState, error) {
+	switch state {
+	case adapter.StateConnected, adapter.StateConnectedRestartRequired:
+		return StateConnected, nil
+	case adapter.StatePendingWorkspaceTrust, adapter.StatePendingMCPApproval, adapter.StateConfiguredUnverified, adapter.StatePortableReady, adapter.StateUnsupportedClientVersion:
+		return StatePendingApproval, nil
+	case adapter.StateRepairRequired:
+		return StateRepairRequired, nil
+	case adapter.StateFailed:
+		return StateRollingBack, nil
+	}
+	return "", fmt.Errorf("unknown integration state %q", state)
 }
 
 // Allows reports whether the edge s -> next is legal. Every state is legal to
@@ -145,10 +202,12 @@ const (
 	// every step the journal marked as started, in reverse order.
 	RecoveryRollBack Recovery = "roll_back"
 	// RecoveryVerify means all writes completed: re-run verification and let it
-	// decide connected, pending_approval, repair_required, or failed.
+	// decide connected, pending_approval, repair_required, or rolling_back.
 	RecoveryVerify Recovery = "verify"
-	// RecoveryResumeRollback means rollback was interrupted: rollback actions
-	// are idempotent, so run the remaining ones again.
+	// RecoveryResumeRollback means rollback was interrupted: run the remaining
+	// rollback actions again. Each action kind defines how a repeat is
+	// recognised as already done (docs/v1.14-setup-transaction-model.md §6),
+	// so resuming never reports a failure for work the crash had finished.
 	RecoveryResumeRollback Recovery = "resume_rollback"
 )
 
