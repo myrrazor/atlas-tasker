@@ -984,6 +984,12 @@ version, compatibility decisions, and hosted proof requirements remain unchanged
 
 ## DEC-070
 
+Revisited 2026-09-10 by DEC-079 after independent review round 1 (findings S-A..S-D, T-A..T-C):
+the ten states stand; the edge set was tightened (no edge back to `planned`, `failed` only from
+`rolling_back`), the integration-to-operation mapping was made total and tested, and rollback
+idempotency is now defined per action kind instead of assumed. Items 5 and 8 below read with those
+amendments.
+
 1. **Decision ID:** DEC-070
 2. **Date:** 2026-09-10
 3. **Question:** How does v1.14 add seamless agent setup without turning `tracker init` or the integration installer into an unreviewable multi-write operation?
@@ -1020,6 +1026,11 @@ version, compatibility decisions, and hosted proof requirements remain unchanged
 
 ## DEC-073
 
+Revisited 2026-09-10 by DEC-080 after independent review round 1 (findings M-A..M-C): `disabled`
+additionally forbids `mcp_preferred`, the per-mode constructor returns an error for an invalid mode,
+and `delivery` in the shared document takes effect only with machine-local enablement
+(`EffectiveMode`). The seven-field document and its vocabulary are unchanged.
+
 1. **Decision ID:** DEC-073
 2. **Date:** 2026-09-10
 3. **Question:** How is managed project mode expressed so that agents track material work without any path to waive existing workflow authority?
@@ -1031,6 +1042,38 @@ version, compatibility decisions, and hosted proof requirements remain unchanged
 9. **Affected PRs/Files:** internal/contracts/managed_mode.go, internal/contracts/managed_mode_test.go, docs/v1.14-managed-mode-contract.md, docs/v1.14-implementation-plan.md (AT114-004, AT114-301).
 
 ## DEC-074
+
+Revisited 2026-09-10 after independent review round 1 (findings B-A..B-F, G-A; the model stands,
+these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2.2, §3, §3.2, §3.3,
+§4.1, §4.4, §6):
+
+- **B-A (allowlist/candidate parity).** AT114-401's shared builder adds `collaborators`,
+  `memberships`, `mentions`, and archive records with their Markdown payloads to the candidate list
+  (all already restore-safe) and adds a parity test between `isCanonicalRestorePlanPath` and the
+  collector with named exclusion lists. The exported-but-not-restore-safe direction (item 5 of the
+  chosen option) stays inherited until the AT114-507 drill shows what setup re-creates.
+- **G-A (restore governance).** AT114-506 evaluates `requireGovernance{backup_restore, workspace}`
+  in `ApplyRestorePlan` before `commitMutation`; a denying policy is exit 5 with zero writes; `--yes`
+  is a guard, not authorization. No protected action is added for checkpoint creation.
+- **B-B.** There is no read lock; the checkpoint copies under the exclusive write lock with a
+  bounded hold and yields (`busy` → retry) to writers; hashing, commit, push, and verify run outside
+  the lock.
+- **B-C.** Threat 2 is exclusion by path with no content redaction; redaction rules are canonical
+  data and are included.
+- **B-D.** `manifest_sha256` = SHA-256 of the canonical encoding with the field blanked; pinned by
+  golden and round-trip tests. Product integrity hashing is outside the owner's SHA-ceremony waiver.
+- **B-E.** The user's global/system Git configuration is not masked (credential helpers,
+  `insteadOf`, `core.sshCommand` live there); only `commit.gpgsign`, `tag.gpgsign`, `core.hooksPath`,
+  `protocol.*.allow`, and `credential.interactive` are pinned per invocation. `--force-with-lease` is
+  rejected because locked decision 6 says backup never force-pushes; the `ls-remote`/push window is
+  benign because the ref is per replica and single-writer, and a server-side non-fast-forward
+  rejection reports `diverged`.
+- **B-F.** Two threats added: SSH host-key trust on first connection (`host_key_unverified`, Atlas
+  never writes `known_hosts` or relaxes host-key checking) and backup target equal to a workspace
+  remote (warning at configuration and in `backup status`; vanished `refs/atlas/*` detected and
+  re-published). Threat 18 records the restore-governance check.
+- Confidence for the allowlist question rises to high for the never-collected direction (decided)
+  and stays medium for the exported-only direction (drill-dependent).
 
 1. **Decision ID:** DEC-074
 2. **Date:** 2026-09-10
@@ -1053,3 +1096,63 @@ version, compatibility decisions, and hosted proof requirements remain unchanged
 7. **Confidence:** high
 8. **Revisit Trigger:** The owner changes the release train, base branch, or publication order.
 9. **Affected PRs/Files:** docs/release/v1.14-baseline-evidence.md, docs/v1.14-acceptance.md, docs/v1.14-implementation-plan.md (Plan status section).
+
+## DEC-076
+
+1. **Decision ID:** DEC-076
+2. **Date:** 2026-09-10
+3. **Question:** How does the Claude Code shared `.mcp.json` registration bind to the workspace, and which client placeholders may a repository-carried registration carry?
+4. **Options Considered:** Keep `client_variable` with `${CLAUDE_PROJECT_DIR:-.}` as the earlier contract draft did; bind with `verified_cwd` (`--workspace-from-cwd --expected-workspace-id`) and restrict placeholders to one bare `${name}` that the client documents as interpolated; refuse repository-carried Claude registration altogether.
+5. **Chosen Option:** `verified_cwd` for Claude's `.mcp.json` row; `client_variable` accepts only `^\$\{[A-Za-z][A-Za-z0-9_]*\}$` and only for Cursor's `.cursor/mcp.json`, the one project file whose client documents variable interpolation. Shell-style defaults (`${VAR:-default}`) are refused everywhere. Grok's compatibility import of Cursor/Claude files is recorded as passing placeholders literally, so an imported entry fails closed at `--expected-workspace-id` and AT114-207/209 must report the duplicate.
+6. **Why We Chose It:** The official Claude Code documentation (re-read for review round 1) states that `CLAUDE_PROJECT_DIR` is set in the spawned server's environment and is not expanded by Claude Code inside a project `.mcp.json`; the earlier row would have passed the literal string `.` as `--workspace`, binding the server to whatever directory it started in. `verified_cwd` is exactly the plan's AT114-102 rule for providers without reliable variable expansion, and `--expected-workspace-id` (DEC-072) still fails closed if the start directory is wrong. Refusing defaults removes the failure class rather than special-casing one client.
+7. **Confidence:** high for the binding and the placeholder rule; medium for the working directory Claude Code gives a project-scoped stdio server, which AT114-204's real-client run confirms.
+8. **Revisit Trigger:** Claude Code documents variable interpolation inside `.mcp.json`, or AT114-204 shows the server is not started in the project directory (then AT114-102 must use the server-environment `CLAUDE_PROJECT_DIR` as corroborating evidence and the row changes).
+9. **Affected PRs/Files:** internal/integrations/adapter/registration.go, internal/integrations/adapter/capabilities.go, internal/integrations/adapter/registration_test.go, internal/integrations/adapter/review_round1_test.go, docs/v1.14-provider-adapter-contract.md §4.1, §7.1, §8, docs/release/v1.14-s0-review-round1.md.
+
+## DEC-077
+
+1. **Decision ID:** DEC-077
+2. **Date:** 2026-09-10
+3. **Question:** How far does plan validation confine what an adapter may write and run, given that the journal engine of AT114-103 does not exist yet and Sprint 114.2 adapters will code against the contract?
+4. **Options Considered:** Keep containment at "inside the workspace or a consented root" and rely on adapter review; add fail-closed structural rules to `IntegrationPlan.Validate` for path classes, rollback binding, executable identity, approval promises, and required inputs; move all such checks into the journal engine.
+5. **Chosen Option:** Structural rules in the contract, live-filesystem checks in the engine. Managed-file steps may touch only Atlas-owned roots (instruction file, skill directory, `.tracker/integrations`, the client's command directory) or a consented root and never a client configuration file; config-entry steps carry the plan scope and may touch only the file the target documents for that scope with `atlas_file_edit`, or a user-selected consented destination (the generic `user` scope added for AT114-208). `.git` is never writable anywhere; `.tracker` admits only `integrations/**`. A rollback is bound to its step (same path; removals only by `restore_snapshot`; command steps only by `run_command` with the same executable and a `remove`/`reload` purpose). Every plan, rollback, detection, and verification command runs the detected client executable (or, for `probe`, the registered server executable); the shell/interpreter denylist is widened (`env`, `busybox`, Python, Perl, Ruby, Node, Deno, Bun) as defence in depth only. Approval steps and pending states imply each other exactly. `PlanInput.Home` is required and a repository-carried non-portable plan must carry `Home`; when home is unknown the conventional per-user roots are refused heuristically. Writes use `0644`/`0600`; `remove_local_state` exists; `FileIdentity` records `Owner{UID, GID}`. `Registry.Register` compares the whole capability struct. A standalone `Command.Validate` does **not** reject arbitrary binaries such as `/usr/bin/curl`: without a reference executable that check would be a denylist guessing game, so the tie lives at every level where a reference exists.
+6. **Why We Chose It:** Review round 1 reproduced eight ways a syntactically valid plan could reach client configuration, Git metadata, tracker state, or a foreign binary while still validating. Encoding the rules in the contract makes Sprint 114.2 adapters fail at unit-test time instead of at review time, and keeps the engine's remaining checks (symlinks, ownership, current identity) to what needs the live filesystem. Confining managed files to Atlas-owned roots is stronger than the reviewer's minimum (excluding client config files) and follows DEC-047/DEC-066's managed-block ownership model.
+7. **Confidence:** high
+8. **Revisit Trigger:** A Sprint 114.2 adapter needs a legitimate write outside the enumerated roots (then the matrix gains a documented root, not an exemption), or AT114-103's engine finds a containment case the contract cannot express.
+9. **Affected PRs/Files:** internal/integrations/adapter/plan.go, internal/integrations/adapter/capabilities.go, internal/integrations/adapter/command.go, internal/integrations/adapter/contract.go, internal/integrations/adapter/registration.go, internal/integrations/adapter/doc.go, internal/integrations/adapter/*_test.go, docs/v1.14-provider-adapter-contract.md §2, §5, §6, §7, docs/release/v1.14-s0-review-round1.md.
+
+## DEC-078
+
+1. **Decision ID:** DEC-078
+2. **Date:** 2026-09-10
+3. **Question:** Does a target's `MaxPlannedState` bound what `Verify` may report, and what evidence must a verified result carry?
+4. **Options Considered:** Clamp `Verification.State` to the target's cap (the reviewer's suggestion); leave verification unbounded and unstructured; keep verification independent of the cap but require its connection kind to match the target class and to be backed by a passed check of one of that kind's own methods, with every probe tied to the detected client or registered server executable.
+5. **Chosen Option:** The third. `MaxPlannedState` bounds what a plan may *promise* before anything runs (strict ranks: `connected` 5, `connected_restart_required` 4, `configured_unverified`/`portable_ready` 2, others 0). `Verification` reports what a post-apply probe *proved*: `client_native` must be backed by `client_cli_list`/`get`/`doctor`, `self_probe` by `self_probe`, `standard_config`/`custom_adapter` by `conformance_host`; generic targets use only the last two kinds and named clients never do; probes run `ClientExecutable` or, for `probe`, `ServerExecutable`, and are read-only.
+6. **Why We Chose It:** A promised-state cap and post-probe verification answer different questions. OpenClaw's cap is `connected_restart_required` because the saved definition and the live gateway differ at plan time, yet `openclaw mcp doctor --probe` opens a live session and can prove `connected` afterwards; clamping would force the contract to report less than it observed. Requiring kind-specific evidence closes the actual gap the reviewer found (a `connected` result whose only passed check was a manual one or a method that cannot prove that kind).
+7. **Confidence:** high
+8. **Revisit Trigger:** A client's native listing proves less than a live session (then that method leaves the `client_native` evidence set), or design review still prefers the clamp after reading the OpenClaw case.
+9. **Affected PRs/Files:** internal/integrations/adapter/plan.go (`stateRank`, `connectionKindEvidence`, `Verification.Validate`), internal/integrations/adapter/review_round1_test.go, docs/v1.14-provider-adapter-contract.md §3, docs/release/v1.14-s0-review-round1.md.
+
+## DEC-079
+
+1. **Decision ID:** DEC-079
+2. **Date:** 2026-09-10
+3. **Question:** How do the setup operation states preserve "planned means nothing was written" and "failed means a rollback failed", and how is an adapter's integration outcome mapped to an operation state so partial success is reported honestly?
+4. **Options Considered:** Keep DEC-070's edges (`failed -> planned`, `rolled_back -> planned`, `repair_required -> planned`, `applying -> failed`, `verifying -> failed`) and document the caveats; remove those edges and add an eleventh operation state `unverified` for outcomes no probe can verify; remove those edges, keep the ten states, add a total tested `OutcomeFor` mapping, broaden `pending_approval` to "writes kept, not proven connected", rename `Succeeded()` to `KeepsWrites()`, and carry the integration state plus a run-level status in every report.
+5. **Chosen Option:** The third. Exactly seventeen edges remain; no edge leads back to `planned` (a fresh plan is a new operation reading the old journal entry); `failed` is reachable only from `rolling_back` and leads only to `rolling_back`; `rolled_back` and `repair_required` are final. `OutcomeFor` maps `connected`/`connected_restart_required` to `connected`; the two pending states, `configured_unverified`, `portable_ready`, and `unsupported_client_version` to `pending_approval`; `repair_required` to `repair_required`; `failed` to `rolling_back`. A plan with no write steps creates no operation. Run-level status is `connected | pending | unverified` (exit 0, distinct strings) or `partial | failed` (non-zero, codes fixed in AT114-104), with per-provider operation and integration states in `--json`. Rollback idempotency is defined per action kind (`restore_snapshot` compares identities, `delete_created` treats ENOENT as success, `run_command` removals are preceded by the provider's read-only listing probe) and implemented in AT114-103 with a resume-twice table test. Lock order is setup lock then workspace write lock, never reversed; a `busy` workspace lock fails the step and rolls back. Machine-wide scopes (OpenClaw gateway, any `user` scope) are never pre-selected and must be named in noninteractive mode. Rollback material is deleted at commit or `rolled_back` and retained only while `failed`.
+6. **Why We Chose It:** Review round 1 showed that two documented guarantees were false under the old edges and that the integration-to-operation mapping existed only in prose. An eleventh state would contradict DEC-070's closed set for a distinction that the integration state already carries; a total mapping plus a run-level vocabulary gives agents the branch they need (`status == "connected"`) without a second state machine. Client CLIs are not idempotent (`openclaw mcp unset` fails on an absent name), so idempotency has to be constructed by the engine, not assumed.
+7. **Confidence:** high
+8. **Revisit Trigger:** AT114-103's crash-injection matrix finds an outcome the seventeen edges cannot express, or AT114-104 cannot give `partial`/`failed` distinct codes inside the existing exit-code table.
+9. **Affected PRs/Files:** internal/setup/operation.go, internal/setup/operation_test.go, docs/v1.14-setup-transaction-model.md §1, §2, §3, §4, §5, §6, §7, §8, docs/v1.14-acceptance.md (AT114-103/104 requirements), docs/release/v1.14-s0-review-round1.md.
+
+## DEC-080
+
+1. **Decision ID:** DEC-080
+2. **Date:** 2026-09-10
+3. **Question:** How can `delivery` mode "require an explicit enable" when the managed-mode document is committed, cloned, imported, and restored with the repository?
+4. **Options Considered:** Reject `mode: delivery` in the shared file and keep delivery entirely machine-local; accept it in the shared file and let it take effect on every machine; accept it in the shared file as a declaration and make the effective mode depend on this machine's private setup state recording a delivery-profile server registration.
+5. **Chosen Option:** The third. `ManagedModePolicy.EffectiveMode(deliveryEnabledLocally)` returns `managed` for a declared `delivery` without local enablement and never upgrades a non-delivery declaration; `AllowsDelivery()` is read only from the effective mode; `atlas.context`/`atlas.status` report declared and effective mode. Additionally `disabled` forbids `mcp_preferred` (no server is registered in that mode) and `ManagedModePolicyForMode` returns an error for an invalid mode so no caller holds a policy that fails validation.
+6. **Why We Chose It:** Rejecting the value in the shared file would make a team's intent unexpressible; letting it take effect would make the first committer's choice binding for every clone and every restored workspace, which is the property review finding M-C showed to be missing. Layering the machine-local enablement follows locked decision 3 (delivery is a separately registered profile server) and DEC-070's rule that no machine-wide capability is enabled without an explicit local action.
+7. **Confidence:** high
+8. **Revisit Trigger:** A deployment needs repository-wide delivery enablement (then an explicit team-policy record with its own governance, not the managed-mode file, would carry it).
+9. **Affected PRs/Files:** internal/contracts/managed_mode.go, internal/contracts/managed_mode_test.go, docs/v1.14-managed-mode-contract.md §1, §2, §2.1, §5, docs/release/v1.14-s0-review-round1.md.
