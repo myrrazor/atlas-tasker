@@ -103,17 +103,19 @@
       <article>
         <p class="docs-kicker">Agents</p>
         <h1>MCP setup</h1>
-        <p class="docs-lead">Atlas ships a local stdio MCP server for clients that want typed tools instead of a shell. It calls the same service layer as the CLI, so it is never a second source of truth: every mutation still runs permission checks, the write lock, and event metadata.</p>
+        <p class="docs-lead">Atlas ships a local stdio MCP server for clients that want typed tools instead of a shell. It calls the same service layer as the CLI, so it is never a second source of truth: ticket and event mutations still run permission checks, the write lock, and attributed event metadata.</p>
 
         <h2>Start the server</h2>
         <div class="code-block">
           <div class="snippet-title"><span>serve, inspect, approve</span><button class="copy-button" type="button" data-copy="ms-serve" aria-label="Copy MCP commands">Copy</button></div>
           <pre id="ms-serve">tracker mcp serve --tool-profile read
 tracker mcp serve --workspace /absolute/path/to/repo --tool-profile read
+tracker mcp serve --workspace /absolute/path/to/existing-directory --tool-profile workflow --init-if-missing
 tracker mcp tools --json --tool-profile read     <span class="c"># what does this profile expose</span>
 tracker mcp schema --json --tool-profile workflow</pre>
         </div>
-        <p><code>serve</code> reads the current directory unless <code>--workspace</code> names one. That flag is load-bearing: user-scoped and global registrations start wherever the client happens to be, and without <code>--workspace</code> the tools answer against that directory. It is the usual reason a tool returns <code>not_found</code> for a ticket you can see in your terminal. A workspace that does not exist or was never through <code>tracker init</code> fails at startup naming the path it tried.</p>
+        <p><code>serve</code> reads the current directory unless <code>--workspace</code> names one. That flag is load-bearing: user-scoped and global registrations start wherever the client happens to be, and without <code>--workspace</code> the tools answer against that directory. It is the usual reason a tool returns <code>not_found</code> for a ticket you can see in your terminal. By default, a workspace that does not exist or was never through <code>tracker init</code> fails at startup naming the path it tried.</p>
+        <p><code>--init-if-missing</code> is an explicit bootstrap opt-in for a fresh workspace. It requires an absolute path to an existing directory and a write-capable workflow, delivery, or admin profile. Atlas refuses the option with the read profile, <code>--read-only</code>, a nested Atlas root, or redirected initialization outputs. Once startup succeeds, <code>atlas.project.create</code> can create a project container through MCP using only <code>key</code> and <code>name</code>.</p>
 
         <h2>Profiles</h2>
         <p>Four cumulative profiles decide which tools exist in a session. Use <code>read</code> for inspection and <code>workflow</code> when the agent is expected to work tickets. Inspect your installed binary rather than assuming a count from documentation.</p>
@@ -124,9 +126,9 @@ tracker mcp schema --json --tool-profile workflow</pre>
             </thead>
             <tbody>
               <tr><td><code>read</code></td><td>41</td><td>Reads and plan/dry-run tools only. The default.</td></tr>
-              <tr><td><code>workflow</code></td><td>67</td><td>Adds 26 attributed writes: the full ticket loop, agent/team management, schedules, evidence, handoffs, and wake-up ack.</td></tr>
-              <tr><td><code>delivery</code></td><td>71</td><td>Adds dispatch, change create, change sync, and checks sync. These can have live side effects.</td></tr>
-              <tr><td><code>admin</code></td><td>82 with danger flag</td><td>Adds 11 high-impact operations, hidden unless the server also runs with <code>--dangerously-allow-high-impact-tools</code>. See <a href="mcp-security.html">MCP security</a>.</td></tr>
+              <tr><td><code>workflow</code></td><td>73</td><td>Adds 31 attributed writes plus key/name-only project container creation: the full ticket loop, agent/team management, schedules, evidence, handoffs, and wake-up ack.</td></tr>
+              <tr><td><code>delivery</code></td><td>77; 79 with danger flag</td><td>Adds dispatch, change create, change sync, and checks sync. The danger flag exposes two guarded delivery actions.</td></tr>
+              <tr><td><code>admin</code></td><td>77; 88 with danger flag</td><td>The danger flag exposes all 11 high-impact operations: two delivery and nine admin. See <a href="mcp-security.html">MCP security</a>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -179,7 +181,7 @@ args = ["mcp", "serve", "--workspace", "/absolute/path/to/repo", "--tool-profile
   "payload": {}
 }</pre>
         </div>
-        <p>Every tool also declares the <code>underlying_atlas_action</code> it maps to and a <code>json_schema_hash</code> for its arguments, and calls are validated against that schema before they reach the tracker. Unknown arguments and wrong JSON types are rejected at the adapter boundary. Mutating tools require <code>actor</code> and <code>reason</code> in the arguments, exactly like the CLI flags.</p>
+        <p>Every tool also declares the <code>underlying_atlas_action</code> it maps to and a <code>json_schema_hash</code> for its arguments, and calls are validated against that schema before they reach the tracker. Unknown arguments and wrong JSON types are rejected at the adapter boundary. Ticket and event mutations require explicit <code>actor</code> and <code>reason</code> arguments. The CLI resolves actor identity from its flag, environment, or config and requires reasons only for protected or security-sensitive actions, so do not infer MCP arguments from CLI optionality. <code>atlas.project.create</code> is the metadata-container exception: its closed schema accepts only <code>key</code> and <code>name</code>, and project creation writes no attributed event.</p>
 
         <div class="docs-note">
           <p>Continue with <a href="mcp-tools.html">MCP tools</a> for the complete workflow profile, then <a href="mcp-security.html">MCP security</a> for the high-impact approval flow.</p>

@@ -43,7 +43,7 @@ tracker ticket move APP-1 ready --actor human:owner --reason "groomed"
 tracker board
 ```
 
-In a terminal, `tracker init` offers to set up coding-agent integrations after creating the workspace. Choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. The [agent integrations guide](docs/guides/agent-integrations.md) covers every target and scripted setup.
+In a terminal, `tracker init` asks `Set up coding-agent integrations now? [Y/n]`; pressing Enter or answering yes opens the picker. This differs from the shell installer's optional workspace setup prompt, which defaults to **no**. In the picker, choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. The [agent integrations guide](docs/guides/agent-integrations.md) covers every target and scripted setup.
 
 ![Kanban board in the terminal](docs/assets/board.png)
 
@@ -90,10 +90,10 @@ tracker agent auto set builder-1 --mode command \
   --actor human:owner --reason "auto pickup"
 ```
 
-Tickets can also carry a one-time schedule. A human runner gets a durable due/overdue reminder through the normal notification sinks; an agent runner gets an Atlas wakeup, and command mode launches the configured worker at the tick:
+Tickets can also carry a one-time schedule. A human runner gets a durable due/overdue reminder through the normal notification sinks; an agent runner gets an Atlas wakeup, and command mode launches the configured worker at the tick. Set `FUTURE_AT` to an RFC3339 instant strictly after the current time, then run:
 
 ```bash
-tracker schedule set APP-2 --at 2026-08-10T09:00:00-04:00 --runner agent:builder-1 \
+tracker schedule set APP-2 --at "$FUTURE_AT" --runner agent:builder-1 \
   --actor human:owner --reason "run the Monday check"
 tracker schedule tick --actor human:owner --reason "scheduled tick"
 ```
@@ -124,9 +124,10 @@ tracker goal brief APP-2 --md
 Integration installation writes project instructions, a guide, and skill or command files for the selected agent. It does **not** register an MCP server. If your agent should call Atlas as MCP tools, configure `tracker mcp serve` in that client separately and pin `--workspace` to this repo. See [agent integrations](docs/guides/agent-integrations.md) and [MCP for agents](docs/guides/mcp-for-agents.md).
 
 **[AGENTS.md](AGENTS.md) is the file to hand an agent.** It leads with the things that trip
-them up — every write needs `--actor` and `--reason`, `project create` needs neither, a
-forbidden transition is a deliberate exit 4 — then the loop, the exit-code table, and the MCP
-registration one-liners. `CLAUDE.md` imports it, so Claude Code picks it up too.
+them up — every tracked CLI mutation needs an actor, reasons are recommended and sometimes mandatory,
+MCP tracked writes need both, `project create` needs neither, and a forbidden transition is a
+deliberate exit 4 — then the loop, the exit-code table, and the MCP registration one-liners.
+`CLAUDE.md` imports it, so Claude Code picks it up too.
 
 For humans setting things up, the [agent integrations guide](docs/guides/agent-integrations.md), [Claude Code guide](docs/guides/claude-code.md), [Codex guide](docs/guides/codex.md), and [generic agent guide](docs/guides/generic-agent.md) walk through real setups.
 
@@ -161,7 +162,7 @@ Start at the [docs landing page](docs/README.md), or jump to [installation](docs
 
 The [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/latest) is what the installer and `go install ...@latest` give you. [CHANGELOG.md](CHANGELOG.md) lists the changes, and each release page records its published artifacts and verification.
 
-The v1.12 source adds optional agent setup after a terminal install, saved preferences for all six web languages, and updated MCP, integration, and updater guides. The [v1.12 release evidence](docs/release/v1.12.0-release-evidence.md) records preparation and owner approval; hosted verification is recorded on the corresponding release pages. Development-branch documentation can describe changes ahead of the latest published tag.
+The v1.13.0 source tightens actor and review-policy consistency, keeps canceled work distinct on every board, rejects nonfuture schedules before mutation, makes integration packs portable across all six targets, and expands safe MCP bootstrap and workflow coverage. The [workflow consistency review](docs/release/workflow-consistency-review-2026-09-09.md) records the local implementation evidence. Development-branch documentation can describe changes ahead of the latest published tag; hosted verification is recorded only on the corresponding release page.
 
 `v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 

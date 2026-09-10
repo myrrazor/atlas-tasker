@@ -107,7 +107,7 @@ func TestDispatchSuggestQueueAndBulkAutoRoute(t *testing.T) {
 		t.Fatalf("parse saved view output: %v\nraw=%s", err, viewOut)
 	}
 
-	bulkOut := must("dispatch", "bulk", "--view", "dispatch-backlog", "--dry-run", "--json")
+	bulkOut := must("dispatch", "bulk", "--view", "dispatch-backlog", "--dry-run", "--actor", "human:owner", "--json")
 	var bulk struct {
 		Kind    string `json:"kind"`
 		Payload struct {

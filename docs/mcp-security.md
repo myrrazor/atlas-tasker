@@ -13,6 +13,7 @@ Recent MCP ecosystem advisories have focused on unsafe stdio configuration and a
 - Do not configure Atlas MCP from arbitrary command strings.
 - Do not expose high-impact tools in default setup docs.
 - Treat tool annotations as hints, not authorization.
+- Keep `--init-if-missing` opt-in. Use it only with an explicit absolute `--workspace` path to an existing directory and a write-capable profile.
 
 Good:
 
@@ -34,14 +35,18 @@ args = ["-c", "curl https://example.invalid/install | sh && tracker mcp serve"]
 
 Profiles widen cumulatively:
 
-1. `read`: read-only and plan/dry-run tools.
-2. `workflow`: Atlas ticket, agent, team, schedule, evidence, and handoff mutations with actor, reason, permissions, event metadata, and the write lock.
-3. `delivery`: workflow plus run dispatch and provider-backed change/check synchronization.
-4. `admin`: the full inventory.
+1. `read`: 41 read-only and plan/dry-run tools.
+2. `workflow`: 73 tools, adding the project container plus Atlas ticket, agent, team, schedule, evidence, and handoff operations.
+3. `delivery`: 77 tools normally or 79 with the high-impact flag, adding run dispatch and provider-backed change/check synchronization.
+4. `admin`: 77 tools normally or the full 88-tool inventory with the high-impact flag.
+
+Tracked workflow mutations require actor, non-empty reason, permissions, event metadata, and the write lock. `atlas.project.create` is the narrow container exception: its closed schema accepts only `key` and `name`; it uses project validation and the write lock but has no actor/reason inputs and creates no event.
 
 High-impact tools are a separate class inside delivery or admin. They cover provider review/merge,
 sync push/pull, bundle/import apply, archive apply/restore, compact, worktree cleanup, and gate waiver.
 `atlas.ticket.complete` is a normal workflow tool and still follows Atlas completion policy and gates.
+
+All tool inputs use closed schemas (`additionalProperties: false`). The adapter rejects unknown names and wrong types; it does not reinterpret misspellings as aliases. `atlas.ticket.edit` exposes only the ordinary fields named in its schema and cannot be used to change status, policy, project identity, timestamps, lease state, or archive state.
 
 High-impact execution requires:
 
@@ -61,6 +66,18 @@ Denied high-impact attempts are written to `.tracker/runtime/mcp/security-audit.
 The trust/governance model does not make Atlas MCP-first. The adapter does not expose private-key operations or trust mutations.
 
 High-impact MCP tools evaluate the same service-layer permission and governance checks as CLI, shell, and TUI paths. MCP approval tokens remain a transport safety gate, not proof that the actor has Atlas authority.
+
+Operation approvals can only be issued by `tracker mcp approve-operation` outside MCP. Tool discovery, a write-capable profile, and valid arguments never authorize a high-impact operation on their own.
+
+## Bootstrap Boundary
+
+The only MCP startup path that can initialize a missing workspace is the explicit form:
+
+```bash
+tracker mcp serve --workspace /absolute/existing/repo --init-if-missing --tool-profile workflow
+```
+
+Bootstrap is noninteractive and refuses a missing or relative workspace path, nested Atlas workspaces, `--read-only`, and initialization outputs redirected through existing filesystem entries. It creates Atlas workspace state only. It does not register an MCP client or install agent integrations. Without `--init-if-missing`, the server preserves the normal fail-closed behavior for an uninitialized directory.
 
 ## References
 

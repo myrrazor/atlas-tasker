@@ -9,6 +9,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/domain"
+	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 )
 
@@ -62,12 +63,18 @@ func ToolSpecs() []ToolSpec {
 		readTool("atlas.compact_plan", "Preview compactable local-only runtime files.", readProfiles, objectSchema(nil, map[string]any{}), "QueryService.CompactPlan", compactPlanTool),
 		readTool("atlas.worktree.cleanup_plan", "Preview worktree/runtime state before cleanup.", readProfiles, objectSchema([]string{"run_id"}, map[string]any{"run_id": stringProp("Run ID.")}), "QueryService.WorktreeDetail", worktreeCleanupPlanTool),
 
+		projectCreateSpec(workflowProfiles),
 		writeTool("atlas.ticket.comment", ClassWorkflow, workflowProfiles, false, "Comment on a ticket.", objectSchema([]string{"ticket_id", "body", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "body": stringProp("Comment body.")})), "ActionService.CommentTicket", "ticket_id", ticketCommentTool),
 		writeTool("atlas.ticket.claim", ClassWorkflow, workflowProfiles, false, "Claim a ticket lease.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.ClaimTicket", "ticket_id", ticketClaimTool),
 		writeTool("atlas.ticket.release", ClassWorkflow, workflowProfiles, false, "Release a ticket lease.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.ReleaseTicket", "ticket_id", ticketReleaseTool),
+		writeTool("atlas.ticket.heartbeat", ClassWorkflow, workflowProfiles, false, "Extend an active ticket lease held by the actor.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "ActionService.HeartbeatTicket", "ticket_id", ticketHeartbeatTool),
 		writeTool("atlas.ticket.move", ClassWorkflow, workflowProfiles, false, "Move a ticket among non-terminal workflow statuses.", objectSchema([]string{"ticket_id", "status", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "status": stringProp("Target status."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.MoveTicket", "ticket_id", ticketMoveTool),
 		writeTool("atlas.ticket.create", ClassWorkflow, workflowProfiles, false, "Create a ticket.", objectSchema([]string{"project", "title", "type", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"project": stringProp("Project key."), "title": stringProp("Ticket title."), "type": stringProp("Ticket type: epic, task, bug, or subtask."), "status": stringProp("Optional initial status."), "priority": stringProp("Optional priority."), "parent": stringProp("Optional parent ticket ID."), "labels": stringArrayProp("Optional labels."), "assignee": stringProp("Optional assignee actor."), "reviewer": stringProp("Optional reviewer actor."), "description": stringProp("Optional description."), "acceptance": stringArrayProp("Optional acceptance criteria."), "template": stringProp("Optional template name."), "protected": boolProp("Mark the ticket as protected."), "sensitive": boolProp("Mark the ticket as sensitive.")})), "ActionService.CreateTrackedTicket", "project", ticketCreateTool),
+		writeTool("atlas.ticket.edit", ClassWorkflow, workflowProfiles, false, "Edit ordinary ticket fields in one tracked mutation.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "title": stringProp("New ticket title."), "description": stringProp("New description; an empty string clears it."), "acceptance": stringArrayProp("New acceptance criteria; an empty array clears them."), "priority": stringProp("New priority: low, medium, high, or critical."), "labels": stringArrayProp("Replacement labels; an empty array clears them."), "assignee": stringProp("New assignee actor; an empty string clears it."), "reviewer": stringProp("New reviewer actor; an empty string clears it.")})), "ActionService.MutateTrackedTicket", "ticket_id", ticketEditTool),
 		writeTool("atlas.ticket.assign", ClassWorkflow, workflowProfiles, false, "Set a ticket assignee.", objectSchema([]string{"ticket_id", "assignee", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "assignee": stringProp("Assignee actor.")})), "ActionService.AssignTicket", "ticket_id", ticketAssignTool),
+		writeTool("atlas.ticket.priority", ClassWorkflow, workflowProfiles, false, "Set a ticket priority.", objectSchema([]string{"ticket_id", "priority", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "priority": stringProp("Priority: low, medium, high, or critical.")})), "ActionService.MutateTrackedTicket", "ticket_id", ticketPriorityTool),
+		writeTool("atlas.ticket.label.add", ClassWorkflow, workflowProfiles, false, "Add a ticket label without creating a duplicate.", objectSchema([]string{"ticket_id", "label", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "label": stringProp("Label to add.")})), "ActionService.MutateTrackedTicket", "ticket_id", ticketLabelAddTool),
+		writeTool("atlas.ticket.label.remove", ClassWorkflow, workflowProfiles, false, "Remove every exact match for a ticket label.", objectSchema([]string{"ticket_id", "label", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "label": stringProp("Label to remove.")})), "ActionService.MutateTrackedTicket", "ticket_id", ticketLabelRemoveTool),
 		writeTool("atlas.ticket.link", ClassWorkflow, workflowProfiles, false, "Link two tickets.", objectSchema([]string{"ticket_id", "other_id", "kind", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "other_id": stringProp("Other ticket ID."), "kind": stringProp("Relationship: blocks, blocked_by, or parent.")})), "ActionService.LinkTickets", "ticket_id", ticketLinkTool),
 		writeTool("atlas.ticket.unlink", ClassWorkflow, workflowProfiles, false, "Remove a ticket relationship.", objectSchema([]string{"ticket_id", "other_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "other_id": stringProp("Other ticket ID.")})), "ActionService.UnlinkTickets", "ticket_id", ticketUnlinkTool),
 		writeTool("atlas.ticket.approve", ClassWorkflow, workflowProfiles, false, "Approve a ticket in review.", objectSchema([]string{"ticket_id", "actor", "reason"}, mergeProps(actorReasonProps(), map[string]any{"ticket_id": stringProp("Ticket ID."), "override_deps": boolProp("Owner-only dependency override.")})), "ActionService.ApproveTicket", "ticket_id", ticketApproveTool),
@@ -122,6 +129,24 @@ func readTool(name string, description string, profiles []ToolProfile, schema ma
 
 func writeTool(name string, class ToolClass, profiles []ToolProfile, destructive bool, description string, schema map[string]any, underlying string, targetArg string, handler ToolHandler) ToolSpec {
 	return ToolSpec{Name: name, Title: name, Description: description, Class: class, Profiles: profiles, RequiresActor: true, RequiresReason: true, ApprovalMechanism: ApprovalNone, Destructive: destructive, ProviderSideEffect: class == ClassDelivery, TargetArg: targetArg, Underlying: underlying, InputSchema: schema, Handler: handler}
+}
+
+func projectCreateSpec(profiles []ToolProfile) ToolSpec {
+	return ToolSpec{
+		Name:              "atlas.project.create",
+		Title:             "atlas.project.create",
+		Description:       "Create a project container in the pinned Atlas workspace.",
+		Class:             ClassWorkflow,
+		Profiles:          profiles,
+		ApprovalMechanism: ApprovalNone,
+		TargetArg:         "key",
+		Underlying:        "ActionService.CreateProject",
+		InputSchema: objectSchema([]string{"key", "name"}, map[string]any{
+			"key":  stringProp("Project key."),
+			"name": stringProp("Project name."),
+		}),
+		Handler: projectCreateTool,
+	}
 }
 
 func importPreviewSpec(profiles []ToolProfile) ToolSpec {
@@ -438,6 +463,23 @@ func worktreeCleanupPlanTool(tc ToolContext, args map[string]any) (any, error) {
 	return map[string]any{"worktree": detail, "execution_tool": "atlas.worktree.cleanup", "requires_operation_approval": true}, nil
 }
 
+func projectCreateTool(tc ToolContext, args map[string]any) (any, error) {
+	now := time.Now().UTC()
+	if tc.Server.Workspace.Actions.Clock != nil {
+		now = tc.Server.Workspace.Actions.Clock().UTC()
+	}
+	project := contracts.Project{
+		Key:           stringArg(args, "key"),
+		Name:          stringArg(args, "name"),
+		CreatedAt:     now,
+		SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := tc.Server.Workspace.Actions.CreateProject(tc.Context, project); err != nil {
+		return nil, err
+	}
+	return tc.Server.Workspace.Actions.Projects.GetProject(tc.Context, project.Key)
+}
+
 func ticketCommentTool(tc ToolContext, args map[string]any) (any, error) {
 	body := stringArg(args, "body")
 	if err := tc.Server.Workspace.Actions.CommentTicket(tc.Context, stringArg(args, "ticket_id"), body, contracts.Actor(tc.Actor), tc.Reason); err != nil {
@@ -456,6 +498,10 @@ func ticketClaimTool(tc ToolContext, args map[string]any) (any, error) {
 
 func ticketReleaseTool(tc ToolContext, args map[string]any) (any, error) {
 	return tc.Server.Workspace.Actions.ReleaseTicket(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func ticketHeartbeatTool(tc ToolContext, args map[string]any) (any, error) {
+	return tc.Server.Workspace.Actions.HeartbeatTicket(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(tc.Actor), tc.Reason)
 }
 
 func ticketMoveTool(tc ToolContext, args map[string]any) (any, error) {
@@ -521,6 +567,126 @@ func ticketCreateTool(tc ToolContext, args map[string]any) (any, error) {
 
 func ticketAssignTool(tc ToolContext, args map[string]any) (any, error) {
 	return tc.Server.Workspace.Actions.AssignTicket(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(stringArg(args, "assignee")), contracts.Actor(tc.Actor), tc.Reason)
+}
+
+func ticketPriorityTool(tc ToolContext, args map[string]any) (any, error) {
+	priority := contracts.Priority(stringArg(args, "priority"))
+	if !priority.IsValid() {
+		return nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid priority: %s", priority))
+	}
+	return tc.Server.Workspace.Actions.MutateTrackedTicket(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(tc.Actor), tc.Reason, "set ticket priority", func(ticket *contracts.TicketSnapshot) error {
+		ticket.Priority = priority
+		return nil
+	})
+}
+
+func ticketLabelAddTool(tc ToolContext, args map[string]any) (any, error) {
+	label := stringArg(args, "label")
+	return tc.Server.Workspace.Actions.MutateTrackedTicket(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(tc.Actor), tc.Reason, "add ticket label", func(ticket *contracts.TicketSnapshot) error {
+		for _, existing := range ticket.Labels {
+			if existing == label {
+				return nil
+			}
+		}
+		ticket.Labels = append(ticket.Labels, label)
+		return nil
+	})
+}
+
+func ticketLabelRemoveTool(tc ToolContext, args map[string]any) (any, error) {
+	label := stringArg(args, "label")
+	return tc.Server.Workspace.Actions.MutateTrackedTicket(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(tc.Actor), tc.Reason, "remove ticket label", func(ticket *contracts.TicketSnapshot) error {
+		labels := make([]string, 0, len(ticket.Labels))
+		for _, existing := range ticket.Labels {
+			if existing != label {
+				labels = append(labels, existing)
+			}
+		}
+		ticket.Labels = labels
+		return nil
+	})
+}
+
+func ticketEditTool(tc ToolContext, args map[string]any) (any, error) {
+	for _, key := range []string{"title", "description", "acceptance", "priority", "labels", "assignee", "reviewer"} {
+		if raw, ok := args[key]; ok && raw == nil {
+			return nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s cannot be null", key))
+		}
+	}
+
+	var title *string
+	if _, ok := args["title"]; ok {
+		value := render.SanitizeDisplayLine(stringArg(args, "title"))
+		if value == "" {
+			return nil, apperr.New(apperr.CodeInvalidInput, "title cannot be blank")
+		}
+		title = &value
+	}
+	var description *string
+	if raw, ok := args["description"]; ok {
+		value := raw.(string)
+		description = &value
+	}
+	var acceptance []string
+	_, acceptanceSet := args["acceptance"]
+	if acceptanceSet {
+		acceptance = rawStringSliceArg(args, "acceptance")
+	}
+	var priority *contracts.Priority
+	if _, ok := args["priority"]; ok {
+		value := contracts.Priority(stringArg(args, "priority"))
+		if !value.IsValid() {
+			return nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid priority: %s", value))
+		}
+		priority = &value
+	}
+	var labels []string
+	_, labelsSet := args["labels"]
+	if labelsSet {
+		labels = stringSliceArg(args, "labels")
+	}
+	var assignee *contracts.Actor
+	if _, ok := args["assignee"]; ok {
+		value := contracts.Actor(stringArg(args, "assignee"))
+		if value != "" && !value.IsValid() {
+			return nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid assignee actor: %s", value))
+		}
+		assignee = &value
+	}
+	var reviewer *contracts.Actor
+	if _, ok := args["reviewer"]; ok {
+		value := contracts.Actor(stringArg(args, "reviewer"))
+		if value != "" && !value.IsValid() {
+			return nil, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid reviewer actor: %s", value))
+		}
+		reviewer = &value
+	}
+
+	return tc.Server.Workspace.Actions.MutateTrackedTicket(tc.Context, stringArg(args, "ticket_id"), contracts.Actor(tc.Actor), tc.Reason, "edit ticket", func(ticket *contracts.TicketSnapshot) error {
+		if title != nil {
+			ticket.Title = *title
+			ticket.Summary = *title
+		}
+		if description != nil {
+			ticket.Description = *description
+		}
+		if acceptanceSet {
+			ticket.AcceptanceCriteria = acceptance
+		}
+		if priority != nil {
+			ticket.Priority = *priority
+		}
+		if labelsSet {
+			ticket.Labels = labels
+		}
+		if assignee != nil {
+			ticket.Assignee = *assignee
+		}
+		if reviewer != nil {
+			ticket.Reviewer = *reviewer
+		}
+		return nil
+	})
 }
 
 func ticketLinkTool(tc ToolContext, args map[string]any) (any, error) {
@@ -795,6 +961,25 @@ func stringSliceArg(args map[string]any, key string) []string {
 			return nil
 		}
 		return []string{text}
+	}
+}
+
+func rawStringSliceArg(args map[string]any, key string) []string {
+	raw, ok := args[key]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch value := raw.(type) {
+	case []string:
+		return append([]string(nil), value...)
+	case []any:
+		items := make([]string, 0, len(value))
+		for _, item := range value {
+			items = append(items, item.(string))
+		}
+		return items
+	default:
+		return nil
 	}
 }
 

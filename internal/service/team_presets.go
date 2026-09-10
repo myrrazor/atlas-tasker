@@ -20,6 +20,7 @@ type TeamPreset struct {
 	DisplayName string                        `json:"display_name"`
 	Summary     string                        `json:"summary"`
 	Completion  contracts.CompletionMode      `json:"completion_mode"`
+	Reviewer    contracts.Actor               `json:"required_reviewer,omitempty"`
 	Agents      []contracts.AgentProfile      `json:"agents"`
 	Runbooks    []contracts.Runbook           `json:"runbooks,omitempty"`
 	Profiles    []contracts.PermissionProfile `json:"permission_profiles,omitempty"`
@@ -27,12 +28,13 @@ type TeamPreset struct {
 }
 
 type TeamApplyResult struct {
-	Preset         string   `json:"preset"`
-	DryRun         bool     `json:"dry_run"`
-	Created        []string `json:"created"`
-	Skipped        []string `json:"skipped"`
-	CompletionMode string   `json:"completion_mode"`
-	NextSteps      []string `json:"next_steps"`
+	Preset           string          `json:"preset"`
+	DryRun           bool            `json:"dry_run"`
+	Created          []string        `json:"created"`
+	Skipped          []string        `json:"skipped"`
+	CompletionMode   string          `json:"completion_mode"`
+	RequiredReviewer contracts.Actor `json:"required_reviewer,omitempty"`
+	NextSteps        []string        `json:"next_steps"`
 }
 
 func TeamPresets(provider string) ([]TeamPreset, error) {
@@ -71,11 +73,23 @@ func (s *ActionService) ApplyTeamPreset(ctx context.Context, name string, provid
 	if !actor.IsValid() {
 		return TeamApplyResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
 	}
+	if dryRun {
+		return s.applyTeamPreset(ctx, preset, true, actor, reason)
+	}
+	// Keep the policy read/modify/write sequence together. Nested service
+	// mutations reuse this lock through the context.
+	return withWriteLock(ctx, s.LockManager, "apply team preset", func(ctx context.Context) (TeamApplyResult, error) {
+		return s.applyTeamPreset(ctx, preset, false, actor, reason)
+	})
+}
+
+func (s *ActionService) applyTeamPreset(ctx context.Context, preset TeamPreset, dryRun bool, actor contracts.Actor, reason string) (TeamApplyResult, error) {
 	result := TeamApplyResult{
-		Preset:         preset.Name,
-		DryRun:         dryRun,
-		CompletionMode: string(preset.Completion),
-		NextSteps:      preset.NextSteps,
+		Preset:           preset.Name,
+		DryRun:           dryRun,
+		CompletionMode:   string(preset.Completion),
+		RequiredReviewer: preset.Reviewer,
+		NextSteps:        preset.NextSteps,
 	}
 	for _, agent := range preset.Agents {
 		label := "agent " + agent.AgentID
@@ -145,6 +159,35 @@ func (s *ActionService) ApplyTeamPreset(ctx context.Context, name string, provid
 		}
 	} else {
 		result.Skipped = append(result.Skipped, "completion_mode "+string(preset.Completion)+" (already set)")
+	}
+	if cfg.Workflow.RequiredReviewer != preset.Reviewer {
+		result.Created = append(result.Created, "required_reviewer "+string(preset.Reviewer))
+		if !dryRun {
+			cfg.Workflow.RequiredReviewer = preset.Reviewer
+			if err := config.Save(s.Root, cfg); err != nil {
+				return result, err
+			}
+		}
+	}
+	// Older project creation stored an open override. Applying a review team
+	// must remove that bypass as well as changing the workspace default.
+	if preset.Completion == contracts.CompletionModeReviewGate {
+		projects, err := s.Projects.ListProjects(ctx)
+		if err != nil {
+			return result, err
+		}
+		for _, project := range projects {
+			if project.Defaults.CompletionMode != contracts.CompletionModeOpen {
+				continue
+			}
+			result.Created = append(result.Created, "project "+project.Key+" completion_mode inherit")
+			if !dryRun {
+				project.Defaults.CompletionMode = ""
+				if _, err := s.SetProjectPolicy(ctx, project.Key, project.Defaults, actor, reason); err != nil {
+					return result, err
+				}
+			}
+		}
 	}
 	return result, nil
 }
@@ -253,6 +296,7 @@ func pairPreset(provider string) TeamPreset {
 		DisplayName: "Builder + Reviewer",
 		Summary:     "A builder implements, a reviewer approves; review gate enforced, builders cannot approve their own work.",
 		Completion:  contracts.CompletionModeReviewGate,
+		Reviewer:    "agent:reviewer-1",
 		Agents: []contracts.AgentProfile{
 			presetAgent("builder-1", "Builder One", builder, []contracts.AgentRole{contracts.AgentRoleWorker}, "standard-build", 2, 2),
 			presetAgent("reviewer-1", "Reviewer One", reviewer, []contracts.AgentRole{contracts.AgentRoleReviewer}, "standard-build", 1, 2),
@@ -274,6 +318,7 @@ func swarmPreset(provider string) TeamPreset {
 		DisplayName: "Builder Swarm + QA",
 		Summary:     "Three builders pull from the queue by routing weight, a QA gate guards review, an owner delegate unblocks policy questions.",
 		Completion:  contracts.CompletionModeReviewGate,
+		Reviewer:    "agent:qa-1",
 		Agents: []contracts.AgentProfile{
 			presetAgent("builder-1", "Builder One", builders[0], []contracts.AgentRole{contracts.AgentRoleWorker}, "standard-build", 3, 1),
 			presetAgent("builder-2", "Builder Two", builders[1], []contracts.AgentRole{contracts.AgentRoleWorker}, "standard-build", 2, 1),
@@ -300,6 +345,7 @@ func crossfirePreset(provider string) TeamPreset {
 		DisplayName: "Crossfire (cross-vendor review)",
 		Summary:     "Codex builds, Claude reviews (or flipped) -- two different models keep each other honest across the review gate.",
 		Completion:  contracts.CompletionModeReviewGate,
+		Reviewer:    "agent:reviewer-1",
 		Agents: []contracts.AgentProfile{
 			presetAgent("builder-1", "Builder One", builder, []contracts.AgentRole{contracts.AgentRoleWorker}, "standard-build", 2, 2),
 			presetAgent("reviewer-1", "Reviewer One", reviewer, []contracts.AgentRole{contracts.AgentRoleReviewer}, "standard-build", 1, 2),

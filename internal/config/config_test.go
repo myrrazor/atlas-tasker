@@ -6,6 +6,28 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
 
+func TestWorkflowReviewerConfigurationRoundTripAndValidation(t *testing.T) {
+	root := t.TempDir()
+	if err := Set(root, "workflow.required_reviewer", "agent:reviewer-1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Get(root, "workflow.required_reviewer"); err != nil || got != "agent:reviewer-1" {
+		t.Fatalf("reviewer setting: %q %v", got, err)
+	}
+	if err := Set(root, "workflow.required_reviewer", "not-an-actor"); err == nil {
+		t.Fatal("invalid reviewer accepted")
+	}
+	if got, err := Get(root, "workflow.required_reviewer"); err != nil || got != "agent:reviewer-1" {
+		t.Fatalf("invalid setting changed config: %q %v", got, err)
+	}
+	if err := Set(root, "workflow.required_reviewer", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Get(root, "workflow.required_reviewer"); err != nil || got != "" {
+		t.Fatalf("reviewer clear: %q %v", got, err)
+	}
+}
+
 func TestLoadDefaultsIncludeV15Config(t *testing.T) {
 	root := t.TempDir()
 

@@ -179,10 +179,10 @@ func TestAgentScheduleDefaultsToPendingWakeup(t *testing.T) {
 	if err := tickets.CreateTicket(ctx, ticket); err != nil {
 		t.Fatalf("create ticket: %v", err)
 	}
-	if _, err := actions.SetTicketSchedule(ctx, ticket.ID, now, contracts.Actor("agent:builder-1"), contracts.Actor("human:owner"), "queue agent work"); err != nil {
+	if _, err := actions.SetTicketSchedule(ctx, ticket.ID, now.Add(time.Minute), contracts.Actor("agent:builder-1"), contracts.Actor("human:owner"), "queue agent work"); err != nil {
 		t.Fatalf("set schedule: %v", err)
 	}
-	result, err := actions.TickSchedules(ctx, now, contracts.Actor("human:owner"), "scheduled tick")
+	result, err := actions.TickSchedules(ctx, now.Add(time.Minute), contracts.Actor("human:owner"), "scheduled tick")
 	if err != nil {
 		t.Fatalf("tick schedules: %v", err)
 	}
@@ -204,10 +204,10 @@ func TestAgentScheduleFailureIsDurableAndDoesNotRetry(t *testing.T) {
 	if err := tickets.CreateTicket(ctx, ticket); err != nil {
 		t.Fatalf("create ticket: %v", err)
 	}
-	if _, err := actions.SetTicketSchedule(ctx, ticket.ID, now, contracts.Actor("agent:builder-1"), contracts.Actor("human:owner"), "launch unavailable worker"); err != nil {
+	if _, err := actions.SetTicketSchedule(ctx, ticket.ID, now.Add(time.Minute), contracts.Actor("agent:builder-1"), contracts.Actor("human:owner"), "launch unavailable worker"); err != nil {
 		t.Fatalf("set schedule: %v", err)
 	}
-	result, err := actions.TickSchedules(ctx, now, contracts.Actor("human:owner"), "scheduled tick")
+	result, err := actions.TickSchedules(ctx, now.Add(time.Minute), contracts.Actor("human:owner"), "scheduled tick")
 	if err != nil {
 		t.Fatalf("failure should be reported in result, not abort tick: %v", err)
 	}
@@ -240,14 +240,14 @@ func TestAgentScheduleRequiresOwnerAndEnabledProfile(t *testing.T) {
 	if err := tickets.CreateTicket(ctx, ticket); err != nil {
 		t.Fatalf("create ticket: %v", err)
 	}
-	_, err := actions.SetTicketSchedule(ctx, ticket.ID, now, contracts.Actor("agent:builder-1"), contracts.Actor("agent:planner"), "delegate")
+	_, err := actions.SetTicketSchedule(ctx, ticket.ID, now.Add(time.Minute), contracts.Actor("agent:builder-1"), contracts.Actor("agent:planner"), "delegate")
 	if apperr.CodeOf(err) != apperr.CodePermissionDenied {
 		t.Fatalf("expected owner-only error, got %v", err)
 	}
 	if err := (AgentStore{Root: root}).SaveAgent(ctx, contracts.AgentProfile{AgentID: "builder-1", DisplayName: "Builder", Provider: contracts.AgentProviderCodex, Enabled: false}); err != nil {
 		t.Fatalf("disable agent: %v", err)
 	}
-	_, err = actions.SetTicketSchedule(ctx, ticket.ID, now, contracts.Actor("agent:builder-1"), contracts.Actor("human:owner"), "delegate")
+	_, err = actions.SetTicketSchedule(ctx, ticket.ID, now.Add(time.Minute), contracts.Actor("agent:builder-1"), contracts.Actor("human:owner"), "delegate")
 	if apperr.CodeOf(err) != apperr.CodeConflict {
 		t.Fatalf("expected disabled-agent conflict, got %v", err)
 	}

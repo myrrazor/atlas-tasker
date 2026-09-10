@@ -186,6 +186,18 @@ func TestQueryBoardDerivesBlockedAndDoneColumns(t *testing.T) {
 			UpdatedAt:     now.Add(3 * time.Minute),
 			SchemaVersion: contracts.CurrentSchemaVersion,
 		},
+		{
+			ID:            "APP-4",
+			Project:       "APP",
+			Title:         "Assigned backlog",
+			Type:          contracts.TicketTypeTask,
+			Status:        contracts.StatusBacklog,
+			Priority:      contracts.PriorityMedium,
+			Assignee:      contracts.Actor("agent:builder-1"),
+			CreatedAt:     now,
+			UpdatedAt:     now.Add(4 * time.Minute),
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		},
 	}
 
 	for index, ticket := range tickets {
@@ -217,14 +229,17 @@ func TestQueryBoardDerivesBlockedAndDoneColumns(t *testing.T) {
 	if len(board.Columns[contracts.StatusBlocked]) != 1 || board.Columns[contracts.StatusBlocked][0].ID != "APP-1" {
 		t.Fatalf("expected APP-1 in blocked column, got %#v", board.Columns[contracts.StatusBlocked])
 	}
-	if len(board.Columns[contracts.StatusDone]) != 1 || board.Columns[contracts.StatusDone][0].ID != "APP-2" {
-		t.Fatalf("expected canceled ticket in done column, got %#v", board.Columns[contracts.StatusDone])
+	if len(board.Columns[contracts.StatusDone]) != 0 {
+		t.Fatalf("expected done column to exclude canceled tickets, got %#v", board.Columns[contracts.StatusDone])
 	}
 	if len(board.Columns[contracts.StatusReady]) != 1 || board.Columns[contracts.StatusReady][0].ID != "APP-3" {
 		t.Fatalf("expected cross-project done blocker to unblock APP-3, got %#v", board.Columns[contracts.StatusReady])
 	}
-	if len(board.Columns[contracts.StatusCanceled]) != 0 {
-		t.Fatalf("expected canceled column to stay empty in board view, got %#v", board.Columns[contracts.StatusCanceled])
+	if len(board.Columns[contracts.StatusCanceled]) != 1 || board.Columns[contracts.StatusCanceled][0].ID != "APP-2" || board.Columns[contracts.StatusCanceled][0].Status != contracts.StatusCanceled {
+		t.Fatalf("expected canceled ticket to preserve its own column and status, got %#v", board.Columns[contracts.StatusCanceled])
+	}
+	if len(board.Columns[contracts.StatusBacklog]) != 1 || board.Columns[contracts.StatusBacklog][0].ID != "APP-4" || board.Columns[contracts.StatusBacklog][0].Assignee != contracts.Actor("agent:builder-1") {
+		t.Fatalf("expected assigned backlog ticket to stay visible with its assignee, got %#v", board.Columns[contracts.StatusBacklog])
 	}
 }
 

@@ -128,7 +128,7 @@ func TestInvalidStatusErrorsListTheLegalValues(t *testing.T) {
 	cases := [][]string{
 		{"ticket", "move", "APP-1", "shipped", "--actor", "human:owner"},
 		{"ticket", "create", "--project", "APP", "--title", "Two", "--type", "task", "--status", "shipped", "--actor", "human:owner"},
-		{"bulk", "move", "shipped", "--ticket", "APP-1", "--dry-run"},
+		{"bulk", "move", "shipped", "--ticket", "APP-1", "--dry-run", "--actor", "human:owner"},
 	}
 	for _, args := range cases {
 		_, err := runCLI(t, args...)

@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
 
 func TestSavedViewCommandsAndFlags(t *testing.T) {
@@ -66,6 +68,58 @@ func TestSavedViewCommandsAndFlags(t *testing.T) {
 	listOut = must("views", "list", "--pretty")
 	if strings.Contains(listOut, "ready-board") {
 		t.Fatalf("expected ready-board to be removed: %s", listOut)
+	}
+}
+
+func TestBoardAndSavedViewKeepAssignedBacklogAndCanceledVisible(t *testing.T) {
+	withTempWorkspace(t)
+	must := func(args ...string) string {
+		t.Helper()
+		out, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v\n%s", args, err, out)
+		}
+		return out
+	}
+
+	must("init")
+	must("project", "create", "APP", "App Project")
+	must("ticket", "create", "--project", "APP", "--title", "Assigned plan", "--type", "task", "--assignee", "agent:builder-1", "--actor", "human:owner")
+	must("ticket", "create", "--project", "APP", "--title", "Stopped plan", "--type", "task", "--actor", "human:owner")
+	must("ticket", "move", "APP-2", "canceled", "--actor", "human:owner")
+
+	pretty := must("board", "--project", "APP", "--pretty")
+	for _, want := range []string{"Backlog (1)", "APP-1", "agent:builder-1", "Canceled (1)", "APP-2", "[canceled]"} {
+		if !strings.Contains(pretty, want) {
+			t.Fatalf("board pretty output missing %q:\n%s", want, pretty)
+		}
+	}
+	markdown := must("board", "--project", "APP", "--md")
+	for _, want := range []string{"### backlog", "APP-1", "assignee=agent:builder-1", "### canceled", "APP-2"} {
+		if !strings.Contains(markdown, want) {
+			t.Fatalf("board markdown output missing %q:\n%s", want, markdown)
+		}
+	}
+	var board struct {
+		Columns map[contracts.Status][]contracts.TicketSnapshot `json:"columns"`
+	}
+	if raw := must("board", "--project", "APP", "--json"); json.Unmarshal([]byte(raw), &board) != nil {
+		t.Fatalf("parse board json: %s", raw)
+	}
+	if len(board.Columns[contracts.StatusDone]) != 0 || len(board.Columns[contracts.StatusCanceled]) != 1 || board.Columns[contracts.StatusCanceled][0].Status != contracts.StatusCanceled {
+		t.Fatalf("board json must keep canceled distinct from done: %#v", board.Columns)
+	}
+
+	must("views", "save", "planning", "--kind", "board", "--project", "APP", "--column", "backlog", "--column", "canceled")
+	view := must("views", "run", "planning", "--pretty")
+	for _, want := range []string{"APP-1", "agent:builder-1", "Canceled (1)", "APP-2"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("saved board view output missing %q:\n%s", want, view)
+		}
+	}
+	ticketView := must("ticket", "view", "APP-1", "--pretty")
+	if !strings.Contains(ticketView, "assignee=agent:builder-1") {
+		t.Fatalf("ticket view must identify the assignee:\n%s", ticketView)
 	}
 }
 

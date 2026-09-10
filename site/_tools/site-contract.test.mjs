@@ -299,9 +299,46 @@ test("MCP tool page covers every source workflow tool", () => {
     .map((match) => match[1]);
   const rendered = textContent(pages.get("docs/mcp-tools.html"));
 
-  assert.equal(workflowNames.length, 26);
+  assert.equal(workflowNames.length, 32);
   for (const name of workflowNames) {
     assert.match(rendered, new RegExp(`\\b${name.replaceAll(".", "\\.")}\\b`));
+  }
+});
+
+test("public workflow guidance matches the v1.13 candidate contracts", () => {
+  const home = textContent(pages.get("index.html"));
+  const cli = textContent(pages.get("cli.html"));
+  const gettingStarted = textContent(pages.get("docs/getting-started.html"));
+  const workflow = textContent(pages.get("docs/tickets-and-workflow.html"));
+  const board = textContent(pages.get("docs/web-board.html"));
+  const agents = textContent(pages.get("docs/agents-and-dispatch.html"));
+  const mcp = textContent(pages.get("mcp.html"));
+  const changelog = textContent(pages.get("changelog.html"));
+
+  for (const copy of [home, cli, gettingStarted]) {
+    assert.match(copy, /TRACKER_ACTOR/);
+    assert.match(copy, /actor\.default/);
+  }
+  assert.match(gettingStarted, /no silent human:owner fallback/i);
+  assert.doesNotMatch(workflow, /tracker ticket complete APP-1/);
+  assert.match(workflow, /approval is the final transition to done/i);
+  assert.match(board, /all seven canonical workflow columns/i);
+  assert.match(board, /canceled work neither satisfies dependencies nor counts as completed/i);
+  assert.match(board, /strictly in the future/i);
+  assert.match(agents, /agent:reviewer-1/);
+  assert.match(agents, /agent:qa-1/);
+  assert.match(agents, /clears existing project open overrides/i);
+  assert.match(agents, /OpenClaw-only --global option/i);
+  assert.match(mcp, /approval by the required reviewer itself moves the ticket directly to Done/i);
+  assert.match(changelog, /v1\.13\.0 — Next Release \(Unreleased\)/i);
+  assert.match(changelog, /v1\.13\.0 is not published yet/i);
+  assert.match(changelog, /v1\.12\.0 — Agent Setup And Documentation/i);
+  assert.match(changelog, /v1\.12\.0 remains the latest published stable version/i);
+  assert.doesNotMatch(pages.get("changelog.html"), /releases\/tag\/v1\.13\.0/i);
+  assert.match(gettingStarted, /tracker update --version v1\.12\.0 --yes/);
+  for (const [file, html] of pages) {
+    if (file === "changelog.html") continue;
+    assert.doesNotMatch(html, /"version": "v1\.11\.0"/);
   }
 });
 

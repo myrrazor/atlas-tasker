@@ -272,7 +272,7 @@ func TestExecuteUsesStructuredJSONErrorsForV16CommandFamilies(t *testing.T) {
 	}
 	cases := []errorCase{
 		{name: "collaborator", args: []string{"collaborator", "view", "ghost", "--json"}, code: "not_found", exit: 3},
-		{name: "membership", args: []string{"membership", "unbind", "membership_missing", "--json"}, code: "not_found", exit: 3},
+		{name: "membership", args: []string{"membership", "unbind", "membership_missing", "--actor", "human:owner", "--json"}, code: "not_found", exit: 3},
 		{name: "remote", args: []string{"remote", "view", "origin", "--json"}, code: "not_found", exit: 3},
 		{name: "sync", args: []string{"sync", "view", "sync_missing", "--json"}, code: "not_found", exit: 3},
 		{name: "bundle", args: []string{"bundle", "view", "bundle_missing", "--json"}, code: "not_found", exit: 3},
@@ -281,7 +281,7 @@ func TestExecuteUsesStructuredJSONErrorsForV16CommandFamilies(t *testing.T) {
 		{name: "timeline", args: []string{"timeline", "APP-99", "--collaborator", "ghost", "--json"}, code: "not_found", exit: 3},
 		{name: "codeowners", args: []string{"project", "codeowners", "render", "NOPE", "--json"}, code: "not_found", exit: 3},
 		{name: "rules", args: []string{"project", "rules", "render", "NOPE", "--json"}, code: "not_found", exit: 3},
-		{name: "remote_add_invalid", args: []string{"remote", "add", "origin", "--kind", "git", "--location", "https://user:secret@example.com/acme/repo.git", "--json"}, code: "invalid_input", exit: 2},
+		{name: "remote_add_invalid", args: []string{"remote", "add", "origin", "--kind", "git", "--location", "https://user:secret@example.com/acme/repo.git", "--actor", "human:owner", "--json"}, code: "invalid_input", exit: 2},
 	}
 
 	for _, tc := range cases {

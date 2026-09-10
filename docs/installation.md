@@ -30,7 +30,7 @@ tracker version --json
 a checked-out installer, for example:
 
 ```bash
-VERSION=v1.11.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=v1.12.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 ```
 
 Inspect installer scripts before running them. Use repository or release URLs,
@@ -129,7 +129,7 @@ pinned versions, reinstalling with `--force`, and failure behavior.
 For a pinned published release:
 
 ```bash
-VERSION=v1.11.0 ./scripts/verify-release.sh ./tracker_1.11.0_darwin_arm64.tar.gz
+VERSION=v1.12.0 ./scripts/verify-release.sh ./tracker_1.12.0_darwin_arm64.tar.gz
 ```
 
 The script checks `checksums.txt` and GitHub artifact attestations. Authentication

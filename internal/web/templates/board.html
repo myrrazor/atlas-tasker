@@ -85,7 +85,7 @@
     {{else}}
       <div class="empty-column">
         <strong>{{t "board.empty.column_title"}}</strong>
-        <p>{{if eq (statusKey .Status) "done"}}{{t "board.empty.column_done"}}{{else}}{{t "board.empty.column_other"}}{{end}}</p>
+        <p>{{if eq (statusKey .Status) "done"}}{{t "board.empty.column_done"}}{{else if eq (statusKey .Status) "canceled"}}{{t "board.empty.column_canceled"}}{{else}}{{t "board.empty.column_other"}}{{end}}</p>
       </div>
     {{end}}
   </div>
@@ -96,7 +96,8 @@
 <a class="ticket-card" href="/board?ticket={{.Ticket.ID}}"
   data-ticket-id="{{.Ticket.ID}}"
   data-title="{{.Ticket.Title}}"
-  data-status="{{t (statusMessageKey .BoardStatus)}}"
+  data-status="{{.BoardStatus}}"
+  data-status-label="{{t (statusMessageKey .BoardStatus)}}"
   data-assignee="{{.Ticket.Assignee}}"
   data-reviewer="{{.EffectiveReviewer}}"
   data-priority="{{.Ticket.Priority}}"
@@ -107,6 +108,7 @@
   data-comments="{{.CommentCount}}">
   <span class="ticket-id">{{.Ticket.ID}}</span>
   <h3>{{.Ticket.Title}}</h3>
+  {{if .Ticket.Assignee}}<span class="ticket-assignee">{{t "board.field.assignee"}}: {{.Ticket.Assignee}}</span>{{end}}
   {{if .AgentColorClass}}<span class="card-agent-chip {{.AgentColorClass}}" title="{{t "board.assigned_to" .AgentName}}" aria-hidden="true"></span>{{end}}
 </a>
 {{end}}
@@ -318,6 +320,7 @@
         <option value="in_review">{{t "board.column.in_review"}}</option>
         <option value="blocked">{{t "board.column.blocked"}}</option>
         <option value="done">{{t "board.column.done"}}</option>
+        <option value="canceled">{{t "board.column.canceled"}}</option>
       </select>
       <button type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.action.move"}}</button>
     </form>

@@ -364,6 +364,8 @@ Superseded for ongoing release work by DEC-059. The original main-targeted v1 se
 9. **Affected PRs/Files:** PR-009; `.github/workflows/ci.yml`, release docs.
 ## DEC-026
 
+**Status:** Superseded by DEC-061 for canceled tickets. Dependency-aware blocked projection remains current.
+
 1. **Decision ID:** DEC-026
 2. **Date:** 2026-03-22
 3. **Question:** How should board-style views bucket blocked and canceled tickets in v1?
@@ -466,6 +468,8 @@ Superseded for ongoing release work by DEC-059. The original main-targeted v1 se
 
 ## DEC-033
 
+**Status:** DEC-061 supersedes the canceled-as-Done board rationale. Canonical Done counting and the welcome read model remain current.
+
 1. **Decision ID:** DEC-033
 2. **Date:** 2026-07-23
 3. **Question:** How should the local welcome page compute cross-project status and recent activity?
@@ -496,7 +500,7 @@ Superseded for ongoing release work by DEC-059. The original main-targeted v1 se
 
 ## DEC-035
 
-**Status:** Superseded by DEC-038 for motion timing and feedback; the card information model remains current.
+**Status:** Superseded by DEC-038 for motion timing and feedback, and by DEC-061 for visible assignee text. The remaining card information model stays current.
 
 1. **Decision ID:** DEC-035
 2. **Date:** 2026-07-23
@@ -664,6 +668,8 @@ The initial three-language scope is superseded by DEC-058. Request precedence an
 
 ## DEC-046
 
+**Status:** DEC-065 adds explicit opt-in initialization. The workspace pin, default refusal of uninitialized roots, and workspace-independent discovery remain current.
+
 1. **Decision ID:** DEC-046
 2. **Date:** 2026-07-30
 3. **Question:** How should an MCP client that does not control its working directory reach a specific Atlas workspace?
@@ -679,6 +685,8 @@ The initial three-language scope is superseded by DEC-058. Request precedence an
 
 ## DEC-047
 
+**Status:** DEC-066 records the existing explicit `openclaw --global` exception and portable generated references. Repository-local installation remains the default.
+
 1. **Decision ID:** DEC-047
 2. **Date:** 2026-07-30
 3. **Question:** Where should `tracker integrations install openclaw` write, given that OpenClaw reads `AGENTS.md` like Codex does?
@@ -693,6 +701,8 @@ The initial three-language scope is superseded by DEC-058. Request precedence an
 9. **Affected PRs/Files:** `internal/integrations/install.go`, `internal/integrations/agent_skill.go`, `internal/integrations/install_test.go`, `internal/cli/root.go`, `docs/command-reference.md`, `docs/guides/team-presets.md`.
 
 ## DEC-048
+
+**Status:** DEC-062 and DEC-066 clarify actor resolution and reason enforcement in the operating guidance. The operator-first documentation structure remains current.
 
 1. **Decision ID:** DEC-048
 2. **Date:** 2026-07-30
@@ -740,6 +750,8 @@ Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. 
 9. **Affected PRs/Files:** `internal/storage/fingerprint.go`, `internal/storage/sqlite/store.go`, `internal/service/projection_freshness.go`, `internal/cli/actions.go`, `internal/cli/execute.go`, `internal/cli/root.go`, `internal/mcp/workspace.go`, `internal/tui/app.go`, `docs/invariants.md`, `docs/guides/doctor-and-repair.md`, `docs/troubleshooting.md`, `docs/operator-manual.md`, `docs/json-contracts.md`, `docs/errors.md`, `README.md`, `AGENTS.md`, `site/cli.html`, `site/docs/json-and-exit-codes.html`, `site/docs/faq.html`, `CHANGELOG.md`.
 
 ## DEC-051
+
+**Status:** DEC-065 adds explicit MCP startup initialization. All default initialized-root and secret/path boundaries remain current.
 
 1. **Decision ID:** DEC-051
 2. **Date:** 2026-09-08
@@ -858,3 +870,99 @@ Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. 
 7. **Confidence:** high
 8. **Revisit Trigger:** The owner changes the product domain, hosting project, security-reporting channel, or release policy.
 9. **Affected PRs/Files:** v1.12 publication; site/_tools, site/.well-known/security.txt, site HTML and discovery files, assets/brand/social-card.html, site/og.png, README.md, SECURITY.md, ROADMAP.md, CHANGELOG.md, docs/installation.md, docs/getting-started.md, docs/guides/updating.md, docs/release.md, docs/release.
+
+## DEC-061
+
+1. **Decision ID:** DEC-061
+2. **Date:** 2026-09-09
+3. **Question:** How should board surfaces distinguish canceled work and show assignment?
+4. **Options Considered:** Retain the combined terminal bucket; add a canonical canceled column and visible assignee text.
+5. **Chosen Option:** Preserve `canceled` in board snapshots and a separate column across CLI, JSON, saved views, TUI, and web. Include canceled in the web move control; use raw status tokens in `data-status` and a separate translated label. Show assignee text on cards and terminal views. Keep explicitly configured saved-view columns and archived-ticket filtering.
+6. **Why We Chose It:** The combined bucket made canceled work look completed and disagreed with the welcome Done count. This supersedes DEC-026's canceled bucketing, DEC-033's explanation of that mismatch, and DEC-035's color-only assignment hint. Dependency-aware blocked projection, canonical Done rollups, and the existing card design remain. Assigned plain backlog already appears on boards; its exclusion from executable agent work remains the intentional DEC-049 readiness contract.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner requests a configurable closed-work grouping or changes backlog readiness semantics.
+9. **Affected PRs/Files:** internal/contracts/domain.go, internal/storage/sqlite/store.go, internal/service/workflow_readiness.go, internal/render, internal/cli/root.go, internal/tui, internal/web, docs/web-board.md, docs/command-reference.md.
+
+## DEC-062
+
+1. **Decision ID:** DEC-062
+2. **Date:** 2026-09-09
+3. **Question:** How should CLI mutation commands resolve identity consistently without repeated flags?
+4. **Options Considered:** Keep legacy owner defaults; require an explicit flag on every write; use the existing explicit/environment/configured identity chain for every mutation-flag command.
+5. **Chosen Option:** Resolve `--actor`, then `TRACKER_ACTOR`, then `actor.default` in the common mutation preflight. Missing or invalid identity fails with exit 2 before opening a writable workspace. Remove the `human:owner` fallback. Keep explicit-or-template ticket type and existing reason enforcement: MCP tracked writes and protected/security operations require reasons; ordinary CLI reasons are recommended.
+6. **Why We Chose It:** Bulk, assignment, team, and scheduling commands silently attributed work to the owner while create/move/claim did not. Reusing configured identity removes repetition without inventing authority. Type remains a deliberate storage choice, and tightening every ordinary CLI reason would break existing callers without fixing attribution. This clarifies DEC-048's overly broad statement that every write needs literal actor and reason flags.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner chooses a breaking CLI reason policy or a new identity source.
+9. **Affected PRs/Files:** internal/cli/root.go, internal/cli/actions.go, internal/cli/workflow_consistency_test.go, AGENTS.md, docs/command-reference.md.
+
+## DEC-063
+
+1. **Decision ID:** DEC-063
+2. **Date:** 2026-09-09
+3. **Question:** May a claim take another assignee's work, or a newly set schedule begin in the past?
+4. **Options Considered:** Allow implicit takeover and immediate overdue execution; reject both before mutation.
+5. **Chosen Option:** Non-review claims conflict with any different non-empty assignee, including owner claims; require explicit reassignment first. Review claims retain reviewer authorization while preserving the implementation assignee. Apply the same rule to bulk preview/execution. New schedules must be strictly after the service clock, with exit 2 otherwise; existing schedules can naturally become overdue and tick normally.
+6. **Why We Chose It:** Assignment must mean ownership, and a date-entry mistake must not immediately dispatch work. Both checks precede state changes, so refused claims do not expire or steal a lease and refused schedules do not alter assignment. No backdated-schedule override is introduced.
+7. **Confidence:** high
+8. **Revisit Trigger:** A concrete import or recovery workflow needs explicitly authorized historical schedules or work takeover.
+9. **Affected PRs/Files:** internal/service/action.go, internal/service/bulk.go, internal/service/schedule.go, internal/service/workflow_consistency_test.go, CLI/web schedule tests and docs.
+
+## DEC-064
+
+1. **Decision ID:** DEC-064
+2. **Date:** 2026-09-09
+3. **Question:** How should review-team presets enforce their advertised lifecycle for existing and new projects?
+4. **Options Considered:** Set only workspace completion mode; force every ticket policy; supply a workspace reviewer and remove project open overrides when explicitly applying a review preset.
+5. **Chosen Option:** Add optional `workflow.required_reviewer`, inherited before project/epic/ticket overrides. New projects inherit workspace completion mode. Pair/crossfire choose `agent:reviewer-1`, swarm chooses `agent:qa-1`, and solo clears the workspace reviewer. Applying a review preset clears existing project `open` overrides to inheritance and reports each change; explicit other project modes/reviewer overrides remain. Hold the workspace write lock across preset reads and writes so concurrent policy changes cannot be lost. Dry-run performs no writes. Ticket approval enforces `gate_approve` permission and, when approval completes review-gated work, `ticket_complete` permission.
+6. **Why We Chose It:** The former project normalization wrote `open` over the workspace preset, and no default reviewer connected the installed roster to the effective policy. Owner/reviewer completion could therefore bypass review. The permission omission also allowed denied builders to approve. Explicit preset application now establishes the promised lifecycle without rewriting ticket policy or existing agent/runbook/profile customization. Existing explicit open projects also change on review-preset application; the output and team guide make that consequence visible.
+7. **Confidence:** high
+8. **Revisit Trigger:** Teams require per-project preset application or an explicit way to retain open projects during a workspace-wide review-team change.
+9. **Affected PRs/Files:** internal/contracts/domain.go, internal/config/config.go, internal/service/policy.go, internal/service/team_presets.go, internal/service/action.go, workflow regression tests, docs/guides/team-presets.md, docs/command-reference.md.
+
+## DEC-065
+
+1. **Decision ID:** DEC-065
+2. **Date:** 2026-09-09
+3. **Question:** How can MCP complete ordinary workspace setup and ticket maintenance without widening default authority?
+4. **Options Considered:** Enable all writes and implicit startup init; leave all gaps to the CLI; add typed workflow tools and an explicit startup bootstrap option.
+5. **Chosen Option:** Add `atlas.project.create`, `atlas.ticket.heartbeat`, `atlas.ticket.priority`, `atlas.ticket.label.add`, `atlas.ticket.label.remove`, and ordinary-field `atlas.ticket.edit`. Ticket mutations require actor/reason; project creation retains the existing key/name-only, unaudited container service contract. `mcp serve --init-if-missing` requires an explicit absolute existing workspace and a write-capable profile, refuses nested roots and redirected init outputs, and never rewrites existing config or registers clients. Keep the default read profile, strict schemas, separate registration, and external CLI issuance of high-impact approval tokens.
+6. **Why We Chose It:** The missing tools interrupted an otherwise complete agent loop. Explicit bootstrap extends DEC-046/DEC-051's default initialized-root rule only when the operator has named and opted into the destination. Strict field names, least-authority profiles, and external approval issuance prevent ambiguity and self-approval; they are not workflow defects. The complete inventory is 88 tools, with read 41, workflow 73, delivery 77/79, and admin 77/88 according to delivery/admin opt-ins.
+7. **Confidence:** high
+8. **Revisit Trigger:** Project creation gains an audited actor-bearing service contract, MCP client registration gets an explicit supported installer, or the owner changes authority boundaries.
+9. **Affected PRs/Files:** internal/mcp/tools.go, internal/mcp/ticket_workflow_mutations_test.go, internal/cli/mcp_bootstrap.go, internal/cli/mcp_bootstrap_test.go, scripts/verify-mcp-workflow.py, docs/mcp*.md, docs/guides/mcp-for-agents.md, site/mcp.html.
+
+## DEC-066
+
+1. **Decision ID:** DEC-066
+2. **Date:** 2026-09-09
+3. **Question:** How should generated guidance remain executable and portable after installation?
+4. **Options Considered:** Preserve literal actor placeholders and installation-root paths; derive known identities, explicitly name missing configuration, and emit relative references.
+5. **Chosen Option:** Goal/runtime briefs use the run worker or ticket assignee and effective reviewer with shell quoting. Unknown identities use quoted `TRACKER_ACTOR`/`TRACKER_REVIEWER` variables plus setup instructions. Review-gate approval is the final transition, so its brief does not suggest a second completion. Generated writes teach reasons and same-status no-ops. Use workspace-relative guide/skill paths and separate Generic/Grok skill directories; leave the legacy shared path untouched. Document the existing explicit OpenClaw global installer and accurately distinguish init's default-Yes offer from the shell installer's default-No offer.
+6. **Why We Chose It:** Literal placeholders, `/tmp` installation paths, and last-writer-wins shared skills made generated instructions unreliable. This clarifies DEC-047's historical global-install wording and DEC-048's write guidance without silently changing machine-wide configuration or legacy customized files.
+7. **Confidence:** high
+8. **Revisit Trigger:** Another provider shares an output destination or generated workflows gain a new role or completion mode.
+9. **Affected PRs/Files:** internal/integrations, internal/service/backup_goal_actions.go, related regression tests, README.md, docs/installation.md, docs/guides/agent-integrations.md, docs/guides/generic-agent.md.
+
+## DEC-067
+
+1. **Decision ID:** DEC-067
+2. **Date:** 2026-09-09
+3. **Question:** Should an unrelated directory under `projects` invalidate workspace discovery?
+4. **Options Considered:** Treat every directory name as an Atlas project key; discover only directories containing a project marker.
+5. **Chosen Option:** Require `project.md` before loading a project directory. Ignore unmanaged folders while retaining errors for malformed managed projects and include their marker path in the error. Preserve the existing nested-init refusal and all user files.
+6. **Why We Chose It:** An empty `projects/foo` left by an attempted nested initialization is not an Atlas project, but the old enumeration validated its lowercase name before checking its contents and made doctor fail. Marker-based discovery avoids hiding malformed actual projects or deleting unrelated data.
+7. **Confidence:** high
+8. **Revisit Trigger:** The project storage marker changes or doctor gains a dedicated orphan-content report.
+9. **Affected PRs/Files:** internal/storage/markdown/project_store.go, internal/cli/workflow_consistency_test.go.
+
+## DEC-068
+
+1. **Decision ID:** DEC-068
+2. **Date:** 2026-09-09
+3. **Question:** How should the workflow-consistency fixes enter the next stable release while keeping public documentation truthful?
+4. **Options Considered:** Call the local fixes stable immediately; publish a patch without distinguishing new MCP interfaces; prepare a minor candidate through the existing owner-controlled promotion and RC gates.
+5. **Chosen Option:** Prepare v1.13.0 and its first RC, publish the feature PR to `testing`, and keep v1.12.0 as the published stable until approved promotion and hosted RC/stable proof pass. Reconcile current docs, site copy, release helpers, and board images with the candidate, labeling upcoming behavior unreleased. Preserve historical snapshots and link them to published evidence. Add the final permission regression for review approval that implicitly completes a ticket.
+6. **Why We Chose It:** Six new public MCP tools and explicit bootstrap warrant a minor candidate. Local tests and screenshots prove the candidate, while hosted assets and the live site require independent verification after publication. This follows DEC-059's promotion boundary and completes the owner's requested fixes without implying authorization to merge or release during preparation.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner changes the release version/scope, protected-branch requirements change, or hosted RC verification exposes a release defect.
+9. **Affected PRs/Files:** CHANGELOG.md, docs/release.md, docs/release/*, scripts/preflight-release.sh, scripts/validate-rc.sh, scripts/release-rehearsal.sh, current guides/references, site/*, docs/assets/*, examples/create-web-demo.sh, internal/service/workflow_consistency_test.go.

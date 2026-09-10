@@ -18,7 +18,8 @@ var embeddedURLPattern = regexp.MustCompile(`https?://[^\s'"]+`)
 
 type fileConfig struct {
 	Workflow struct {
-		CompletionMode string `toml:"completion_mode"`
+		CompletionMode   string `toml:"completion_mode"`
+		RequiredReviewer string `toml:"required_reviewer,omitempty"`
 	} `toml:"workflow"`
 	Actor struct {
 		Default string `toml:"default"`
@@ -138,7 +139,10 @@ func Load(root string) (contracts.TrackerConfig, error) {
 		return contracts.TrackerConfig{}, fmt.Errorf("parse config: %w", err)
 	}
 	cfg := contracts.TrackerConfig{
-		Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionMode(strings.TrimSpace(parsed.Workflow.CompletionMode))},
+		Workflow: contracts.WorkflowConfig{
+			CompletionMode:   contracts.CompletionMode(strings.TrimSpace(parsed.Workflow.CompletionMode)),
+			RequiredReviewer: contracts.Actor(strings.TrimSpace(parsed.Workflow.RequiredReviewer)),
+		},
 		Actor: contracts.ActorConfig{
 			Default: contracts.Actor(strings.TrimSpace(parsed.Actor.Default)),
 		},
@@ -221,6 +225,7 @@ func Save(root string, cfg contracts.TrackerConfig) error {
 	}
 	out := fileConfig{}
 	out.Workflow.CompletionMode = string(cfg.Workflow.CompletionMode)
+	out.Workflow.RequiredReviewer = string(cfg.Workflow.RequiredReviewer)
 	out.Actor.Default = string(cfg.Actor.Default)
 	out.Web.OwnerName = strings.TrimSpace(cfg.Web.OwnerName)
 	out.Web.Lang = strings.ToLower(strings.TrimSpace(cfg.Web.Lang))
@@ -274,6 +279,8 @@ func Get(root string, key string) (string, error) {
 	switch key {
 	case "", "workflow.completion_mode":
 		return string(cfg.Workflow.CompletionMode), nil
+	case "workflow.required_reviewer":
+		return string(cfg.Workflow.RequiredReviewer), nil
 	case "actor.default":
 		return string(cfg.Actor.Default), nil
 	case "web.owner_name":
@@ -359,6 +366,8 @@ func Set(root string, key string, value string) error {
 	switch key {
 	case "workflow.completion_mode":
 		cfg.Workflow.CompletionMode = contracts.CompletionMode(strings.TrimSpace(value))
+	case "workflow.required_reviewer":
+		cfg.Workflow.RequiredReviewer = contracts.Actor(strings.TrimSpace(value))
 	case "actor.default":
 		cfg.Actor.Default = contracts.Actor(strings.TrimSpace(value))
 	case "web.owner_name":

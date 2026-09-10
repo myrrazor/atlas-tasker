@@ -46,6 +46,7 @@
   --st-in-review: #a78bfa;
   --st-blocked: #ff7169;
   --st-done: #54c6b4;
+  --st-canceled: #c48b91;
 
   --r-panel: 12px;
   --r-tray: 10px;
@@ -889,7 +890,7 @@ button:active,
 
 .board-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(128px, 1fr));
+  grid-template-columns: repeat(7, minmax(128px, 1fr));
   gap: 12px;
   min-height: 0;
   flex: 1;
@@ -954,6 +955,7 @@ button:active,
 .column[data-status="in_review"] .col-dash { background: var(--st-in-review); }
 .column[data-status="blocked"] .col-dash { background: var(--st-blocked); }
 .column[data-status="done"] .col-dash { background: var(--st-done); }
+.column[data-status="canceled"] .col-dash { background: var(--st-canceled); }
 
 .col-count {
   flex: none;
@@ -1088,6 +1090,14 @@ button:active,
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.005em;
+  overflow-wrap: anywhere;
+}
+
+.ticket-assignee {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
@@ -1423,6 +1433,7 @@ button:active,
 .status-pill.st-in-review { color: var(--st-in-review); border-color: rgba(167, 139, 250, 0.4); background: rgba(167, 139, 250, 0.08); }
 .status-pill.st-blocked { color: var(--st-blocked); border-color: rgba(255, 113, 105, 0.4); background: rgba(255, 113, 105, 0.08); }
 .status-pill.st-done { color: var(--st-done); border-color: rgba(84, 198, 180, 0.4); background: rgba(84, 198, 180, 0.08); }
+.status-pill.st-canceled { color: var(--st-canceled); border-color: rgba(196, 139, 145, 0.4); background: rgba(196, 139, 145, 0.08); }
 
 .tabs {
   display: grid;

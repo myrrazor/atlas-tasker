@@ -24,6 +24,10 @@ func TestSchedulePageRendersHumanAgentAndCompletionHistory(t *testing.T) {
 		t.Fatalf("save agent: %v", err)
 	}
 	humanAt := time.Date(2026, 6, 16, 9, 30, 0, 0, location)
+	// Create the reminder before it is due, then render at the harness's
+	// later clock so this page still covers an overdue human reminder.
+	originalClock := h.actions.Clock
+	h.actions.Clock = func() time.Time { return humanAt.Add(-time.Hour) }
 	if _, err := h.actions.SetTicketSchedule(ctx, h.ticketID, humanAt, contracts.Actor("human:owner"), contracts.Actor("human:owner"), "human reminder"); err != nil {
 		t.Fatalf("set human schedule: %v", err)
 	}
@@ -32,6 +36,7 @@ func TestSchedulePageRendersHumanAgentAndCompletionHistory(t *testing.T) {
 	if _, err := h.actions.SetTicketSchedule(ctx, agentTicket.ID, agentAt, contracts.Actor("agent:builder-1"), contracts.Actor("human:owner"), "agent run"); err != nil {
 		t.Fatalf("set agent schedule: %v", err)
 	}
+	h.actions.Clock = originalClock
 	completed := h.createTicket(t, "Publish the release notes")
 	if _, err := h.actions.MoveTicket(ctx, completed.ID, contracts.StatusInProgress, contracts.Actor("human:owner"), "start"); err != nil {
 		t.Fatalf("move completed ticket: %v", err)
@@ -77,7 +82,7 @@ func TestScheduleSetUsesLocalTimezoneAndPreservesRejectedForm(t *testing.T) {
 	h := newWebHarness(t, false).withLocation(t, mustLocation(t, "America/New_York"))
 	form := withCSRF(url.Values{
 		"ticket_id": {h.ticketID},
-		"at":        {"2026-06-16T09:30"},
+		"at":        {"2026-06-16T12:30"},
 		"runner":    {"human:owner"},
 		"actor":     {"human:owner"},
 		"reason":    {"morning reminder"},
@@ -97,12 +102,12 @@ func TestScheduleSetUsesLocalTimezoneAndPreservesRejectedForm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get scheduled ticket: %v", err)
 	}
-	wantUTC := time.Date(2026, 6, 16, 13, 30, 0, 0, time.UTC)
+	wantUTC := time.Date(2026, 6, 16, 16, 30, 0, 0, time.UTC)
 	if ticket.Schedule == nil || !ticket.Schedule.At.Equal(wantUTC) {
 		t.Fatalf("schedule = %#v, want %s", ticket.Schedule, wantUTC)
 	}
 	board := h.doAuthed(t, http.MethodGet, "/board?ticket="+h.ticketID+"&project=WEB", "", nil)
-	for _, wanted := range []string{"Tue, Jun 16 · 09:30", "Clear schedule", "America/New_York"} {
+	for _, wanted := range []string{"Tue, Jun 16 · 12:30", "Clear schedule", "America/New_York"} {
 		if !strings.Contains(board.body, wanted) {
 			t.Fatalf("ticket drawer missing schedule value %q:\n%s", wanted, board.body)
 		}
@@ -137,9 +142,13 @@ func TestScheduleSetUsesLocalTimezoneAndPreservesRejectedForm(t *testing.T) {
 func TestScheduleTickClearAndReadOnlyProtection(t *testing.T) {
 	h := newWebHarness(t, false)
 	ctx := context.Background()
-	if _, err := h.actions.SetTicketSchedule(ctx, h.ticketID, h.now.Add(-time.Minute), contracts.Actor("human:owner"), contracts.Actor("human:owner"), "due reminder"); err != nil {
+	if _, err := h.actions.SetTicketSchedule(ctx, h.ticketID, h.now.Add(time.Minute), contracts.Actor("human:owner"), contracts.Actor("human:owner"), "due reminder"); err != nil {
 		t.Fatalf("set due schedule: %v", err)
 	}
+	h.now = h.now.Add(2 * time.Minute)
+	h.server.cfg.Clock = func() time.Time { return h.now }
+	h.actions.Clock = func() time.Time { return h.now }
+	h.queries.Clock = func() time.Time { return h.now }
 	tick := h.doAuthed(t, http.MethodPost, "/actions/schedule/tick?return=schedule&date=2026-06-16&project=WEB", withCSRF(url.Values{
 		"actor": {"human:owner"}, "reason": {"process due"},
 	}).Encode(), formHeaders())

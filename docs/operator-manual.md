@@ -13,18 +13,23 @@ Create and claim work:
 
 ```bash
 tracker project create APP "App Project"
-tracker ticket create --project APP --title "Fix auth race" --type task --actor human:owner
-tracker ticket move APP-1 ready --actor human:owner
-tracker ticket claim APP-1 --actor agent:builder-1
+tracker ticket create --project APP --title "Fix auth race" --type task --actor human:owner --reason "file work"
+tracker ticket move APP-1 ready --actor human:owner --reason "ready to start"
+tracker ticket claim APP-1 --actor agent:builder-1 --reason "start work"
 ```
 
 Review flow:
 
 ```bash
-tracker ticket request-review APP-1 --actor agent:builder-1
-tracker ticket approve APP-1 --actor agent:reviewer-1
-tracker ticket complete APP-1 --actor human:owner
+tracker ticket request-review APP-1 --reviewer agent:reviewer-1 --actor agent:builder-1 --reason "ready for review"
+tracker ticket approve APP-1 --actor agent:reviewer-1 --reason "review passed"
+tracker ticket view APP-1 --json
+# If the approved ticket remains in_review, complete it with the actor allowed by its policy.
+tracker ticket complete APP-1 --actor human:owner --reason "close approved work"
 ```
+
+In `review_gate` mode, approval itself moves the ticket to `done`, so skip the final command. Other
+completion modes leave the approved ticket in `in_review` until an authorized actor completes it.
 
 Saved views and watchers:
 

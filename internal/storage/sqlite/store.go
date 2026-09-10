@@ -882,7 +882,7 @@ func (s *Store) queryTicketStatuses(ctx context.Context, ticketIDs []string) (ma
 
 func projectedBoardStatus(ticket contracts.TicketSnapshot, statuses map[string]contracts.Status) contracts.Status {
 	if contracts.IsTerminalStatus(ticket.Status) {
-		return contracts.StatusDone
+		return ticket.Status
 	}
 	if ticket.Status == contracts.StatusBlocked {
 		return contracts.StatusBlocked

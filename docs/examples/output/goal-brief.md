@@ -57,26 +57,37 @@ Expose a local health check and record the proof for review.
 
 ## Suggested Commands
 
-- tracker inspect APP-1 --actor <actor> --json
-- tracker ticket claim APP-1 --actor <actor>
-- tracker ticket move APP-1 in_progress --actor <actor> --reason "start work"
-- tracker run launch <RUN-ID> --actor <actor> --reason "prepare
-  launch files"
+- set TRACKER_ACTOR to the valid human:... or agent:... identity doing this
+  work before running worker commands
+- set TRACKER_REVIEWER to the valid reviewer identity before review or handoff
+  commands
+- worker commands use "$TRACKER_ACTOR"
+- tracker inspect APP-1 --actor "$TRACKER_ACTOR" --json
+- tracker ticket claim APP-1 --actor "$TRACKER_ACTOR" --reason "start work"
+- tracker ticket move APP-1 in_progress --actor "$TRACKER_ACTOR" --reason
+  "start work"
+- tracker run launch <RUN-ID> --actor "$TRACKER_ACTOR" --reason
+  "prepare launch files"
 - tracker run open <RUN-ID> --json
 - tracker run checkpoint <RUN-ID> --title "progress" --body "what
-  changed" --actor <actor> --reason "record progress"
+  changed" --actor "$TRACKER_ACTOR" --reason "record progress"
 - tracker run evidence add <RUN-ID> --type test_result --title
-  "verification" --body "test output" --actor <actor> --reason "record
-  verification"
-- tracker run handoff <RUN-ID> --next-actor <reviewer> --next-gate
-  review --actor <actor> --reason "ready for review"
+  "verification" --body "test output" --actor "$TRACKER_ACTOR" --reason
+  "record verification"
+- tracker run handoff <RUN-ID> --next-actor "$TRACKER_REVIEWER"
+  --next-gate review --actor "$TRACKER_ACTOR" --reason "ready for review"
 - tracker gate list --run <RUN-ID> --json
 - tracker goal brief <RUN-ID> --md
 - valid evidence types: note, test_result, file_diff_summary, log_excerpt,
   screenshot, artifact_ref, commit_ref, manual_assertion, unresolved_question,
   review_checklist
-- when review passes: tracker ticket complete APP-1 --actor <actor> --reason
-  "done"
+- the worker requests review; the reviewer approves separately
+- tracker ticket request-review APP-1 --reviewer "$TRACKER_REVIEWER" --actor
+  "$TRACKER_ACTOR" --reason "ready for review"
+- tracker ticket approve APP-1 --actor "$TRACKER_REVIEWER" --reason "review
+  passed"
+- worker completion in open mode
+- tracker ticket complete APP-1 --actor "$TRACKER_ACTOR" --reason "done"
 
 ## Done When
 

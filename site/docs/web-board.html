@@ -110,7 +110,7 @@
             <span class="terminal-title">tracker web serve --open</span>
             <span class="terminal-state">127.0.0.1 · local only</span>
           </div>
-          <img src="../assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Atlas Tasker web board showing six workflow columns and an open ticket drawer with Overview, Notes and activity, Policy/Gates, and Evidence tabs" />
+          <img src="../assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Atlas Tasker web board showing seven workflow columns including separate Done and Canceled columns, visible card assignees, and an open ticket drawer" />
           <figcaption>The board with a ticket drawer open: Overview, Notes &amp; activity, Policy/Gates, and Evidence in one place.</figcaption>
         </figure>
 
@@ -132,10 +132,10 @@ tracker web open                              <span class="c"># reopen the last 
 
         <h2>What you can do on it</h2>
         <ul>
-          <li>All six workflow columns are on screen at once, Backlog through Done, with a short empty note in any column that has nothing in it. Drag cards between them: dropping a card on its own column is a no-op, and every move runs the same status-edge rules as the CLI. On a phone the board shows one column at a time and a strip above it switches between them.</li>
+          <li>All seven canonical workflow columns are on screen at once: Backlog, Ready, In Progress, In Review, Blocked, Done, and Canceled. Done and Canceled stay separate because canceled work neither satisfies dependencies nor counts as completed. Drag cards between legal states: dropping a card on its own column is a no-op, and every move runs the same status-edge rules as the CLI. On a phone the board shows one column at a time and a strip above it switches between them.</li>
           <li>The ticket drawer is open as soon as the board loads, on the first ticket in the Ready column (or whichever column <code>?column=</code> names; if that column is empty, the first ticket anywhere on the board). It sits beside the board on wide screens and below it on narrow ones. Click any card to switch, and use the close control in the drawer head to clear the selection; the drawer then shows its empty state with a New ticket button. Four tabs: Overview (description, acceptance criteria, schedule, edit), Notes &amp; activity (comments and history), Policy/Gates, and Evidence.</li>
-          <li>Hover a card for a couple of seconds and a preview shows assignee, reviewer, priority, labels, and the blocker, gate, and comment counts without changing the drawer.</li>
-          <li>Create and edit tickets, comment, move through workflow states, and run request-review, approve, and complete where policy allows.</li>
+          <li>Each card shows its assignee on its face. Hover for a couple of seconds and a preview adds reviewer, priority, labels, and the blocker, gate, and comment counts without changing the drawer.</li>
+          <li>Create and edit tickets, comment, move through workflow states, and run request-review, approve, or complete where policy allows. For <code>review_gate</code>, reviewer approval is the transition to Done; it is not followed by a separate completion.</li>
           <li>Filter by project, assignee, reviewer, label, priority, and type; search; and load saved views. The state lives in the URL, so a filtered board is a shareable local link.</li>
           <li>Keyboard: <code>n</code> for a new ticket, <code>/</code> for search. Every drag action also exists as a button for non-drag users.</li>
         </ul>
@@ -145,7 +145,7 @@ tracker web open                              <span class="c"># reopen the last 
         <p>The board lives at <code>/board</code>; the same server renders three more pages:</p>
         <ul>
           <li><code>/</code> is a welcome dashboard: per-project status rollups, blockers, a recent-activity feed, links into each project's board, and project creation when the server is not read-only.</li>
-          <li><code>/schedule</code> is a week-view workspace for one-time scheduled tickets. Pick a runner and a time, browse the week, and "Run due now" triggers everything that is due: human runners get a reminder, agent runners get an Atlas wakeup. Same data as <code>tracker schedule</code> on the CLI.</li>
+          <li><code>/schedule</code> is a week-view workspace for one-time scheduled tickets. New or replacement times must be strictly in the future; an existing schedule can become overdue normally. Pick a runner and a time, browse the week, and "Run due now" triggers everything that is due: human runners get a reminder, agent runners get an Atlas wakeup. Same data as <code>tracker schedule</code> on the CLI.</li>
           <li><code>/settings</code> is read-only. It shows the workspace, host, actor, owner name, language, and agent colors the server is running with; changing them still happens through <code>tracker config</code>.</li>
         </ul>
 
