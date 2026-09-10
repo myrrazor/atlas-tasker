@@ -63,10 +63,10 @@ func TestScheduleCLIRequiresTimestampTimezoneAndReason(t *testing.T) {
 	_, _ = runCLI(t, "init")
 	_, _ = runCLI(t, "project", "create", "APP", "App Project")
 	_, _ = runCLI(t, "ticket", "create", "--project", "APP", "--title", "Task", "--type", "task", "--actor", "human:owner")
-	if _, err := runCLI(t, "schedule", "set", "APP-1", "--at", "2026-08-07 10:00", "--runner", "human:owner", "--reason", "test"); err == nil {
+	if _, err := runCLI(t, "schedule", "set", "APP-1", "--at", "2026-08-07 10:00", "--runner", "human:owner", "--actor", "human:owner", "--reason", "test"); err == nil {
 		t.Fatal("expected timezone-free timestamp to fail")
 	}
-	if _, err := runCLI(t, "schedule", "set", "APP-1", "--at", "2026-08-07T10:00:00-04:00", "--runner", "human:owner"); err == nil {
+	if _, err := runCLI(t, "schedule", "set", "APP-1", "--at", time.Now().Add(time.Hour).Format(time.RFC3339), "--runner", "human:owner", "--actor", "human:owner"); err == nil {
 		t.Fatal("expected missing reason to fail")
 	}
 }

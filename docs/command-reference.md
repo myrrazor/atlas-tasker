@@ -615,7 +615,7 @@ Template names are path-derived identifiers under `.tracker/templates/` and must
 
 - `tracker ticket create --project <KEY> --title <TEXT> --type <epic|task|bug|subtask> [--template <NAME>] [flags]`
 - `tracker ticket view <ID>` (alias: `show`)
-- `tracker ticket edit <ID> [flags]`
+- `tracker ticket edit <ID> [flags] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker ticket archive <ID>` (`ticket delete` is kept as a compatibility alias)
 - `tracker ticket list [--project <KEY>] [--status <STATUS>] [--assignee <ACTOR>] [--type <TYPE>]`
 
@@ -623,21 +623,25 @@ Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Tick
 
 ## Ticket Mutation
 
-- `tracker ticket move <ID> <STATUS> [--override-deps]`
-- `tracker ticket assign <ID> <ACTOR>` sets the assignee only
-- `tracker ticket priority <ID> <PRIORITY>`
-- `tracker ticket label add <ID> <LABEL>`
-- `tracker ticket label remove <ID> <LABEL>`
-- `tracker ticket claim <ID> [--actor <ACTOR>]`
-- `tracker ticket release <ID> [--actor <ACTOR>]`
-- `tracker ticket heartbeat <ID> [--actor <ACTOR>]`
+- `tracker ticket move <ID> <STATUS> [--override-deps] [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker ticket assign <ID> <ACTOR> [--actor <ACTOR>] [--reason <TEXT>]` sets the assignee only
+- `tracker ticket priority <ID> <PRIORITY> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker ticket label add <ID> <LABEL> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker ticket label remove <ID> <LABEL> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker ticket claim <ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker ticket release <ID> [--actor <ACTOR>] [--reason <TEXT>]`
+- `tracker ticket heartbeat <ID> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker ticket request-review <ID> [--reviewer <ACTOR>] [--override-deps] [--actor <ACTOR>] [--reason <TEXT>]`
-- `ticket request-review` now opens or reuses a review gate for the ticket so `gate list`, `approvals`, and `inbox` show the review work explicitly. `--reviewer` sets the ticket reviewer in the same mutation; when omitted, Atlas uses the ticket reviewer or the effective project/epic/ticket `required_reviewer`.
-- `tracker ticket approve <ID> [--override-deps] [--actor <ACTOR>]`
+- `ticket request-review` now opens or reuses a review gate for the ticket so `gate list`, `approvals`, and `inbox` show the review work explicitly. `--reviewer` sets the ticket reviewer in the same mutation; when omitted, Atlas uses the ticket reviewer or effective workspace/project/epic/ticket `required_reviewer`.
+- `tracker ticket approve <ID> [--override-deps] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker ticket reject <ID> --reason <TEXT> [--actor <ACTOR>]`
-- `tracker ticket complete <ID> [--override-deps] [--actor <ACTOR>]`
+- `tracker ticket complete <ID> [--override-deps] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker ticket policy get <ID>`
 - `tracker ticket policy set <ID> [flags]`
+
+`ticket approve` records approval and, in `review_gate` mode, also moves the ticket to `done` in the
+same mutation. In `open`, `owner_gate`, and `dual_gate` modes, the approved ticket remains
+`in_review` until an actor allowed by the active completion policy runs `ticket complete`.
 
 ## Scheduled Work
 
@@ -648,6 +652,8 @@ Ticket IDs are path-derived and must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`. Tick
 - `tracker schedule tick [--now <RFC3339>] --actor <ACTOR> --reason <TEXT>`
 
 `set` creates or replaces a one-time schedule and makes `--runner` the ticket assignee. Human runners receive the normal `ticket.schedule_triggered` notification when the schedule is ticked. Agent runners must reference an enabled agent profile; Atlas creates an agent wakeup and launches the configured argv only when that profile uses `agent auto` command mode. The default notify mode leaves a pending wakeup for explicit pickup.
+
+The new `--at` instant must be strictly in the future. A past or current instant fails with exit 2 before the schedule or assignee changes. Existing schedules may become overdue and can then be processed by `tick`.
 
 `tick` is a one-shot, idempotent command. Run it from cron, launchd, or another scheduler; Atlas does not start a background daemon. A failed agent launch is recorded once as `ticket.schedule_failed` and does not retry until the ticket is rescheduled. `history` derives completion time and actor from existing immutable done events rather than maintaining a second completion record.
 
@@ -662,6 +668,8 @@ Dependency rules:
 
 - `blocked_by` is enforced for unsafe progress: `in_progress`, `in_review`, approval, and completion are rejected while any blocker is unresolved.
 - Only `done` counts as terminal-success for dependency unblocking. `canceled` does not unblock dependents.
+- Canceled work appears in a separate board column, retaining `canceled` in JSON and web card status data. Board and ticket views show assignment directly. An ordinary assigned backlog ticket remains visible but is pending agent work until promoted to `ready`.
+- A non-review claim on another assignee's ticket fails with conflict (exit 4), including owner claims. Reassign explicitly first. Review leases still belong to the authorized reviewer while the worker remains the ticket assignee.
 - `human:owner` can override unresolved dependencies with `--override-deps --reason <TEXT>`; the mutation event includes a `dependency_override` payload with the unresolved blockers.
 - Board, blocked list, ticket view, inspect, and reindex derive blocked buckets from current blocker status, not only the historical link.
 
@@ -818,14 +826,35 @@ Slash command examples:
 
 ## MCP Adapter
 
-- `tracker mcp serve [--tool-profile read|workflow|delivery|admin] [--read-only] [--dangerously-allow-high-impact-tools]`
+- `tracker mcp serve [--workspace <ABSOLUTE-PATH>] [--init-if-missing] [--tool-profile read|workflow|delivery|admin] [--read-only] [--dangerously-allow-high-impact-tools]`
 - `tracker mcp schema --json [--tool-profile <PROFILE>]`
 - `tracker mcp tools --json [--tool-profile <PROFILE>]`
 - `tracker mcp approve-operation --operation <TOOL> --target <ID> --actor <ACTOR> --reason <TEXT> [--ttl 10m]`
 - `tracker mcp approvals list --json`
 - `tracker mcp approvals revoke <APPROVAL-ID>`
 
-Default MCP setup uses `--tool-profile read`. High-impact tools require both an admin/delivery profile that includes the tool and `--dangerously-allow-high-impact-tools`; execution still requires a one-time approval created outside MCP.
+Default MCP setup uses `--tool-profile read`. The exact visible counts are read 41, workflow 73,
+delivery 77 (79 with `--dangerously-allow-high-impact-tools`), and admin 77 (the full 88 with the
+flag). High-impact tools require both a profile that includes the tool and the danger flag; execution
+still requires a one-time approval created outside MCP.
+
+`--init-if-missing` is an opt-in server-startup bootstrap. It requires `--workspace` to be an
+explicit absolute path to an existing directory and requires a write-capable workflow, delivery, or
+admin profile. It is noninteractive, refuses nested Atlas workspaces, `--read-only`, and redirected
+initialization outputs, and does not register MCP or install agent integrations. Without the flag,
+an uninitialized workspace still fails at startup.
+
+The six ordinary workflow additions are `atlas.project.create`, `atlas.ticket.heartbeat`,
+`atlas.ticket.priority`, `atlas.ticket.label.add`, `atlas.ticket.label.remove`, and
+`atlas.ticket.edit`. Project create accepts only `key` and `name`; as an untracked container action,
+it takes no actor/reason and records no event. The five ticket tools require actor and reason. Edit
+accepts optional `title`, `description`, `acceptance`, `priority`, `labels`, `assignee`, and
+`reviewer`; omitted fields are preserved, explicit empty values clear supported fields, and status
+or policy cannot be changed. Description input passes unchanged from the adapter to existing
+Markdown storage, whose normal boundary-whitespace formatting still applies. All MCP schemas reject
+unknown fields (`additionalProperties: false`), and tool/argument names have no silent aliases.
+`atlas.ticket.create` always requires `type`; MCP stores a supplied template name without applying
+template defaults. The CLI `tracker ticket create` command may derive type from its selected template.
 
 See [MCP adapter](mcp.md), [MCP security](mcp-security.md), and [MCP tools](mcp-tools.md).
 
@@ -880,12 +909,17 @@ Mutating commands:
 - `--actor <ACTOR>`
 - `--reason <TEXT>`
 
+For tracked CLI mutations, an explicit `--actor` wins, followed by `TRACKER_ACTOR`, then `actor.default`.
+There is no implicit `human:owner` fallback. Supply `--reason` for an auditable explanation; Atlas
+requires it for security-sensitive, protected, scheduling, and other explicitly guarded actions.
+
 Useful config keys:
 
 - `workflow.completion_mode`
+- `workflow.required_reviewer`
 - `actor.default`
 - `web.owner_name`
-- `web.lang` (`en`, `es`, or `id`; blank uses the browser language. The board also ships `zh`, `ja`, and `ko` catalogs — reachable from the in-page language switcher or `?lang=` — but `config set web.lang` does not accept them yet)
+- `web.lang` (`en`, `es`, `id`, `zh`, `ja`, or `ko`; blank uses the browser language)
 - `web.agent_colors.<agent>` (`claude=orange` and `codex=blue` by default; unknown color names render uncolored)
 - `notifications.terminal`
 - `notifications.file_enabled`
@@ -896,14 +930,20 @@ Useful config keys:
 - `notifications.delivery_log_path`
 - `notifications.dead_letter_path`
 
+New projects inherit the workspace completion mode and required reviewer unless project policy
+overrides them. `team apply pair` and `team apply crossfire` set the workspace reviewer to
+`agent:reviewer-1`; `team apply swarm` sets it to `agent:qa-1`. Applying one of these review presets
+clears an older project's explicit `open` completion override so it inherits the review gate, while
+preserving stricter completion modes and custom reviewer overrides.
+
 ## Version Metadata
 
 `tracker version` prints release metadata in text form:
 
 ```text
-tracker v1.10.0
+tracker v1.13.0
 commit: abc123
-build date: 2026-08-27T04:00:00Z
+build date: 2026-09-09T12:00:00Z
 go: go1.26.6
 platform: darwin/arm64
 ```
@@ -914,9 +954,9 @@ platform: darwin/arm64
 {
   "format_version": "v1",
   "kind": "tracker_version",
-  "version": "v1.10.0",
+  "version": "v1.13.0",
   "commit": "abc123",
-  "build_date": "2026-08-27T04:00:00Z",
+  "build_date": "2026-09-09T12:00:00Z",
   "go_version": "go1.26.6",
   "platform": "darwin/arm64"
 }

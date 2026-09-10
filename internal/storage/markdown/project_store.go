@@ -104,9 +104,17 @@ func (s ProjectStore) ListProjects(_ context.Context) ([]contracts.Project, erro
 		if !entry.IsDir() {
 			continue
 		}
+		// Only a project.md marker makes a directory an Atlas project. A
+		// refused nested init or an unrelated empty folder is not project data.
+		marker := storage.ProjectFile(s.RootDir, entry.Name())
+		if _, err := os.Lstat(marker); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, fmt.Errorf("inspect project marker %s: %w", marker, err)
+		}
 		project, err := s.GetProject(context.Background(), entry.Name())
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("load project %s: %w", marker, err)
 		}
 		projects = append(projects, project)
 	}

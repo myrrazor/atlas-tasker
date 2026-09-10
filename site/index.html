@@ -196,8 +196,8 @@
             <span class="terminal-title">tracker web serve</span>
             <span class="terminal-state">127.0.0.1 · local only</span>
           </div>
-          <img src="assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Atlas Tasker web board with six workflow columns and a ticket drawer open on Overview, Notes and activity, Policy/Gates, and Evidence tabs" />
-          <figcaption>The local web board: drag cards between columns, open a ticket drawer with activity, gates, and evidence, and search or filter without leaving the page.</figcaption>
+          <img src="assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Atlas Tasker web board with seven workflow columns including separate Done and Canceled columns, visible card assignees, and an open ticket drawer" />
+          <figcaption>The local web board: see assignees on cards, keep Done separate from Canceled, drag between legal states, and open the drawer for activity, gates, and evidence.</figcaption>
         </figure>
         <div class="surface-stack">
           <figure class="terminal-shot">
@@ -265,7 +265,7 @@
         <div class="feature-copy">
           <p class="feature-index">Built for AI agents</p>
           <h3>Queues, gates, and typed tools agents respect.</h3>
-          <p>Agents see exactly what is ready and why the rest is blocked, with stable reason codes instead of guesswork. Every write names an actor and a reason, review gates guard completion, and the MCP server exposes typed tools behind escalating permission profiles.</p>
+          <p>Agents see exactly what is ready and why the rest is blocked, with stable reason codes instead of guesswork. Tracked writes record an actor, reasons are required for tracked MCP writes and protected operations, review gates guard completion, and the MCP server exposes typed tools behind escalating permission profiles.</p>
           <a class="text-link" href="mcp.html">Meet the agent surface <span aria-hidden="true">→</span></a>
         </div>
         <figure class="feature-shot">
@@ -371,7 +371,7 @@
               <code id="first-board" tabindex="0">tracker board</code>
               <button class="copy-button" type="button" data-copy="first-board" aria-label="Copy board command">Copy</button>
             </div>
-            <p class="requirements">Every write names an <code>--actor</code> and a <code>--reason</code>. That pair is the audit trail agents and reviewers read later. Prefer a browser? <code>tracker web serve --open</code> puts the same board on a local kanban. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
+            <p class="requirements">Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. Prefer a browser? <code>tracker web serve --open</code> puts the same board on a local kanban. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
           </div>
         </div>
       </div>

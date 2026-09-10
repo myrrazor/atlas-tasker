@@ -110,7 +110,7 @@ func TestRenderTableHugsContentInsteadOfStretching(t *testing.T) {
 func TestBoardTableGroupsOnceSkipsEmptyShowsStatus(t *testing.T) {
 	board := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
 		contracts.StatusReady: {
-			{ID: "APP-1", Type: contracts.TicketTypeTask, Status: contracts.StatusReady, Priority: contracts.PriorityHigh, Title: "First"},
+			{ID: "APP-1", Type: contracts.TicketTypeTask, Status: contracts.StatusReady, Priority: contracts.PriorityHigh, Assignee: contracts.Actor("agent:builder-1"), Title: "First"},
 			{ID: "APP-2", Type: contracts.TicketTypeTask, Status: contracts.StatusReady, Priority: contracts.PriorityLow, Title: "Second"},
 		},
 		contracts.StatusDone: {
@@ -127,8 +127,32 @@ func TestBoardTableGroupsOnceSkipsEmptyShowsStatus(t *testing.T) {
 	if !strings.Contains(out, "Status") || !strings.Contains(out, "[ready]") || !strings.Contains(out, "[done]") {
 		t.Fatalf("expected per-ticket status column, got:\n%s", out)
 	}
+	if !strings.Contains(out, "Assignee") || !strings.Contains(out, "agent:builder-1") {
+		t.Fatalf("expected assigned tickets to identify their assignee, got:\n%s", out)
+	}
 	if !strings.Contains(out, "Priority") {
 		t.Fatalf("expected full Priority header, got:\n%s", out)
+	}
+}
+
+func TestBoardPrettyKeepsCanceledSeparateFromDone(t *testing.T) {
+	board := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusDone:     {{ID: "APP-1", Status: contracts.StatusDone, Priority: contracts.PriorityMedium, Title: "Delivered"}},
+		contracts.StatusCanceled: {{ID: "APP-2", Status: contracts.StatusCanceled, Priority: contracts.PriorityLow, Title: "Stopped"}},
+	}}
+	out := BoardPrettyWithWidth(board, 100)
+	if !strings.Contains(out, "Done (1)") || !strings.Contains(out, "Canceled (1)") || !strings.Contains(out, "[canceled]") {
+		t.Fatalf("expected distinct done and canceled groups, got:\n%s", out)
+	}
+}
+
+func TestBoardPrettyNarrowShowsAssigneeBeforeTitle(t *testing.T) {
+	board := contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusBacklog: {{ID: "APP-1", Status: contracts.StatusBacklog, Priority: contracts.PriorityMedium, Assignee: contracts.Actor("agent:builder-1"), Title: "Planned work"}},
+	}}
+	out := BoardPrettyWithWidth(board, 52)
+	if !strings.Contains(out, "assignee=agent:builder-1") {
+		t.Fatalf("expected narrow board output to keep the assignee visible, got:\n%s", out)
 	}
 }
 

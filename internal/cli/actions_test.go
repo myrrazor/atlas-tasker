@@ -396,6 +396,7 @@ func TestBoardMarkdownOrderIsDeterministic(t *testing.T) {
 		"### in_review",
 		"### blocked",
 		"### done",
+		"### canceled",
 	}
 	last := -1
 	for _, marker := range expectedOrder {

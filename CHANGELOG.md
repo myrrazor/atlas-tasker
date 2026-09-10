@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.13.0 - Workflow Consistency
+
+- Canceled work has a separate board column across CLI, JSON, TUI, and web, and the web move control includes canceled. Board and ticket views show assignment directly.
+- CLI mutations consistently resolve explicit, environment, or configured actors, with no silent owner fallback. Non-review claims on another assignee's ticket conflict, and new schedules require future times.
+- Pair/crossfire/swarm presets set an effective workspace reviewer, new projects inherit completion policy, and applying review presets clears project open overrides. Approval checks separation-of-duties permissions and review-gated completion requires the review lifecycle.
+- MCP adds project creation, heartbeat, priority, label add/remove, and ordinary ticket editing. Explicit `--init-if-missing` can bootstrap a named existing workspace at server startup. Read defaults, strict schemas, separate client registration, and external high-impact approvals remain.
+- Generated goal and integration guidance uses resolved identities and portable paths; Generic and Grok skills no longer share a destination. Setup defaults, reason requirements, same-status no-ops, and OpenClaw global writes are documented accurately. Empty unmanaged project directories no longer break doctor, and ticket help names the `show` alias.
+
 ## v1.12.0 - Agent Setup And Documentation
 
 - The verified shell installer offers optional coding-agent setup in the current directory through the controlling terminal, including `curl | sh`. It defaults to No and supports `SKIP_INTEGRATIONS=1`; unattended installs never wait for input.

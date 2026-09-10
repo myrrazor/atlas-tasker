@@ -14,7 +14,7 @@ func newScheduleCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "schedule", Short: "Schedule human reminders and agent wakeups"}
 
 	set := &cobra.Command{Use: "set <ID>", Args: cobra.ExactArgs(1), Short: "Set or replace a one-time ticket schedule", RunE: runScheduleSet}
-	set.Flags().String("at", "", "Run time in RFC3339 format")
+	set.Flags().String("at", "", "Future run time in RFC3339 format with timezone")
 	set.Flags().String("runner", "", "Human or agent actor that will own the ticket")
 	addMutationFlags(set, &mutationFlags{Actor: "human:owner"})
 	addReadOutputFlags(set, &outputFlags{})

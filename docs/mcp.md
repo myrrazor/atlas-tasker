@@ -2,13 +2,14 @@
 
 Atlas exposes a local stdio MCP server for coding agents that need structured access to tickets, runs, gates, changes, checks, sync state, and release workflow context.
 
-The MCP adapter is not a second source of truth. It calls the same service layer as the CLI and TUI, and every mutation still uses Atlas permission checks, write locks, event metadata, and storage contracts.
+The MCP adapter is not a second source of truth. It calls the same service layer as the CLI and TUI. Tracked mutations use Atlas permission checks, write locks, actor/reason event metadata, and storage contracts. `atlas.project.create` is the existing container-creation exception: it takes only `key` and `name`, uses the write lock and project validation, and does not create an event.
 
 ## Commands
 
 ```bash
 tracker mcp serve --tool-profile read
 tracker mcp serve --workspace /path/to/workspace --tool-profile read
+tracker mcp serve --workspace /absolute/existing/repo --init-if-missing --tool-profile workflow
 tracker mcp schema --json --tool-profile workflow
 tracker mcp tools --json --tool-profile admin
 tracker mcp approve-operation --operation atlas.change.merge --target CHG-123 --actor human:owner --reason "release merge"
@@ -16,18 +17,39 @@ tracker mcp approvals list --json
 tracker mcp approvals revoke <APPROVAL-ID>
 ```
 
-`serve` reads the current directory unless `--workspace` names one. Registrations that live outside a repo — user-scoped `claude mcp add`, a global Codex `mcp_servers` entry — need it, because the client picks the working directory, not you. The workspace must already contain Atlas state from `tracker init`. `schema` and `tools` describe the adapter itself and never open a workspace.
+`serve` reads the current directory unless `--workspace` names one. Registrations that live outside a repo — user-scoped `claude mcp add`, a global Codex `mcp_servers` entry — need it, because the client picks the working directory, not you. By default, the workspace must already contain Atlas state from `tracker init`.
+
+`--init-if-missing` is an explicit, noninteractive bootstrap. It requires `--workspace` to name an absolute path to an existing directory and requires a write-capable `workflow`, `delivery`, or `admin` profile. It refuses nested Atlas workspaces, `--read-only`, and existing output paths that redirect initialization outside the selected directory. It creates only normal Atlas workspace files: it does not open an integration picker, register an MCP client, or use the client's working directory as a fallback. If the workspace is already initialized, Atlas opens it without rerunning initialization. `schema` and `tools` only describe the adapter and never initialize a workspace.
 
 Stdio framing: Atlas speaks newline-delimited JSON-RPC and also accepts LSP-style `Content-Length` headers on the same stdio pair. Prefer NDJSON when you control the client; header-framed clients no longer crash the session.
 
 ## Profiles
 
-- `read` is the default. It exposes read tools and dry-run/plan tools only, including goal brief, agent/team reads, and wake-up inspection.
-- `workflow` adds the real agent loop: ticket create/assign/link, claim/move/comment, request review, approve/reject/complete, agent create/edit, team apply, schedule writes, evidence, handoffs, and wake-up ack.
-- `delivery` adds run dispatch, change creation, change/check sync, and the provider review/merge tools. The last two remain hidden unless `--dangerously-allow-high-impact-tools` is also present.
-- `admin` exposes the full read, workflow, and delivery inventory. Its high-impact sync, import, archive, compact, worktree-cleanup, and gate-waiver tools remain hidden unless `--dangerously-allow-high-impact-tools` is also present.
+- `read` is the default: 41 read and plan/dry-run tools, including goal brief, agent/team reads, and wake-up inspection.
+- `workflow` exposes 73 tools. It adds project creation and the real agent loop: ticket create/edit/assign/link, priority and label changes, claim/heartbeat/move/comment, request review, approve/reject/complete, agent create/edit, team apply, schedule writes, evidence, handoffs, and wake-up ack.
+- `delivery` exposes 77 tools normally and 79 with `--dangerously-allow-high-impact-tools`. It adds run dispatch, change creation, change/check sync, and provider review/merge tools.
+- `admin` exposes 77 tools normally and the complete 88-tool inventory with `--dangerously-allow-high-impact-tools`. Its high-impact sync, import, archive, compact, worktree-cleanup, and gate-waiver tools remain hidden without that flag.
 
 High-impact tools are hidden unless both the selected profile and server flag allow them. MCP-first agents should start at `workflow`, not `read`.
+
+## Ordinary Workflow Additions
+
+Use the exact names published by `tracker mcp schema`; Atlas does not accept silent aliases:
+
+- `atlas.project.create` takes `key` and `name`. It is a project-container write and therefore takes no `actor` or `reason` and records no event.
+- `atlas.ticket.heartbeat` takes `ticket_id`, `actor`, and `reason`. The actor must hold the active lease.
+- `atlas.ticket.priority` takes `ticket_id`, `priority`, `actor`, and `reason`.
+- `atlas.ticket.label.add` and `atlas.ticket.label.remove` take `ticket_id`, `label`, `actor`, and `reason`.
+- `atlas.ticket.edit` takes `ticket_id`, `actor`, `reason`, plus any of `title`, `description`, `acceptance`, `priority`, `labels`, `assignee`, or `reviewer`. Omitted fields stay unchanged. An empty `description`, `assignee`, or `reviewer` string clears that field; an empty `acceptance` or `labels` array clears that list. An empty title is invalid. It cannot change status, policy, project, identity, timestamps, lease, or archive state.
+
+The adapter passes a supplied description unchanged to the existing Markdown storage path; that
+codec's normal boundary-whitespace formatting still applies when the ticket is persisted.
+
+`atlas.ticket.create` always requires an explicit `type`; its MCP handler stores a supplied template
+name but does not apply template defaults. Template-provided type remains a CLI-only convenience for
+`tracker ticket create`. All five tracked tools above require both actor and non-empty reason. Their
+schemas use `additionalProperties: false`, so misspelled or unknown arguments fail instead of being
+ignored.
 
 ## High-Impact Approval Flow
 

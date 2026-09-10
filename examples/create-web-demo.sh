@@ -8,7 +8,8 @@ if [ "$#" -ne 1 ]; then
 fi
 workspace="$1"
 tracker_bin="${TRACKER_BIN:-tracker}"
-demo_date="${DEMO_DATE:-$(date +%Y-%m-%d)}"
+# A fresh schedule must be in the future, even when captures run late at night.
+demo_date="${DEMO_DATE:-$(date -u -d tomorrow +%Y-%m-%d 2>/dev/null || date -u -v+1d +%Y-%m-%d)}"
 if ! command -v "$tracker_bin" >/dev/null 2>&1; then
   echo "tracker is not available; build it and set TRACKER_BIN to its absolute path" >&2
   exit 2
@@ -40,9 +41,13 @@ ticket APP "Review the import retry fix" in_review critical
 ticket APP "Publish the setup walkthrough" blocked medium
 ticket APP "Add the health endpoint" in_progress low
 ticket APP "Keep example commands current" backlog medium
+ticket APP "Retire the unused import prototype" backlog low
 ticket OPS "Verify release checksums" ready high
 ticket OPS "Record install evidence" backlog medium
 
+"$tracker_bin" ticket move APP-8 canceled --actor human:owner --reason "synthetic canceled work"
+
+"$tracker_bin" ticket assign APP-1 agent:builder-1 --actor human:owner --reason "synthetic demo assignment"
 "$tracker_bin" ticket assign APP-3 agent:builder-1 --actor human:owner --reason "synthetic demo assignment"
 "$tracker_bin" ticket assign APP-4 agent:builder-1 --actor human:owner --reason "synthetic demo assignment"
 "$tracker_bin" ticket edit APP-4 --reviewer agent:reviewer-1 --description "Retry an interrupted local import without creating duplicate tickets." --acceptance "A second import leaves the ticket count unchanged." --acceptance "The failure path is covered by a regression test." --actor human:owner --reason "synthetic demo details"

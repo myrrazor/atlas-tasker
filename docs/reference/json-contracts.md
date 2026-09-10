@@ -22,10 +22,10 @@ Example version payload:
 {
   "format_version": "v1",
   "kind": "tracker_version",
-  "version": "v1.9.0-rc1",
+  "version": "v1.13.0-rc1",
   "commit": "abc123",
-  "build_date": "2026-05-07T00:00:00Z",
-  "go_version": "go1.26.3",
+  "build_date": "2026-09-09T12:00:00Z",
+  "go_version": "go1.26.6",
   "platform": "darwin/arm64"
 }
 ```

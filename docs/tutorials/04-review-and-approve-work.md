@@ -27,10 +27,15 @@ Complete the run and close the ticket:
 ./tracker run complete "$RUN_ID" --summary "Reviewed and complete" --actor agent:builder-1 --reason "tutorial run done"
 ./tracker ticket request-review APP-1 --actor agent:builder-1 --reason "ready for final review"
 ./tracker ticket approve APP-1 --actor human:owner --reason "tutorial approved"
+./tracker ticket view APP-1 --json
+# This tutorial uses the default open mode, so approval leaves the ticket in_review.
 ./tracker ticket complete APP-1 --actor human:owner --reason "tutorial done"
 ```
 
 No reviewer is configured on this tutorial ticket, so only the assignee, active worker, or `human:owner` may approve — `agent:reviewer-1` would be rejected here. Set one with `tracker ticket policy set --required-reviewer` when you want a specific reviewer to hold that power.
+With `review_gate`, reviewer approval also moves the ticket to `done`; inspect the returned status and
+do not run `ticket complete` a second time. The final command above applies to this tutorial's
+default `open` completion policy.
 
 If governance policies require signatures, quorum, or separation of duties, use `tracker governance explain` before approving:
 

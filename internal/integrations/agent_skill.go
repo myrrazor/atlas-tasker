@@ -12,6 +12,7 @@ func openclawBlock(guidePath string) string {
 - Every write takes `+"`--actor`"+` and `+"`--reason`"+`; `+"`tracker project create`"+` takes neither.
 - Claim before editing: `+"`tracker ticket claim <ID> --actor agent:<agent-id> --reason \"start work\"`"+`.
 - Exit 4 on a status change means the transition is forbidden, not that the command broke. Read `+"`tracker inspect <ID> --json`"+` before retrying.
+- Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
 - The `+"`atlas-worker`"+` skill installs under `+"`.agents/skills/`"+`; confirm it loaded with `+"`openclaw skills list`"+`.
 - The browser board (`+"`tracker web serve`"+`) is for humans. Agents use the CLI or `+"`tracker mcp serve`"+`.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
@@ -40,13 +41,13 @@ openclaw skills check
 
 ## Sharing it across agents
 
-Repo-local is the right default: the skill travels with the repo and only applies where Atlas is. For every agent on the machine, install the shared copy yourself:
+Repo-local is the right default: the skill travels with the repo and only applies where Atlas is. To explicitly copy it into OpenClaw's shared skill root for every agent on the machine, run:
 
 ~~~bash
-openclaw skills install %s --as atlas-worker --global
+tracker integrations install openclaw --global
 ~~~
 
-That writes to `+"`~/.openclaw/skills/`"+`, which Atlas deliberately never touches — a repo command should not reach into your home directory.
+The default install stays inside the repository. The explicit `+"`--global`"+` command also writes the managed skill files to `+"`~/.openclaw/skills/atlas-worker/`"+`.
 
 ## The loop
 
@@ -57,17 +58,18 @@ That writes to `+"`~/.openclaw/skills/`"+`, which Atlas deliberately never touch
 5. `+"`tracker ticket request-review <ID> --actor agent:<agent-id> --reason \"ready for review\"`"+`
 
 Read `+"`references/workflow.md`"+` inside the skill for blocker codes, reviewer behavior, and wake-ups.
-`, skillDir, skillDir)) + "\n"
+`, skillDir)) + "\n"
 }
 
 func genericBlock(guidePath string) string {
 	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (Generic Agent)
 
 - Start with `+"`tracker agent available <agent-id> --json`"+` and `+"`tracker agent pending <agent-id> --json`"+`.
-- Agents may self-dispatch eligible assigned work with `+"`tracker run dispatch <ticket-id> --agent agent:<agent-id> --actor agent:<agent-id>`"+`.
+- Agents may self-dispatch eligible assigned work with `+"`tracker run dispatch <ticket-id> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`"+`.
 - Claim before editing and request review when done.
 - An available entry with action `+"`promote`"+` is a backlog ticket whose blockers are all `+"`done`"+`; run its `+"`ticket move <ID> ready`"+` before claiming.
 - Treat `+"`dependency_blocked`"+` as a stop sign until the blocker reaches `+"`done`"+`.
+- Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
 - Use explicit `+"`--actor`"+` and `+"`--reason`"+` flags for every write.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
@@ -86,6 +88,8 @@ Use Atlas Tasker as the durable workflow layer. The shortest safe loop is:
 6. Check `+"`tracker agent pending <agent-id> --json`"+` when blocked.
 
 Atlas does not poll or launch agents unless an owner enables agent auto mode.
+
+Moving a ticket to its current status is a successful no-op across CLI, MCP, bulk, and web paths.
 `) + "\n"
 }
 
@@ -113,8 +117,9 @@ func cursorBlock(guidePath string) string {
 
 - Pull actionable work with `+"`tracker agent available <agent-id> --json`"+`.
 - Explain blockers with `+"`tracker agent pending <agent-id> --json`"+`.
-- Claim before coding: `+"`tracker ticket claim <ID> --actor <actor> --reason \"start work\"`"+`.
+- Set `+"`TRACKER_ACTOR`"+` to your real Atlas identity, then use `+"`tracker ticket claim <ID> --actor \"$TRACKER_ACTOR\" --reason \"start work\"`"+`.
 - Use explicit review commands: `+"`request-review`"+`, `+"`approve`"+`, `+"`complete`"+`.
+- Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
 - Prefer `+"`tracker mcp serve --tool-profile workflow --workspace <path>`"+` when the session is MCP-first.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
@@ -137,6 +142,7 @@ Cursor loads root `+"`AGENTS.md`"+`. Atlas installs a managed block there and a 
 
 - The managed block in `+"`AGENTS.md`"+` uses `+"`atlas-tasker:cursor`"+` markers so Codex/OpenClaw/Grok blocks can coexist.
 - Keep custom house rules outside the managed markers.
+- Moving a ticket to its current status is a successful no-op across CLI, MCP, bulk, and web paths.
 `) + "\n"
 }
 
@@ -146,6 +152,7 @@ func grokBlock(guidePath string) string {
 - Start with `+"`tracker agent available <agent-id> --json`"+` and `+"`tracker agent pending <agent-id> --json`"+`.
 - Claim before editing and request review when done.
 - Pass `+"`--actor`"+` and `+"`--reason`"+` on every write.
+- Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
 - Prefer JSON reads; treat exit 4 as a forbidden workflow edge, not a crash.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
@@ -167,6 +174,7 @@ Grok-style agents that load root `+"`AGENTS.md`"+` get the managed Atlas block f
 ## Notes
 
 - The managed block uses `+"`atlas-tasker:grok`"+` markers so other install targets do not overwrite it.
+- Moving a ticket to its current status is a successful no-op across CLI, MCP, bulk, and web paths.
 `) + "\n"
 }
 
@@ -186,6 +194,8 @@ description: Use inside an Atlas Tasker workspace -- "what should I work on", "p
 # Atlas Worker
 
 Atlas Tasker is the source of truth for ticket state. Prefer JSON reads, mutate only with explicit actor and reason, and never bypass dependency or governance blockers.
+
+Moving a ticket to its current status is a successful no-op. Inspect the ticket before choosing a different transition.
 
 ## Bootstrap
 
@@ -240,6 +250,8 @@ func atlasWorkerReference() string {
 `+"`not_ready_status`"+` means the ticket is not in a state you can act on: usually backlog that never had blockers, or someone else's `+"`in_progress`"+` work. A backlog ticket whose blockers all landed is not pending; it is listed under available as `+"`promote`"+`.
 
 Only `+"`done`"+` unblocks dependencies. `+"`canceled`"+` does not. `+"`--override-deps`"+` is for `+"`human:owner`"+` only and must include a reason.
+
+Moving a ticket to its current status is a successful no-op across CLI, MCP, bulk, and web paths.
 
 ## Worker Loop
 

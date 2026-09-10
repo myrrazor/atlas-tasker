@@ -14,7 +14,9 @@ Use a terminal width around 96 columns for board/dashboard captures and 100-110 
 ## Web screenshots
 
 Create a fresh synthetic workspace for browser captures. This seeds `web.owner_name`
-as `User`, uses demo projects and actors, and refuses a non-empty destination:
+as `User`, uses demo projects and actors, and refuses a non-empty destination.
+Schedules default to tomorrow in UTC so every new schedule is in the future;
+use the schedule date picker for that day, or set `DEMO_DATE` to another future date:
 
 ```bash
 TRACKER_BIN=/absolute/path/to/tracker sh examples/create-web-demo.sh /tmp/atlas-web-demo
@@ -24,7 +26,9 @@ cd /tmp/atlas-web-demo
 
 Open the authenticated loopback URL printed by the server. Keep that session URL
 and token out of public files. Capture `/`, `/board?ticket=APP-4`, and `/schedule`
-at 1440 × 900, then the board and schedule at 390 × 844. Save the captures to
+at 1440 × 900, then `/board` (without an open ticket) and the schedule at
+390 × 844. Set the phone viewport before navigating so filters start collapsed.
+Wait for fonts and drawer transitions to settle before capturing. Save captures to
 `docs/assets/web-*.png`; encode the desktop board as `site/assets/web-board.webp`.
 Use actual rendered UI and inspect every capture for private names, paths, and tokens.
 

@@ -900,6 +900,10 @@ func (s *ActionService) goalBriefForTicket(ctx context.Context, ticket contracts
 }
 
 func (s *ActionService) goalSections(ctx context.Context, ticket contracts.TicketSnapshot, run *contracts.RunSnapshot) ([]contracts.GoalSection, error) {
+	policy, err := resolveEffectivePolicy(ctx, s.Root, s.Projects, s.Tickets, ticket)
+	if err != nil {
+		return nil, err
+	}
 	runs, err := s.Runs.ListRuns(ctx, ticket.ID)
 	if err != nil {
 		return nil, err
@@ -948,7 +952,7 @@ func (s *ActionService) goalSections(ctx context.Context, ticket contracts.Ticke
 		{Heading: "Allowed Actions", Items: goalCompactStrings("read and update Atlas-owned files for this ticket", "run local tests and attach evidence", "request review when done")},
 		{Heading: "Do Not Do", Items: goalCompactStrings("do not alter private keys or trust decisions", "do not recreate provider state from local manifests", "do not skip required approvals")},
 		{Heading: "Context", Items: contextLines(ticket, runs, changes, handoffs, evidenceItems)},
-		{Heading: "Suggested Commands", Items: suggestedCommandLines(ticket, run)},
+		{Heading: "Suggested Commands", Items: suggestedCommandLines(ticket, run, policy)},
 		{Heading: "Done When", Items: doneWhenLines(ticket, gates)},
 		{Heading: "Verification", Items: verificationLines(ticket, run)},
 	}), nil
@@ -1115,42 +1119,96 @@ func contextLines(ticket contracts.TicketSnapshot, runs []contracts.RunSnapshot,
 	return goalCompactStrings(lines...)
 }
 
-func suggestedCommandLines(ticket contracts.TicketSnapshot, run *contracts.RunSnapshot) []string {
+func suggestedCommandLines(ticket contracts.TicketSnapshot, run *contracts.RunSnapshot, policy EffectivePolicyView) []string {
 	target := ticket.ID
 	evidenceTypes := strings.Join(contracts.ValidEvidenceTypeValues(), ", ")
-	lines := []string{
-		"tracker inspect " + ticket.ID + " --actor <actor> --json",
-		"tracker ticket claim " + ticket.ID + " --actor <actor>",
-		"tracker ticket move " + ticket.ID + " in_progress --actor <actor> --reason \"start work\"",
+	worker, workerNeedsSetup := goalWorkerActor(ticket, run)
+	reviewer, reviewerNeedsSetup := goalReviewerActor(ticket, policy)
+	completionActor, completionRole := goalCompletionActor(worker, reviewer, policy.CompletionMode)
+	lines := []string{}
+	if workerNeedsSetup {
+		lines = append(lines, "set TRACKER_ACTOR to the valid human:... or agent:... identity doing this work before running worker commands")
 	}
+	if reviewerNeedsSetup {
+		lines = append(lines, "set TRACKER_REVIEWER to the valid reviewer identity before review or handoff commands")
+	}
+	lines = append(lines,
+		"worker commands use "+worker,
+		"tracker inspect "+ticket.ID+" --actor "+worker+" --json",
+		"tracker ticket claim "+ticket.ID+" --actor "+worker+" --reason \"start work\"",
+		"tracker ticket move "+ticket.ID+" in_progress --actor "+worker+" --reason \"start work\"",
+	)
 	if run != nil {
 		target = run.RunID
 		lines = append(lines,
-			"tracker run launch "+run.RunID+" --actor <actor> --reason \"prepare launch files\"",
+			"tracker run launch "+run.RunID+" --actor "+worker+" --reason \"prepare launch files\"",
 			"tracker run open "+run.RunID+" --json",
-			"tracker run start "+run.RunID+" --summary \"implementation started\" --actor <actor> --reason \"begin work\"",
-			"tracker run checkpoint "+run.RunID+" --title \"progress\" --body \"what changed\" --actor <actor> --reason \"record progress\"",
-			"tracker run evidence add "+run.RunID+" --type test_result --title \"verification\" --body \"test output\" --actor <actor> --reason \"record verification\"",
-			"tracker run handoff "+run.RunID+" --next-actor <reviewer> --next-gate review --actor <actor> --reason \"ready for review\"",
+			"tracker run start "+run.RunID+" --summary \"implementation started\" --actor "+worker+" --reason \"begin work\"",
+			"tracker run checkpoint "+run.RunID+" --title \"progress\" --body \"what changed\" --actor "+worker+" --reason \"record progress\"",
+			"tracker run evidence add "+run.RunID+" --type test_result --title \"verification\" --body \"test output\" --actor "+worker+" --reason \"record verification\"",
+			"tracker run handoff "+run.RunID+" --next-actor "+reviewer+" --next-gate review --actor "+worker+" --reason \"ready for review\"",
 			"tracker gate list --run "+run.RunID+" --json",
 		)
 	} else if strings.TrimSpace(ticket.LatestRunID) != "" {
 		target = ticket.LatestRunID
 		lines = append(lines,
-			"tracker run launch "+ticket.LatestRunID+" --actor <actor> --reason \"prepare launch files\"",
+			"tracker run launch "+ticket.LatestRunID+" --actor "+worker+" --reason \"prepare launch files\"",
 			"tracker run open "+ticket.LatestRunID+" --json",
-			"tracker run checkpoint "+ticket.LatestRunID+" --title \"progress\" --body \"what changed\" --actor <actor> --reason \"record progress\"",
-			"tracker run evidence add "+ticket.LatestRunID+" --type test_result --title \"verification\" --body \"test output\" --actor <actor> --reason \"record verification\"",
-			"tracker run handoff "+ticket.LatestRunID+" --next-actor <reviewer> --next-gate review --actor <actor> --reason \"ready for review\"",
+			"tracker run checkpoint "+ticket.LatestRunID+" --title \"progress\" --body \"what changed\" --actor "+worker+" --reason \"record progress\"",
+			"tracker run evidence add "+ticket.LatestRunID+" --type test_result --title \"verification\" --body \"test output\" --actor "+worker+" --reason \"record verification\"",
+			"tracker run handoff "+ticket.LatestRunID+" --next-actor "+reviewer+" --next-gate review --actor "+worker+" --reason \"ready for review\"",
 			"tracker gate list --run "+ticket.LatestRunID+" --json",
 		)
 	}
 	lines = append(lines,
 		"tracker goal brief "+target+" --md",
 		"valid evidence types: "+evidenceTypes,
-		"when review passes: tracker ticket complete "+ticket.ID+" --actor <actor> --reason \"done\"",
+		"the worker requests review; the reviewer approves separately",
+		"tracker ticket request-review "+ticket.ID+" --reviewer "+reviewer+" --actor "+worker+" --reason \"ready for review\"",
+		"tracker ticket approve "+ticket.ID+" --actor "+reviewer+" --reason \"review passed\"",
 	)
+	if policy.CompletionMode == contracts.CompletionModeReviewGate {
+		lines = append(lines, "reviewer approval completes the ticket in review_gate mode", "tracker ticket view "+ticket.ID+" --json")
+	} else {
+		lines = append(lines, completionRole, "tracker ticket complete "+ticket.ID+" --actor "+completionActor+" --reason \"done\"")
+	}
 	return goalCompactStrings(lines...)
+}
+
+func goalWorkerActor(ticket contracts.TicketSnapshot, run *contracts.RunSnapshot) (string, bool) {
+	if run != nil && strings.TrimSpace(run.AgentID) != "" {
+		actor := contracts.Actor(strings.TrimSpace(run.AgentID))
+		if !actor.IsValid() {
+			actor = contracts.Actor("agent:" + strings.TrimSpace(run.AgentID))
+		}
+		return goalShellQuote(string(actor)), false
+	}
+	if ticket.Assignee != "" {
+		return goalShellQuote(string(ticket.Assignee)), false
+	}
+	return `"$TRACKER_ACTOR"`, true
+}
+
+func goalReviewerActor(ticket contracts.TicketSnapshot, policy EffectivePolicyView) (string, bool) {
+	if reviewer := effectiveReviewer(ticket, policy); reviewer != "" {
+		return goalShellQuote(string(reviewer)), false
+	}
+	return `"$TRACKER_REVIEWER"`, true
+}
+
+func goalCompletionActor(worker, reviewer string, mode contracts.CompletionMode) (string, string) {
+	switch mode {
+	case contracts.CompletionModeReviewGate:
+		return reviewer, "reviewer completion after approval"
+	case contracts.CompletionModeOwnerGate, contracts.CompletionModeDualGate:
+		return goalShellQuote("human:owner"), "owner completion after required approval"
+	default:
+		return worker, "worker completion in open mode"
+	}
+}
+
+func goalShellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func doneWhenLines(ticket contracts.TicketSnapshot, gates []contracts.GateSnapshot) []string {

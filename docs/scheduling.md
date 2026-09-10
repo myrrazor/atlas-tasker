@@ -4,13 +4,17 @@ Atlas schedules a ticket once at an exact RFC3339 instant. The ticket's assignee
 
 ## Human reminders
 
+Set `FUTURE_AT` to an RFC3339 instant strictly after the current time, then run:
+
 ```bash
 tracker schedule set APP-12 \
-  --at 2026-08-10T09:00:00-04:00 \
+  --at "$FUTURE_AT" \
   --runner human:owner \
   --actor human:owner \
   --reason "Monday follow-up"
 ```
+
+Atlas rejects a past or current instant before changing the schedule or ticket assignee.
 
 Before the due time, `tracker schedule list` reports the ticket as `scheduled`. Once it is past due but has not been ticked, it is `overdue`. A tick records `ticket.schedule_triggered`, which goes through the same terminal, file, webhook, and subscription notification paths as other Atlas alerts.
 
@@ -20,7 +24,7 @@ The runner may be an enabled agent profile:
 
 ```bash
 tracker schedule set APP-12 \
-  --at 2026-08-10T13:00:00Z \
+  --at "$FUTURE_AT" \
   --runner agent:builder-1 \
   --actor human:owner \
   --reason "run release checks"

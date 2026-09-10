@@ -125,7 +125,7 @@
 tracker update --yes
 
 <span class="c"># install a specific release</span>
-tracker update --version v1.11.0 --yes</pre>
+tracker update --version v1.13.0 --yes</pre>
         </div>
 
         <h2>Initialize a workspace</h2>
@@ -149,7 +149,8 @@ tracker ticket move APP-1 ready --actor human:owner --reason "groomed"</pre>
         </div>
         <p>Two habits to pick up right away:</p>
         <ul>
-          <li>Every mutation names an <code>--actor</code> (<code>human:&lt;name&gt;</code> or <code>agent:&lt;id&gt;</code>) and a <code>--reason</code>. They are the audit trail, and some policies reject writes without them. Omitting <code>--actor</code> silently attributes the write to <code>human:owner</code>.</li>
+          <li>Every mutation-flag command needs an identity. Atlas resolves an explicit <code>--actor</code> first, then <code>TRACKER_ACTOR</code>, then <code>actor.default</code>; if none is set, the command exits 2 before it writes. There is no silent <code>human:owner</code> fallback. Use <code>human:&lt;name&gt;</code> or <code>agent:&lt;id&gt;</code>.</li>
+          <li>Add <code>--reason</code> so the audit trail explains why the write happened. MCP ticket and event mutations, protected operations, and security-sensitive operations require a non-empty reason; ordinary CLI mutations accept one whenever policy permits and should still receive one.</li>
           <li><code>tracker project create</code> is the exception: projects are containers, not tracked mutations, so it takes neither flag. Passing <code>--actor</code> there is an unknown-flag error.</li>
         </ul>
 

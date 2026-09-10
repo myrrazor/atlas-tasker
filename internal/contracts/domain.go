@@ -218,12 +218,16 @@ func (p Project) Validate() error {
 
 // WorkflowConfig captures project/workspace workflow policy.
 type WorkflowConfig struct {
-	CompletionMode CompletionMode `json:"completion_mode"`
+	CompletionMode   CompletionMode `json:"completion_mode"`
+	RequiredReviewer Actor          `json:"required_reviewer,omitempty"`
 }
 
 func (w WorkflowConfig) Validate() error {
 	if !w.CompletionMode.IsValid() {
 		return fmt.Errorf("invalid completion mode: %s", w.CompletionMode)
+	}
+	if w.RequiredReviewer != "" && !w.RequiredReviewer.IsValid() {
+		return fmt.Errorf("invalid required reviewer: %s", w.RequiredReviewer)
 	}
 	return nil
 }
@@ -765,9 +769,6 @@ func IsTerminalStatus(status Status) bool {
 
 // BoardStatus returns the status bucket used by board-style views.
 func BoardStatus(ticket TicketSnapshot) Status {
-	if IsTerminalStatus(ticket.Status) {
-		return StatusDone
-	}
 	return ticket.Status
 }
 
@@ -776,7 +777,6 @@ func NormalizeProject(project Project) Project {
 	project.Name = strings.TrimSpace(project.Name)
 	originalSchema := project.SchemaVersion
 	if originalSchema == 0 {
-		project.Defaults.CompletionMode = firstCompletionMode(project.Defaults.CompletionMode, CompletionModeOpen)
 		project.SchemaVersion = CurrentSchemaVersion
 	}
 	if project.Defaults.LeaseTTLMinutes == 0 {

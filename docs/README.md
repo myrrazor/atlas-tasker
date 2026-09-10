@@ -73,7 +73,7 @@ Start here if you are new to Atlas Tasker. This page is the public docs route ma
 
 ## Release Status
 
-Atlas includes the MCP workflow loop, `tracker update`, six-target integration detection and installation, and local security hardening. Local proof and hosted release proof stay separate gates for every release. The [v1.12 release evidence](release/v1.12.0-release-evidence.md) records preparation and owner approval, while release pages record hosted verification. Read [public release gates](release/public-release-gates.md) before treating a development build as release-ready.
+The v1.13.0 source tightens actor and review-policy consistency, keeps canceled work distinct on every board, rejects nonfuture schedules before mutation, makes all six integration targets portable, and expands safe MCP bootstrap and workflow coverage. Local proof and hosted release proof stay separate gates for every release. The [workflow consistency review](release/workflow-consistency-review-2026-09-09.md) records the local implementation evidence, while release pages record hosted verification. Read [public release gates](release/public-release-gates.md) before treating a development build as release-ready.
 
 ## Security Boundary
 

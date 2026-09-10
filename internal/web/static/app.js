@@ -235,7 +235,7 @@
     title.textContent = data.title || data.ticketId;
     const status = document.createElement('p');
     status.className = 'card-preview-status';
-    status.textContent = data.status || message('unknownStatus', 'Unknown status');
+    status.textContent = data.statusLabel || data.status || message('unknownStatus', 'Unknown status');
     const details = document.createElement('dl');
     addPreviewRow(details, message('assignee', 'Assignee'), data.assignee || message('unassigned', 'Unassigned'));
     addPreviewRow(details, message('reviewer', 'Reviewer'), data.reviewer || message('none', 'None'));

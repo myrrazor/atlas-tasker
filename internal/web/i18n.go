@@ -116,6 +116,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.column.in_review":            "In review",
 		"board.column.blocked":              "Blocked",
 		"board.column.done":                 "Done",
+		"board.column.canceled":             "Canceled",
 		"board.shortcuts.aria":              "Keyboard shortcuts",
 		"board.shortcuts.new_ticket":        "n New ticket",
 		"board.shortcuts.search":            "/ Search",
@@ -125,6 +126,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.empty.detail_body":           "Create a ticket or pick one from the board.",
 		"board.empty.column_title":          "No tickets",
 		"board.empty.column_done":           "Completed tickets appear here.",
+		"board.empty.column_canceled":       "Canceled tickets appear here.",
 		"board.empty.column_other":          "Drag or create a ticket to get started.",
 		"board.assigned_to":                 "Assigned to agent:%s",
 		"board.new.eyeline":                 "New ticket",
@@ -281,6 +283,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.column.in_review":            "En revisión",
 		"board.column.blocked":              "Bloqueado",
 		"board.column.done":                 "Finalizado",
+		"board.column.canceled":             "Cancelado",
 		"board.shortcuts.aria":              "Atajos de teclado",
 		"board.shortcuts.new_ticket":        "n Nuevo ticket",
 		"board.shortcuts.search":            "/ Buscar",
@@ -290,6 +293,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.empty.detail_body":           "Crea un ticket o elige uno del tablero.",
 		"board.empty.column_title":          "No hay tickets",
 		"board.empty.column_done":           "Los tickets finalizados aparecerán aquí.",
+		"board.empty.column_canceled":       "Los tickets cancelados aparecerán aquí.",
 		"board.empty.column_other":          "Arrastra o crea un ticket para empezar.",
 		"board.assigned_to":                 "Asignado al agente: %s",
 		"board.new.eyeline":                 "Nuevo ticket",
@@ -446,6 +450,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.column.in_review":            "Ditinjau",
 		"board.column.blocked":              "Terhambat",
 		"board.column.done":                 "Selesai",
+		"board.column.canceled":             "Dibatalkan",
 		"board.shortcuts.aria":              "Pintasan keyboard",
 		"board.shortcuts.new_ticket":        "n Tiket baru",
 		"board.shortcuts.search":            "/ Cari",
@@ -455,6 +460,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.empty.detail_body":           "Buat tiket atau pilih satu dari papan.",
 		"board.empty.column_title":          "Belum ada tiket",
 		"board.empty.column_done":           "Tiket yang selesai akan muncul di sini.",
+		"board.empty.column_canceled":       "Tiket yang dibatalkan akan muncul di sini.",
 		"board.empty.column_other":          "Tarik atau buat tiket untuk mulai.",
 		"board.assigned_to":                 "Ditugaskan kepada agen: %s",
 		"board.new.eyeline":                 "Tiket baru",
@@ -608,6 +614,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.column.in_review":            "评审中",
 		"board.column.blocked":              "已阻塞",
 		"board.column.done":                 "已完成",
+		"board.column.canceled":             "已取消",
 		"board.shortcuts.aria":              "键盘快捷键",
 		"board.shortcuts.new_ticket":        "n 新建工单",
 		"board.shortcuts.search":            "/ 搜索",
@@ -617,6 +624,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.empty.detail_body":           "创建一个工单，或从看板中选择一个。",
 		"board.empty.column_title":          "暂无工单",
 		"board.empty.column_done":           "已完成的工单会显示在这里。",
+		"board.empty.column_canceled":       "已取消的工单会显示在这里。",
 		"board.empty.column_other":          "拖动或创建工单即可开始。",
 		"board.assigned_to":                 "已分配给智能体：%s",
 		"board.new.eyeline":                 "新建工单",
@@ -773,6 +781,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.column.in_review":            "レビュー中",
 		"board.column.blocked":              "ブロック中",
 		"board.column.done":                 "完了",
+		"board.column.canceled":             "キャンセル",
 		"board.shortcuts.aria":              "キーボードショートカット",
 		"board.shortcuts.new_ticket":        "n チケット作成",
 		"board.shortcuts.search":            "/ 検索",
@@ -782,6 +791,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.empty.detail_body":           "チケットを作成するか、ボードから選択してください。",
 		"board.empty.column_title":          "チケットなし",
 		"board.empty.column_done":           "完了したチケットがここに表示されます。",
+		"board.empty.column_canceled":       "キャンセルしたチケットがここに表示されます。",
 		"board.empty.column_other":          "ドラッグまたは作成で始めましょう。",
 		"board.assigned_to":                 "エージェントに割り当て：%s",
 		"board.new.eyeline":                 "チケット作成",
@@ -938,6 +948,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.column.in_review":            "리뷰 중",
 		"board.column.blocked":              "차단됨",
 		"board.column.done":                 "완료",
+		"board.column.canceled":             "취소됨",
 		"board.shortcuts.aria":              "키보드 단축키",
 		"board.shortcuts.new_ticket":        "n 새 티켓",
 		"board.shortcuts.search":            "/ 검색",
@@ -947,6 +958,7 @@ var messageCatalogs = map[string]map[string]string{
 		"board.empty.detail_body":           "티켓을 만들거나 보드에서 선택하세요.",
 		"board.empty.column_title":          "티켓 없음",
 		"board.empty.column_done":           "완료된 티켓이 여기에 표시됩니다.",
+		"board.empty.column_canceled":       "취소된 티켓이 여기에 표시됩니다.",
 		"board.empty.column_other":          "드래그하거나 새로 만들어 시작하세요.",
 		"board.assigned_to":                 "에이전트에 할당됨: %s",
 		"board.new.eyeline":                 "새 티켓",
@@ -1110,6 +1122,8 @@ func statusMessageKey(status contracts.Status) string {
 		return "board.column.blocked"
 	case contracts.StatusDone:
 		return "board.column.done"
+	case contracts.StatusCanceled:
+		return "board.column.canceled"
 	default:
 		return ""
 	}

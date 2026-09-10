@@ -68,12 +68,16 @@ block.
 | `codex` | `AGENTS.md` | `.codex/skills/atlas-worker/` plus `.tracker/integrations/commands/atlas-{next,take,review}.md` |
 | `cursor` | `AGENTS.md` | `.cursor/skills/atlas-worker/`, including its `commands/` directory |
 | `openclaw` | `AGENTS.md` | `.agents/skills/atlas-worker/`, including its `commands/` directory |
-| `grok` | `AGENTS.md` | `.tracker/integrations/atlas-agent-skill/` |
-| `generic` | `AGENTS.md` | `.tracker/integrations/generic-agent-instructions.md` and `.tracker/integrations/atlas-agent-skill/`, including its `commands/` directory |
+| `grok` | `AGENTS.md` | `.tracker/integrations/grok-agent-skill/` |
+| `generic` | `AGENTS.md` | `.tracker/integrations/generic-agent-instructions.md` and `.tracker/integrations/generic-agent-skill/`, including its `commands/` directory |
 
 Codex, Cursor, OpenClaw, Grok, and generic targets use distinct managed markers in `AGENTS.md`, so
 their Atlas blocks can coexist. Claude uses `CLAUDE.md`. Re-running the same install refreshes Atlas's
 managed files. Keep custom instructions outside the markers.
+
+Grok and generic installs use separate skill directories, so installing one cannot rewrite the
+other's provider-specific skill. Older `.tracker/integrations/atlas-agent-skill/` content is left
+untouched; reinstall the intended target to create its new provider-specific directory.
 
 `--force` replaces the entire target instruction file before writing the Atlas block. Use it only
 when replacing existing `AGENTS.md` or `CLAUDE.md` content is intentional.

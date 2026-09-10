@@ -121,6 +121,21 @@ func TestCursorClampsAcrossScreenSizes(t *testing.T) {
 	}
 }
 
+func TestBoardScreenIncludesCanceledTickets(t *testing.T) {
+	canceled := contracts.TicketSnapshot{ID: "APP-9", Status: contracts.StatusCanceled, Title: "Stopped work"}
+	board := service.BoardViewModel{Board: contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusCanceled: {canceled},
+	}}}
+	m := model{screen: screenBoard, board: board}
+	items := m.itemsForScreen()
+	if len(items) != 1 || items[0].ID != canceled.ID {
+		t.Fatalf("canceled ticket missing from board screen items: %#v", items)
+	}
+	if got := firstBoardTicketID(board); got != canceled.ID {
+		t.Fatalf("canceled-only board must select %s, got %q", canceled.ID, got)
+	}
+}
+
 func TestTicketsListViewUsesNarrowWidth(t *testing.T) {
 	out := ticketsListView("Board", []contracts.TicketSnapshot{{
 		ID:       "APP-1",

@@ -124,9 +124,9 @@ tracker agent eligible APP-1</pre>
             </thead>
             <tbody>
               <tr><td><code>solo</code></td><td>builder-1</td><td>open: one agent finishes its own tickets</td></tr>
-              <tr><td><code>pair</code></td><td>builder-1 + reviewer-1</td><td>review gate: builders cannot approve or complete</td></tr>
-              <tr><td><code>swarm</code></td><td>builder-1..3 + qa-1 + owner-delegate-1</td><td>review gate, routing weights, one active run each</td></tr>
-              <tr><td><code>crossfire</code></td><td>codex builds, claude reviews</td><td>review gate across vendors</td></tr>
+              <tr><td><code>pair</code></td><td>builder-1 + reviewer-1</td><td>review gate with <code>agent:reviewer-1</code></td></tr>
+              <tr><td><code>swarm</code></td><td>builder-1..3 + qa-1 + owner-delegate-1</td><td>review gate with <code>agent:qa-1</code>, routing weights, one active run each</td></tr>
+              <tr><td><code>crossfire</code></td><td>codex builds, claude reviews</td><td>review gate with <code>agent:reviewer-1</code> across vendors</td></tr>
             </tbody>
           </table>
         </div>
@@ -136,7 +136,7 @@ tracker agent eligible APP-1</pre>
 tracker team apply pair --dry-run --actor human:owner --reason "preview"
 tracker team apply pair --actor human:owner --reason "team setup"</pre>
         </div>
-        <p>Re-running <code>apply</code> is safe: existing agents, runbooks, and profiles are skipped, never overwritten.</p>
+        <p>Pair and crossfire set the workspace reviewer to <code>agent:reviewer-1</code>; swarm uses <code>agent:qa-1</code>. New projects inherit the workspace completion policy. Applying a review preset also clears existing project <code>open</code> overrides so they inherit the review gate, and its preview names every affected project. Explicit non-open completion policies and reviewer overrides remain in place. Re-running <code>apply</code> preserves existing agent, runbook, and permission-profile customizations.</p>
 
         <h2>The agent working loop</h2>
         <div class="code-block">
@@ -151,9 +151,12 @@ tracker ticket comment APP-12 --body "retry now exponential" \
   --actor agent:builder-1 --reason "progress note"
 
 <span class="c"># hand it over</span>
-tracker ticket request-review APP-12 --actor agent:builder-1 --reason "ready for review"</pre>
+tracker ticket request-review APP-12 --actor agent:builder-1 --reason "ready for review"
+
+<span class="c"># the configured reviewer finishes review-gated work</span>
+tracker ticket approve APP-12 --actor agent:reviewer-1 --reason "review passed"</pre>
         </div>
-        <p><code>agent available</code> lists what an agent can start, continue, review, promote, or complete now, and each item includes <code>suggested_commands</code> ready to execute verbatim. A <code>promote</code> entry is a backlog ticket whose blockers are all done; its first suggested command is the move to <code>ready</code>. When nothing is available, <code>tracker agent pending builder-1 --json</code> explains why with stable reason codes: <code>dependency_blocked</code>, <code>waiting_for_review</code>, <code>waiting_for_owner</code>, <code>not_ready_status</code>, <code>claimed_by_other</code>, <code>policy_blocked</code>, <code>agent_at_capacity</code>, <code>missing_capability</code>.</p>
+        <p><code>agent available</code> lists what an agent can start, continue, review, promote, or complete now, and each item includes <code>suggested_commands</code> ready to execute verbatim. Under <code>review_gate</code>, approval by the required reviewer moves the ticket to <code>done</code>; neither the owner nor reviewer can call <code>complete</code> from <code>in_progress</code> to skip that lifecycle. A <code>promote</code> entry is a backlog ticket whose blockers are all done; its first suggested command is the move to <code>ready</code>. When nothing is available, <code>tracker agent pending builder-1 --json</code> explains why with stable reason codes: <code>dependency_blocked</code>, <code>waiting_for_review</code>, <code>waiting_for_owner</code>, <code>not_ready_status</code>, <code>claimed_by_other</code>, <code>policy_blocked</code>, <code>agent_at_capacity</code>, <code>missing_capability</code>.</p>
         <div class="docs-note">
           <p>Only a dependency reaching <code>done</code> clears <code>dependency_blocked</code>. A canceled blocker stays blocking, on purpose, until a human resolves the plan. When the last blocker of an agent-assigned ticket completes, Atlas moves that ticket from <code>backlog</code> to <code>ready</code> itself (audited as <code>agent:atlas</code>) before the wake-up goes out. Nothing else is promoted: an unassigned dependent surfaces as a claimable <code>promote</code> entry in <code>agent available</code> and under <code>unblocked_for_me</code> in <code>tracker queue</code>, while a human-assigned one surfaces only in that human's <code>queue</code>/<code>next</code> under <code>unblocked_for_me</code>. An agent-assigned ticket shows as <code>promote</code> when the automatic move failed (wake-up metadata <code>promoted="false"</code>) or the blocker was already done when it was linked or assigned.</p>
         </div>
@@ -211,7 +214,7 @@ tracker integrations install
 <span class="c"># explicit and non-interactive</span>
 tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic</pre>
         </div>
-        <p>The six targets are Claude Code, Codex, Cursor, OpenClaw, Grok, and a portable generic integration. They write a generated guide plus runtime-specific skills, commands, or managed instruction blocks inside the workspace. Re-running updates Atlas-managed content; <code>--force</code> whole-file replacement is opt-in. This teaches the workflow but does not register an MCP server. Follow <a href="mcp-setup.html">MCP setup</a> separately when the client should receive typed tools.</p>
+        <p>The six targets are Claude Code, Codex, Cursor, OpenClaw, Grok, and a portable generic integration. They write a generated guide plus runtime-specific skills, commands, or managed instruction blocks inside the workspace. OpenClaw follows that repository-local default too; writing its shared home-directory skill requires the explicit OpenClaw-only <code>--global</code> option. Re-running updates Atlas-managed content; <code>--force</code> whole-file replacement is opt-in. This teaches the workflow but does not register an MCP server. Follow <a href="mcp-setup.html">MCP setup</a> separately when the client should receive typed tools.</p>
       </article>
       <nav class="docs-pager" aria-label="Docs pages">
         <a class="pager-prev" href="web-board.html"><span class="pager-label">Previous</span><span class="pager-title">The web board</span></a>

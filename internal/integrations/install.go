@@ -193,11 +193,12 @@ func (i Installer) spec(target Target) (installSpec, error) {
 	switch target {
 	case TargetCodex:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "codex-guide.md")
+		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "codex-guide.md"))
 		skillDir := filepath.Join(i.Root, ".codex", "skills", "atlas-worker")
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
-			blockBody:       codexBlock(guidePath),
+			blockBody:       codexBlock(guideRef),
 			guideBody:       codexGuide(),
 			markers:         defaultMarkers,
 			extraFiles: []managedInstallFile{
@@ -211,12 +212,13 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		}, nil
 	case TargetClaude:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "claude-guide.md")
+		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "claude-guide.md"))
 		commandDir := filepath.Join(i.Root, ".claude", "commands")
 		skillDir := filepath.Join(i.Root, ".claude", "skills", "atlas-worker")
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "CLAUDE.md"),
 			guidePath:       guidePath,
-			blockBody:       claudeBlock(guidePath),
+			blockBody:       claudeBlock(guideRef),
 			guideBody:       claudeGuide(),
 			markers:         defaultMarkers,
 			extraFiles: []managedInstallFile{
@@ -231,14 +233,15 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		}, nil
 	case TargetOpenClaw:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "openclaw-guide.md")
+		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "openclaw-guide.md"))
 		// .agents/skills is OpenClaw's repo-local skill root; ~/.openclaw/skills is
 		// the shared one, and that copy is the user's to install, not ours to write
 		skillDir := filepath.Join(i.Root, ".agents", "skills", "atlas-worker")
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
-			blockBody:       openclawBlock(guidePath),
-			guideBody:       openclawGuide(skillDir),
+			blockBody:       openclawBlock(guideRef),
+			guideBody:       openclawGuide(filepath.ToSlash(filepath.Join(".agents", "skills", "atlas-worker"))),
 			markers:         openclawMarkers,
 			extraFiles: []managedInstallFile{
 				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("openclaw"), kind: "skill"},
@@ -250,15 +253,16 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		}, nil
 	case TargetGeneric:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "generic-agent-guide.md")
-		skillDir := filepath.Join(i.Root, ".tracker", "integrations", "atlas-agent-skill")
+		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "generic-agent-guide.md"))
+		skillDir := filepath.Join(i.Root, ".tracker", "integrations", "generic-agent-skill")
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
-			blockBody:       genericBlock(guidePath),
+			blockBody:       genericBlock(guideRef),
 			guideBody:       genericGuide(),
 			markers:         genericMarkers,
 			extraFiles: []managedInstallFile{
-				{path: filepath.Join(i.Root, ".tracker", "integrations", "generic-agent-instructions.md"), body: genericBlock(guidePath) + "\n", kind: "command"},
+				{path: filepath.Join(i.Root, ".tracker", "integrations", "generic-agent-instructions.md"), body: genericBlock(guideRef) + "\n", kind: "command"},
 				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("generic"), kind: "skill"},
 				{path: filepath.Join(skillDir, "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
 				{path: filepath.Join(skillDir, "commands", "atlas-next.md"), body: atlasNextCommandTemplate(), kind: "command"},
@@ -268,11 +272,12 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		}, nil
 	case TargetCursor:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "cursor-guide.md")
+		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "cursor-guide.md"))
 		skillDir := filepath.Join(i.Root, ".cursor", "skills", "atlas-worker")
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
-			blockBody:       cursorBlock(guidePath),
+			blockBody:       cursorBlock(guideRef),
 			guideBody:       cursorGuide(),
 			markers:         cursorMarkers,
 			extraFiles: []managedInstallFile{
@@ -285,15 +290,17 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		}, nil
 	case TargetGrok:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "grok-guide.md")
+		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "grok-guide.md"))
+		skillDir := filepath.Join(i.Root, ".tracker", "integrations", "grok-agent-skill")
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
-			blockBody:       grokBlock(guidePath),
+			blockBody:       grokBlock(guideRef),
 			guideBody:       grokGuide(),
 			markers:         grokMarkers,
 			extraFiles: []managedInstallFile{
-				{path: filepath.Join(i.Root, ".tracker", "integrations", "atlas-agent-skill", "SKILL.md"), body: atlasWorkerSkill("grok"), kind: "skill"},
-				{path: filepath.Join(i.Root, ".tracker", "integrations", "atlas-agent-skill", "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
+				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("grok"), kind: "skill"},
+				{path: filepath.Join(skillDir, "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
 			},
 		}, nil
 	default:
@@ -434,13 +441,15 @@ func replaceManagedBlock(body string, managed string, markers blockMarkers) (str
 func codexBlock(guidePath string) string {
 	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (Codex)
 
+- Set `+"`TRACKER_ACTOR`"+` to your real Atlas identity before using commands below, for example `+"`export TRACKER_ACTOR='agent:builder-1'`"+`.
 - Pull actionable work with `+"`tracker agent available <agent-id> --json`"+`.
 - Explain blockers with `+"`tracker agent pending <agent-id> --json`"+`.
 - Generate pasteable goals with `+"`tracker goal brief <TICKET-ID|RUN-ID> --md`"+`.
-- Claim before coding: `+"`tracker ticket claim <ID> --actor <actor>`"+`.
+- Claim before coding: `+"`tracker ticket claim <ID> --actor \"$TRACKER_ACTOR\" --reason \"start work\"`"+`.
 - Update status and review explicitly: `+"`move`"+`, `+"`request-review`"+`, `+"`approve`"+`, `+"`complete`"+`.
-- Use `+"`tracker inspect <ID> --actor <actor> --json`"+` when the queue and the ticket detail disagree.
-- TUI is available with `+"`tracker tui --actor <actor>`"+`, but the CLI stays canonical.
+- Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
+- Use `+"`tracker inspect <ID> --actor \"$TRACKER_ACTOR\" --json`"+` when the queue and the ticket detail disagree.
+- TUI is available with `+"`tracker tui --actor \"$TRACKER_ACTOR\"`"+`, but the CLI stays canonical.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
 }
@@ -448,12 +457,14 @@ func codexBlock(guidePath string) string {
 func claudeBlock(guidePath string) string {
 	return strings.TrimSpace(fmt.Sprintf(`## Atlas Tasker (Claude Code)
 
+- Set `+"`TRACKER_ACTOR`"+` to your real Atlas identity before using commands below, for example `+"`export TRACKER_ACTOR='agent:builder-1'`"+`.
 - Start with `+"`tracker agent available <agent-id> --json`"+` or `+"`tracker agent pending <agent-id> --json`"+`.
 - Use `+"`tracker goal brief <TICKET-ID|RUN-ID> --md`"+` when a session needs a compact handoff prompt.
 - Claim work before editing and release it when you stop.
 - Use explicit review commands instead of assuming `+"`move done`"+` is enough.
-- Use `+"`tracker inspect <ID> --actor <actor> --json`"+` to debug policy, lease, and queue state.
-- TUI is available with `+"`tracker tui --actor <actor>`"+`, but generated guidance should stay CLI/JSON-first.
+- Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
+- Use `+"`tracker inspect <ID> --actor \"$TRACKER_ACTOR\" --json`"+` to debug policy, lease, and queue state.
+- TUI is available with `+"`tracker tui --actor \"$TRACKER_ACTOR\"`"+`, but generated guidance should stay CLI/JSON-first.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
 }
@@ -463,35 +474,38 @@ func codexGuide() string {
 
 Use Atlas Tasker as the local source of truth for work state.
 
+Set your real Atlas identity once for this shell, for example `+"`export TRACKER_ACTOR='agent:builder-1'`"+`.
+
 ## Recommended loop
 
 1. `+"`tracker agent available builder-1 --json`"+` to find the next actionable ticket.
-2. `+"`tracker ticket claim <ID> --actor agent:builder-1`"+` before you start.
-3. `+"`tracker ticket move <ID> in_progress --actor agent:builder-1`"+` when implementation starts.
+2. `+"`tracker ticket claim <ID> --actor \"$TRACKER_ACTOR\" --reason \"start work\"`"+` before you start.
+3. `+"`tracker ticket move <ID> in_progress --actor \"$TRACKER_ACTOR\" --reason \"start work\"`"+` when implementation starts.
 4. `+"`tracker goal brief <ID> --md`"+` when Codex goal mode needs a clean objective.
-5. `+"`tracker ticket comment <ID> --body \"what changed\" --actor agent:builder-1`"+` for durable notes.
-6. `+"`tracker ticket request-review <ID> --actor agent:builder-1`"+` when the diff is ready.
-7. `+"`tracker run evidence add <RUN-ID> --type test_result --title \"verification\" --body \"test output\" --actor agent:builder-1 --reason \"record verification\"`"+` when you have run-scoped proof.
+5. `+"`tracker ticket comment <ID> --body \"what changed\" --actor \"$TRACKER_ACTOR\" --reason \"progress note\"`"+` for durable notes.
+6. `+"`tracker ticket request-review <ID> --actor \"$TRACKER_ACTOR\" --reason \"ready for review\"`"+` when the diff is ready.
+7. `+"`tracker run evidence add <RUN-ID> --type test_result --title \"verification\" --body \"test output\" --actor \"$TRACKER_ACTOR\" --reason \"record verification\"`"+` when you have run-scoped proof.
 8. `+"`tracker ticket approve|reject|complete ...`"+` based on the active completion policy.
 
 ## Run-scoped launch flow
 
-- `+"`tracker run launch <RUN-ID>`"+` writes the current run brief plus provider launch files under `+"`.tracker/runtime/<run-id>/`"+`.
+- `+"`tracker run launch <RUN-ID> --actor \"$TRACKER_ACTOR\" --reason \"prepare launch files\"`"+` writes the current run brief plus provider launch files under `+"`.tracker/runtime/<run-id>/`"+`.
 - `+"`tracker run open <RUN-ID> --json`"+` shows the canonical runtime, evidence, and worktree paths without changing files.
-- When you attach to an external session, record it with `+"`tracker run attach <RUN-ID> --provider codex --session-ref <session>`"+`.
+- When you attach to an external session, record it with `+"`tracker run attach <RUN-ID> --provider codex --session-ref <session> --actor \"$TRACKER_ACTOR\" --reason \"attach session\"`"+`.
 
 ## JSON-first reads
 
-- `+"`tracker queue --actor <actor> --json`"+`
+- `+"`tracker queue --actor \"$TRACKER_ACTOR\" --json`"+`
 - `+"`tracker agent available <agent-id> --json`"+`
 - `+"`tracker agent pending <agent-id> --json`"+`
-- `+"`tracker inspect <ID> --actor <actor> --json`"+`
+- `+"`tracker inspect <ID> --actor \"$TRACKER_ACTOR\" --json`"+`
 - `+"`tracker ticket history <ID> --json`"+`
 - `+"`tracker goal brief <ID> --json`"+`
 
 ## Notes
 
 - `+"`tracker shell`"+` and `+"`tracker tui`"+` are convenience layers. The CLI remains canonical.
+- Moving a ticket to its current status is a successful no-op across CLI, MCP, bulk, and web paths.
 - The generated block in `+"`AGENTS.md`"+` is managed by Atlas Tasker. Edit around it, not inside it, unless you intend to own the divergence.
 `) + "\n"
 }
@@ -501,29 +515,32 @@ func claudeGuide() string {
 
 Use Atlas Tasker as the durable workflow layer for Claude Code sessions.
 
+Set your real Atlas identity once for this shell, for example `+"`export TRACKER_ACTOR='agent:builder-1'`"+`.
+
 ## Recommended loop
 
 1. `+"`tracker agent available builder-1 --json`"+` for implementation work.
 2. `+"`tracker agent available reviewer-1 --json`"+` for review work.
-3. `+"`tracker ticket claim <ID> --actor <actor>`"+` before you touch the task.
+3. `+"`tracker ticket claim <ID> --actor \"$TRACKER_ACTOR\" --reason \"start work\"`"+` before you touch the task.
 4. `+"`tracker goal brief <ID> --md`"+` when a compact Claude Code session prompt is useful.
-5. `+"`tracker ticket comment <ID> --body \"decision or risk\" --actor <actor>`"+` when context should survive the session.
+5. `+"`tracker ticket comment <ID> --body \"decision or risk\" --actor \"$TRACKER_ACTOR\" --reason \"record context\"`"+` when context should survive the session.
 6. `+"`tracker ticket request-review|approve|reject|complete ...`"+` instead of relying on status changes alone.
 
 ## Run-scoped launch flow
 
-- `+"`tracker run launch <RUN-ID>`"+` writes the current brief and Claude launch text under `+"`.tracker/runtime/<run-id>/`"+`.
+- `+"`tracker run launch <RUN-ID> --actor \"$TRACKER_ACTOR\" --reason \"prepare launch files\"`"+` writes the current brief and Claude launch text under `+"`.tracker/runtime/<run-id>/`"+`.
 - `+"`tracker run open <RUN-ID> --json`"+` shows the canonical runtime, evidence, and worktree paths without changing files.
-- Record the active Claude session with `+"`tracker run attach <RUN-ID> --provider claude --session-ref <session>`"+`.
+- Record the active Claude session with `+"`tracker run attach <RUN-ID> --provider claude --session-ref <session> --actor \"$TRACKER_ACTOR\" --reason \"attach session\"`"+`.
 
 ## Debugging state
 
-- `+"`tracker inspect <ID> --actor <actor> --json`"+` shows effective policy, lease state, queue placement, and history in one call.
+- `+"`tracker inspect <ID> --actor \"$TRACKER_ACTOR\" --json`"+` shows effective policy, lease state, queue placement, and history in one call.
 - `+"`tracker who --json`"+` shows active and stale lease holders.
 
 ## Notes
 
 - The generated block in `+"`CLAUDE.md`"+` is managed by Atlas Tasker. Keep custom notes outside the managed markers.
+- Moving a ticket to its current status is a successful no-op across CLI, MCP, bulk, and web paths.
 - Atlas Tasker guidance is intentionally thin and editable. Extend the guide file if your local workflow needs more detail.
 `) + "\n"
 }

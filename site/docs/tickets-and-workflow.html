@@ -133,16 +133,15 @@ done        -> (terminal)
 canceled    -> (terminal)</pre>
         </div>
         <p><code>backlog -&gt; in_progress</code> is forbidden and always will be; work goes through <code>ready</code>. An illegal move exits with code 4 and a clear message. That exit 4 is the workflow working, not a crash, and retrying the same move gets the same 4.</p>
-        <p><code>in_review</code> and <code>done</code> are special: you reach them through <code>request-review</code>, <code>approve</code>, and <code>complete</code> rather than <code>move</code>, because those commands also run the completion policy and any gates.</p>
+        <p><code>in_review</code> and <code>done</code> are special: you reach them through <code>request-review</code>, <code>approve</code>, or <code>complete</code> rather than <code>move</code>, because those commands also run the completion policy and any gates. Under <code>review_gate</code>, reviewer approval is the final transition to <code>done</code>; there is no second completion command.</p>
         <div class="code-block">
           <div class="snippet-title"><span>the review path</span><button class="copy-button" type="button" data-copy="tw-review" aria-label="Copy review commands">Copy</button></div>
           <pre id="tw-review">tracker ticket request-review APP-1 --reviewer agent:reviewer-1 \
   --actor agent:builder-1 --reason "ready for review"
 tracker ticket approve APP-1 --actor agent:reviewer-1 --reason "review passed"
-tracker ticket complete APP-1 --actor agent:reviewer-1 --reason "merged"
 tracker ticket reject APP-1 --reason "tests missing" --actor agent:reviewer-1</pre>
         </div>
-        <p><code>request-review</code> opens or reuses a review gate, so <code>gate list</code>, <code>approvals</code>, and <code>inbox</code> show the pending review explicitly. When <code>--reviewer</code> is omitted, Atlas uses the ticket reviewer or the effective project, epic, or ticket <code>required_reviewer</code>.</p>
+        <p><code>request-review</code> opens or reuses a review gate, so <code>gate list</code>, <code>approvals</code>, and <code>inbox</code> show the pending review explicitly. When <code>--reviewer</code> is omitted, Atlas uses the ticket reviewer or the effective project, epic, or ticket <code>required_reviewer</code>. Use <code>ticket complete</code> for open-mode work or policies whose separate required gates have passed; it cannot bypass the request-review and approval lifecycle.</p>
 
         <h2>Claims and leases</h2>
         <p>A claim is a lease that keeps two workers off the same ticket. Claim before you touch code.</p>

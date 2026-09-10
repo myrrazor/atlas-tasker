@@ -72,13 +72,23 @@
     </header>
     <div class="legal-content">
       <section class="shell">
+        <h2>v1.13.0 — Workflow Consistency</h2>
+        <ul>
+          <li>Workflow consistency fixes keep Canceled separate from Done across every board, show assignees on cards and terminal views, reject claims that would take another assignee's work, require new schedules to be strictly in the future, and apply one actor-resolution order across CLI mutations.</li>
+          <li>Review team presets now install their actual required reviewer, make new projects inherit workspace policy, migrate project <code>open</code> overrides to inheritance, and enforce the request-review → required-reviewer approval lifecycle. Approval completes <code>review_gate</code> work.</li>
+          <li>The workflow MCP profile adds explicit workspace bootstrap and project creation plus ticket heartbeat, priority, label, and ordinary-field editing. Strict schemas, the read-only default profile, separate client registration, and externally issued high-impact approvals remain in place.</li>
+          <li>Generated agent guidance now uses real configured identities, portable workspace-relative references, distinct integration skill directories, explicit OpenClaw <code>--global</code> wording, same-status no-op guidance, and reasons on mutation examples.</li>
+        </ul>
+        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.13.0">The v1.13.0 release page</a> lists platform downloads, checksums, provenance, and hosted verification. Run <code>tracker update --check</code> to check your installed version.</p>
+      </section>
+      <section class="shell">
         <h2>v1.12.0 — Agent Setup And Documentation</h2>
         <ul>
           <li>Optional first-install agent setup, safe cancellation, and unattended installation.</li>
           <li>All six web languages accepted as saved preferences.</li>
           <li>Updated MCP and self-update docs, a complete Connect Your Agent walkthrough, neutral screenshots, and the current UI wordmark.</li>
         </ul>
-        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/latest">The latest stable release page</a> lists available builds and their verification. The source changelog may include changes ahead of the latest published tag.</p>
+        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.12.0">The v1.12.0 release page</a> preserves its builds and verification. For the current version, use <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">the latest stable release</a>.</p>
       </section>
       <section class="shell">
         <h2>v1.11.0 - MCP Loop, Self-Update, And Local Hardening (2026-09-09)</h2>

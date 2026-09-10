@@ -37,8 +37,11 @@ READ_TOOLS = set(
 
 WORKFLOW_TOOLS = set(
     """
+    atlas.project.create
     atlas.ticket.comment atlas.ticket.claim atlas.ticket.release atlas.ticket.move
-    atlas.ticket.create atlas.ticket.assign atlas.ticket.link atlas.ticket.unlink
+    atlas.ticket.heartbeat atlas.ticket.create atlas.ticket.edit atlas.ticket.assign
+    atlas.ticket.priority atlas.ticket.label.add atlas.ticket.label.remove
+    atlas.ticket.link atlas.ticket.unlink
     atlas.ticket.approve atlas.ticket.reject atlas.ticket.complete
     atlas.agent.create atlas.agent.edit atlas.agent.enable atlas.agent.disable
     atlas.agent.wakeup.ack atlas.team.apply atlas.schedule.set atlas.schedule.clear
@@ -143,6 +146,7 @@ class MCPProcess:
         framing: str,
         timeout: float,
         allow_high_impact: bool = False,
+        init_if_missing: bool = False,
     ) -> None:
         self.framing = framing
         self.timeout = timeout
@@ -161,6 +165,8 @@ class MCPProcess:
         ]
         if allow_high_impact:
             command.append("--dangerously-allow-high-impact-tools")
+        if init_if_missing:
+            command.append("--init-if-missing")
         environment = os.environ.copy()
         environment.update({"NO_COLOR": "1", "TERM": "dumb", "LC_ALL": "C"})
         self.process = subprocess.Popen(
@@ -403,6 +409,7 @@ def open_session(
     framing: str,
     timeout: float,
     allow_high_impact: bool = False,
+    init_if_missing: bool = False,
 ) -> MCPProcess:
     return MCPProcess(
         tracker,
@@ -412,7 +419,35 @@ def open_session(
         framing,
         timeout,
         allow_high_impact=allow_high_impact,
+        init_if_missing=init_if_missing,
     )
+
+
+def bootstrap_workspace(
+    proof: dict[str, Any], tracker: Path, workspace: Path, client_cwd: Path, timeout: float
+) -> None:
+    with open_session(
+        tracker,
+        workspace,
+        client_cwd,
+        "workflow",
+        "ndjson",
+        timeout,
+        init_if_missing=True,
+    ) as session:
+        session.initialize()
+        names = session.list_tools()
+        assert_inventory("bootstrap workflow", names, READ_TOOLS | WORKFLOW_TOOLS)
+        created = structured(
+            session.call("atlas.project.create", {"key": "APP", "name": "MCP Smoke"}),
+            "atlas.project.create",
+        )
+        require(contains(created, '"key":"APP"'), "project create result omitted APP")
+    proof["bootstrap"] = {
+        "fresh_explicit_workspace": "passed",
+        "init_if_missing": "passed",
+        "project_create_over_mcp": "passed",
+    }
 
 
 def verify_transport_and_profiles(
@@ -597,6 +632,93 @@ def verify_workflow(
         )
         dependent_id = ticket_id_from(dependent)
 
+        priority_update = structured(
+            session.call(
+                "atlas.ticket.priority",
+                {
+                    "ticket_id": blocker_id,
+                    "priority": "high",
+                    "actor": "human:owner",
+                    "reason": "MCP smoke priority",
+                },
+            ),
+            "atlas.ticket.priority",
+        )
+        require(contains(priority_update, '"priority":"high"'), "priority update was not persisted")
+        for label in ("smoke", "smoke", "preserved"):
+            structured(
+                session.call(
+                    "atlas.ticket.label.add",
+                    {
+                        "ticket_id": blocker_id,
+                        "label": label,
+                        "actor": "human:owner",
+                        "reason": "MCP smoke label add",
+                    },
+                ),
+                "atlas.ticket.label.add",
+            )
+        labels_after_remove = structured(
+            session.call(
+                "atlas.ticket.label.remove",
+                {
+                    "ticket_id": blocker_id,
+                    "label": "smoke",
+                    "actor": "human:owner",
+                    "reason": "MCP smoke label remove",
+                },
+            ),
+            "atlas.ticket.label.remove",
+        )
+        require(
+            contains(labels_after_remove, '"labels":["preserved"]'),
+            "label add/remove did not de-duplicate and preserve other labels",
+        )
+
+        raw_description = "  MCP body whitespace\n\nkept  "
+        edited = structured(
+            session.call(
+                "atlas.ticket.edit",
+                {
+                    "ticket_id": dependent_id,
+                    "title": "MCP dependent edited",
+                    "description": raw_description,
+                    "acceptance": ["first criterion"],
+                    "priority": "critical",
+                    "labels": ["edited"],
+                    "assignee": "agent:builder-1",
+                    "reviewer": "agent:reviewer-1",
+                    "actor": "human:owner",
+                    "reason": "MCP smoke atomic edit",
+                },
+            ),
+            "atlas.ticket.edit",
+        )
+        require(
+            any(item.get("description") == raw_description for item in deep_dicts(edited)),
+            "ticket edit trimmed raw description",
+        )
+        cleared = structured(
+            session.call(
+                "atlas.ticket.edit",
+                {
+                    "ticket_id": dependent_id,
+                    "description": "",
+                    "acceptance": [],
+                    "labels": [],
+                    "actor": "human:owner",
+                    "reason": "MCP smoke explicit clears",
+                },
+            ),
+            "atlas.ticket.edit",
+        )
+        require(
+            not contains(cleared, "MCP body whitespace")
+            and not contains(cleared, "first criterion")
+            and contains(cleared, '"labels":[]'),
+            "ticket edit explicit clears were not persisted",
+        )
+
         for ticket_id in (blocker_id, dependent_id):
             structured(
                 session.call(
@@ -655,6 +777,18 @@ def verify_workflow(
             ),
             "atlas.ticket.claim",
         )
+        heartbeat = structured(
+            session.call(
+                "atlas.ticket.heartbeat",
+                {
+                    "ticket_id": blocker_id,
+                    "actor": "agent:builder-1",
+                    "reason": "MCP smoke heartbeat",
+                },
+            ),
+            "atlas.ticket.heartbeat",
+        )
+        require(contains(heartbeat, "last_heartbeat_at"), "ticket heartbeat omitted renewal state")
         structured(
             session.call(
                 "atlas.ticket.move",
@@ -752,6 +886,8 @@ def verify_workflow(
             "team_visibility": "passed",
             "agent_create_list_view": "passed",
             "ticket_create_assign_link": "passed",
+            "ticket_edit_priority_labels": "passed",
+            "ticket_heartbeat": "passed",
             "available_pending_queue": "passed",
             "goal_brief": "passed",
             "actor_sequence": ["agent:builder-1", "agent:reviewer-1", "human:owner"],
@@ -778,8 +914,8 @@ def write_outputs(proof: dict[str, Any], json_path: Path | None, report_path: Pa
         if proof.get("status") == "passed":
             outcome = "PASS"
             detail = (
-                "Both stdio framings, exact profile inventories, read-profile denial, and the "
-                "actor-separated MCP workflow completed successfully."
+                "Fresh explicit workspace bootstrap, both stdio framings, exact profile inventories, "
+                "read-profile denial, and the actor-separated MCP workflow completed successfully."
             )
         else:
             outcome = "FAIL"
@@ -790,7 +926,9 @@ def write_outputs(proof: dict[str, Any], json_path: Path | None, report_path: Pa
             "## Profile inventories\n\n"
             + ("\n".join(profile_lines) if profile_lines else "- Not completed")
             + "\n\n## Workflow\n\n"
+            + f"- Fresh bootstrap and MCP project create: {proof.get('bootstrap', {}).get('init_if_missing', 'not completed')} / {proof.get('bootstrap', {}).get('project_create_over_mcp', 'not completed')}\n"
             + f"- Ticket create/assign/link: {workflow.get('ticket_create_assign_link', 'not completed')}\n"
+            + f"- Ticket edit/priority/labels and heartbeat: {workflow.get('ticket_edit_priority_labels', 'not completed')} / {workflow.get('ticket_heartbeat', 'not completed')}\n"
             + f"- Queue and goal visibility: {workflow.get('available_pending_queue', 'not completed')} / {workflow.get('goal_brief', 'not completed')}\n"
             + f"- Review/approval/completion: {workflow.get('request_review_approve_complete', 'not completed')}\n"
             + f"- Dependency wake-up and acknowledgement: {workflow.get('dependency_wakeup', 'not completed')} / {workflow.get('wakeup_ack', 'not completed')}\n"
@@ -855,30 +993,7 @@ def main() -> int:
                 ]
             )
             require(workspace_path != client_cwd_path, "synthetic workspace and client cwd must differ")
-            run_cli(tracker, workspace_path, ["init", "--skip-integrations", "--json"], args.timeout)
-            run_cli(tracker, workspace_path, ["project", "create", "APP", "MCP Smoke", "--json"], args.timeout)
-            run_cli(
-                tracker,
-                workspace_path,
-                [
-                    "project",
-                    "policy",
-                    "set",
-                    "APP",
-                    "--completion-mode",
-                    "dual_gate",
-                    "--required-reviewer",
-                    "agent:reviewer-1",
-                    "--allowed-workers",
-                    "agent:builder-1",
-                    "--actor",
-                    "human:owner",
-                    "--reason",
-                    "MCP smoke policy",
-                    "--json",
-                ],
-                args.timeout,
-            )
+            bootstrap_workspace(proof, tracker, workspace_path, client_cwd_path, args.timeout)
             verify_transport_and_profiles(proof, tracker, workspace_path, client_cwd_path, args.timeout)
             verify_workflow(proof, tracker, workspace_path, client_cwd_path, args.timeout)
             proof["status"] = "passed"

@@ -29,7 +29,8 @@ func TestBoardCardsRenderMinimalFacePreviewDataAndMappedAgentChip(t *testing.T) 
 	res := h.doAuthed(t, http.MethodGet, "/board", "", nil)
 	card := firstCardMarkup(t, res.body)
 	for _, want := range []string{
-		`data-status="Blocked"`,
+		`data-status="blocked"`,
+		`data-status-label="Blocked"`,
 		`data-assignee="agent:claude"`,
 		`data-reviewer="agent:reviewer-1"`,
 		`data-priority="high"`,
@@ -39,6 +40,7 @@ func TestBoardCardsRenderMinimalFacePreviewDataAndMappedAgentChip(t *testing.T) 
 		`data-comments="1"`,
 		`class="card-agent-chip chip--orange"`,
 		`title="Assigned to agent:claude"`,
+		`class="ticket-assignee">Assignee: agent:claude</span>`,
 	} {
 		if !strings.Contains(card, want) {
 			t.Fatalf("minimal card missing %q:\n%s", want, card)
@@ -52,6 +54,43 @@ func TestBoardCardsRenderMinimalFacePreviewDataAndMappedAgentChip(t *testing.T) 
 	for _, drawerCopy := range []string{"Notes &amp; activity", "Notes &amp; comments", `class="drawer-labels"`} {
 		if !strings.Contains(res.body, drawerCopy) {
 			t.Fatalf("drawer missing %q:\n%s", drawerCopy, excerpt(res.body, "detail-drawer"))
+		}
+	}
+}
+
+func TestCanceledTicketKeepsBoardColumnStatusAndMoveOption(t *testing.T) {
+	h := newWebHarness(t, false)
+	if _, err := h.actions.MutateTrackedTicket(context.Background(), h.ticketID, contracts.Actor("human:owner"), "test", "assign canceled ticket", func(ticket *contracts.TicketSnapshot) error {
+		ticket.Assignee = contracts.Actor("human:owner")
+		return nil
+	}); err != nil {
+		t.Fatalf("assign ticket: %v", err)
+	}
+	if _, err := h.actions.MoveTicket(context.Background(), h.ticketID, contracts.StatusCanceled, contracts.Actor("human:owner"), "stop work"); err != nil {
+		t.Fatalf("cancel ticket: %v", err)
+	}
+
+	res := h.doAuthed(t, http.MethodGet, "/board?column=canceled&ticket="+h.ticketID, "", nil)
+	if res.code != http.StatusOK {
+		t.Fatalf("board status = %d body=%s", res.code, res.body)
+	}
+	card := firstCardMarkup(t, res.body)
+	for _, want := range []string{
+		`data-status="canceled"`,
+		`data-status-label="Canceled"`,
+		`class="ticket-assignee">Assignee: human:owner</span>`,
+	} {
+		if !strings.Contains(card, want) {
+			t.Fatalf("canceled card missing %q:\n%s", want, card)
+		}
+	}
+	for _, want := range []string{
+		`class="column is-active-mobile" data-status="canceled"`,
+		`class="status-pill st-canceled">Canceled</span>`,
+		`<option value="canceled">Canceled</option>`,
+	} {
+		if !strings.Contains(res.body, want) {
+			t.Fatalf("canceled board missing %q:\n%s", want, excerpt(res.body, "canceled"))
 		}
 	}
 }

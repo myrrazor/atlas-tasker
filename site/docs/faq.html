@@ -135,6 +135,18 @@
         <h2>How do agents fit without wrecking things?</h2>
         <p>Agents use the same commands and tools as humans, with guardrails that are structural rather than polite: illegal moves exit 4, leases prevent double work, review gates block completion, permission profiles can deny actions per agent, and the MCP high-impact tier needs a one-time human approval per call. The <a href="../mcp.html">For agents</a> page is the tour; <a href="mcp-security.html">MCP security</a> is the fine print.</p>
 
+        <h2>Who does Atlas attribute a CLI change to?</h2>
+        <p>Mutation commands resolve an explicit <code>--actor</code> first, then <code>TRACKER_ACTOR</code>, then <code>actor.default</code>. If no valid identity is available, Atlas exits 2 before opening the workspace for a write; it does not silently choose <code>human:owner</code>. Add a reason whenever you mutate work. Tracked MCP writes and protected or security-sensitive CLI operations require one.</p>
+
+        <h2>What do team presets change?</h2>
+        <p>Pair and crossfire install <code>review_gate</code> with <code>agent:reviewer-1</code>; swarm uses <code>agent:qa-1</code>. New projects inherit that workspace policy. Applying a review preset also clears project <code>open</code> overrides so those projects inherit it, while preserving explicit non-open policies and reviewer overrides. The builder requests review and the required reviewer approves; approval itself moves review-gated work to Done.</p>
+
+        <h2>Why are Done and Canceled separate?</h2>
+        <p>They mean different things. All board surfaces keep a seventh Canceled column, and cards show their assignee. A canceled ticket is terminal, but it does not satisfy dependencies or count toward Done totals.</p>
+
+        <h2>Can I schedule a ticket in the past?</h2>
+        <p>No. Setting or replacing a schedule requires a time strictly in the future and rejects the change before altering the schedule or assignment. A valid existing schedule can become overdue and then run through the normal tick flow.</p>
+
         <h2>How do I update or uninstall?</h2>
         <p>Run <code>tracker update --check</code>, then <code>tracker update --yes</code> to verify and replace the binary (or re-run the release installer). Uninstall by removing the <code>tracker</code> binary. Your project data stays in the repository until you delete it, and if Git tracked it, history keeps it until you rewrite history.</p>
 

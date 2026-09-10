@@ -22,13 +22,17 @@ tracker team apply pair --actor human:owner --reason "team setup"
 
 Re-running `apply` is safe: existing agents, runbooks, and profiles are skipped, never overwritten. `--provider claude|codex|mixed` picks the vendor for the roster (presets default to claude; `crossfire` is mixed by definition).
 
+Pair and crossfire set `workflow.required_reviewer` to `agent:reviewer-1`; swarm uses `agent:qa-1`. Solo clears that workspace default. New projects inherit workspace completion policy. Applying a review preset also changes existing project `open` overrides to inheritance, including explicit open overrides; the preview and result name every affected project. Other explicit project completion modes and reviewer overrides remain. Agent, runbook, and permission-profile customizations are preserved, so their effective permissions still matter.
+
+With the inherited pair/crossfire policy, the builder requests review from `in_progress`, then the reviewer approves from `in_review`. Approval completes a `review_gate` ticket. Neither the owner nor the reviewer can skip that lifecycle by completing directly from `in_progress`.
+
 ## After applying
 
 1. Install the integration for your agent runtime: `tracker integrations install claude` (or `codex`, `cursor`, `openclaw`, `grok`, or `generic`). The generated skill and instructions teach agents to bootstrap, claim, build, attach evidence, request review, and acknowledge wake-ups. See [coding-agent integrations](agent-integrations.md) for the exact files each target receives.
 2. File tickets and assign them: `tracker ticket assign APP-1 agent:builder-1 --actor human:owner --reason "agent work"`.
 3. Wire dependencies with `tracker ticket link` — when a blocker lands, Atlas wakes the assigned agent (`agent.work_available`), and with `tracker agent auto set` it can launch your agent command automatically with the ticket id substituted in.
 
-From there the loop runs itself: builders claim and implement, the review gate routes work to the reviewer, handoffs carry context across sessions, and the owner only shows up for the decisions that genuinely need a human.
+Builders claim and implement, the review gate identifies the reviewer, and handoffs carry context across sessions. A connected agent or configured worker still performs those steps; applying a preset does not start an autonomous process.
 
 The integration installer does not register Atlas as an MCP server. Configure MCP separately when the
 agent should call the structured `atlas.*` tools.

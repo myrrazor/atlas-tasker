@@ -19,9 +19,10 @@ func resolveEffectivePolicy(ctx context.Context, root string, projects contracts
 	}
 
 	view := EffectivePolicyView{
-		CompletionMode: cfg.Workflow.CompletionMode,
-		LeaseTTL:       contracts.DefaultLeaseTTL,
-		Sources:        []PolicySource{PolicySourceLegacy},
+		CompletionMode:   cfg.Workflow.CompletionMode,
+		RequiredReviewer: cfg.Workflow.RequiredReviewer,
+		LeaseTTL:         contracts.DefaultLeaseTTL,
+		Sources:          []PolicySource{PolicySourceLegacy},
 	}
 	if project.Defaults.CompletionMode != "" {
 		view.CompletionMode = project.Defaults.CompletionMode

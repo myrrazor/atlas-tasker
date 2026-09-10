@@ -166,7 +166,7 @@
 {
   "format_version": "v1",
   "kind": "tracker_version",
-  "version": "v1.11.0",
+  "version": "v1.13.0",
   "commit": "abc123",
   "platform": "darwin/arm64"
 }</pre>
@@ -212,7 +212,7 @@
       <div class="section-heading">
         <p class="section-label">A day in the loop</p>
         <h2 id="loop-title">Claim, work, prove, hand off.</h2>
-        <p class="section-note">This is the whole working rhythm, human or agent. Every write names an <code>--actor</code> and a <code>--reason</code>, and that pair becomes the audit trail.</p>
+        <p class="section-note">This is the whole working rhythm, human or agent. Mutation commands resolve identity from <code>--actor</code>, then <code>TRACKER_ACTOR</code>, then <code>actor.default</code>; missing identity exits 2 before any write. Include <code>--reason</code> so the audit trail says why.</p>
       </div>
       <div class="code-block">
         <div class="snippet-title"><span>the loop</span><button class="copy-button" type="button" data-copy="cli-loop" aria-label="Copy loop commands">Copy</button></div>
@@ -232,9 +232,9 @@ tracker ticket request-review APP-12 --actor agent:builder-1 --reason "ready for
 
 <span class="c"># and as the reviewer</span>
 tracker ticket approve APP-12 --actor agent:reviewer-1 --reason "review passed"
-tracker ticket complete APP-12 --actor agent:reviewer-1 --reason "merged"</pre>
+</pre>
       </div>
-      <p class="section-note">Statuses move backlog, ready, in progress, in review, done, with blocked as the exception lane. Review and done are reached through <code>request-review</code>, <code>approve</code>, and <code>complete</code> because those commands also run the completion policy and any gates. The details live in <a class="text-link" style="display:inline" href="docs/tickets-and-workflow.html">tickets and workflow</a>.</p>
+      <p class="section-note">Statuses move through backlog, ready, in progress, in review, done, and canceled, with blocked as the exception lane. Review and done are reached through <code>request-review</code>, <code>approve</code>, or <code>complete</code> because those commands also run the completion policy and gates. Under <code>review_gate</code>, approval itself finishes the ticket; <code>complete</code> cannot skip review. The details live in <a class="text-link" style="display:inline" href="docs/tickets-and-workflow.html">tickets and workflow</a>.</p>
     </section>
 
     <section class="support-section shell" aria-labelledby="cli-next-title">
