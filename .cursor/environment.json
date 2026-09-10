@@ -1,0 +1,4 @@
+{
+  "name": "Atlas Tasker",
+  "install": "go mod download && go build -o tracker ./cmd/tracker && sudo install -m 0755 tracker /usr/local/bin/tracker"
+}
