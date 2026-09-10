@@ -305,7 +305,7 @@ test("MCP tool page covers every source workflow tool", () => {
   }
 });
 
-test("public workflow guidance matches the v1.13 candidate contracts", () => {
+test("public workflow guidance matches the v1.13 contracts", () => {
   const home = textContent(pages.get("index.html"));
   const cli = textContent(pages.get("cli.html"));
   const gettingStarted = textContent(pages.get("docs/getting-started.html"));
@@ -330,12 +330,12 @@ test("public workflow guidance matches the v1.13 candidate contracts", () => {
   assert.match(agents, /clears existing project open overrides/i);
   assert.match(agents, /OpenClaw-only --global option/i);
   assert.match(mcp, /approval by the required reviewer itself moves the ticket directly to Done/i);
-  assert.match(changelog, /v1\.13\.0 — Next Release \(Unreleased\)/i);
-  assert.match(changelog, /v1\.13\.0 is not published yet/i);
+  assert.match(changelog, /v1\.13\.0 — Workflow Consistency/i);
+  assert.match(changelog, /checksums, provenance, and hosted verification/i);
   assert.match(changelog, /v1\.12\.0 — Agent Setup And Documentation/i);
-  assert.match(changelog, /v1\.12\.0 remains the latest published stable version/i);
-  assert.doesNotMatch(pages.get("changelog.html"), /releases\/tag\/v1\.13\.0/i);
-  assert.match(gettingStarted, /tracker update --version v1\.12\.0 --yes/);
+  assert.doesNotMatch(changelog, /v1\.12\.0 remains the latest published stable version/i);
+  assert.match(pages.get("changelog.html"), /releases\/tag\/v1\.13\.0/i);
+  assert.match(gettingStarted, /tracker update --version v1\.13\.0 --yes/);
   for (const [file, html] of pages) {
     if (file === "changelog.html") continue;
     assert.doesNotMatch(html, /"version": "v1\.11\.0"/);
