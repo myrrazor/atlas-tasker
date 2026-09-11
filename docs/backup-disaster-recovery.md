@@ -10,11 +10,20 @@ PR-707 implements the first concrete backup lane:
 - `tracker backup verify <BACKUP-ID|PATH>`
 - `tracker backup restore-plan <BACKUP-ID|PATH>`
 - `tracker backup restore-apply <BACKUP-ID|PATH> --yes [--actor <ACTOR>] [--reason <TEXT>]`
-- `tracker backup drill`
+- `tracker backup drill [--target <TARGET-ID>]`
 - `tracker backup auto status`
+- `tracker backup auto enable --target <TARGET-ID>`
+- `tracker backup auto disable`
 - `tracker backup run --now`
 - `tracker backup tick`
 - `tracker backup watch`
+- `tracker backup target add|list|view|edit|remove`
+- `tracker backup replica view`
+- `tracker backup replica reset --yes`
+- `tracker backup reconcile --yes`
+- `tracker backup remote list|verify|restore-plan|restore-apply`
+- `tracker backup schedule plan|install|status|remove|repair`
+- `tracker backup prune plan|apply`
 - `tracker sign backup <BACKUP-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker verify backup <BACKUP-ID|PATH>`
 
@@ -40,9 +49,17 @@ Restore must never recreate provider state, worktrees, runtime dirs, launch file
 
 ## Drills
 
-`tracker backup drill` is read-only. It verifies every local backup snapshot it can find, reports warning codes such as `no_backups`, `backup_verify_error:<id>`, and `backup_not_verified:<id>`, and includes `side_effect_free=true` in JSON output.
+`tracker backup drill` without `--target` is read-only. It verifies every local backup snapshot it can find, reports warning codes such as `no_backups`, `backup_verify_error:<id>`, and `backup_not_verified:<id>`, and includes `side_effect_free=true` in JSON output. With `--target` it verifies the selected disposable remote and builds a restore plan without applying it.
 
-Automatic local checkpoints (Sprint 114.4) use the same restore-safe file set as `backup create`, plus a `.atlas-checkpoint.json` manifest committed in an Atlas-owned bare repository outside the workspace. They append no canonical events. `backup tick` and `backup run --now` share one worker; a later off-device push does not run on the mutation path. Restore a materialized checkpoint through `backup restore-plan` / `backup restore-apply`.
+Automatic checkpoints use the same restore-safe file set as `backup create`, plus a `.atlas-checkpoint.json` manifest committed in an Atlas-owned bare repository outside the workspace. They append no canonical events. When automatic backup is enabled for an explicit Git target, each checkpoint is published as a fast-forward update of `refs/atlas/backups/<workspace-id>/<replica-id>` (never `refs/heads/*`, never `--force`). Push success is not `verified` until ls-remote, fetch, commit, tree, and manifest hash match. Remote divergence stays `blocked_remote_diverged` until `backup reconcile` or `replica reset`; ticket writes remain available.
+
+`file://` remotes are disposable local drills (DEC-088), not an off-device claim. Production schemes are `https` and SSH. Target URLs never store credentials. Public GitHub is refused unless `--attest-private` or (`--attest-public` and `--allow-public-github`). Origin is never inferred.
+
+Remote restore fetches into a temporary isolated bare repository, materializes regular blobs only, and reuses `backup restore-plan` / `backup restore-apply`. Wrong workspace requires `--allow-workspace-mismatch`. A denying `backup_restore` governance policy exits 5 and writes nothing. `--yes` is not authorization.
+
+The AT114-507 recovery drill restores tickets, collaborators, memberships, mentions, and archive markdown. Exported-only collector roots (`config.toml`, agents, views, automations, subscriptions, runbooks, imports) stay off the restore allowlist because `tracker init` / `tracker setup` recreate them. Allowlist widening is not invented from the drill.
+
+`tracker setup --backup --backup-target <ID>` enables automatic backup for an already-added target. Scheduler install remains a separate explicit consent; `tracker init` never writes user services.
 
 Release drills should also prove restore into a clean workspace, conflict planning for existing workspaces, interrupted restore repair, and reindex/doctor health after restore. PR-708 owns the full release proof matrix.
 

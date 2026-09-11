@@ -37,6 +37,23 @@
       </form>
     </details>
 
+    {{if .BackupHealth}}
+    <section class="backup-health" aria-label="{{t "board.backup.aria"}}">
+      <h2>{{t "board.backup.title"}}</h2>
+      <dl>
+        <div><dt>{{t "board.backup.automatic"}}</dt><dd>{{if .BackupHealth.AutomaticEnabled}}{{t "board.backup.enabled"}}{{else}}{{t "board.backup.disabled"}}{{end}}</dd></div>
+        <div><dt>{{t "board.backup.last_local"}}</dt><dd>{{if .BackupHealth.LastLocalCheckpointID}}{{.BackupHealth.LastLocalCheckpointID}}{{else}}{{t "board.backup.none"}}{{end}}</dd></div>
+        <div><dt>{{t "board.backup.last_remote"}}</dt><dd>{{if .BackupHealth.LastRemoteCheckpointID}}{{.BackupHealth.LastRemoteCheckpointID}}{{else}}{{t "board.backup.none"}}{{end}}</dd></div>
+        <div><dt>{{t "board.backup.unbacked"}}</dt><dd>{{.BackupHealth.UnbackedEventCount}}</dd></div>
+        <div><dt>{{t "board.backup.oldest_pending"}}</dt><dd>{{.BackupHealth.OldestUnbackedAgeSeconds}}</dd></div>
+        <div><dt>{{t "board.backup.worker"}}</dt><dd>{{if .BackupHealth.WorkerState}}{{.BackupHealth.WorkerState}}{{else}}{{t "board.backup.none"}}{{end}}</dd></div>
+        <div><dt>{{t "board.backup.scheduler"}}</dt><dd>{{if .BackupHealth.SchedulerState}}{{.BackupHealth.SchedulerState}}{{else}}{{t "board.backup.none"}}{{end}}</dd></div>
+        <div><dt>{{t "board.backup.drill_age"}}</dt><dd>{{.BackupHealth.RestoreDrillAgeSeconds}}</dd></div>
+        <div><dt>{{t "board.backup.failure"}}</dt><dd>{{if .BackupHealth.LastErrorClass}}{{.BackupHealth.LastErrorClass}}{{else}}{{t "board.backup.none"}}{{end}}</dd></div>
+      </dl>
+    </section>
+    {{end}}
+
     <nav class="mobile-columns" aria-label="{{t "board.columns.aria"}}">
       {{range .Columns}}
         <a class="{{if .ActiveMobile}}active{{end}}" href="/board?column={{.Status}}">{{t (statusMessageKey .Status)}} <span>{{.Count}}</span></a>

@@ -27,6 +27,14 @@ type AutoBackupStatus struct {
 	HealthWarning            string                      `json:"health_warning,omitempty"`
 	DiskBytes                int64                       `json:"disk_bytes,omitempty"`
 	VerifiedRemote           bool                        `json:"verified_remote"`
+	AutomaticEnabled         bool                        `json:"automatic_enabled"`
+	DefaultTargetID          string                      `json:"default_target_id,omitempty"`
+	TargetCount              int                         `json:"target_count,omitempty"`
+	LastRemoteCheckpointID   string                      `json:"last_remote_checkpoint_id,omitempty"`
+	LastRemoteVerifiedAt     time.Time                   `json:"last_remote_verified_at,omitempty"`
+	SchedulerState           string                      `json:"scheduler_state,omitempty"`
+	RestoreDrillAgeSeconds   int                         `json:"restore_drill_age_seconds,omitempty"`
+	OriginOverlap            bool                        `json:"origin_overlap,omitempty"`
 	Notes                    []string                    `json:"notes,omitempty"`
 }
 
@@ -69,6 +77,25 @@ func (s *QueryService) AutoBackupStatus(ctx context.Context) (AutoBackupStatus, 
 	view.HealthWarning = ledger.HealthWarning
 	view.DiskBytes = ledger.DiskBytes
 	view.VerifiedRemote = ledger.LastVerifiedCommit != "" && !ledger.LastVerifiedAt.IsZero()
+	view.LastRemoteCheckpointID = ledger.LastRemoteCheckpointID
+	view.LastRemoteVerifiedAt = ledger.LastVerifiedAt
+	view.SchedulerState = ledger.SchedulerState
+	if !ledger.LastDrillAt.IsZero() {
+		view.RestoreDrillAgeSeconds = int(s.now().Sub(ledger.LastDrillAt).Seconds())
+	}
+	if cfg, err := loadAutoConfig(paths.Auto); err == nil {
+		view.AutomaticEnabled = cfg.Enabled
+		view.DefaultTargetID = cfg.DefaultTargetID
+	}
+	if store, err := loadTargetStore(paths.Targets); err == nil {
+		view.TargetCount = len(store.Targets)
+		for _, target := range store.Targets {
+			if target.OriginOverlap {
+				view.OriginOverlap = true
+				view.Notes = append(view.Notes, "target_matches_workspace_remote")
+			}
+		}
+	}
 	if view.State == contracts.BackupOutboxVerified && !view.VerifiedRemote {
 		view.State = contracts.BackupOutboxCheckpointCreated
 	}

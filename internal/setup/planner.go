@@ -66,7 +66,7 @@ type ManagedModePlan struct {
 	Declared string                      `json:"declared_mode"`
 }
 
-// BackupPlan is an honest deferred backup group until Sprint 114.5 exists.
+// BackupPlan is the backup consent group. Apply enables an already-configured target.
 type BackupPlan struct {
 	Requested             bool     `json:"requested"`
 	TargetID              string   `json:"target_id,omitempty"`
@@ -190,16 +190,25 @@ func (e *Engine) Plan(opts PlanOptions) (*PreparedSetup, error) {
 	}
 	var backupPlan *BackupPlan
 	if opts.Backup || strings.TrimSpace(opts.BackupTarget) != "" {
+		notes := []string{"backup is a separate consent group; --yes is not backup consent"}
+		deps := []string{}
+		if inspection.Scheduler.UserServicePresent {
+			notes = append(notes, "user-level scheduler is already present")
+		} else {
+			deps = append(deps, "optional: tracker backup schedule install")
+			notes = append(notes, "scheduler install remains a separate explicit consent")
+		}
 		backupPlan = &BackupPlan{
 			Requested:             true,
 			TargetID:              strings.TrimSpace(opts.BackupTarget),
-			Writes:                false,
-			Deferred:              true,
-			RemainingDependencies: []string{"AT114-501: backup target configuration", "AT114-505: explicit user-level scheduling"},
-			Notes:                 []string{"backup is a separate consent group; Sprint 114.1 records the request and does not write backup state"},
+			Writes:                true,
+			Deferred:              false,
+			RemainingDependencies: deps,
+			Notes:                 notes,
 		}
-		addDep("AT114-501: backup target configuration")
-		addDep("AT114-505: explicit user-level scheduling")
+		for _, dep := range deps {
+			addDep(dep)
+		}
 	}
 	var teamPlan *TeamPlan
 	if strings.TrimSpace(opts.Team) != "" {

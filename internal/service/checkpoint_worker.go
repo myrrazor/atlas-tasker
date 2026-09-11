@@ -79,21 +79,13 @@ func (s *ActionService) checkpointEngine() (*CheckpointEngine, error) {
 	if err := paths.ensure(); err != nil {
 		return nil, err
 	}
-	ledger, err := loadLedger(paths.Ledger)
+	ident, err := s.ensureReplicaIdentity(paths, workspaceID, false)
 	if err != nil {
 		return nil, err
 	}
-	replicaID := strings.TrimSpace(ledger.ReplicaID)
+	replicaID := strings.TrimSpace(ident.ReplicaID)
 	if replicaID == "" {
-		replicaID = newReplicaID()
-		now := s.now()
-		if s.Clock != nil {
-			now = s.Clock().UTC()
-		}
-		ledger = BackupLedger{Format: checkpointLedgerFormat, WorkspaceID: workspaceID, ReplicaID: replicaID, CreatedAt: now}
-		if err := atomicWriteJSON(paths.Ledger, ledger); err != nil {
-			return nil, err
-		}
+		return nil, fmt.Errorf("replica identity is required for automatic backup")
 	}
 	engine := &CheckpointEngine{
 		actions:          s,
@@ -225,7 +217,8 @@ func (e *CheckpointEngine) Tick(ctx context.Context, force bool) (AutoBackupResu
 	if !force && !e.shouldCheckpoint(box) {
 		result.Skipped = true
 		result.SkipReason = skipReason(box, e)
-		return result, nil
+		// An interrupted push must resume even when the local tree is unchanged.
+		return e.finishTickWithPublish(ctx, result, "")
 	}
 	created, err := e.createLocalCheckpoint(ctx)
 	if err != nil {
@@ -243,6 +236,25 @@ func (e *CheckpointEngine) Tick(ctx context.Context, force bool) (AutoBackupResu
 	result.State = contracts.BackupOutboxCheckpointCreated
 	result.CopyDuration = created.CopyDuration
 	result.DiskBytes = created.DiskBytes
+	return e.finishTickWithPublish(ctx, result, created.Commit)
+}
+
+func (e *CheckpointEngine) finishTickWithPublish(ctx context.Context, result AutoBackupResult, commit string) (AutoBackupResult, error) {
+	_ = retainLocalCheckpointState(e.paths, e.now())
+	// Divergence stays blocked until replica reset / reconcile. --now never force-publishes.
+	if pubErr := e.publishIfEnabled(ctx, commit, false); pubErr != nil {
+		result.ErrorClass = classifyRemoteBackupError(pubErr)
+		if result.ErrorClass == contracts.BackupErrorBlockedRemoteDiverged || result.ErrorClass == contracts.BackupErrorRemoteDiverged {
+			result.State = contracts.BackupOutboxBlocked
+			return result, nil
+		}
+		result.State = contracts.BackupOutboxRetryableFailure
+		return result, pubErr
+	}
+	box, err := loadOutbox(e.paths.Outbox)
+	if err == nil && box.State != "" {
+		result.State = box.State
+	}
 	return result, nil
 }
 
@@ -330,19 +342,6 @@ func (e *CheckpointEngine) createLocalCheckpoint(ctx context.Context) (createdCh
 	}
 	commit, err := e.commitSnapshot(ctx, snap, manifest)
 	if err != nil {
-		return createdCheckpoint{}, err
-	}
-	if err := e.crash(CrashBeforePush); err != nil {
-		return createdCheckpoint{}, err
-	}
-	// Sprint 114.4 is local-only. Push / remote verification stay 114.5.
-	if err := e.crash(CrashAfterPush); err != nil {
-		return createdCheckpoint{}, err
-	}
-	if err := e.crash(CrashBeforeRemoteVerify); err != nil {
-		return createdCheckpoint{}, err
-	}
-	if err := e.crash(CrashAfterVerifyBeforePersist); err != nil {
 		return createdCheckpoint{}, err
 	}
 	disk, _ := dirSize(e.paths.Repo)

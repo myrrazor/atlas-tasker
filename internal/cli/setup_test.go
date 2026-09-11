@@ -97,8 +97,8 @@ func TestSetupNoninteractiveRequiresYesAndBackupTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plan backup: %v\n%s", err, out)
 	}
-	if !strings.Contains(out, "AT114-501") {
-		t.Fatalf("backup plan should name the deferred tickets:\n%s", out)
+	if !strings.Contains(out, `"requested": true`) && !strings.Contains(out, "backup") {
+		t.Fatalf("backup plan should include the backup consent group:\n%s", out)
 	}
 }
 

@@ -29,6 +29,7 @@ Columns:
 | `atlas.search` | read | yes | no | no | no | no |
 | `atlas.context` | read | yes | no | no | no | no |
 | `atlas.status` | read | yes | no | no | no | no |
+| `atlas.backup.status` | read | yes | no | no | no | no |
 | `atlas.board` | read | yes | no | no | no | no |
 | `atlas.ticket.view` | read | yes | no | no | no | no |
 | `atlas.ticket.history` | read | yes | no | no | no | no |

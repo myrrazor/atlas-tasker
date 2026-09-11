@@ -230,15 +230,31 @@ func TestBoardToolIncludesSharedPresentation(t *testing.T) {
 
 func TestReadInventoryIncludesContextAndStatus(t *testing.T) {
 	read := Inventory(Options{Profile: ProfileRead}.Normalized())
-	if !toolEnabled(read, "atlas.context") || !toolEnabled(read, "atlas.status") {
-		t.Fatal("read profile must expose atlas.context and atlas.status")
+	if !toolEnabled(read, "atlas.context") || !toolEnabled(read, "atlas.status") || !toolEnabled(read, "atlas.backup.status") {
+		t.Fatal("read profile must expose atlas.context, atlas.status, and atlas.backup.status")
 	}
-	if countEnabled(read) != 43 {
-		t.Fatalf("read profile count = %d, want 43", countEnabled(read))
+	if countEnabled(read) != 44 {
+		t.Fatalf("read profile count = %d, want 44", countEnabled(read))
 	}
 	workflow := Inventory(Options{Profile: ProfileWorkflow}.Normalized())
-	if countEnabled(workflow) != 75 {
-		t.Fatalf("workflow profile count = %d, want 75", countEnabled(workflow))
+	if countEnabled(workflow) != 76 {
+		t.Fatalf("workflow profile count = %d, want 76", countEnabled(workflow))
+	}
+	delivery := Inventory(Options{Profile: ProfileDelivery}.Normalized())
+	if countEnabled(delivery) != 80 {
+		t.Fatalf("delivery profile count = %d, want 80", countEnabled(delivery))
+	}
+	admin := Inventory(Options{Profile: ProfileAdmin}.Normalized())
+	if countEnabled(admin) != 80 {
+		t.Fatalf("admin profile count = %d, want 80", countEnabled(admin))
+	}
+	for _, spec := range ToolSpecs() {
+		if spec.Name == "atlas.backup.status" {
+			continue
+		}
+		if strings.HasPrefix(spec.Name, "atlas.backup.") {
+			t.Fatalf("workflow must not expose backup mutation tool %s", spec.Name)
+		}
 	}
 }
 

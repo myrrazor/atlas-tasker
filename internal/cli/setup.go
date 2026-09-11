@@ -26,7 +26,7 @@ func newSetupCommand() *cobra.Command {
 	cmd.Flags().String("agents", "", "Comma-separated targets, or 'all'")
 	cmd.Flags().String("mode", "", "Managed project mode: guidance|managed|disabled")
 	cmd.Flags().String("team", "", "Requested team policy (pair, etc.); does not overwrite existing agent roles")
-	cmd.Flags().Bool("backup", false, "Include the backup group in the plan (Sprint 114.5 implements apply)")
+	cmd.Flags().Bool("backup", false, "Include the backup group; --yes is not backup consent")
 	cmd.Flags().String("backup-target", "", "Backup target ID; separate consent from --yes")
 	addReadOutputFlags(cmd, &outputFlags{})
 

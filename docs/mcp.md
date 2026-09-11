@@ -28,14 +28,14 @@ Stdio framing: Atlas speaks newline-delimited JSON-RPC and also accepts LSP-styl
 
 ## Profiles
 
-- `read` is the default: 43 read and plan/dry-run tools, including `atlas.context`, `atlas.status`, goal brief, agent/team reads, and wake-up inspection.
-- `workflow` exposes 75 tools. It adds project creation and the real agent loop: ticket create/edit/assign/link, priority and label changes, claim/heartbeat/move/comment, request review, approve/reject/complete, agent create/edit, team apply, schedule writes, evidence, handoffs, and wake-up ack.
-- `delivery` exposes 79 tools normally and 81 with `--dangerously-allow-high-impact-tools`. It adds run dispatch, change creation, change/check sync, and provider review/merge tools.
-- `admin` exposes 79 tools normally and the complete 90-tool inventory with `--dangerously-allow-high-impact-tools`. Its high-impact sync, import, archive, compact, worktree-cleanup, and gate-waiver tools remain hidden without that flag.
+- `read` is the default: 44 read and plan/dry-run tools, including `atlas.context`, `atlas.status`, `atlas.backup.status`, goal brief, agent/team reads, and wake-up inspection.
+- `workflow` exposes 76 tools. It adds project creation and the real agent loop: ticket create/edit/assign/link, priority and label changes, claim/heartbeat/move/comment, request review, approve/reject/complete, agent create/edit, team apply, schedule writes, evidence, handoffs, and wake-up ack.
+- `delivery` exposes 80 tools normally and 82 with `--dangerously-allow-high-impact-tools`. It adds run dispatch, change creation, change/check sync, and provider review/merge tools.
+- `admin` exposes 80 tools normally and the complete 91-tool inventory with `--dangerously-allow-high-impact-tools`. Its high-impact sync, import, archive, compact, worktree-cleanup, and gate-waiver tools remain hidden without that flag.
 
 High-impact tools are hidden unless both the selected profile and server flag allow them. MCP-first agents should start at `workflow`, not `read`.
 
-`atlas.context` and `atlas.status` are read-only. `atlas.context` returns workspace identity, project inventory, the configured actor, declared and effective managed-mode policy, assigned/available/pending work, active runs, backup health (including automatic local checkpoint state, never remote credentials or URLs), and a state revision. `atlas.status` accepts `workspace`, `project`, `ticket`, `agent`, or `run` scope and returns structured JSON plus deterministic compact Markdown derived from that payload. Unknown projects disambiguate; multiple projects stay a workspace overview unless one is named. Hosts that render MCP Apps also receive a read-only CSP-constrained board document; Markdown remains the universal fallback.
+`atlas.context` and `atlas.status` are read-only. `atlas.backup.status` is the dedicated read-only backup health tool: it never changes targets, disables backup, restores, prunes, or overrides divergence, and it never returns remote URLs or credentials. `atlas.context` returns workspace identity, project inventory, the configured actor, declared and effective managed-mode policy, assigned/available/pending work, active runs, backup health (including automatic local checkpoint state, never remote credentials or URLs), and a state revision. `atlas.status` accepts `workspace`, `project`, `ticket`, `agent`, or `run` scope and returns structured JSON plus deterministic compact Markdown derived from that payload. Unknown projects disambiguate; multiple projects stay a workspace overview unless one is named. Hosts that render MCP Apps also receive a read-only CSP-constrained board document; Markdown remains the universal fallback.
 
 ## Ordinary Workflow Additions
 

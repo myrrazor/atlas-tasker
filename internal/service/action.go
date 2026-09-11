@@ -66,6 +66,8 @@ type ActionService struct {
 	WatchInterval                   time.Duration
 	GitMaintenanceEvery             int
 	RequirePreDestructiveCheckpoint bool
+	ScheduleHome                    string
+	TrackerBinary                   string
 }
 
 func NewActionService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time, locks WriteLockManager, notifier Notifier, automation *AutomationEngine) *ActionService {

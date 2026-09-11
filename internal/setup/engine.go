@@ -185,9 +185,16 @@ func (e *Engine) ApplyPrepared(ctx context.Context, prepared *PreparedSetup, app
 		if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested && e.Hooks.BackupApply != nil {
 			if err := e.Hooks.BackupApply(); err != nil {
 				report.Providers = append(report.Providers, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
+			} else {
+				report.BackupWorker = "enabled"
 			}
 		} else if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested {
-			report.BackupWorker = "deferred"
+			if err := e.enableConfiguredBackup(prepared.Plan.Backup.TargetID); err != nil {
+				report.Providers = append(report.Providers, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
+				report.BackupWorker = "failed"
+			} else {
+				report.BackupWorker = "enabled"
+			}
 		}
 		report.Status = deriveRunStatus(report.Providers)
 		return report, errorForRunStatus(report.Status)
@@ -249,6 +256,14 @@ func (e *Engine) ApplyPrepared(ctx context.Context, prepared *PreparedSetup, app
 	if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested && e.Hooks.BackupApply != nil {
 		if err := e.Hooks.BackupApply(); err != nil {
 			reports = append(reports, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
+		} else {
+			reports = append(reports, ProviderReport{Target: "backup", Selected: true, OperationState: StateConnected})
+		}
+	} else if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested {
+		if err := e.enableConfiguredBackup(prepared.Plan.Backup.TargetID); err != nil {
+			reports = append(reports, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
+		} else {
+			reports = append(reports, ProviderReport{Target: "backup", Selected: true, OperationState: StateConnected})
 		}
 	}
 	report := &RunReport{
@@ -261,8 +276,13 @@ func (e *Engine) ApplyPrepared(ctx context.Context, prepared *PreparedSetup, app
 		RemainingDependencies: prepared.Plan.RemainingDependencies,
 		Fingerprint:           prepared.Plan.Fingerprint,
 	}
-	if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested && e.Hooks.BackupApply == nil {
-		report.BackupWorker = "deferred"
+	if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested {
+		report.BackupWorker = "enabled"
+		for _, item := range reports {
+			if item.Target == "backup" && item.OperationState == StateRolledBack {
+				report.BackupWorker = "failed"
+			}
+		}
 	}
 	report.Status = deriveRunStatus(reports)
 	if report.Status == RunStatusConnected && hasUnverified(reports) {
@@ -294,6 +314,47 @@ func allNoOp(prepared *PreparedSetup) bool {
 		return false
 	}
 	return true
+}
+
+func (e *Engine) enableConfiguredBackup(targetID string) error {
+	targetID = strings.TrimSpace(targetID)
+	if targetID == "" {
+		return apperr.New(apperr.CodeInvalidInput, "backup target id is required")
+	}
+	path := filepath.Join(e.StateDir, "backups", e.WorkspaceID, "targets.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return apperr.New(apperr.CodeNotFound, "backup target is not configured; run tracker backup target add")
+	}
+	var store struct {
+		Targets []struct {
+			TargetID string `json:"target_id"`
+		} `json:"targets"`
+	}
+	if err := json.Unmarshal(raw, &store); err != nil {
+		return err
+	}
+	found := false
+	for _, target := range store.Targets {
+		if target.TargetID == targetID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return apperr.New(apperr.CodeNotFound, "backup target not found: "+targetID)
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	body, err := json.MarshalIndent(map[string]any{
+		"format": "atlas_backup_auto_v1", "enabled": true, "default_target_id": targetID,
+	}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "auto.json"), append(body, '\n'), 0o600)
 }
 
 func selectedTargets(prepared *PreparedSetup) []integrations.Target {

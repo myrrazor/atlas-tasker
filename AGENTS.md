@@ -218,8 +218,8 @@ Stdio speaks newline-delimited JSON-RPC by default and also accepts LSP-style
 `--workspace` is what stops the server from answering against whatever directory the client
 happened to start in. Profiles go `read` (default) -> `workflow` -> `delivery` -> `admin`;
 start at `read` and widen to `workflow` for the real agent loop (create/claim/move/review/
-complete). The exact profile counts are read 43, workflow 75, delivery 79 (81 with the danger
-flag), and admin 79 (the full 90 with the flag). Workflow includes
+complete). The exact profile counts are read 44, workflow 76, delivery 80 (82 with the danger
+flag), and admin 80 (the full 91 with the flag). Workflow includes
 `atlas.project.create`, `atlas.ticket.heartbeat`, `atlas.ticket.priority`,
 `atlas.ticket.label.add`, `atlas.ticket.label.remove`, and `atlas.ticket.edit`; the five ticket
 tools require actor and reason. High-impact tools stay hidden unless the server was started with

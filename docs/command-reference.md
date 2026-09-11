@@ -158,11 +158,17 @@
 - `tracker backup verify <BACKUP-ID|PATH>`
 - `tracker backup restore-plan <BACKUP-ID|PATH> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup restore-apply <BACKUP-ID|PATH> --yes [--actor <ACTOR>] [--reason <TEXT>]`
-- `tracker backup drill`
-- `tracker backup auto status`
+- `tracker backup drill [--target <TARGET-ID>]`
+- `tracker backup auto status|enable|disable`
 - `tracker backup run --now`
 - `tracker backup tick`
 - `tracker backup watch`
+- `tracker backup target add|list|view|edit|remove`
+- `tracker backup replica view|reset`
+- `tracker backup reconcile --yes`
+- `tracker backup remote list|verify|restore-plan|restore-apply`
+- `tracker backup schedule plan|install|status|remove|repair`
+- `tracker backup prune plan|apply`
 - `tracker admin security-status`
 - `tracker admin trust-store`
 - `tracker admin recovery-status`
@@ -404,11 +410,26 @@ Rules:
 - `tracker backup verify <BACKUP-ID|PATH>`
 - `tracker backup restore-plan <BACKUP-ID|PATH> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup restore-apply <BACKUP-ID|PATH> --yes [--actor <ACTOR>] [--reason <TEXT>]`
-- `tracker backup drill`
+- `tracker backup drill [--target <TARGET-ID>]`
 - `tracker backup auto status`
+- `tracker backup auto enable --target <TARGET-ID>`
+- `tracker backup auto disable`
 - `tracker backup run --now`
 - `tracker backup tick`
 - `tracker backup watch`
+- `tracker backup target add --url <URL> --acknowledge-data-boundary --attest-private|--attest-public [--allow-local-file] [--allow-public-github] [--id <ID>]`
+- `tracker backup target list|view|edit|remove`
+- `tracker backup replica view`
+- `tracker backup replica reset --yes`
+- `tracker backup reconcile --yes`
+- `tracker backup remote list --target <TARGET-ID>`
+- `tracker backup remote verify <CHECKPOINT> --target <TARGET-ID>`
+- `tracker backup remote restore-plan <CHECKPOINT> --target <TARGET-ID> [--allow-workspace-mismatch]`
+- `tracker backup remote restore-apply <CHECKPOINT> --target <TARGET-ID> --yes --actor <ACTOR> --reason <TEXT> [--allow-workspace-mismatch]`
+- `tracker backup schedule plan|status`
+- `tracker backup schedule install|remove|repair --yes`
+- `tracker backup prune plan`
+- `tracker backup prune apply --yes`
 - `tracker admin security-status`
 - `tracker admin trust-store`
 - `tracker admin recovery-status`
@@ -419,10 +440,17 @@ Rules:
 - backup records and manifests live under `.tracker/backups/manifests/`; archives live under `.tracker/backups/snapshots/`
 - `backup restore-plan` is side-effect free and does not persist a plan or append an event
 - `backup restore-apply` recomputes the plan under the write lock, requires `--yes`, and writes only paths on the restore allowlist
-- `backup drill` is read-only and reports recovery warnings without mutating the workspace
-- `backup auto status`, `backup tick`, `backup run --now`, and `backup watch` share one local checkpoint implementation; they never print remote credentials or sensitive URLs
+- `backup drill` without `--target` is read-only against local snapshots; with `--target` it verifies a disposable remote and builds a restore plan without applying it
+- `backup auto status`, `backup tick`, `backup run --now`, and `backup watch` share one checkpoint worker; they never print remote credentials or sensitive URLs
 - automatic checkpoints write an isolated bare Git repository outside the workspace and never touch the user's HEAD, index, or work tree
+- backup targets are machine-local; origin is never inferred; URLs with credentials are rejected; public GitHub needs `--attest-public` plus `--allow-public-github`; `file://` remotes need `--allow-local-file` and are not off-device
+- publication is a fast-forward push of `refs/atlas/backups/<workspace-id>/<replica-id>` (never `refs/heads/*`, never `--force`); push success is not `verified` until ls-remote, fetch, and manifest hash match
+- remote divergence becomes `blocked_remote_diverged` until `backup reconcile --yes` or `backup replica reset --yes`; ticket writes stay available
+- `backup restore-apply` and remote restore-apply evaluate `backup_restore` governance before writing; `--yes` is not authorization
+- `tracker setup --backup --backup-target <ID>` enables automatic backup for an already-added target; `--yes` is still not backup consent; missing targets fail the backup group only
+- `tracker init` never installs a scheduler; `backup schedule install --yes` writes user-level systemd or LaunchAgent files under a fixture or `$HOME`
 - `tracker doctor` includes automatic-backup health (`backup_auto`) without paths or credentials
+- MCP `atlas.backup.status` is read-only backup health; no MCP tool changes targets, restores, prunes, or overrides divergence
 - admin diagnostics are read-only and never print private key material
 
 ## Goal Manifests
@@ -861,8 +889,8 @@ Slash command examples:
 - `tracker mcp approvals list --json`
 - `tracker mcp approvals revoke <APPROVAL-ID>`
 
-Default MCP setup uses `--tool-profile read`. The exact visible counts are read 43, workflow 75,
-delivery 79 (81 with `--dangerously-allow-high-impact-tools`), and admin 79 (the full 90 with the
+Default MCP setup uses `--tool-profile read`. The exact visible counts are read 44, workflow 76,
+delivery 80 (82 with `--dangerously-allow-high-impact-tools`), and admin 80 (the full 91 with the
 flag). High-impact tools require both a profile that includes the tool and the danger flag; execution
 still requires a one-time approval created outside MCP.
 
