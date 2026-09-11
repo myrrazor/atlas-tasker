@@ -53,9 +53,7 @@ Execution is split into nine reviewable tracks with explicit dependencies:
 8. PR-008 renderers and terminal presentation
 9. PR-009 end-to-end tests, fixtures, recovery, docs
 
-Detailed responsibilities and decision mappings are in:
-
-- [v1-ticket-pr-breakdown.md](v1-ticket-pr-breakdown.md)
+Detailed responsibilities and decision mappings were recorded in the v1 decision log. The original per-PR ticket breakdowns were leftover execution notes and are no longer published.
 
 ## QA and Review Rules
 

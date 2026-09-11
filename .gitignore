@@ -1,3 +1,5 @@
+# Repository gitignore for Atlas Tasker itself. Keep this file: it ignores
+# local binaries, review scratch, and derived .tracker runtime — not tickets.
 # test artifacts
 TEST_STDOUT.log
 *.log

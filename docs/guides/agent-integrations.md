@@ -1,5 +1,7 @@
 # Coding-Agent Integrations
 
+For the short regular-user path, start with [setup and backup](setup-and-backup.md). This page is the per-target detail.
+
 Atlas can install project-level instructions and an `atlas-worker` skill for six agent targets. The
 integration pack teaches an agent how to read Atlas work, claim a ticket, record evidence, and request
 review. It does not install an agent, launch one, or grant it permissions. `tracker setup` can also

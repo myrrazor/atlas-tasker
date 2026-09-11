@@ -43,7 +43,7 @@ tracker ticket move APP-1 ready --actor human:owner --reason "groomed"
 tracker board
 ```
 
-In a terminal, `tracker init` asks `Set up coding-agent integrations now? [Y/n]`; pressing Enter or answering yes opens the picker. This differs from the shell installer's optional workspace setup prompt, which defaults to **no**. In the picker, choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. The [agent integrations guide](docs/guides/agent-integrations.md) covers every target and scripted setup.
+In a terminal, `tracker init` asks `Set up coding-agent integrations now? [Y/n]`; pressing Enter or answering yes opens the picker. This differs from the shell installer's optional workspace setup prompt, which defaults to **no**. In the picker, choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. Later, `tracker setup --plan` shows the same workspace in one place — skills, MCP, managed mode, and optional backup — without guessing your Git origin. The [setup and backup guide](docs/guides/setup-and-backup.md) and [agent integrations guide](docs/guides/agent-integrations.md) cover the full path.
 
 ![Kanban board in the terminal](docs/assets/board.png)
 
@@ -148,6 +148,20 @@ tracker team apply crossfire --actor human:owner --reason "team setup"
 
 `tracker team show <preset>` previews the roster, `--dry-run` applies nothing, and re-running is always safe — existing agents are never overwritten. Then install the matching integration (`claude`, `codex`, `cursor`, `openclaw`, `grok`, or `generic`), file your tickets, and the agents handle claiming, building, review handoffs, and wake-ups on their own. The [team presets guide](docs/guides/team-presets.md) has the full walkthrough.
 
+## Keep Atlas itself backed up
+
+Tickets already live in Git with your repo. Automatic backup is for the Atlas event log and related records, into an isolated Git repository you name — not a silent copy of `origin`.
+
+```bash
+tracker backup target add --id private \
+  --url git@github.com:you/atlas-backups.git \
+  --acknowledge-data-boundary --attest-private
+tracker backup auto enable --target private
+tracker backup run --now
+```
+
+A successful push is not "verified" until Atlas checks the remote commit. If backup is offline, you can still move tickets. Restore is plan-then-apply. Neither `tracker init` nor `tracker setup --yes` installs a machine scheduler; that stays `tracker backup schedule install --yes`. Details: [setup and backup](docs/guides/setup-and-backup.md).
+
 ## Everything else you'd expect from a real tracker
 
 Epics with progress rollups, subtasks, labels, priorities, comments, saved views, full-text search (`tracker search 'text~payment status=ready'`), bulk operations with dry-run previews, watch subscriptions, automations, a REPL shell, JSON output and stable exit codes on every command for scripting, import/export, archives, and a `doctor` that can actually fix things.
@@ -156,13 +170,13 @@ For the paranoid (complimentary): signed artifacts and trust keys, governance po
 
 ## Docs
 
-Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [updating](docs/guides/updating.md), [getting started](docs/getting-started.md), [agent integrations](docs/guides/agent-integrations.md), [your first agent workflow](docs/first-agent-workflow.md), [scheduled work](docs/scheduling.md), [the local web board](docs/web-board.md), [MCP for agents](docs/guides/mcp-for-agents.md), [the command reference](docs/reference/commands.md), or [troubleshooting](docs/troubleshooting.md).
+Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [updating](docs/guides/updating.md), [getting started](docs/getting-started.md), [setup and backup](docs/guides/setup-and-backup.md), [agent integrations](docs/guides/agent-integrations.md), [your first agent workflow](docs/first-agent-workflow.md), [scheduled work](docs/scheduling.md), [the local web board](docs/web-board.md), [MCP for agents](docs/guides/mcp-for-agents.md), [the command reference](docs/reference/commands.md), or [troubleshooting](docs/troubleshooting.md).
 
 ## Status
 
 The [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/latest) is what the installer and `go install ...@latest` give you. [CHANGELOG.md](CHANGELOG.md) lists the changes, and each release page records its published artifacts and verification.
 
-The v1.13.0 source tightens actor and review-policy consistency, keeps canceled work distinct on every board, rejects nonfuture schedules before mutation, makes integration packs portable across all six targets, and expands safe MCP bootstrap and workflow coverage. The [workflow consistency review](docs/release/workflow-consistency-review-2026-09-09.md) records the local implementation evidence. Development-branch documentation can describe changes ahead of the latest published tag; hosted verification is recorded only on the corresponding release page.
+The latest published tag is still what the installer installs. This branch also describes the v1.14 implementation candidate (`tracker setup`, six adapters, optional verified Atlas backup). That candidate is not a published release. Development-branch documentation can describe changes ahead of the latest published tag; hosted verification is recorded only on the corresponding release page.
 
 `v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 

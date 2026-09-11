@@ -72,6 +72,15 @@
     </header>
     <div class="legal-content">
       <section class="shell">
+        <h2>v1.14.0 — implementation candidate</h2>
+        <ul>
+          <li><code>tracker setup</code> is one pass for skills, MCP, managed mode, and an optional already-added backup target. <code>--yes</code> is not backup consent, and setup never installs a user scheduler or selects Git <code>origin</code>.</li>
+          <li>Six coding-agent adapters stay transactional. Custom instruction text and unmanaged <code>atlas-*</code> MCP entries are left alone. <code>tracker update</code> still replaces only the binary.</li>
+          <li>Automatic Atlas checkpoints write an isolated Git repository. Off-device publication is fast-forward only; a push is not verified until Atlas checks the remote commit. Ticket writes stay available when backup is offline.</li>
+        </ul>
+        <p>This is source on the development branch, not a published GitHub release. The latest tagged installer remains <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">the latest stable release</a>. Hosted verification is recorded only on a release page.</p>
+      </section>
+      <section class="shell">
         <h2>v1.13.0 — Workflow Consistency</h2>
         <ul>
           <li>Workflow consistency fixes keep Canceled separate from Done across every board, show assignees on cards and terminal views, reject claims that would take another assignee's work, require new schedules to be strictly in the future, and apply one actor-resolution order across CLI mutations.</li>
