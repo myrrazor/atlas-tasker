@@ -2,6 +2,11 @@
 
 For the short regular-user path, start with [setup and backup](setup-and-backup.md). This page is the per-target detail.
 
+Install the binary, then in your project run `tracker init`. Atlas detects the coding agents on
+the machine, checks the ones it found, and writes the worker skill when you press Enter. After
+that, open the same repo in Claude Code, Codex, Cursor, OpenClaw, or Grok and ask for the
+board — you do not install a second Atlas package inside the agent.
+
 Atlas can install project-level instructions and an `atlas-worker` skill for six agent targets. The
 integration pack teaches an agent how to read Atlas work, claim a ticket, record evidence, and request
 review. It does not install an agent, launch one, or grant it permissions. `tracker setup` can also

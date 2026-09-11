@@ -19,10 +19,15 @@ Run this inside the repo or workspace you want Atlas to manage:
 ./tracker init
 ```
 
-In a terminal, Atlas asks whether to install coding-agent integrations after initialization. Detected
-agents are checked in the picker; choose `none` to skip. Use `./tracker init --skip-integrations` for a
-non-interactive bootstrap, or see [coding-agent integrations](guides/agent-integrations.md) for all six
-targets and scripted setup.
+In a terminal, Atlas asks `Set up coding-agent integrations now? [Y/n]`. That is the Herder-style
+hookup: it scans `PATH` and the usual config directories, checks the agents it found, and waits for
+Enter. Press Enter to write the worker skill and instruction block for those agents. Name a subset
+(`cursor`, `1,3`), type `all`, or `none` to skip. Use `./tracker init --skip-integrations` for a
+non-interactive bootstrap. Details for all six targets: [coding-agent integrations](guides/agent-integrations.md).
+
+Open the same repository in the agent you selected and ask “what's the current status of this
+project?” It should run `tracker board` (or `atlas.board` over MCP) and read the tickets you create
+next. You do not paste a second install script into Claude, Codex, Cursor, or Grok.
 
 Atlas writes local state under `.tracker/`. Keep that directory out of public bug reports unless you have redacted it.
 

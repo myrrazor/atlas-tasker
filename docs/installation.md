@@ -38,18 +38,29 @@ and do not run commands copied from untrusted issues or comments.
 
 ## Set up your agents
 
-After a terminal install, the v1.12 installer asks whether to initialize an Atlas
-workspace and set up coding-agent guidance **in the displayed current directory**.
-Press Enter or answer `n` to skip. Answering `yes` initializes that directory and
-opens the agent picker. Run the installer from your intended project if you want
-to accept that offer.
+The verified installer only places the `tracker` binary. It does not initialize
+the directory `curl | sh` happened to run in. If stdout is a terminal and the
+current directory is already an Atlas workspace, it may offer `tracker setup`
+and defaults to **no**. `SKIP_INTEGRATIONS=1` skips that offer.
 
-The picker lists Claude Code, Codex, Cursor, OpenClaw, Grok, and a generic agent.
-Detected agents are checked; detection only looks for commands and configuration
-paths and does not prove an authenticated provider account. Enter accepts the
+The Herder-style picker is `tracker init` inside your project:
+
+```text
+Set up coding-agent integrations now? [Y/n]
+Coding agents on this machine:
+  1. [x] cursor    found cursor in PATH
+  2. [ ] claude    not detected
+  3. [ ] grok      not detected
+  ...
+Press Enter to install the checked agents
+```
+
+Detected agents are checked. Detection looks at commands and configuration
+paths; it does not prove an authenticated provider account. Enter accepts the
 checked agents. Names or numbers replace the selection; `none` or `q` skips it.
-Only selected guidance files are written. See [integration destinations and
-behavior](guides/agent-integrations.md).
+Only selected guidance files are written. Open that repo in the agent and ask
+for the board — there is no second product install. See [integration
+destinations and behavior](guides/agent-integrations.md).
 
 You can always set up later from your project:
 

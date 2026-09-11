@@ -126,6 +126,9 @@
         <h2>How do I use Atlas on two machines?</h2>
         <p>The repo is the database, so Git movement moves the tracker with it. For tracker-aware transfer there are signed export bundles (<code>tracker export create</code>, <code>tracker bundle</code>), remotes and sync (<code>tracker remote</code>, <code>tracker sync</code>), and conflict tooling (<code>tracker conflict</code>). Sync operations are explicit commands, never background daemons. Automatic Atlas backup is a separate isolated Git remote you name; it is not a silent copy of <code>origin</code> and a push is not verified until Atlas checks the remote commit.</p>
 
+        <h2>Do I wire each coding agent by hand?</h2>
+        <p>No. After the binary is installed, <code>tracker init</code> in your project detects Claude Code, Codex, Cursor, OpenClaw, and Grok, checks the ones it found, and writes the worker skill when you press Enter. Open that repo in the agent and ask for the current board. You do not run a second Atlas installer inside the agent. <code>tracker integrations detect</code> is the read-only version of that scan. The curl installer never initializes the directory it ran in; that stays <code>tracker init</code>.</p>
+
         <h2>Does setup turn on backup or a scheduler?</h2>
         <p>No. <code>tracker setup --yes</code> is not backup consent. Backup stays a named target you add first, then enable with <code>tracker backup auto enable</code> or <code>tracker setup --backup --backup-target</code>. Neither init nor setup installs a user-level scheduler. Those setup and backup commands are in the v1.14 implementation candidate; the latest published installer tag is still v1.13.0.</p>
 

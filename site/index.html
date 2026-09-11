@@ -96,6 +96,14 @@
       },
       {
         "@type": "Question",
+        "name": "Do I wire each coding agent by hand?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. After install, tracker init detects Claude Code, Codex, Cursor, OpenClaw, and Grok on this machine, checks the ones it found, and writes skills plus project instructions for the ones you keep. Open the repo in the agent and ask for the board. There is no second Atlas install inside Claude, Codex, Cursor, or Grok."
+        }
+      },
+      {
+        "@type": "Question",
         "name": "How do I get support?",
         "acceptedAnswer": {
           "@type": "Answer",
@@ -371,7 +379,7 @@
               <code id="first-board" tabindex="0">tracker board</code>
               <button class="copy-button" type="button" data-copy="first-board" aria-label="Copy board command">Copy</button>
             </div>
-            <p class="requirements">Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. Prefer a browser? <code>tracker web serve --open</code> puts the same board on a local kanban. On the v1.14 candidate (build from source; the latest published tag is still v1.13.0), <code>tracker setup --plan</code> then shows agents, MCP, and optional backup without guessing Git <code>origin</code>. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
+            <p class="requirements"><code>tracker init</code> detects the coding agents on the machine, checks the ones it found, and writes guidance when you press Enter. Open the same repo in that agent and ask for the board — there is no second Atlas install inside Claude, Codex, Cursor, or Grok. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. Prefer a browser? <code>tracker web serve --open</code> puts the same board on a local kanban. On the v1.14 candidate (build from source; the latest published tag is still v1.13.0), <code>tracker setup --plan</code> then shows agents, MCP, and optional backup without guessing Git <code>origin</code>. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
           </div>
         </div>
       </div>
@@ -402,6 +410,10 @@
         <details>
           <summary>How do coding agents use it?</summary>
           <p>Run tracker mcp serve to expose typed local tools, or let agents drive the CLI with JSON output and stable exit codes. Agents can read queues, work tickets, attach evidence, request review, and hand off context. The <a href="mcp.html">For agents</a> page separates six repository-guidance targets from MCP client registration.</p>
+        </details>
+        <details>
+          <summary>Do I wire each coding agent by hand?</summary>
+          <p>No. After install, <code>tracker init</code> detects Claude Code, Codex, Cursor, OpenClaw, and Grok on this machine, checks the ones it found, and writes skills plus project instructions for the ones you keep. Open the repo in the agent and ask for the board. There is no second Atlas install inside Claude, Codex, Cursor, or Grok.</p>
         </details>
         <details>
           <summary>How do I get support?</summary>
