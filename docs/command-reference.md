@@ -850,8 +850,8 @@ Slash command examples:
 - `tracker mcp approvals list --json`
 - `tracker mcp approvals revoke <APPROVAL-ID>`
 
-Default MCP setup uses `--tool-profile read`. The exact visible counts are read 41, workflow 73,
-delivery 77 (79 with `--dangerously-allow-high-impact-tools`), and admin 77 (the full 88 with the
+Default MCP setup uses `--tool-profile read`. The exact visible counts are read 43, workflow 75,
+delivery 79 (81 with `--dangerously-allow-high-impact-tools`), and admin 79 (the full 90 with the
 flag). High-impact tools require both a profile that includes the tool and the danger flag; execution
 still requires a one-time approval created outside MCP.
 

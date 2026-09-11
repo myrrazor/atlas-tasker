@@ -97,17 +97,73 @@ func TestInstallClaudeReplacesOnlyManagedBlock(t *testing.T) {
 
 func TestSkillContentTeachesBootstrapAndWakeups(t *testing.T) {
 	skill := atlasWorkerSkill("claude")
-	for _, needle := range []string{"tracker team list", "tracker agent wakeups"} {
+	for _, needle := range []string{"tracker team list", "tracker agent wakeups", "atlas.context", "atlas.status"} {
 		if !strings.Contains(skill, needle) {
 			t.Fatalf("skill should mention %q:\n%s", needle, skill)
 		}
 	}
 	reference := atlasWorkerReference()
-	for _, needle := range []string{"tracker team apply", "wakeups ack", "agent.work_available"} {
+	for _, needle := range []string{"tracker team apply", "wakeups ack", "agent.work_available", "atlas.context"} {
 		if !strings.Contains(reference, needle) {
 			t.Fatalf("reference should mention %q:\n%s", needle, reference)
 		}
 	}
+}
+
+func TestAllProviderSkillsShareManagedLifecycle(t *testing.T) {
+	core := lifecycleSection(atlasWorkerSkill("claude"))
+	if core == "" {
+		t.Fatal("claude skill is missing the managed lifecycle markers")
+	}
+	needles := []string{
+		"Prefer Atlas MCP tools",
+		"atlas.context",
+		"atlas.status",
+		"Search first",
+		"Use the ticket the user named",
+		"Avoid duplicate work",
+		"Claim before substantial edits",
+		"legal workflow edge",
+		"milestone progress",
+		"durable evidence",
+		"Request review or complete",
+		"Query Atlas before every status report",
+		"Reconcile Atlas state",
+		"tracking_excluded",
+		"follow_workspace",
+		"dependency_blocked",
+		"If MCP is unavailable",
+	}
+	for _, provider := range []string{"codex", "claude", "openclaw", "generic", "cursor", "grok"} {
+		body := atlasWorkerSkill(provider)
+		section := lifecycleSection(body)
+		if section != core {
+			t.Fatalf("%s lifecycle core differs from claude", provider)
+		}
+		if strings.Contains(body, "atlas-manager") || strings.Contains(body, "atlas-board") && !strings.Contains(body, "atlas.board") {
+			t.Fatalf("%s invented a second skill name", provider)
+		}
+		if !strings.Contains(body, "from "+skillProviderLabel(provider)) {
+			t.Fatalf("%s skill should name its provider identity", provider)
+		}
+		for _, needle := range needles {
+			if !strings.Contains(section, needle) {
+				t.Fatalf("%s lifecycle missing %q", provider, needle)
+			}
+		}
+	}
+}
+
+func lifecycleSection(body string) string {
+	_, rest, ok := strings.Cut(body, "<!-- atlas-managed-lifecycle -->")
+	if !ok {
+		return ""
+	}
+	section, _, ok := strings.Cut(rest, "<!-- /atlas-managed-lifecycle -->")
+	if !ok {
+		return ""
+	}
+	return section
 }
 
 func TestInstallGenericCreatesPortableSkillPack(t *testing.T) {

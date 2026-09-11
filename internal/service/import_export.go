@@ -439,6 +439,7 @@ func collectExportFiles(root string) ([]string, error) {
 	candidates := []string{
 		"projects",
 		filepath.ToSlash(filepath.Join(".tracker", "config.toml")),
+		filepath.ToSlash(filepath.Join(".tracker", "managed-mode.json")),
 		filepath.ToSlash(filepath.Join(".tracker", "events")),
 		filepath.ToSlash(filepath.Join(".tracker", "automations")),
 		filepath.ToSlash(filepath.Join(".tracker", "views")),

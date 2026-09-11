@@ -100,4 +100,13 @@ func TestConformanceHostDiscoversAndInvokesAtlas(t *testing.T) {
 	if !report.Passed() {
 		t.Fatalf("conformance probe failed: %+v", report)
 	}
+	have := map[string]bool{}
+	for _, name := range report.Tools {
+		have[name] = true
+	}
+	for _, name := range []string{"atlas.context", "atlas.status", "atlas.board"} {
+		if !have[name] {
+			t.Fatalf("conformance host missing %s in %v", name, report.Tools)
+		}
+	}
 }

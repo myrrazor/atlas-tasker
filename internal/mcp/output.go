@@ -107,6 +107,23 @@ func (w *limitWriter) Write(p []byte) (int, error) {
 }
 
 func textFallback(kind string, payload any, truncated bool, maxTokensEstimate int) string {
+	if markdown := extractMarkdown(payload); markdown != "" {
+		text := markdown
+		maxChars := 1200
+		if maxTokensEstimate > 0 {
+			maxChars = maxTokensEstimate * 4
+		}
+		if maxChars < 200 {
+			maxChars = 200
+		}
+		if len([]rune(text)) > maxChars {
+			text = truncateRunes(text, maxChars)
+		}
+		if truncated {
+			return fmt.Sprintf("%s returned a truncated result:\n%s", kind, text)
+		}
+		return text
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return kind
@@ -140,6 +157,22 @@ func truncateRunes(text string, maxRunes int) string {
 		count++
 	}
 	return text
+}
+
+func extractMarkdown(payload any) string {
+	obj, ok := payload.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if text, ok := obj["markdown"].(string); ok && strings.TrimSpace(text) != "" {
+		return text
+	}
+	inner, ok := obj["payload"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	text, _ := inner["markdown"].(string)
+	return strings.TrimSpace(text)
 }
 
 func resultPayloadTruncated(payload map[string]any) bool {

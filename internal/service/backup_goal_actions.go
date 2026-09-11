@@ -809,7 +809,7 @@ func backupSectionsForFiles(files []string) []contracts.BackupSection {
 			add(contracts.BackupSectionCollaboration)
 		case strings.HasPrefix(rel, ".tracker/security/"):
 			add(contracts.BackupSectionPublicSecurity)
-		case strings.HasPrefix(rel, ".tracker/governance/"):
+		case rel == ".tracker/managed-mode.json" || strings.HasPrefix(rel, ".tracker/governance/"):
 			add(contracts.BackupSectionGovernance)
 		case strings.HasPrefix(rel, ".tracker/classification/") || strings.HasPrefix(rel, ".tracker/redaction/rules/"):
 			add(contracts.BackupSectionClassification)
