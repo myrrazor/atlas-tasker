@@ -36,6 +36,9 @@ func testPlanInput(t *testing.T, target integrations.Target, detection adapter.D
 	if err := os.MkdirAll(storage.TrackerDir(root), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(storage.TrackerDir(root), "workspace.json"), []byte(`{"workspace_id":"ws-adapter-test"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	home := t.TempDir()
 	tracker := filepath.Join(t.TempDir(), "tracker")
 	if err := os.WriteFile(tracker, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
@@ -543,6 +546,101 @@ func TestUnrelatedClientListDoesNotConnect(t *testing.T) {
 	}
 	if v.State.Verified() {
 		t.Fatalf("list without this Atlas server must not verify, got %s kind %s", v.State, v.ConnectionKind)
+	}
+}
+
+func TestDetectUnrelatedListDoesNotPhantomCollision(t *testing.T) {
+	runner := &scriptedRunner{handle: func(cmd adapter.Command) (adapter.CommandResult, error) {
+		if strings.Contains(strings.Join(cmd.Args, " "), "--version") {
+			return adapter.CommandResult{Stdout: []byte("2.1.219")}, nil
+		}
+		return adapter.CommandResult{Stdout: []byte("other-server\nfilesystem\n")}, nil
+	}}
+	reg, err := New(Options{StateDir: t.TempDir(), Runner: runner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := reg.Lookup(integrations.TargetClaude)
+	exe := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input, root := testPlanInput(t, integrations.TargetClaude, adapter.Detection{
+		Installed: true, ExecutablePath: exe, VersionSupport: adapter.VersionSupported,
+		Version: adapter.ClientVersion{Raw: "2.1.219", Major: 2, Minor: 1, Patch: 219, Known: true},
+	})
+	if _, err := os.Stat(filepath.Join(root, ".tracker", "workspace.json")); err != nil {
+		t.Fatal(err)
+	}
+	detection := item.Detect(context.Background(), adapter.DetectInput{
+		WorkspaceRoot: input.WorkspaceRoot, Home: input.Home, Runner: runner,
+		LookPath: func(string) (string, error) { return exe, nil },
+	})
+	name := mustServer(t, input.WorkspaceID)
+	for _, existing := range detection.ExistingServers {
+		if existing.Name == name {
+			t.Fatalf("unrelated list/get invented existing server %#v", existing)
+		}
+	}
+	input.Detection = detection
+	if input.Detection.ExecutablePath == "" {
+		input.Detection.Installed = true
+		input.Detection.ExecutablePath = exe
+		input.Detection.VersionSupport = adapter.VersionSupported
+		input.Detection.Version = adapter.ClientVersion{Raw: "2.1.219", Major: 2, Minor: 1, Patch: 219, Known: true}
+	}
+	plan, err := item.Plan(context.Background(), input)
+	if err != nil {
+		t.Fatalf("plan must not fail on an unrelated client list: %v", err)
+	}
+	foundAdd := false
+	for _, step := range plan.Steps {
+		if step.Kind == adapter.StepRunClientCommand && step.Command != nil && strings.Contains(strings.Join(step.Command.Args, " "), "mcp add") {
+			foundAdd = true
+		}
+	}
+	if !foundAdd {
+		t.Fatal("expected claude mcp add when the client list has no Atlas server")
+	}
+}
+
+func TestDoctorFailedProbeSentenceIsNotConnected(t *testing.T) {
+	name := mustServer(t, "ws-adapter-test")
+	reg, err := New(Options{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := reg.Lookup(integrations.TargetOpenClaw)
+	exe := filepath.Join(t.TempDir(), "openclaw")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input, _ := testPlanInput(t, integrations.TargetOpenClaw, adapter.Detection{
+		Installed: true, ExecutablePath: exe, VersionSupport: adapter.VersionSupported,
+		Version: adapter.ClientVersion{Raw: "1.2.3", Major: 1, Minor: 2, Patch: 3, Known: true},
+	})
+	plan, err := item.Plan(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &scriptedRunner{handle: func(cmd adapter.Command) (adapter.CommandResult, error) {
+		joined := strings.Join(cmd.Args, " ")
+		if strings.Contains(joined, "doctor") {
+			return adapter.CommandResult{Stdout: []byte(name + " configured but probe failed: connection refused")}, nil
+		}
+		return adapter.CommandResult{Stdout: []byte(`{"name":"` + name + `","command":"/usr/bin/other"}`)}, nil
+	}}
+	v, err := openclaw.New().WithStateDir(t.TempDir()).WithRunner(runner).Verify(context.Background(), adapter.IntegrationState{
+		Target: integrations.TargetOpenClaw, ContractVersion: adapter.ContractVersion,
+		State: adapter.StateConfiguredUnverified, Scope: plan.Scope,
+		WorkspaceID: input.WorkspaceID, WorkspaceRoot: input.WorkspaceRoot,
+		ClientExecutable: exe, Registration: plan.Registration, UpdatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.State == adapter.StateConnected {
+		t.Fatalf("failed doctor probe must not report connected, got %s kind %s", v.State, v.ConnectionKind)
 	}
 }
 

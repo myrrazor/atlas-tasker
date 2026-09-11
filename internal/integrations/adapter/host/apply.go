@@ -261,10 +261,10 @@ func (a *Adapter) runClientNativeChecks(ctx context.Context, v *adapter.Verifica
 		exitedOK := err == nil && result.ExitCode == 0 && !result.TimedOut
 		method := methodForInspect(cmd)
 		mentioned := mentionsServer(detail, name)
-		checkPassed := exitedOK && (method == adapter.VerificationClientCLIList || mentioned)
+		checkPassed := exitedOK && mentioned
 		v.Checks = append(v.Checks, adapter.VerificationCheck{Name: string(method), Method: method, Passed: checkPassed, Detail: truncateDetail(detail)})
 		v.Probes = append(v.Probes, adapter.ProbeRecord{Command: cmd, ExitCode: result.ExitCode, TimedOut: result.TimedOut, Summary: truncateDetail(detail)})
-		proves, isDoctor := nativeProof(a.target, method, exitedOK, mentioned)
+		proves, isDoctor := nativeProof(a.target, method, exitedOK, mentioned, detail)
 		if proves {
 			nativeOK = true
 		}

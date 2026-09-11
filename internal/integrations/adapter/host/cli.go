@@ -96,12 +96,15 @@ func isListCommand(cmd adapter.Command) bool {
 	return methodForInspect(cmd) == adapter.VerificationClientCLIList
 }
 
-func nativeProof(target integrations.Target, method adapter.VerificationMethod, ok bool, mentions bool) (proves, doctor bool) {
+func nativeProof(target integrations.Target, method adapter.VerificationMethod, ok bool, mentions bool, detail string) (proves, doctor bool) {
 	if !ok || !mentions {
 		return false, false
 	}
 	switch method {
 	case adapter.VerificationClientCLIDoctor:
+		if doctorProbeFailed(detail) {
+			return false, false
+		}
 		return true, true
 	case adapter.VerificationClientCLIGet:
 		if target == integrations.TargetOpenClaw {
@@ -111,4 +114,17 @@ func nativeProof(target integrations.Target, method adapter.VerificationMethod, 
 	default:
 		return false, false
 	}
+}
+
+func doctorProbeFailed(detail string) bool {
+	lower := strings.ToLower(detail)
+	for _, marker := range []string{
+		"probe failed", "connection refused", "unhealthy", "offline",
+		"not running", "failed to", "error:", "timed out", "timeout",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }

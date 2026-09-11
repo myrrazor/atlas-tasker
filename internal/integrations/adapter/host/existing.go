@@ -90,7 +90,6 @@ func (a *Adapter) scanCLIServers(ctx context.Context, detection *adapter.Detecti
 			expectedName = name
 		}
 	}
-	seen := map[string]struct{}{}
 	for _, cmd := range clientInventoryCommands(a.target, detection.ExecutablePath, expectedName, input.WorkspaceRoot) {
 		if err := cmd.Validate(); err != nil {
 			continue
@@ -105,30 +104,11 @@ func (a *Adapter) scanCLIServers(ctx context.Context, detection *adapter.Detecti
 		if result.ExitCode != 0 || result.TimedOut {
 			continue
 		}
-		for _, name := range serverNamesFromCLI(detail, expectedName) {
-			if _, ok := seen[name]; ok && name != expectedName {
-				continue
-			}
-			seen[name] = struct{}{}
-			owned := cliOutputOwned(detail, name, workspaceID)
-			if !owned && name == expectedName && !isListCommand(cmd) {
-				owned = cliOutputOwned(detail, name, workspaceID)
-			}
-			if !owned && (name == expectedName || strings.HasPrefix(name, adapter.ServerNamePrefix)) && isListCommand(cmd) {
-				owned = false
-			}
+		for _, found := range serversFromCLIOutput(cmd, detail, expectedName, workspaceID) {
 			addExisting(detection, adapter.ExistingServer{
-				Name:       name,
+				Name:       found.Name,
 				Scope:      a.Capabilities().PreferredScope,
-				AtlasOwned: owned,
-			})
-		}
-		if expectedName != "" && !isListCommand(cmd) {
-			owned := cliOutputOwned(detail, expectedName, workspaceID)
-			addExisting(detection, adapter.ExistingServer{
-				Name:       expectedName,
-				Scope:      a.Capabilities().PreferredScope,
-				AtlasOwned: owned,
+				AtlasOwned: found.OK && atlasOwnedEntry(found.Entry, workspaceID),
 			})
 		}
 	}
@@ -290,7 +270,49 @@ func atlasOwnedEntry(entry adapter.StandardServerEntry, workspaceID string) bool
 	return hasMCP && hasServe && hasExpected
 }
 
-func serverNamesFromCLI(raw, extra string) []string {
+func serversFromCLIOutput(cmd adapter.Command, raw, expectedName, workspaceID string) []namedServer {
+	_ = workspaceID
+	seen := map[string]namedServer{}
+	add := func(name string, entry adapter.StandardServerEntry, ok bool) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		if cur, exists := seen[name]; exists && cur.OK {
+			return
+		}
+		seen[name] = namedServer{Name: name, Entry: entry, OK: ok}
+	}
+	for _, found := range serversFromJSON([]byte(raw)) {
+		add(found.Name, found.Entry, found.OK)
+	}
+	for _, name := range namedServersInText(raw) {
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		entry, ok := entryForNamedServer(raw, name)
+		add(name, entry, ok)
+	}
+	if !isListCommand(cmd) && expectedName != "" {
+		if mentionsServer(raw, expectedName) {
+			if entry, ok := entryForNamedServer(raw, expectedName); ok {
+				add(expectedName, entry, true)
+			} else {
+				add(expectedName, adapter.StandardServerEntry{}, false)
+			}
+		} else if entry, ok := singleInspectEntry(raw); ok {
+			// get/show of this name may print only command/args.
+			add(expectedName, entry, true)
+		}
+	}
+	out := make([]namedServer, 0, len(seen))
+	for _, found := range seen {
+		out = append(out, found)
+	}
+	return out
+}
+
+func namedServersInText(raw string) []string {
 	seen := map[string]struct{}{}
 	var out []string
 	add := func(name string) {
@@ -312,8 +334,22 @@ func serverNamesFromCLI(raw, extra string) []string {
 	for _, name := range atlasServerNameRe.FindAllString(raw, -1) {
 		add(name)
 	}
-	if extra != "" && strings.Contains(raw, extra) {
-		add(extra)
+	return out
+}
+
+func serverNamesFromCLI(raw, extra string) []string {
+	out := namedServersInText(raw)
+	if extra != "" && mentionsServer(raw, extra) {
+		found := false
+		for _, name := range out {
+			if name == extra {
+				found = true
+				break
+			}
+		}
+		if !found {
+			out = append(out, extra)
+		}
 	}
 	return out
 }
@@ -338,21 +374,69 @@ func collectJSONNames(node any, add func(string)) {
 }
 
 func cliOutputOwned(raw, serverName, workspaceID string) bool {
-	if serverName == "" || !strings.Contains(raw, serverName) {
-		return false
-	}
-	if workspaceID != "" && strings.Contains(raw, workspaceID) && strings.Contains(raw, "mcp") && strings.Contains(raw, "serve") && strings.Contains(raw, "--expected-workspace-id") {
-		return true
+	entry, ok := entryForNamedServer(raw, serverName)
+	return ok && atlasOwnedEntry(entry, workspaceID)
+}
+
+func entryForNamedServer(raw, serverName string) (adapter.StandardServerEntry, bool) {
+	if serverName == "" {
+		return adapter.StandardServerEntry{}, false
 	}
 	for _, found := range serversFromJSON([]byte(raw)) {
-		if found.Name == serverName && found.OK && atlasOwnedEntry(found.Entry, workspaceID) {
-			return true
+		if found.Name == serverName && found.OK {
+			return found.Entry, true
 		}
 	}
-	if entry, ok := decodeServerValue(jsonObjectOrNil(raw)); ok {
-		return atlasOwnedEntry(entry, workspaceID)
+	if doc := jsonObjectOrNil(raw); doc != nil {
+		if fields, ok := doc.(map[string]any); ok {
+			name, _ := fields["name"].(string)
+			entry, ok := decodeServerValue(doc)
+			switch {
+			case !ok:
+			case name == serverName:
+				return entry, true
+			case name == "" && mentionsServer(raw, serverName) && len(atlasServerNameRe.FindAllString(raw, -1)) <= 1:
+				return entry, true
+			}
+		}
 	}
-	return false
+	var scoped []string
+	for _, line := range strings.Split(raw, "\n") {
+		if mentionsServer(line, serverName) {
+			scoped = append(scoped, line)
+		}
+	}
+	if len(scoped) == 0 {
+		return adapter.StandardServerEntry{}, false
+	}
+	return parseCommandArgsFromText(strings.Join(scoped, "\n"))
+}
+
+func singleInspectEntry(raw string) (adapter.StandardServerEntry, bool) {
+	if len(serversFromJSON([]byte(raw))) > 0 {
+		return adapter.StandardServerEntry{}, false
+	}
+	if entry, ok := decodeServerValue(jsonObjectOrNil(raw)); ok {
+		return entry, true
+	}
+	return adapter.StandardServerEntry{}, false
+}
+
+func parseCommandArgsFromText(raw string) (adapter.StandardServerEntry, bool) {
+	fields := strings.Fields(raw)
+	for i, field := range fields {
+		cleaned := strings.Trim(field, `"'`)
+		base := filepath.Base(cleaned)
+		if base != adapter.PortableExecutableName && base != "tracker" && base != "atlas-tasker" {
+			continue
+		}
+		return adapter.StandardServerEntry{
+			Type:    adapter.RegistrationTransportStdio,
+			Command: cleaned,
+			Args:    append([]string(nil), fields[i+1:]...),
+		}, true
+	}
+	return adapter.StandardServerEntry{}, false
 }
 
 func jsonObjectOrNil(raw string) any {
@@ -384,7 +468,25 @@ func workspaceIDFromRoot(root string, read func(string) ([]byte, error)) string 
 }
 
 func mentionsServer(detail, serverName string) bool {
-	return serverName != "" && strings.Contains(detail, serverName)
+	if serverName == "" {
+		return false
+	}
+	idx := strings.Index(detail, serverName)
+	if idx < 0 {
+		return false
+	}
+	if idx > 0 && isNameChar(detail[idx-1]) {
+		return false
+	}
+	end := idx + len(serverName)
+	if end < len(detail) && isNameChar(detail[end]) {
+		return false
+	}
+	return true
+}
+
+func isNameChar(b byte) bool {
+	return b == '_' || b == '-' || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
 func TOMLHasUnmanaged(raw []byte, name, workspaceID string) bool {
