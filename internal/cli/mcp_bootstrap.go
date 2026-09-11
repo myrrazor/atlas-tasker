@@ -9,13 +9,42 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	atlasmcp "github.com/myrrazor/atlas-tasker/internal/mcp"
 	"github.com/myrrazor/atlas-tasker/internal/service"
+	"github.com/myrrazor/atlas-tasker/internal/setup"
 	"github.com/spf13/cobra"
 )
 
 func prepareMCPWorkspace(cmd *cobra.Command, options atlasmcp.Options) (string, error) {
+	fromCWD, _ := cmd.Flags().GetBool("workspace-from-cwd")
+	expectedID, _ := cmd.Flags().GetString("expected-workspace-id")
 	initialize, _ := cmd.Flags().GetBool("init-if-missing")
+	workspaceFlag, _ := cmd.Flags().GetString("workspace")
+	if fromCWD {
+		if initialize {
+			return "", apperr.New(apperr.CodeInvalidInput, "--workspace-from-cwd cannot be combined with --init-if-missing")
+		}
+		if cmd.Flags().Changed("workspace") && strings.TrimSpace(workspaceFlag) != "" {
+			return "", apperr.New(apperr.CodeInvalidInput, "--workspace-from-cwd cannot be combined with --workspace")
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+		stateDir := mcpStateDir()
+		resolved, err := setup.ResolveWorkspaceFromCWD(cwd, expectedID, stateDir)
+		if err != nil {
+			return "", err
+		}
+		return resolved.Root, nil
+	}
 	if !initialize {
-		return requestedWorkspaceRoot(cmd)
+		root, err := requestedWorkspaceRoot(cmd)
+		if err != nil {
+			return "", err
+		}
+		if err := setup.VerifyExpectedWorkspaceID(root, expectedID); err != nil {
+			return "", err
+		}
+		return root, nil
 	}
 	raw, _ := cmd.Flags().GetString("workspace")
 	if !cmd.Flags().Changed("workspace") || strings.TrimSpace(raw) == "" || !filepath.IsAbs(raw) {
@@ -42,7 +71,14 @@ func prepareMCPWorkspace(cmd *cobra.Command, options atlasmcp.Options) (string, 
 			return "", apperr.New(apperr.CodeInvalidInput, ".tracker must be a real directory for MCP bootstrap")
 		}
 		// Do not re-run init: it would rewrite an existing workspace's config.
-		return service.InitializedWorkspaceRoot(root)
+		root, err = service.InitializedWorkspaceRoot(root)
+		if err != nil {
+			return "", err
+		}
+		if err := setup.VerifyExpectedWorkspaceID(root, expectedID); err != nil {
+			return "", err
+		}
+		return root, nil
 	}
 	if !os.IsNotExist(err) {
 		return "", err
@@ -75,5 +111,24 @@ func prepareMCPWorkspace(cmd *cobra.Command, options atlasmcp.Options) (string, 
 	if _, err := ensureInitArtifacts(root); err != nil {
 		return "", err
 	}
-	return service.InitializedWorkspaceRoot(root)
+	root, err = service.InitializedWorkspaceRoot(root)
+	if err != nil {
+		return "", err
+	}
+	if err := setup.VerifyExpectedWorkspaceID(root, expectedID); err != nil {
+		return "", err
+	}
+	return root, nil
+}
+
+func mcpStateDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	dir, err := setup.DefaultStateDir(home, os.Getenv)
+	if err != nil {
+		return ""
+	}
+	return dir
 }

@@ -1156,3 +1156,39 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 7. **Confidence:** high
 8. **Revisit Trigger:** A deployment needs repository-wide delivery enablement (then an explicit team-policy record with its own governance, not the managed-mode file, would carry it).
 9. **Affected PRs/Files:** internal/contracts/managed_mode.go, internal/contracts/managed_mode_test.go, docs/v1.14-managed-mode-contract.md §1, §2, §2.1, §5, docs/release/v1.14-s0-review-round1.md.
+
+## DEC-081
+
+1. **Decision ID:** DEC-081
+2. **Date:** 2026-09-11
+3. **Question:** What can Sprint 114.1 honestly apply for each provider, and what happens when backup is requested before Sprint 114.5 exists?
+4. **Options Considered:** Invent MCP adapters and a backup writer so setup looks complete; refuse `--agents` and `--backup` until later sprints; apply the existing skill/instruction installer as a skill-only transaction and record backup as a deferred consent group that never rolls back successful agent work.
+5. **Chosen Option:** Skill-only apply. Each selected provider writes Atlas-owned instruction, guide, and skill files plus a private local state record. MCP registration is planned as a remaining dependency on AT114-201..208. Backup is a separate consent group: `--yes` is not backup consent; `--backup`/`--backup-target` appear in the plan with `writes=false` and do not mutate backup state. A backup-apply failure (injected for tests, or later real apply) returns partial success and leaves connected agents untouched.
+6. **Why We Chose It:** The honest-ledger rule forbids claiming adapters or off-device backup that do not exist. The existing installer already knows how to preview and preserve custom instruction content; reusing it keeps one ownership model. Treating backup as a later group matches locked decision 7 and AT114-104.
+7. **Confidence:** high
+8. **Revisit Trigger:** Sprint 114.2 registers adapters; then setup apply must use adapter plans instead of skill-only plans. Sprint 114.5 implements backup apply.
+9. **Affected PRs/Files:** internal/setup/{planner,skillplan,engine,executor}.go, internal/cli/setup.go, docs/v1.14-acceptance.md (AT114-101, AT114-104).
+
+## DEC-082
+
+1. **Decision ID:** DEC-082
+2. **Date:** 2026-09-11
+3. **Question:** Which process exit codes carry the run-level setup statuses from DEC-079 §7?
+4. **Options Considered:** Map every non-connected status to exit 1; invent new exit codes; reuse the existing table: connected/pending/unverified → 0, partial → 4 (`conflict`), failed → 1 (`internal`).
+5. **Chosen Option:** The third. `connected`, `pending`, and `unverified` are successful resting outcomes (writes kept or a truthful no-op) and exit 0. `partial` is `CodeConflict` (exit 4): some consented providers were kept and at least one was not. `failed` is `CodeInternal` (exit 1): nothing consented was kept. Per-provider operation and integration states remain in `--json`.
+6. **Why We Chose It:** DEC-079 already froze the five status strings and required distinct non-zero codes for partial versus failed inside the existing exit-code table. Agents can branch on `status` without a second state machine, and exit 4 already means "the workflow worked but this run did not finish cleanly."
+7. **Confidence:** high
+8. **Revisit Trigger:** A caller needs to distinguish unverified from pending in the exit code (then the JSON status remains the API; do not add an exit code).
+9. **Affected PRs/Files:** internal/setup/report.go, internal/cli/setup.go, docs/v1.14-setup-transaction-model.md §7, docs/v1.14-acceptance.md (AT114-104).
+
+## DEC-083
+
+1. **Decision ID:** DEC-083
+2. **Date:** 2026-09-11
+3. **Question:** How does `--workspace-from-cwd` interact with `--workspace`, `--init-if-missing`, and the machine-local workspace registry?
+4. **Options Considered:** Let the registry supply a fallback path when cwd is wrong; allow combining `--workspace` with `--workspace-from-cwd`; keep `--workspace` as today and add a verified-cwd mode that never initializes, never uses a registry path as the workspace, and treats the registry only as a move/copy/replace detector.
+5. **Chosen Option:** The third. `--workspace-from-cwd` requires `--expected-workspace-id`, is mutually exclusive with `--workspace` and `--init-if-missing`, canonicalizes cwd, walks to the single nearest real Atlas root, verifies the ID, and refuses nested workspaces, symlink substitution, a replaced inode, and a copied workspace whose original registration still exists. The registry is never opened as a workspace. Bare `--workspace` stays for existing callers; if `--expected-workspace-id` is also set, the ID is verified on that root.
+6. **Why We Chose It:** DEC-072 and AT114-102 already forbade fallback and unverified registry paths. Combining the flags would let a client select a different workspace than the one it started in. Copy-versus-move has to fail closed: a second checkout with the same ID is not the registered directory.
+7. **Confidence:** high
+8. **Revisit Trigger:** A provider documents a safe absolute-path placeholder that makes `--workspace-from-cwd` unnecessary for that target (the flag remains for the others).
+9. **Affected PRs/Files:** internal/setup/{resolve,registry}.go, internal/cli/mcp.go, internal/cli/mcp_bootstrap.go, docs/mcp.md, docs/command-reference.md.

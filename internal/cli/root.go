@@ -111,6 +111,7 @@ gets you the same board in a browser.`,
 	root.AddCommand(newUnwatchCommand())
 	root.AddCommand(newBulkCommand())
 	root.AddCommand(newTemplatesCommand())
+	root.AddCommand(newSetupCommand())
 	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
 	root.AddCommand(newRenderCommand())
@@ -337,7 +338,28 @@ func newIntegrationsCommand() *cobra.Command {
 		install.AddCommand(targetCmd)
 	}
 
-	cmd.AddCommand(detect, install)
+	status := &cobra.Command{Use: "status", Short: "Show Atlas-owned integration state for this workspace", RunE: runIntegrationsStatus}
+	addReadOutputFlags(status, &outputFlags{})
+
+	repair := &cobra.Command{
+		Use:   "repair <target>",
+		Args:  cobra.ExactArgs(1),
+		Short: "Repair drifted Atlas-owned files for one agent target",
+		RunE:  runIntegrationsRepair,
+	}
+	repair.Flags().Bool("yes", false, "Apply the repair plan")
+	addReadOutputFlags(repair, &outputFlags{})
+
+	disconnect := &cobra.Command{
+		Use:   "disconnect <target>",
+		Args:  cobra.ExactArgs(1),
+		Short: "Remove Atlas-owned files for one agent target",
+		RunE:  runIntegrationsDisconnect,
+	}
+	disconnect.Flags().Bool("yes", false, "Apply the removal plan; required when Atlas-owned files were edited")
+	addReadOutputFlags(disconnect, &outputFlags{})
+
+	cmd.AddCommand(detect, install, status, repair, disconnect)
 	return cmd
 }
 

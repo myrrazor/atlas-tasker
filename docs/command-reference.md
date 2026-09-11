@@ -3,6 +3,9 @@
 ## Top-Level
 
 - `tracker init [--integrations|--skip-integrations]`
+- `tracker setup [--plan|--yes] [--agents <list|all>] [--mode guidance|managed|disabled] [--team <POLICY>] [--backup] [--backup-target <ID>]`
+- `tracker setup status`
+- `tracker setup repair [--yes]`
 - `tracker help`
 - `tracker doctor [--repair]`
 - `tracker reindex`
@@ -47,6 +50,9 @@
 - `tracker templates list`
 - `tracker templates view <NAME>`
 - `tracker integrations detect [--json]`
+- `tracker integrations status [--json]`
+- `tracker integrations repair <target> [--yes]`
+- `tracker integrations disconnect <target> [--yes]`
 - `tracker integrations install [codex|claude|openclaw|cursor|grok|generic] [--force] [--targets <list>] [--global]`
 - `tracker integrations install` with no target opens an interactive multi-select when stdin/stdout are a TTY
 - `tracker web serve [--host 127.0.0.1] [--port 0] [--project <KEY>] [--actor <ACTOR>] [--open|--no-browser] [--read-only]`
@@ -162,6 +168,16 @@
 
 Setup and update behavior:
 
+- `tracker setup --plan` inspects the workspace and detected agents and writes nothing; `--json` prints only JSON
+- `tracker setup --yes` applies the plan; it is not consent for backup or for unnamed machine-wide scopes such as OpenClaw
+- OpenClaw and other machine-wide targets must be named with `--agents`; generic is never auto-selected
+- `--backup` / `--backup-target` are a separate consent group; Sprint 114.1 records the request and does not write backup state (AT114-501/505)
+- `--mode delivery` is refused; enable delivery as a separate power-user action
+- `--team` records the requested policy and does not overwrite existing agent roles (AT114-209)
+- Re-running setup is a no-op when the workspace is already current; interactive cancel and EOF write nothing
+- `tracker setup status` and `tracker integrations status` report skill/block versions, workspace binding, and repair reasons
+- `tracker integrations repair <target>` refreshes drifted Atlas-owned files; `disconnect` removes only matching Atlas-owned entries and requires confirmation after manual edits
+- The shell installer may offer `tracker setup` after an explicit TTY yes; unattended install never initializes the current directory
 - plain `tracker init` can offer the six-target integration picker only when stdin and stdout are TTYs; `--skip-integrations` suppresses it
 - `tracker integrations install` accepts `claude`, `codex`, `cursor`, `openclaw`, `grok`, and `generic`; scripts should pass one target or `--targets <list>`
 - `none` and `q` leave integration installation skipped; JSON and non-TTY invocations never prompt
@@ -826,7 +842,7 @@ Slash command examples:
 
 ## MCP Adapter
 
-- `tracker mcp serve [--workspace <ABSOLUTE-PATH>] [--init-if-missing] [--tool-profile read|workflow|delivery|admin] [--read-only] [--dangerously-allow-high-impact-tools]`
+- `tracker mcp serve [--workspace <ABSOLUTE-PATH>] [--init-if-missing] [--workspace-from-cwd --expected-workspace-id <ID>] [--tool-profile read|workflow|delivery|admin] [--read-only] [--dangerously-allow-high-impact-tools]`
 - `tracker mcp schema --json [--tool-profile <PROFILE>]`
 - `tracker mcp tools --json [--tool-profile <PROFILE>]`
 - `tracker mcp approve-operation --operation <TOOL> --target <ID> --actor <ACTOR> --reason <TEXT> [--ttl 10m]`
@@ -837,6 +853,14 @@ Default MCP setup uses `--tool-profile read`. The exact visible counts are read 
 delivery 77 (79 with `--dangerously-allow-high-impact-tools`), and admin 77 (the full 88 with the
 flag). High-impact tools require both a profile that includes the tool and the danger flag; execution
 still requires a one-time approval created outside MCP.
+
+`--workspace-from-cwd` resolves the nearest Atlas root from the current directory and requires
+`--expected-workspace-id`. It never initializes, never follows a registry path as a fallback, and
+refuses nested workspaces, symlink substitution, a wrong ID, a replaced directory, and a copied
+workspace that still has a stale registration. Use it only when a provider cannot safely carry an
+absolute machine path. `--workspace` remains the binding for providers that can. The two flags are
+mutually exclusive with each other and with `--init-if-missing`. If `--workspace` is also given
+`--expected-workspace-id`, Atlas verifies the ID and still does not fall back to another workspace.
 
 `--init-if-missing` is an opt-in server-startup bootstrap. It requires `--workspace` to be an
 explicit absolute path to an existing directory and requires a write-capable workflow, delivery, or

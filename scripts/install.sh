@@ -120,29 +120,31 @@ offer_integrations() {
     return
   fi
   # curl | sh leaves stdin attached to the download. Use the controlling
-  # terminal for optional setup; unattended installs must never read stdin.
+  # terminal for optional setup; unattended installs must never read stdin
+  # and must never initialize the current directory.
   if [ ! -t 1 ] || ! ( : </dev/tty ) 2>/dev/null; then
-    echo "Next: run tracker init in your project to set up coding-agent guidance."
+    echo "Next: run tracker setup in an Atlas project to install coding-agent guidance."
     return
   fi
-  # VERSION can pin older releases that predate the integrations wizard.
-  case "$("$BIN_DIR/$BIN_NAME" init --help 2>/dev/null)" in
-    *--integrations*) ;;
-    *) echo "Next: run tracker init in your project."; return ;;
-  esac
-  printf '\nSet up coding-agent guidance in %s? This initializes an Atlas workspace here. [y/N] ' "$(pwd)" >/dev/tty
+  # Prefer tracker setup. Older pinned binaries without that command fall
+  # back to a message instead of initializing the current directory.
+  if ! "$BIN_DIR/$BIN_NAME" setup --help >/dev/null 2>&1; then
+    echo "Next: run tracker init in your project, then tracker integrations install."
+    return
+  fi
+  printf '\nSet up coding-agent guidance in %s? Requires an existing Atlas workspace. [y/N] ' "$(pwd)" >/dev/tty
   answer=""
   if ! IFS= read -r answer </dev/tty; then
-    echo "Skipped setup. Run tracker init in your project when ready."
+    echo "Skipped setup. Run tracker setup in your project when ready."
     return
   fi
   case "$answer" in
     y|Y|yes|YES|Yes)
-      if ! "$BIN_DIR/$BIN_NAME" init --integrations </dev/tty >/dev/tty; then
-        echo "Tracker is installed, but agent setup did not complete. Run tracker integrations install in your project to try again." >&2
+      if ! "$BIN_DIR/$BIN_NAME" setup </dev/tty >/dev/tty; then
+        echo "Tracker is installed, but agent setup did not complete. Run tracker setup in your project to try again." >&2
       fi
       ;;
-    *) echo "Skipped setup. Run tracker init in your project when ready." ;;
+    *) echo "Skipped setup. Run tracker setup in your project when ready." ;;
   esac
 }
 

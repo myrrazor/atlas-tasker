@@ -33,6 +33,8 @@ This file is for agents **using** the tracker. If you are contributing to Atlas 
 - **Run tracker from the workspace root.** A directory that never went through `tracker init`
   is exit 2 — nothing gets scaffolded — and from a subdirectory of a real workspace the error
   names the root to run from. `init` and explicit `integrations install` can create a workspace.
+  `tracker setup` plans and applies agent guidance in an already-initialized workspace; it does
+  not initialize the current directory. MCP `--workspace-from-cwd` also never initializes.
 - **Claim before you edit code.** A lease is how two agents avoid the same ticket. Claiming a
   ticket someone else holds is exit 4, not a queue.
 - **The browser board is for humans.** `tracker web serve` mints a random session token per

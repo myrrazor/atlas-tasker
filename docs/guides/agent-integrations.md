@@ -5,7 +5,25 @@ integration pack teaches an agent how to read Atlas work, claim a ticket, record
 review. It does not install an agent, launch one, grant it permissions, or register Atlas as an MCP
 server.
 
-## Choose During Setup
+## Unified setup
+
+`tracker setup` is the workspace-scoped planner and apply path for agent guidance. It inspects
+detected clients, existing managed blocks, and local setup state, prints a read-only plan, and
+applies one provider transaction at a time. Planning never writes. `--yes` is not backup consent
+and is not consent for unnamed machine-wide scopes.
+
+```bash
+tracker setup --plan --json
+tracker setup --yes --agents generic
+tracker setup status --json
+tracker integrations repair generic --yes
+tracker integrations disconnect generic --yes
+```
+
+The release installer may offer `tracker setup` after an explicit TTY yes. Unattended install never
+initializes the current directory and never runs a second integration wizard.
+
+## Choose During Init
 
 In an interactive terminal, `tracker init` initializes the current workspace and then asks:
 
