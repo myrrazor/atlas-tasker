@@ -101,6 +101,7 @@ type ApplyOptions struct {
 	ConfirmRemoval   bool
 	PlanOnly         bool
 	AllowMachineWide bool
+	AlreadyLocked    bool
 }
 
 // PlanAndMaybeApply builds a plan and, unless PlanOnly, applies consented
@@ -181,6 +182,13 @@ func (e *Engine) reportFromPlan(prepared *PreparedSetup, kind string) *RunReport
 func (e *Engine) ApplyPrepared(ctx context.Context, prepared *PreparedSetup, applyOpts ApplyOptions) (*RunReport, error) {
 	if allNoOp(prepared) {
 		report := e.reportFromPlan(prepared, "setup_result")
+		if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested && e.Hooks.BackupApply != nil {
+			if err := e.Hooks.BackupApply(); err != nil {
+				report.Providers = append(report.Providers, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
+			}
+		} else if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested {
+			report.BackupWorker = "deferred"
+		}
 		report.Status = deriveRunStatus(report.Providers)
 		return report, errorForRunStatus(report.Status)
 	}
@@ -189,6 +197,7 @@ func (e *Engine) ApplyPrepared(ctx context.Context, prepared *PreparedSetup, app
 		Mode:         modeFromPlan(prepared),
 		Backup:       prepared.Plan.Backup != nil,
 		BackupTarget: backupTarget(prepared),
+		Team:         teamFromPlan(prepared),
 	})
 	if err != nil {
 		return nil, err
@@ -196,11 +205,13 @@ func (e *Engine) ApplyPrepared(ctx context.Context, prepared *PreparedSetup, app
 	if fresh.Plan.Fingerprint != prepared.Plan.Fingerprint {
 		return nil, apperr.New(apperr.CodeConflict, "stale plan: the workspace changed after planning")
 	}
-	release, err := AcquireSetupLock(e.StateDir, "tracker setup")
-	if err != nil {
-		return nil, err
+	if !applyOpts.AlreadyLocked {
+		release, err := AcquireSetupLock(e.StateDir, "tracker setup")
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = release() }()
 	}
-	defer func() { _ = release() }()
 	if err := e.recoverInFlight(ctx); err != nil && !errors.Is(err, ErrInjectedCrash) {
 		return nil, err
 	}
@@ -299,6 +310,13 @@ func backupTarget(prepared *PreparedSetup) string {
 	return prepared.Plan.Backup.TargetID
 }
 
+func teamFromPlan(prepared *PreparedSetup) string {
+	if prepared.Plan.Team == nil {
+		return ""
+	}
+	return prepared.Plan.Team.Requested
+}
+
 func (e *Engine) applyManagedMode(path string, body []byte, policy contracts.ManagedModePolicy) error {
 	opID := fmt.Sprintf("managed-mode-%d", e.now().UnixNano())
 	entry := &JournalEntry{
@@ -346,7 +364,9 @@ func (e *Engine) applyManagedMode(path string, body []byte, policy contracts.Man
 		return err
 	}
 	prepared := preparedProvider{Plan: adapter.IntegrationPlan{Steps: stepsFromJournal(entry)}}
-	if err := atomicWriteFile(path, body, 0o644); err != nil {
+	if err := e.withWorkspaceLock(context.Background(), path, true, func() error {
+		return atomicWriteFile(path, body, 0o644)
+	}); err != nil {
 		return e.failToRollback(context.Background(), entry, prepared, err)
 	}
 	after, err := InspectFile(path, e.currentUID)
@@ -394,6 +414,46 @@ func (e *Engine) applyManagedMode(path string, body []byte, policy contracts.Man
 	return nil
 }
 
+func (e *Engine) recoverManagedMode(ctx context.Context, entry *JournalEntry) error {
+	if len(entry.Steps) == 0 || entry.Steps[0].Path == "" {
+		return fmt.Errorf("managed-mode journal is missing its path")
+	}
+	path := entry.Steps[0].Path
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return e.failToRollback(ctx, entry, preparedProvider{Plan: adapter.IntegrationPlan{Steps: stepsFromJournal(entry)}}, err)
+	}
+	policy, err := contracts.ParseManagedModePolicy(raw)
+	if err != nil {
+		return e.failToRollback(ctx, entry, preparedProvider{Plan: adapter.IntegrationPlan{Steps: stepsFromJournal(entry)}}, err)
+	}
+	manifest, err := loadManifest(e.StateDir, e.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	if manifest == nil {
+		manifest = emptyManifest(e.WorkspaceID, e.WorkspaceRoot, trackerIdentity(e.TrackerPath, e.TrackerVersion))
+	}
+	manifest.ManagedMode = ManifestManagedMode{
+		Enabled:       policy.Mode.TracksWork(),
+		CapturePolicy: string(policy.CapturePolicy),
+		StatusSource:  string(policy.StatusPolicy),
+		DeclaredMode:  string(policy.Mode),
+	}
+	if err := saveManifest(e.StateDir, manifest); err != nil {
+		return err
+	}
+	entry.Integration = adapter.StateConnected
+	if err := markState(entry, StateConnected); err != nil {
+		return err
+	}
+	if err := writeJournal(e.StateDir, entry); err != nil {
+		return err
+	}
+	_ = os.RemoveAll(rollbackDir(e.StateDir, entry.OperationID))
+	return nil
+}
+
 func (e *Engine) recoverInFlight(ctx context.Context) error {
 	entries, err := listJournals(e.StateDir)
 	if err != nil {
@@ -433,6 +493,9 @@ func (e *Engine) recoverInFlight(ctx context.Context) error {
 }
 
 func (e *Engine) recoverVerify(ctx context.Context, entry *JournalEntry) error {
+	if entry.Kind == JournalKindManagedMode {
+		return e.recoverManagedMode(ctx, entry)
+	}
 	if entry.Kind != JournalKindProvider {
 		state := entry.Integration
 		if state == "" {
@@ -497,11 +560,9 @@ func stepsFromJournal(entry *JournalEntry) []adapter.PlanStep {
 	return out
 }
 
-// StatusReport reads the manifest, journal, and live inspection.
+// StatusReport reads the manifest, journal, and live inspection. It does not
+// recover in-flight journals; that is repair/apply under the setup lock.
 func (e *Engine) StatusReport() (*RunReport, error) {
-	if err := e.recoverInFlight(context.Background()); err != nil {
-		return nil, err
-	}
 	inspection, err := inspectWorkspace(e.WorkspaceRoot, e.Home, e.StateDir, e.lookPath(), e.getenv())
 	if err != nil {
 		return nil, err
@@ -612,9 +673,56 @@ func (e *Engine) Repair(ctx context.Context, target integrations.Target, yes boo
 	}
 	if !yes {
 		report := e.reportFromPlan(prepared, "setup_repair_plan")
+		if reason := e.relocationReason(); reason != "" {
+			report.RepairReason = reason
+			report.Status = RunStatusPartial
+		}
 		return report, nil
 	}
-	return e.ApplyPrepared(ctx, prepared, ApplyOptions{Yes: true, AllowMachineWide: target == integrations.TargetOpenClaw})
+	report, err := e.ApplyPrepared(ctx, prepared, ApplyOptions{Yes: true, AlreadyLocked: true, AllowMachineWide: target == integrations.TargetOpenClaw || opts.AgentsAll})
+	if bindErr := e.refreshManifestBinding(); bindErr != nil && err == nil {
+		return report, bindErr
+	}
+	if report != nil {
+		if reason := e.relocationReason(); reason != "" {
+			report.RepairReason = reason
+		} else {
+			report.RepairReason = ""
+		}
+	}
+	return report, err
+}
+
+func (e *Engine) relocationReason() string {
+	manifest, err := loadManifest(e.StateDir, e.WorkspaceID)
+	if err != nil || manifest == nil {
+		return ""
+	}
+	current := trackerIdentity(e.TrackerPath, e.TrackerVersion)
+	if manifest.TrackerBinary.SHA256 != "" && current.SHA256 != "" && current.SHA256 != manifest.TrackerBinary.SHA256 {
+		return "binary relocation: tracker executable hash changed"
+	}
+	if manifest.WorkspacePath != "" && manifest.WorkspacePath != e.WorkspaceRoot {
+		return "workspace relocation: registered path does not match this directory"
+	}
+	return ""
+}
+
+func (e *Engine) refreshManifestBinding() error {
+	manifest, err := loadManifest(e.StateDir, e.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	if manifest == nil {
+		manifest = emptyManifest(e.WorkspaceID, e.WorkspaceRoot, trackerIdentity(e.TrackerPath, e.TrackerVersion))
+	}
+	manifest.TrackerBinary = trackerIdentity(e.TrackerPath, e.TrackerVersion)
+	manifest.WorkspacePath = e.WorkspaceRoot
+	if err := saveManifest(e.StateDir, manifest); err != nil {
+		return err
+	}
+	e.rememberWorkspace()
+	return nil
 }
 
 // Disconnect removes Atlas-owned files for one target.

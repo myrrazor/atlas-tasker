@@ -602,6 +602,90 @@ func names(entries []os.DirEntry) []string {
 	return out
 }
 
+func TestRepairAppliesDriftWithoutDeadlock(t *testing.T) {
+	engine := testEngine(t)
+	applyGeneric(t, engine)
+	skill := filepath.Join(engine.WorkspaceRoot, ".tracker", "integrations", "generic-agent-skill", "SKILL.md")
+	if err := os.WriteFile(skill, []byte("stale skill\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err := engine.Repair(context.Background(), integrations.TargetGeneric, true)
+	if err != nil {
+		t.Fatalf("repair drifted skill: %v", err)
+	}
+	if report.Status == RunStatusFailed {
+		t.Fatalf("repair failed: %#v", report)
+	}
+	body, err := os.ReadFile(skill)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) == "stale skill\n" {
+		t.Fatal("repair left the stale skill in place")
+	}
+}
+
+func TestTeamFlagDoesNotStaleThePlan(t *testing.T) {
+	engine := testEngine(t)
+	prepared, err := engine.Plan(PlanOptions{Agents: []integrations.Target{integrations.TargetGeneric}, Team: "pair"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.ApplyPrepared(context.Background(), prepared, ApplyOptions{Yes: true}); err != nil {
+		t.Fatalf("team flag must not stale apply: %v", err)
+	}
+}
+
+func TestRepairRefreshesBinaryBinding(t *testing.T) {
+	engine := testEngine(t)
+	applyGeneric(t, engine)
+	other := filepath.Join(t.TempDir(), "moved-tracker")
+	if err := os.WriteFile(other, []byte("tracker-binary-v2"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	engine.TrackerPath = other
+	status, err := engine.StatusReport()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(status.RepairReason, "binary relocation") {
+		t.Fatalf("status: %q", status.RepairReason)
+	}
+	if _, err := engine.Repair(context.Background(), "", true); err != nil {
+		t.Fatal(err)
+	}
+	if reason := engine.relocationReason(); reason != "" {
+		t.Fatalf("repair should refresh the binding, still %q", reason)
+	}
+}
+
+func TestStatusDoesNotRecoverInFlight(t *testing.T) {
+	engine := testEngine(t)
+	prepared, err := engine.Plan(PlanOptions{Agents: []integrations.Target{integrations.TargetGeneric}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.Hooks.BeforeFirstWrite = func() error { return ErrInjectedCrash }
+	if _, err := engine.ApplyPrepared(context.Background(), prepared, ApplyOptions{Yes: true}); !errors.Is(err, ErrInjectedCrash) {
+		t.Fatalf("want crash, got %v", err)
+	}
+	journals, err := listJournals(engine.StateDir)
+	if err != nil || len(journals) == 0 {
+		t.Fatal("expected an in-flight journal")
+	}
+	before := journals[0].State
+	if _, err := engine.StatusReport(); err != nil {
+		t.Fatal(err)
+	}
+	journals, err = listJournals(engine.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if journals[0].State != before {
+		t.Fatalf("status recovered journal from %s to %s", before, journals[0].State)
+	}
+}
+
 func TestLockDoesNotWaitOnSecondHolder(t *testing.T) {
 	dir := t.TempDir()
 	var started sync.WaitGroup

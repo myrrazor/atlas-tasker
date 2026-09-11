@@ -99,6 +99,10 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 			}
 			if !ok {
 				planOpts.Backup = false
+				prepared, err = engine.Plan(planOpts)
+				if err != nil {
+					return err
+				}
 			}
 		}
 		report, err := engine.ApplyPrepared(commandContext(cmd), prepared, setup.ApplyOptions{Interactive: true, AllowMachineWide: containsOpenClaw(agents) || agentsAll})

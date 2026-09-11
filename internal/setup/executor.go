@@ -147,6 +147,12 @@ func (e *Engine) runOperation(ctx context.Context, entry *JournalEntry, prepared
 		return e.failToRollback(ctx, entry, prepared, fmt.Errorf("verification reported failed"))
 	}
 	entry.Integration = state
+	// Stay in verifying until the manifest is committed so a crash here resumes.
+	if outcome.KeepsWrites() && prepared.Plan.Operation != adapter.PlanOperationRemove {
+		if err := e.commitProvider(entry, prepared, state); err != nil {
+			return err
+		}
+	}
 	if err := markState(entry, outcome); err != nil {
 		return err
 	}
@@ -154,11 +160,6 @@ func (e *Engine) runOperation(ctx context.Context, entry *JournalEntry, prepared
 		return err
 	}
 	if outcome.KeepsWrites() {
-		if prepared.Plan.Operation != adapter.PlanOperationRemove {
-			if err := e.commitProvider(entry, prepared, state); err != nil {
-				return err
-			}
-		}
 		_ = os.RemoveAll(rollbackDir(e.StateDir, entry.OperationID))
 	}
 	return nil
@@ -220,15 +221,12 @@ func (e *Engine) applyStep(ctx context.Context, entry *JournalEntry, prepared pr
 }
 
 func (e *Engine) performStep(ctx context.Context, step adapter.PlanStep, payload []byte) error {
-	insideWorkspace := step.Path != "" && isPathWithin(e.WorkspaceRoot, step.Path)
-	if insideWorkspace && step.Writes() {
-		locks := service.FileLockManager{Root: e.WorkspaceRoot, Wait: time.Millisecond}
-		release, err := locks.Acquire(ctx, "setup-step")
-		if err != nil {
-			return apperr.Wrap(apperr.CodeBusy, err, "workspace lock busy during setup")
-		}
-		defer func() { _ = release() }()
-	}
+	return e.withWorkspaceLock(ctx, step.Path, step.Writes(), func() error {
+		return e.performStepLocked(step, payload)
+	})
+}
+
+func (e *Engine) performStepLocked(step adapter.PlanStep, payload []byte) error {
 	switch step.Kind {
 	case adapter.StepWriteManagedFile, adapter.StepUpdateManagedBlock, adapter.StepRecordLocalState:
 		if len(payload) == 0 && step.Kind != adapter.StepRecordLocalState {
@@ -342,11 +340,34 @@ func (e *Engine) rollback(ctx context.Context, entry *JournalEntry, prepared pre
 	return nil
 }
 
+func (e *Engine) withWorkspaceLock(ctx context.Context, path string, writes bool, fn func() error) error {
+	if !writes || path == "" || !isPathWithin(e.WorkspaceRoot, path) {
+		return fn()
+	}
+	locks := service.FileLockManager{Root: e.WorkspaceRoot, Wait: time.Millisecond}
+	release, err := locks.Acquire(ctx, "setup-step")
+	if err != nil {
+		return apperr.Wrap(apperr.CodeBusy, err, "workspace lock busy during setup")
+	}
+	defer func() { _ = release() }()
+	return fn()
+}
+
 func (e *Engine) rollbackStep(operationID string, rec *journalStepRecord) error {
 	if rec.Rollback == nil {
 		return nil
 	}
-	switch rec.Rollback.Kind {
+	kind := rec.Rollback.Kind
+	if kind == adapter.RollbackDeleteCreated && rec.Before != nil && rec.Before.Exists {
+		kind = adapter.RollbackRestoreSnapshot
+	}
+	return e.withWorkspaceLock(context.Background(), rec.Path, rec.Path != "", func() error {
+		return e.rollbackStepLocked(operationID, rec, kind)
+	})
+}
+
+func (e *Engine) rollbackStepLocked(operationID string, rec *journalStepRecord, kind adapter.RollbackKind) error {
+	switch kind {
 	case adapter.RollbackRestoreSnapshot:
 		current, err := InspectFile(rec.Path, e.currentUID)
 		if err != nil && !os.IsNotExist(err) {
