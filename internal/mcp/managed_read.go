@@ -218,10 +218,19 @@ func boardPresentation(tc ToolContext, project string, args map[string]any) (ren
 	if err != nil {
 		return render.CompactBoard{}, nil, err
 	}
+	fullColumns := cloneBoardColumns(view.Board.Columns)
 	paged := paginateBoard(view, args, tc.Server.Options.MaxItems)
 	cursors, _ := paged["next_cursor_by_status"].(map[string]string)
-	board := render.NewCompactBoard(project, view.Board.Columns, tc.Server.Options.MaxItems, cursors)
+	board := render.NewCompactBoard(project, fullColumns, tc.Server.Options.MaxItems, cursors)
 	return board, paged, nil
+}
+
+func cloneBoardColumns(in map[contracts.Status][]contracts.TicketSnapshot) map[contracts.Status][]contracts.TicketSnapshot {
+	out := make(map[contracts.Status][]contracts.TicketSnapshot, len(in))
+	for status, tickets := range in {
+		out[status] = append([]contracts.TicketSnapshot(nil), tickets...)
+	}
+	return out
 }
 
 func invalidActorError(res actorResolution) error {

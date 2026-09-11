@@ -14,6 +14,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/buildinfo"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
@@ -455,6 +456,31 @@ func TestResultLimitsAndPagination(t *testing.T) {
 	truncatedText := textFallback("atlas.test", truncatedPayload, resultPayloadTruncated(truncatedPayload), 50)
 	if !strings.Contains(truncatedText, "truncated result") {
 		t.Fatalf("expected truncated fallback prefix, got %q", truncatedText)
+	}
+}
+
+func TestCompactBoardTotalsUseFullColumnsAfterPagination(t *testing.T) {
+	ticket := func(id string) contracts.TicketSnapshot {
+		return contracts.TicketSnapshot{ID: id, Project: "APP", Title: id, Type: contracts.TicketTypeTask, Status: contracts.StatusReady, Priority: contracts.PriorityMedium}
+	}
+	full := map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady: {ticket("APP-1"), ticket("APP-2"), ticket("APP-3"), ticket("APP-4"), ticket("APP-5")},
+	}
+	view := service.BoardViewModel{Board: contracts.BoardView{Columns: cloneBoardColumns(full)}}
+	page := paginateBoard(view, map[string]any{"limit": 1}, 1)
+	paged := page["board"].(service.BoardViewModel).Board
+	if len(paged.Columns[contracts.StatusReady]) != 1 {
+		t.Fatalf("expected one ready card after pagination, got %d", len(paged.Columns[contracts.StatusReady]))
+	}
+	board := render.NewCompactBoard("APP", full, 1, nil)
+	var ready render.CompactColumn
+	for _, col := range board.Columns {
+		if col.Status == string(contracts.StatusReady) {
+			ready = col
+		}
+	}
+	if ready.Total != 5 || ready.Shown != 1 {
+		t.Fatalf("compact totals must stay 5/1 after paging, got total=%d shown=%d", ready.Total, ready.Shown)
 	}
 }
 
