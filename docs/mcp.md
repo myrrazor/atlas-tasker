@@ -9,6 +9,7 @@ The MCP adapter is not a second source of truth. It calls the same service layer
 ```bash
 tracker mcp serve --tool-profile read
 tracker mcp serve --workspace /path/to/workspace --tool-profile read
+tracker mcp serve --workspace-from-cwd --expected-workspace-id <WORKSPACE-ID> --tool-profile read
 tracker mcp serve --workspace /absolute/existing/repo --init-if-missing --tool-profile workflow
 tracker mcp schema --json --tool-profile workflow
 tracker mcp tools --json --tool-profile admin
@@ -18,6 +19,8 @@ tracker mcp approvals revoke <APPROVAL-ID>
 ```
 
 `serve` reads the current directory unless `--workspace` names one. Registrations that live outside a repo — user-scoped `claude mcp add`, a global Codex `mcp_servers` entry — need it, because the client picks the working directory, not you. By default, the workspace must already contain Atlas state from `tracker init`.
+
+`--workspace-from-cwd` plus `--expected-workspace-id` is the portable binding for clients that cannot safely store an absolute machine path (DEC-072, DEC-076). Atlas canonicalizes the current directory, walks only to the nearest real Atlas root, verifies the ID, and refuses nested workspaces, symlink substitution, a replaced directory, and a copied workspace with a stale local registration. It never initializes and never opens a different registered workspace. `--workspace-from-cwd` cannot be combined with `--workspace` or `--init-if-missing`. When `--workspace` is used with `--expected-workspace-id`, the ID is verified on that root.
 
 `--init-if-missing` is an explicit, noninteractive bootstrap. It requires `--workspace` to name an absolute path to an existing directory and requires a write-capable `workflow`, `delivery`, or `admin` profile. It refuses nested Atlas workspaces, `--read-only`, and existing output paths that redirect initialization outside the selected directory. It creates only normal Atlas workspace files: it does not open an integration picker, register an MCP client, or use the client's working directory as a fallback. If the workspace is already initialized, Atlas opens it without rerunning initialization. `schema` and `tools` only describe the adapter and never initialize a workspace.
 

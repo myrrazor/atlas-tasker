@@ -59,8 +59,100 @@ type Installer struct {
 	Root string
 }
 
+// PlannedInstallFile is one file the installer would write. Preview is
+// read-only: it never creates or updates paths.
+type PlannedInstallFile struct {
+	Path   string
+	Body   string
+	Kind   string
+	Change string
+}
+
+const (
+	InstallChangeNone   = "none"
+	InstallChangeCreate = "create"
+	InstallChangeUpdate = "update"
+)
+
 func (i Installer) Install(target Target, force bool) (InstallResult, error) {
 	return i.InstallOpts(target, InstallOptions{Force: force})
+}
+
+// Preview reports the files and resulting contents for one target without
+// writing. Instruction files keep existing custom content outside managed
+// markers, matching Install without --force.
+func (i Installer) Preview(target Target) ([]PlannedInstallFile, error) {
+	root, err := filepath.Abs(i.Root)
+	if err != nil {
+		return nil, err
+	}
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
+	i.Root = root
+	spec, err := i.spec(target)
+	if err != nil {
+		return nil, err
+	}
+	planned := []PlannedInstallFile{
+		{Path: spec.guidePath, Body: spec.guideBody, Kind: "guide"},
+		{Path: spec.instructionPath, Body: previewInstructionFile(spec), Kind: "instruction"},
+	}
+	for _, file := range spec.extraFiles {
+		planned = append(planned, PlannedInstallFile{Path: file.path, Body: file.body, Kind: file.kind})
+	}
+	for index := range planned {
+		if err := validateInstallPath(root, planned[index].Path); err != nil {
+			return nil, err
+		}
+		planned[index].Change = classifyInstallChange(planned[index].Path, planned[index].Body)
+	}
+	return planned, nil
+}
+
+func previewInstructionFile(spec installSpec) string {
+	managed := spec.markers.begin + "\n" + spec.blockBody + "\n" + spec.markers.end + "\n"
+	current, err := os.ReadFile(spec.instructionPath)
+	if os.IsNotExist(err) {
+		return managed
+	}
+	if err != nil {
+		return managed
+	}
+	body := string(current)
+	if strings.Contains(body, spec.markers.begin) && strings.Contains(body, spec.markers.end) {
+		updated, _ := replaceManagedBlock(body, managed, spec.markers)
+		return updated
+	}
+	if strings.TrimSpace(body) == "" {
+		return managed
+	}
+	return strings.TrimRight(body, "\n") + "\n\n" + managed
+}
+
+func classifyInstallChange(path string, body string) string {
+	current, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return InstallChangeCreate
+	}
+	if err != nil {
+		return InstallChangeUpdate
+	}
+	if string(current) == body {
+		return InstallChangeNone
+	}
+	return InstallChangeUpdate
+}
+
+// InstructionMarkers returns the managed-block markers for a target so setup
+// can remove only Atlas-owned instruction text.
+func InstructionMarkers(target Target) (begin string, end string, err error) {
+	installer := Installer{Root: string(os.PathSeparator)}
+	spec, err := installer.spec(target)
+	if err != nil {
+		return "", "", err
+	}
+	return spec.markers.begin, spec.markers.end, nil
 }
 
 func (i Installer) InstallOpts(target Target, opts InstallOptions) (InstallResult, error) {

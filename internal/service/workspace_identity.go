@@ -63,6 +63,12 @@ func EnsureWorkspaceIdentityForCLI(root string) (string, error) {
 	return ensureWorkspaceIdentity(root)
 }
 
+// LoadWorkspaceIdentity returns the stamped workspace ID without creating one.
+// An absent metadata file yields ("", nil).
+func LoadWorkspaceIdentity(root string) (string, error) {
+	return loadWorkspaceIdentity(root)
+}
+
 func loadWorkspaceIdentity(root string) (string, error) {
 	raw, err := os.ReadFile(storage.WorkspaceMetadataFile(root))
 	if err != nil {
