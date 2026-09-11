@@ -49,6 +49,7 @@ func decodeJSONList[T any](t *testing.T, raw string) []T {
 func withTempWorkspace(t *testing.T) {
 	t.Helper()
 	temp := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	oldWD, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd failed: %v", err)

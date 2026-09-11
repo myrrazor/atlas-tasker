@@ -83,6 +83,8 @@ func OpenWorkspace(root string, stderr io.Writer, now func() time.Time) (*Worksp
 		Notifier: notifier,
 	}
 	w.Actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, now, w.Locks, notifier, automation)
+	home, _ := os.UserHomeDir()
+	service.AttachUserState(w.Actions, w.Queries, home, "")
 	return w, nil
 }
 

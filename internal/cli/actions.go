@@ -111,6 +111,8 @@ func openWorkspaceWith(opts openOptions) (*workspace, error) {
 		Notifier: notifier,
 	}
 	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
+	home, _ := os.UserHomeDir()
+	service.AttachUserState(w.actions, w.queries, home, "")
 	return w, nil
 }
 

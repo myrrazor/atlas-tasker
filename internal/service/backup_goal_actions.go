@@ -287,6 +287,9 @@ func (s *ActionService) CreateRestorePlan(ctx context.Context, ref string, actor
 }
 
 func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor contracts.Actor, reason string, yes bool) (RestoreApplyResultView, error) {
+	if err := s.ensurePreDestructiveCheckpoint(ctx, "restore"); err != nil {
+		return RestoreApplyResultView{}, err
+	}
 	return withWriteLock(ctx, s.LockManager, "apply backup restore", func(ctx context.Context) (RestoreApplyResultView, error) {
 		if !yes {
 			return RestoreApplyResultView{}, apperr.New(apperr.CodeInvalidInput, "restore apply requires --yes")

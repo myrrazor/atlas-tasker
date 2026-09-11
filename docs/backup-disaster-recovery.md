@@ -11,6 +11,10 @@ PR-707 implements the first concrete backup lane:
 - `tracker backup restore-plan <BACKUP-ID|PATH>`
 - `tracker backup restore-apply <BACKUP-ID|PATH> --yes [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup drill`
+- `tracker backup auto status`
+- `tracker backup run --now`
+- `tracker backup tick`
+- `tracker backup watch`
 - `tracker sign backup <BACKUP-ID> [--signing-key <KEY-ID>] [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker verify backup <BACKUP-ID|PATH>`
 
@@ -37,6 +41,8 @@ Restore must never recreate provider state, worktrees, runtime dirs, launch file
 ## Drills
 
 `tracker backup drill` is read-only. It verifies every local backup snapshot it can find, reports warning codes such as `no_backups`, `backup_verify_error:<id>`, and `backup_not_verified:<id>`, and includes `side_effect_free=true` in JSON output.
+
+Automatic local checkpoints (Sprint 114.4) use the same restore-safe file set as `backup create`, plus a `.atlas-checkpoint.json` manifest committed in an Atlas-owned bare repository outside the workspace. They append no canonical events. `backup tick` and `backup run --now` share one worker; a later off-device push does not run on the mutation path. Restore a materialized checkpoint through `backup restore-plan` / `backup restore-apply`.
 
 Release drills should also prove restore into a clean workspace, conflict planning for existing workspaces, interrupted restore repair, and reindex/doctor health after restore. PR-708 owns the full release proof matrix.
 
