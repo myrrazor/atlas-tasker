@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,11 +11,90 @@ import (
 	"strings"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/integrations"
 	"github.com/myrrazor/atlas-tasker/internal/integrations/adapter"
+	"github.com/myrrazor/atlas-tasker/internal/integrations/adapter/all"
+	"github.com/myrrazor/atlas-tasker/internal/integrations/adapter/host"
 )
 
-const remainingAdapterDependency = "AT114-201..AT114-208: provider MCP adapters are not registered in Sprint 114.1"
+const remainingAdapterDependency = "AT114-201..AT114-208: provider MCP adapters are not registered"
+
+func (e *Engine) ensureRegistry() error {
+	if e.Registry != nil {
+		return nil
+	}
+	reg, err := all.New(all.Options{StateDir: e.StateDir})
+	if err != nil {
+		return err
+	}
+	e.Registry = reg
+	return nil
+}
+
+func (e *Engine) planTarget(target integrations.Target, found integrations.Detection, existing *adapter.IntegrationState, hint contracts.Actor, now time.Time) (preparedProvider, error) {
+	if err := e.ensureRegistry(); err != nil {
+		return preparedProvider{}, err
+	}
+	item, ok := e.Registry.Lookup(target)
+	if !ok {
+		return planSkillOnly(e.WorkspaceRoot, e.WorkspaceID, e.Home, e.StateDir, e.TrackerPath, target, found, existing, now, e.lookPath())
+	}
+	detectIn := adapter.DetectInput{
+		WorkspaceRoot: e.WorkspaceRoot,
+		Home:          e.Home,
+		LookPath:      e.lookPath(),
+		Getenv:        e.getenv(),
+		Runner:        host.DefaultRunner{},
+	}
+	detection := item.Detect(context.Background(), detectIn)
+	if detection.Target == "" {
+		detection = toAdapterDetection(target, found, e.lookPath())
+	}
+	input := adapter.PlanInput{
+		WorkspaceRoot: e.WorkspaceRoot,
+		WorkspaceID:   e.WorkspaceID,
+		Home:          e.Home,
+		TrackerPath:   e.TrackerPath,
+		ActorHint:     hint,
+		Detection:     detection,
+		Existing:      existing,
+	}
+	if prep, ok := item.(interface {
+		Prepare(context.Context, adapter.PlanInput) (host.Prepared, error)
+	}); ok {
+		prepared, err := prep.Prepare(context.Background(), input)
+		if err != nil {
+			return preparedProvider{}, err
+		}
+		caps, _ := adapter.CapabilitiesFor(target)
+		return preparedProvider{
+			Target:         target,
+			MachineWide:    caps.PreferredScope == adapter.ScopeGateway || caps.PreferredScope == adapter.ScopeUser,
+			Plan:           prepared.Plan,
+			Payloads:       prepared.Payloads,
+			ResultingState: prepared.Plan.ResultingState,
+		}, nil
+	}
+	plan, err := item.Plan(context.Background(), input)
+	if err != nil {
+		return preparedProvider{}, err
+	}
+	payloads := map[string][]byte{}
+	if src, ok := item.(interface {
+		LastPayloads() map[string][]byte
+	}); ok {
+		payloads = src.LastPayloads()
+	}
+	caps, _ := adapter.CapabilitiesFor(target)
+	return preparedProvider{
+		Target:         target,
+		MachineWide:    caps.PreferredScope == adapter.ScopeGateway || caps.PreferredScope == adapter.ScopeUser,
+		Plan:           plan,
+		Payloads:       payloads,
+		ResultingState: plan.ResultingState,
+	}, nil
+}
 
 type preparedProvider struct {
 	Target              integrations.Target
@@ -152,6 +232,32 @@ func planSkillOnly(workspaceRoot, workspaceID, home, stateDir, trackerPath strin
 		RemainingDependency: remainingAdapterDependency,
 		ResultingState:      resulting,
 	}, nil
+}
+
+func (e *Engine) planDisconnect(target integrations.Target, found integrations.Detection, existing *adapter.IntegrationState, confirmDrift bool) (preparedProvider, error) {
+	if err := e.ensureRegistry(); err != nil {
+		return preparedProvider{}, err
+	}
+	if item, ok := e.Registry.Lookup(target); ok && existing != nil {
+		if existing.WorkspaceRoot == "" {
+			existing.WorkspaceRoot = e.WorkspaceRoot
+		}
+		if existing.WorkspaceID == "" {
+			existing.WorkspaceID = e.WorkspaceID
+		}
+		removal, err := item.Remove(context.Background(), *existing)
+		if err == nil {
+			payloads := map[string][]byte{}
+			if src, ok := item.(interface{ LastPayloads() map[string][]byte }); ok {
+				payloads = src.LastPayloads()
+			}
+			if !removal.OwnershipVerified && !confirmDrift {
+				return preparedProvider{}, fmt.Errorf("ambiguous ownership: %s removal requires confirmation", target)
+			}
+			return preparedProvider{Target: target, Plan: removal.Plan, Payloads: payloads}, nil
+		}
+	}
+	return planSkillRemoval(e.WorkspaceRoot, e.WorkspaceID, e.Home, e.StateDir, target, found, existing, e.now(), e.lookPath(), confirmDrift)
 }
 
 func planSkillRemoval(workspaceRoot, workspaceID, home, stateDir string, target integrations.Target, detection integrations.Detection, existing *adapter.IntegrationState, now time.Time, lookPath func(string) (string, error), confirmDrift bool) (preparedProvider, error) {

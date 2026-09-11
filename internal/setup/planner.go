@@ -80,6 +80,8 @@ type BackupPlan struct {
 // AT114-209 owns applying team policy and agent identity.
 type TeamPlan struct {
 	Requested           string `json:"requested"`
+	Suggested           string `json:"suggested,omitempty"`
+	Provider            string `json:"provider,omitempty"`
 	Existing            string `json:"existing_completion_mode,omitempty"`
 	Writes              bool   `json:"writes"`
 	RemainingDependency string `json:"remaining_dependency,omitempty"`
@@ -102,10 +104,17 @@ func (e *Engine) Plan(opts PlanOptions) (*PreparedSetup, error) {
 		return nil, err
 	}
 	now := e.now()
+	if err := e.ensureRegistry(); err != nil {
+		return nil, err
+	}
 	selected, err := e.selectTargets(opts, inspection)
 	if err != nil {
 		return nil, err
 	}
+	if err := validateTeamName(opts.Team); err != nil {
+		return nil, err
+	}
+	selectedList := sortedTargets(selected)
 	providers := make([]preparedProvider, 0, len(integrations.DetectableTargets()))
 	public := make([]ProviderPlan, 0, len(integrations.DetectableTargets()))
 	deps := []string{}
@@ -129,7 +138,7 @@ func (e *Engine) Plan(opts PlanOptions) (*PreparedSetup, error) {
 				existing = row.Record
 			}
 		}
-		prepared, err := planSkillOnly(e.WorkspaceRoot, e.WorkspaceID, e.Home, e.StateDir, e.TrackerPath, target, detection, existing, now, e.lookPath())
+		prepared, err := e.planTarget(target, detection, existing, actorHintFor(target, opts.Team, selectedList), now)
 		if err != nil {
 			return nil, err
 		}
@@ -194,13 +203,14 @@ func (e *Engine) Plan(opts PlanOptions) (*PreparedSetup, error) {
 	}
 	var teamPlan *TeamPlan
 	if strings.TrimSpace(opts.Team) != "" {
+		requested := strings.TrimSpace(opts.Team)
 		teamPlan = &TeamPlan{
-			Requested:           strings.TrimSpace(opts.Team),
-			Existing:            inspection.CompletionMode,
-			Writes:              false,
-			RemainingDependency: "AT114-209: agent identity, team policy, and cross-provider collision handling",
+			Requested: requested,
+			Suggested: suggestTeamPreset(len(selectedList)),
+			Provider:  teamProvider(selectedList),
+			Existing:  inspection.CompletionMode,
+			Writes:    true,
 		}
-		addDep(teamPlan.RemainingDependency)
 	}
 	plan := SetupPlan{
 		Format:                setupPlanFormat,

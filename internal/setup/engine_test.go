@@ -132,8 +132,8 @@ func TestPlanIsReadOnlyAndDeterministic(t *testing.T) {
 			if provider.ResultingState != adapter.StatePortableReady {
 				t.Fatalf("generic resulting state %s", provider.ResultingState)
 			}
-			if !provider.AdapterMissing {
-				t.Fatalf("114.1 must report adapters as missing")
+			if provider.AdapterMissing {
+				t.Fatalf("114.2 must register the generic adapter")
 			}
 		}
 	}
@@ -391,8 +391,8 @@ func TestRedactedJSONOmitsSecretsAndPayloads(t *testing.T) {
 	if strings.Contains(string(planRaw), secret) {
 		t.Fatal("plan leaked workspace secret")
 	}
-	if prepared.Plan.Team == nil || prepared.Plan.Team.Writes {
-		t.Fatal("team request must be recorded without writes")
+	if prepared.Plan.Team == nil || !prepared.Plan.Team.Writes || prepared.Plan.Team.Requested != "pair" {
+		t.Fatal("team request must record a writing pair apply")
 	}
 }
 

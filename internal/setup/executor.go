@@ -228,7 +228,7 @@ func (e *Engine) performStep(ctx context.Context, step adapter.PlanStep, payload
 
 func (e *Engine) performStepLocked(step adapter.PlanStep, payload []byte) error {
 	switch step.Kind {
-	case adapter.StepWriteManagedFile, adapter.StepUpdateManagedBlock, adapter.StepRecordLocalState:
+	case adapter.StepWriteManagedFile, adapter.StepUpdateManagedBlock, adapter.StepRecordLocalState, adapter.StepWriteConfigEntry:
 		if len(payload) == 0 && step.Kind != adapter.StepRecordLocalState {
 			return fmt.Errorf("step %s has no payload", step.StepID)
 		}
@@ -237,6 +237,14 @@ func (e *Engine) performStepLocked(step adapter.PlanStep, payload []byte) error 
 		}
 		return atomicWriteFile(step.Path, payload, os.FileMode(step.Mode))
 	case adapter.StepRemoveManagedFile, adapter.StepRemoveLocalState:
+		if err := os.Remove(step.Path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	case adapter.StepRemoveConfigEntry:
+		if len(payload) > 0 {
+			return atomicWriteFile(step.Path, payload, 0o644)
+		}
 		if err := os.Remove(step.Path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -536,13 +544,20 @@ func (e *Engine) verifyPrepared(prepared preparedProvider) (adapter.State, error
 	if e.Registry != nil {
 		if item, ok := e.Registry.Lookup(prepared.Target); ok {
 			state := adapter.IntegrationState{
-				Target:          prepared.Target,
-				ContractVersion: adapter.ContractVersion,
-				State:           prepared.ResultingState,
-				Scope:           prepared.Plan.Scope,
-				WorkspaceID:     e.WorkspaceID,
-				WorkspaceRoot:   e.WorkspaceRoot,
-				UpdatedAt:       e.now(),
+				Target:           prepared.Target,
+				ContractVersion:  adapter.ContractVersion,
+				State:            prepared.ResultingState,
+				Scope:            prepared.Plan.Scope,
+				WorkspaceID:      e.WorkspaceID,
+				WorkspaceRoot:    e.WorkspaceRoot,
+				ClientExecutable: prepared.Plan.Detection.ExecutablePath,
+				Registration:     prepared.Plan.Registration,
+				ActorHint:        "",
+				UpdatedAt:        e.now(),
+			}
+			if prepared.Plan.Registration != nil {
+				state.EntryFingerprint = prepared.Plan.Registration.Fingerprint()
+				state.ActorHint = prepared.Plan.Registration.ActorHint
 			}
 			verification, err := item.Verify(context.Background(), state)
 			if err != nil {
@@ -585,13 +600,27 @@ func (e *Engine) commitProvider(entry *JournalEntry, prepared preparedProvider, 
 		Scope:           prepared.Plan.Scope,
 		WorkspaceID:     e.WorkspaceID,
 		WorkspaceRoot:   e.WorkspaceRoot,
+		Registration:    prepared.Plan.Registration,
 		UpdatedAt:       e.now(),
+	}
+	if prepared.Plan.Registration != nil {
+		record.EntryFingerprint = prepared.Plan.Registration.Fingerprint()
+		record.ActorHint = prepared.Plan.Registration.ActorHint
+	}
+	if state.Verified() {
+		record.LastVerifiedAt = e.now()
 	}
 	if payload, ok := prepared.Payloads["state-"+string(prepared.Target)]; ok {
 		var fromDisk adapter.IntegrationState
 		if err := json.Unmarshal(payload, &fromDisk); err == nil {
 			record.SkillVersion = fromDisk.SkillVersion
 			record.ManagedBlockVersion = fromDisk.ManagedBlockVersion
+			if record.ActorHint == "" {
+				record.ActorHint = fromDisk.ActorHint
+			}
+			if record.ConfigPath == "" {
+				record.ConfigPath = fromDisk.ConfigPath
+			}
 		}
 	}
 	manifest.putIntegration(prepared.Target, ManifestIntegration{

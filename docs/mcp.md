@@ -112,9 +112,11 @@ Paged list tools accept `limit` and `cursor`. Grouped tools keep independent cur
 
 ## More
 
-Installing an Atlas agent integration does not register this MCP server. Use
-`tracker integrations install ...` for project instructions and skills, then configure
-`tracker mcp serve` separately in clients that should receive structured tools. See
+`tracker integrations install` writes project instructions and skills only. `tracker setup`
+does both: it refreshes those Atlas-owned files and registers a workspace-bound `workflow`
+stdio server for each selected provider. The server name is derived from the workspace ID,
+high-impact tools stay absent, and setup never claims `connected` until a self-probe or a
+client-native check succeeds. Manual `tracker mcp serve` registration remains valid. See
 [coding-agent integrations](guides/agent-integrations.md).
 
 - [MCP security](mcp-security.md)

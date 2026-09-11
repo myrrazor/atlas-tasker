@@ -1192,3 +1192,39 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 7. **Confidence:** high
 8. **Revisit Trigger:** A provider documents a safe absolute-path placeholder that makes `--workspace-from-cwd` unnecessary for that target (the flag remains for the others).
 9. **Affected PRs/Files:** internal/setup/{resolve,registry}.go, internal/cli/mcp.go, internal/cli/mcp_bootstrap.go, docs/mcp.md, docs/command-reference.md.
+
+## DEC-084
+
+1. **Decision ID:** DEC-084
+2. **Date:** 2026-09-11
+3. **Question:** When a named client is installed, what version evidence is enough for Sprint 114.2 to write MCP configuration rather than report `unsupported_client_version`?
+4. **Options Considered:** Treat every installed client as supported; refuse MCP writes unless a real-client run has pinned a version range; treat a parsed `X.Y.Z` from the client's documented version probe as provisionally `supported` and keep unparsable or failed probes as `unsupported_client_version`.
+5. **Chosen Option:** The third. `DetectClient` runs the matrix `VersionArgs` and, when stdout/stderr yields a parsed `X.Y.Z`, sets `VersionSupport=supported`. An installed client with no successful parse plans `unsupported_client_version` and gets skill/instruction refresh only — no client-config or CLI registration steps. Generic is exempt because it has no client.
+6. **Why We Chose It:** The matrix VersionPolicy requires a parseable version before adapters mutate client configuration they have not verified. Pinning an exact supported range still waits for real-client smoke (AT114-203..207 remaining dependencies). A missing or unparsable version must not heuristically edit Codex/Claude/Cursor/OpenClaw/Grok files.
+7. **Confidence:** high
+8. **Revisit Trigger:** A Sprint 114.2 or 114.6 real-client run records a minimum/maximum version; then the adapter reports `unsupported_client_version` outside that range even when the version parses.
+9. **Affected PRs/Files:** internal/integrations/adapter/host/detect.go, internal/integrations/adapter/host/plan.go, docs/v1.14-acceptance.md (AT114-203..207).
+
+## DEC-085
+
+1. **Decision ID:** DEC-085
+2. **Date:** 2026-09-11
+3. **Question:** What does `tracker setup --team` actually write now that Sprint 114.2 owns AT114-209?
+4. **Options Considered:** Keep `--team` as a plan-only note (Sprint 114.1); invent new agent records that overwrite existing roles; apply the named `solo`/`pair`/`swarm`/`crossfire` preset through `ActionService.ApplyTeamPreset` without overwriting existing assignments, and map each selected provider to a distinct actor hint.
+5. **Chosen Option:** The third. One selected provider suggests `solo`, two suggest `pair`, three or four suggest `swarm`, and more suggest `crossfire`. The requested preset is applied with `overwrite=false`. Provider and Atlas actor stay distinct: the hint is `agent:<preset-agent-id>` when the preset has a matching slot, otherwise `agent:<target>`. MCP writes still require an explicit actor and reason.
+6. **Why We Chose It:** AT114-209 forbids silently overwriting roles and requires reuse of compatible existing agents when they are already present. Applying the preset makes `--team` a real write so a re-plan that includes `--team` does not stale (DEC-081 revisit).
+7. **Confidence:** high
+8. **Revisit Trigger:** Setup needs an interactive picker to reuse a named existing agent instead of the positional preset slot.
+9. **Affected PRs/Files:** internal/setup/team.go, internal/setup/planner.go, docs/command-reference.md, docs/guides/agent-integrations.md.
+
+## DEC-086
+
+1. **Decision ID:** DEC-086
+2. **Date:** 2026-09-11
+3. **Question:** When does OpenClaw Verify report `connected` versus `connected_restart_required`?
+4. **Options Considered:** Always `connected` after a self-probe; always `connected_restart_required` until the user confirms a restart; self-probe proves Atlas and reports `connected_restart_required`, while a passing `openclaw mcp doctor <name> --probe` proves the Gateway and reports `connected`.
+5. **Chosen Option:** The third. Apply still never returns a verified state. A successful Atlas self-probe with no live doctor check is `connected_restart_required` / `self_probe`. A passing client-native doctor check is `connected` / `client_native`. Pending trust/approval states are never upgraded.
+6. **Why We Chose It:** OpenClaw's matrix restart requirement is `gateway_reload`, and official docs distinguish saved configuration from a live probe. Claiming `connected` from a self-probe alone would hide the Gateway reload the user still has to perform.
+7. **Confidence:** high
+8. **Revisit Trigger:** Official OpenClaw docs show that `mcp add` makes the server live in already-running Gateway processes without a reload.
+9. **Affected PRs/Files:** internal/integrations/adapter/host/apply.go, internal/integrations/adapter/openclaw/adapter.go.
