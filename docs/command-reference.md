@@ -171,12 +171,13 @@ Setup and update behavior:
 - `tracker setup --plan` inspects the workspace and detected agents and writes nothing; `--json` prints only JSON
 - `tracker setup --yes` applies the plan; it is not consent for backup or for unnamed machine-wide scopes such as OpenClaw
 - OpenClaw and other machine-wide targets must be named with `--agents`; generic is never auto-selected
+- Selected providers refresh their skill and register a workspace-bound `workflow` MCP server; apply never reports `connected` until Verify runs a self-probe or a client-native check
 - `--backup` / `--backup-target` are a separate consent group; Sprint 114.1 records the request and does not write backup state (AT114-501/505)
 - `--mode delivery` is refused; enable delivery as a separate power-user action
-- `--team` records the requested policy and does not overwrite existing agent roles (AT114-209)
+- `--team` applies the named preset (`solo`, `pair`, `swarm`, `crossfire`) and does not overwrite existing agent roles (AT114-209)
 - Re-running setup is a no-op when the workspace is already current; interactive cancel and EOF write nothing
-- `tracker setup status` and `tracker integrations status` report skill/block versions, workspace binding, and repair reasons
-- `tracker integrations repair <target>` refreshes drifted Atlas-owned files; `disconnect` removes only matching Atlas-owned entries and requires confirmation after manual edits
+- `tracker setup status` and `tracker integrations status` report skill/block versions, workspace binding, integration state, and repair reasons
+- `tracker integrations repair <target>` refreshes drifted Atlas-owned files and MCP registration; `disconnect` removes only matching Atlas-owned entries and requires confirmation after manual edits
 - The shell installer may offer `tracker setup` after an explicit TTY yes; unattended install never initializes the current directory
 - plain `tracker init` can offer the six-target integration picker only when stdin and stdout are TTYs; `--skip-integrations` suppresses it
 - `tracker integrations install` accepts `claude`, `codex`, `cursor`, `openclaw`, `grok`, and `generic`; scripts should pass one target or `--targets <list>`

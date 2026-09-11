@@ -239,6 +239,13 @@ func (e *Engine) ApplyPrepared(ctx context.Context, prepared *PreparedSetup, app
 			reports = append(reports, ProviderReport{Target: "managed_mode", Selected: true, OperationState: StateConnected, IntegrationState: adapter.StateConnected})
 		}
 	}
+	if prepared.Plan.Team != nil && prepared.Plan.Team.Writes {
+		if err := e.applyTeam(ctx, prepared.Plan.Team); err != nil {
+			reports = append(reports, ProviderReport{Target: "team", Selected: true, OperationState: StateFailed, RepairReason: err.Error()})
+		} else {
+			reports = append(reports, ProviderReport{Target: "team", Selected: true, OperationState: StateConnected, IntegrationState: adapter.StateConnected})
+		}
+	}
 	if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested && e.Hooks.BackupApply != nil {
 		if err := e.Hooks.BackupApply(); err != nil {
 			reports = append(reports, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
@@ -281,6 +288,9 @@ func allNoOp(prepared *PreparedSetup) bool {
 		}
 	}
 	if prepared.Plan.ManagedMode != nil && !prepared.Plan.ManagedMode.NoOp {
+		return false
+	}
+	if prepared.Plan.Team != nil && prepared.Plan.Team.Writes {
 		return false
 	}
 	return true
@@ -521,7 +531,7 @@ func (e *Engine) recoverVerify(ctx context.Context, entry *JournalEntry) error {
 			existing = row.Record
 		}
 	}
-	prepared, err := planSkillOnly(e.WorkspaceRoot, e.WorkspaceID, e.Home, e.StateDir, e.TrackerPath, entry.Target, detectionFor(inspection, entry.Target), existing, e.now(), e.lookPath())
+	prepared, err := e.planTarget(entry.Target, detectionFor(inspection, entry.Target), existing, contracts.Actor("agent:"+string(entry.Target)), e.now())
 	if err != nil {
 		return e.rollback(ctx, entry, preparedProvider{Target: entry.Target, Plan: adapter.IntegrationPlan{Steps: stepsFromJournal(entry)}})
 	}
@@ -740,7 +750,7 @@ func (e *Engine) Disconnect(ctx context.Context, target integrations.Target, yes
 			existing = row.Record
 		}
 	}
-	prepared, err := planSkillRemoval(e.WorkspaceRoot, e.WorkspaceID, e.Home, e.StateDir, target, detectionFor(inspection, target), existing, e.now(), e.lookPath(), yes)
+	prepared, err := e.planDisconnect(target, detectionFor(inspection, target), existing, yes)
 	if err != nil {
 		return nil, err
 	}

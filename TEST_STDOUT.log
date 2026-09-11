@@ -312,3 +312,51 @@ exit=0
 
 == load after: 2.40 1.14 0.45
 == gate run end: 2026-09-10T23:32:44Z
+
+== gate run start: 2026-09-11T02:34:43Z
+== sprint: 114.2
+== branch: cursor/v114-sprint-114-2-2641
+== parent: 0a9d81e565e757b4e6a1911a2fc925f2c03cc73d
+== toolchain: go version go1.26.6 linux/amd64 | Python 3.12.3 | node v22.14.0
+== fake HOME: <FAKE_HOME>
+
+== [1] go build -o ./tracker ./cmd/tracker
+exit=0
+
+== [2] go vet ./...
+exit=0
+
+== [3] sh -n scripts/install.sh scripts/verify-release.sh
+exit=0
+
+== [4] git diff --check
+exit=0
+
+== [5] go test ./...
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	75.104s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/all
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/host
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/selfprobe
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/testhost
+ok  	github.com/myrrazor/atlas-tasker/internal/service	34.624s
+ok  	github.com/myrrazor/atlas-tasker/internal/setup
+ok  	github.com/myrrazor/atlas-tasker/internal/web	8.478s
+exit=0
+
+== [6] python3 scripts/test-install.py --tracker ./tracker
+Ran 9 tests in 7.321s
+OK
+exit=0
+
+== [7] python3 scripts/verify-mcp-workflow.py --tracker ./tracker
+{"status": "passed", "profiles": {"read": {"count": 41}, "workflow": {"count": 73}, "delivery": {"count": 77}, "delivery_high_impact_enabled": {"count": 79}, "admin": {"count": 77}, "admin_high_impact_enabled": {"count": 88}}}
+exit=0
+
+== AT114-201 TestSelfProbeAgainstBuiltTracker
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/selfprobe
+== AT114-208 TestConformanceHostDiscoversAndInvokesAtlas
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/testhost
+
+== remaining (honest): no real Codex/Claude/Cursor/OpenClaw/Grok client on this VM
+== gate run end: 2026-09-11T02:34:43Z

@@ -165,6 +165,36 @@ func TestApplyTeamPresetCrossfireProviderFlip(t *testing.T) {
 	}
 }
 
+func TestApplyTeamPresetSoloDoesNotWeakenReviewGate(t *testing.T) {
+	root, ctx, actions := setupTeamPresetTest(t)
+	if _, err := actions.ApplyTeamPreset(ctx, "pair", "", false, contracts.Actor("human:owner"), "team setup"); err != nil {
+		t.Fatalf("apply pair: %v", err)
+	}
+	solo, err := actions.ApplyTeamPreset(ctx, "solo", "", false, contracts.Actor("human:owner"), "later solo")
+	if err != nil {
+		t.Fatalf("apply solo: %v", err)
+	}
+	cfg, err := config.Load(root)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Workflow.CompletionMode != contracts.CompletionModeReviewGate {
+		t.Fatalf("solo must not overwrite review_gate, got %s", cfg.Workflow.CompletionMode)
+	}
+	if cfg.Workflow.RequiredReviewer != "agent:reviewer-1" {
+		t.Fatalf("solo must not clear required reviewer, got %s", cfg.Workflow.RequiredReviewer)
+	}
+	kept := false
+	for _, skipped := range solo.Skipped {
+		if strings.Contains(skipped, "completion_mode") && strings.Contains(skipped, "not overwritten") {
+			kept = true
+		}
+	}
+	if !kept {
+		t.Fatalf("expected completion_mode skip, got %#v", solo.Skipped)
+	}
+}
+
 func TestApplyTeamPresetUnknownName(t *testing.T) {
 	_, ctx, actions := setupTeamPresetTest(t)
 	_, err := actions.ApplyTeamPreset(ctx, "galactic", "", false, contracts.Actor("human:owner"), "nope")
