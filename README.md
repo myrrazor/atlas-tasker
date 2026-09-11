@@ -18,7 +18,7 @@ Atlas Tasker is a local-first issue tracker and orchestration layer that lives i
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
 
-The installer downloads the latest release for your platform, verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release). In an interactive terminal it can also offer to initialize the current directory and open the coding-agent integration picker; that step defaults to **no**, shows the directory before changing it, and is skipped for non-interactive installs or when `SKIP_INTEGRATIONS=1` is set.
+The installer downloads the latest release for your platform, verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release). Unattended `curl | sh` never initializes the directory you happened to be in. The Herder-style moment is the next command, in your project.
 
 With a Go toolchain (1.26.6 or newer):
 
@@ -43,7 +43,7 @@ tracker ticket move APP-1 ready --actor human:owner --reason "groomed"
 tracker board
 ```
 
-In a terminal, `tracker init` asks `Set up coding-agent integrations now? [Y/n]`; pressing Enter or answering yes opens the picker. This differs from the shell installer's optional workspace setup prompt, which defaults to **no**. In the picker, choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. Later, on the v1.14 candidate (build from source; the latest published tag is still v1.13.0), `tracker setup --plan` shows the same workspace in one place — skills, MCP, managed mode, and optional backup — without guessing your Git origin. The [setup and backup guide](docs/guides/setup-and-backup.md) and [agent integrations guide](docs/guides/agent-integrations.md) cover the full path.
+That `tracker init` is the whole agent hookup. In a terminal it asks `Set up coding-agent integrations now? [Y/n]`, then lists Claude Code, Codex, Cursor, OpenClaw, Grok, and generic. Detected agents are already checked. Press Enter. Atlas writes the worker skill and instruction block; open the same repo in that agent and ask “what's the current status of this project?” — it reads the board. Type `none` to skip, or `tracker init --skip-integrations` for a silent bootstrap. The shell installer's optional `tracker setup` offer is different: it defaults to **no**, needs an existing Atlas workspace, and never invents one in the current directory. Later, on the v1.14 candidate (build from source; the latest published tag is still v1.13.0), `tracker setup --plan` can also register MCP and optional backup without guessing your Git origin. The [setup and backup guide](docs/guides/setup-and-backup.md) and [agent integrations guide](docs/guides/agent-integrations.md) cover the full path.
 
 ![Kanban board in the terminal](docs/assets/board.png)
 

@@ -129,7 +129,7 @@ tracker update --version v1.13.0 --yes</pre>
         </div>
 
         <h2>Initialize a workspace</h2>
-        <p>Run this inside the repository you want Atlas to manage. It writes local tracker state under <code>.tracker/</code>. In an interactive terminal, init then offers to detect coding agents and install repository guidance; decline if you only want the tracker workspace. Later, <code>tracker setup --plan</code> shows skills, MCP, managed mode, and optional backup as one picture without guessing your Git origin.</p>
+        <p>Run this inside the repository you want Atlas to manage. It writes local tracker state under <code>.tracker/</code>, then asks <code>Set up coding-agent integrations now? [Y/n]</code>. That picker is the whole hookup: Atlas scans for Claude Code, Codex, Cursor, OpenClaw, and Grok, checks the ones it found, and writes the worker skill when you press Enter. Open the same repo in that agent and ask “what's the current status of this project?” — it reads the board. Decline or pass <code>--skip-integrations</code> if you only want the tracker workspace. Later, <code>tracker setup --plan</code> shows skills, MCP, managed mode, and optional backup as one picture without guessing your Git origin.</p>
         <div class="code-block">
           <div class="snippet-title"><span>one-time setup</span><button class="copy-button" type="button" data-copy="gs-init" aria-label="Copy init command">Copy</button></div>
           <pre id="gs-init">tracker init
@@ -174,6 +174,14 @@ tracker web serve --open <span class="c"># local kanban in your browser</span></
         <div class="docs-note">
           <p>Something looks off? <code>tracker doctor</code> audits the workspace and <code>tracker doctor --repair</code> fixes projection problems. It never destroys ticket Markdown or event history.</p>
         </div>
+
+        <h2>Ask the agent for the board</h2>
+        <p>After init, you do not paste another installer into the coding agent. In Cursor, Claude Code, Codex, or Grok, open the project and ask:</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>what you type to the agent</span><button class="copy-button" type="button" data-copy="gs-ask" aria-label="Copy agent prompt">Copy</button></div>
+          <pre id="gs-ask">What's the current status of this project?</pre>
+        </div>
+        <p>A hooked-up agent runs <code>tracker board</code> or the MCP <code>atlas.board</code> tool and answers from the same tickets you just created. That is the point of the init picker.</p>
 
         <h2>Connect agents in one pass</h2>
         <div class="docs-note">

@@ -4,7 +4,9 @@ This is the regular-user path after `tracker init`. `tracker setup` and automati
 
 ## Connect your coding agents
 
-`tracker setup` is one pass for the workspace you are standing in:
+If you just installed the binary, start with `tracker init` in the project. That is the
+detect-and-pick step: Atlas checks the agents it found, you press Enter, and those agents can
+read the board. `tracker setup` is the later one-pass refresh for the workspace you are standing in:
 
 1. Detect the agents installed on this machine.
 2. Refresh the existing Atlas worker skill (there is still one skill, not a second one).
