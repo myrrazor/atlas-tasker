@@ -68,26 +68,29 @@ func aggressiveRetryClass(class string) bool {
 	return class != contracts.BackupErrorAuthenticationFailed && class != contracts.BackupErrorPermissionDenied && class != contracts.BackupErrorHostKeyUnverified
 }
 
+func backupRetryWindow(attempt int, class string) time.Duration {
+	if !aggressiveRetryClass(class) {
+		return backupRetryMax
+	}
+	delay := backupRetryInitial
+	for i := 0; i < attempt; i++ {
+		if delay >= backupRetryMax/2 {
+			return backupRetryMax
+		}
+		delay *= 2
+	}
+	if delay > backupRetryMax {
+		return backupRetryMax
+	}
+	return delay
+}
+
 func nextBackupRetry(now time.Time, attempt int, class string) (time.Time, int) {
 	if !retryableBackupClass(class) {
 		return time.Time{}, attempt
 	}
 	nextAttempt := attempt + 1
-	delay := backupRetryInitial
-	if !aggressiveRetryClass(class) {
-		delay = backupRetryMax
-	} else {
-		for i := 0; i < attempt; i++ {
-			if delay >= backupRetryMax/2 {
-				delay = backupRetryMax
-				break
-			}
-			delay *= 2
-		}
-		if delay > backupRetryMax {
-			delay = backupRetryMax
-		}
-	}
+	delay := backupRetryWindow(attempt, class)
 	if delay > 0 {
 		jitter := time.Duration(rand.Int63n(int64(delay) + 1))
 		delay = jitter

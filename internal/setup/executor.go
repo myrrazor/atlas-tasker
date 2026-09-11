@@ -30,6 +30,15 @@ type Hooks struct {
 	// BackupApply is optional. Sprint 114.1 never writes backup state; tests
 	// inject a failure here to prove agents stay connected (AT114-104).
 	BackupApply func() error
+	// BackupFirstCheckpoint enables an existing target and runs one
+	// checkpoint+verify pass. Setup itself still does not add targets.
+	BackupFirstCheckpoint func(ctx context.Context, targetID string) (FirstBackupResult, error)
+}
+
+// FirstBackupResult is the secret-free outcome of the first setup checkpoint.
+type FirstBackupResult struct {
+	CheckpointID string
+	Verified     bool
 }
 
 type CommandRunner func(cmd adapter.Command) (int, error)

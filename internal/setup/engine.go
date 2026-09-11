@@ -182,20 +182,7 @@ func (e *Engine) reportFromPlan(prepared *PreparedSetup, kind string) *RunReport
 func (e *Engine) ApplyPrepared(ctx context.Context, prepared *PreparedSetup, applyOpts ApplyOptions) (*RunReport, error) {
 	if allNoOp(prepared) {
 		report := e.reportFromPlan(prepared, "setup_result")
-		if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested && e.Hooks.BackupApply != nil {
-			if err := e.Hooks.BackupApply(); err != nil {
-				report.Providers = append(report.Providers, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
-			} else {
-				report.BackupWorker = "enabled"
-			}
-		} else if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested {
-			if err := e.enableConfiguredBackup(prepared.Plan.Backup.TargetID); err != nil {
-				report.Providers = append(report.Providers, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
-				report.BackupWorker = "failed"
-			} else {
-				report.BackupWorker = "enabled"
-			}
-		}
+		e.applyBackupGroup(ctx, prepared, report)
 		report.Status = deriveRunStatus(report.Providers)
 		return report, errorForRunStatus(report.Status)
 	}
@@ -253,19 +240,6 @@ func (e *Engine) ApplyPrepared(ctx context.Context, prepared *PreparedSetup, app
 			reports = append(reports, ProviderReport{Target: "team", Selected: true, OperationState: StateConnected, IntegrationState: adapter.StateConnected})
 		}
 	}
-	if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested && e.Hooks.BackupApply != nil {
-		if err := e.Hooks.BackupApply(); err != nil {
-			reports = append(reports, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
-		} else {
-			reports = append(reports, ProviderReport{Target: "backup", Selected: true, OperationState: StateConnected})
-		}
-	} else if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested {
-		if err := e.enableConfiguredBackup(prepared.Plan.Backup.TargetID); err != nil {
-			reports = append(reports, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
-		} else {
-			reports = append(reports, ProviderReport{Target: "backup", Selected: true, OperationState: StateConnected})
-		}
-	}
 	report := &RunReport{
 		Kind:                  "setup_result",
 		WorkspaceID:           e.WorkspaceID,
@@ -276,16 +250,9 @@ func (e *Engine) ApplyPrepared(ctx context.Context, prepared *PreparedSetup, app
 		RemainingDependencies: prepared.Plan.RemainingDependencies,
 		Fingerprint:           prepared.Plan.Fingerprint,
 	}
-	if prepared.Plan.Backup != nil && prepared.Plan.Backup.Requested {
-		report.BackupWorker = "enabled"
-		for _, item := range reports {
-			if item.Target == "backup" && item.OperationState == StateRolledBack {
-				report.BackupWorker = "failed"
-			}
-		}
-	}
-	report.Status = deriveRunStatus(reports)
-	if report.Status == RunStatusConnected && hasUnverified(reports) {
+	e.applyBackupGroup(ctx, prepared, report)
+	report.Status = deriveRunStatus(report.Providers)
+	if report.Status == RunStatusConnected && hasUnverified(report.Providers) {
 		report.Status = RunStatusUnverified
 	}
 	return report, errorForRunStatus(report.Status)
@@ -314,6 +281,56 @@ func allNoOp(prepared *PreparedSetup) bool {
 		return false
 	}
 	return true
+}
+
+func (e *Engine) applyBackupGroup(ctx context.Context, prepared *PreparedSetup, report *RunReport) {
+	if report == nil || prepared == nil || prepared.Plan.Backup == nil || !prepared.Plan.Backup.Requested {
+		return
+	}
+	targetID := prepared.Plan.Backup.TargetID
+	fail := func(err error) {
+		report.Providers = append(report.Providers, ProviderReport{Target: "backup", Selected: true, OperationState: StateRolledBack, RepairReason: err.Error()})
+		report.BackupWorker = "failed"
+	}
+	ok := func(verifiedID string) {
+		report.Providers = append(report.Providers, ProviderReport{Target: "backup", Selected: true, OperationState: StateConnected})
+		report.BackupWorker = "enabled"
+		if verifiedID != "" {
+			report.LastVerified = verifiedID
+		}
+	}
+	if e.Hooks.BackupApply != nil {
+		if err := e.Hooks.BackupApply(); err != nil {
+			fail(err)
+			return
+		}
+		ok("")
+		return
+	}
+	if e.Hooks.BackupFirstCheckpoint != nil {
+		result, err := e.Hooks.BackupFirstCheckpoint(ctx, targetID)
+		if err != nil {
+			fail(err)
+			return
+		}
+		if result.Verified {
+			ok(result.CheckpointID)
+			return
+		}
+		report.Providers = append(report.Providers, ProviderReport{
+			Target:           "backup",
+			Selected:         true,
+			OperationState:   StatePendingApproval,
+			IntegrationState: adapter.StateConfiguredUnverified,
+		})
+		report.BackupWorker = "enabled"
+		return
+	}
+	if err := e.enableConfiguredBackup(targetID); err != nil {
+		fail(err)
+		return
+	}
+	ok("")
 }
 
 func (e *Engine) enableConfiguredBackup(targetID string) error {
@@ -710,6 +727,12 @@ func (e *Engine) StatusReport() (*RunReport, error) {
 			status = RunStatusPartial
 		}
 	}
+	if repair == "" {
+		if reason := e.unmanagedMCPReason(inspection); reason != "" {
+			repair = reason
+		}
+	}
+	worker, lastVerified := e.backupStatusFields()
 	return &RunReport{
 		Kind:          "setup_status",
 		Status:        status,
@@ -718,8 +741,59 @@ func (e *Engine) StatusReport() (*RunReport, error) {
 		Providers:     reports,
 		ManagedMode:   modePlan,
 		RepairReason:  repair,
-		BackupWorker:  "not_configured",
+		BackupWorker:  worker,
+		LastVerified:  lastVerified,
 	}, nil
+}
+
+func (e *Engine) backupStatusFields() (string, string) {
+	if e.WorkspaceID == "" || e.StateDir == "" {
+		return "not_configured", ""
+	}
+	dir := filepath.Join(e.StateDir, "backups", e.WorkspaceID)
+	if _, err := os.Stat(filepath.Join(dir, "auto.json")); err != nil {
+		if _, err := os.Stat(filepath.Join(dir, "targets.json")); err != nil {
+			return "not_configured", ""
+		}
+		return "configured", ""
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "ledger.json"))
+	if err != nil {
+		return "enabled", ""
+	}
+	var ledger struct {
+		LastRemoteCheckpointID string    `json:"last_remote_checkpoint_id"`
+		LastVerifiedCommit     string    `json:"last_verified_commit"`
+		LastVerifiedAt         time.Time `json:"last_verified_at"`
+	}
+	if err := json.Unmarshal(raw, &ledger); err != nil {
+		return "enabled", ""
+	}
+	if ledger.LastVerifiedCommit == "" || ledger.LastVerifiedAt.IsZero() {
+		return "enabled", ""
+	}
+	if ledger.LastRemoteCheckpointID != "" {
+		return "enabled", ledger.LastRemoteCheckpointID
+	}
+	return "enabled", ledger.LastVerifiedCommit
+}
+
+func (e *Engine) unmanagedMCPReason(inspection Inspection) string {
+	for _, sighting := range inspection.MCPSightings {
+		if !sighting.Present {
+			continue
+		}
+		owned := false
+		if inspection.Manifest != nil {
+			if row, ok := inspection.Manifest.integration(sighting.Target); ok && row.Record != nil && row.Record.Registration != nil {
+				owned = true
+			}
+		}
+		if !owned {
+			return "unmanaged MCP registration named atlas is present; repair will not rewrite it"
+		}
+	}
+	return ""
 }
 
 // Repair recovers in-flight journals and refreshes drifted skill files.

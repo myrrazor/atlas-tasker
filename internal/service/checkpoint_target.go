@@ -36,17 +36,17 @@ type AutoBackupConfig struct {
 }
 
 type BackupTargetAddOptions struct {
-	TargetID               string
-	URL                    string
-	Enabled                bool
-	Scope                  string
-	TimeoutMS              int
-	VerificationPolicy     string
-	AttestPrivate          bool
-	AttestPublic           bool
-	AllowPublicGitHub      bool
-	AcknowledgeBoundary    bool
-	AllowLocalFile         bool
+	TargetID            string
+	URL                 string
+	Enabled             bool
+	Scope               string
+	TimeoutMS           int
+	VerificationPolicy  string
+	AttestPrivate       bool
+	AttestPublic        bool
+	AllowPublicGitHub   bool
+	AcknowledgeBoundary bool
+	AllowLocalFile      bool
 }
 
 type BackupTargetView struct {
@@ -58,8 +58,8 @@ type BackupTargetView struct {
 }
 
 type BackupTargetListView struct {
-	Kind        string            `json:"kind"`
-	GeneratedAt time.Time         `json:"generated_at"`
+	Kind        string             `json:"kind"`
+	GeneratedAt time.Time          `json:"generated_at"`
 	Items       []BackupTargetView `json:"items"`
 }
 
@@ -233,10 +233,11 @@ func (s *ActionService) ViewBackupTarget(ctx context.Context, id string) (Backup
 }
 
 type BackupTargetEditOptions struct {
-	Enabled            *bool
-	URL                string
-	TimeoutMS          *int
+	Enabled             *bool
+	URL                 string
+	TimeoutMS           *int
 	AcknowledgeBoundary bool
+	AllowLocalFile      bool
 }
 
 func (s *ActionService) EditBackupTarget(ctx context.Context, id string, opts BackupTargetEditOptions) (BackupTargetView, error) {
@@ -257,6 +258,12 @@ func (s *ActionService) EditBackupTarget(ctx context.Context, id string, opts Ba
 		if opts.URL != "" {
 			if err := contracts.ValidateBackupTargetURL(opts.URL); err != nil {
 				return BackupTargetView{}, apperr.New(apperr.CodeInvalidInput, err.Error())
+			}
+			if strings.HasPrefix(opts.URL, "file://") && !opts.AllowLocalFile {
+				return BackupTargetView{}, apperr.New(apperr.CodeInvalidInput, "file:// remotes are disposable local targets; pass --allow-local-file")
+			}
+			if contracts.IsPublicGitHubHost(opts.URL) && target.VisibilityAttestation != contracts.BackupVisibilityPriv && !target.PublicOverrideApproved {
+				return BackupTargetView{}, apperr.New(apperr.CodeInvalidInput, "a confirmed public GitHub repository is refused unless --allow-public-github is independently approved")
 			}
 			target.URL = strings.TrimSpace(opts.URL)
 			overlap, _, err := workspaceRemoteOverlap(s.Root, target.URL, s.GitPath)

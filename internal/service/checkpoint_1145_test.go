@@ -41,6 +41,26 @@ func TestBackupTargetRejectsCredentialsAndPublicGitHub(t *testing.T) {
 	}
 }
 
+func TestBackupTargetEditRequiresAllowLocalFile(t *testing.T) {
+	ctx, actions := newCheckpointHarness(t)
+	if _, err := actions.AddBackupTarget(ctx, BackupTargetAddOptions{
+		TargetID: "https-priv", URL: "https://git.example.com/org/private.git",
+		AcknowledgeBoundary: true, AttestPrivate: true, Enabled: true,
+	}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, err := actions.EditBackupTarget(ctx, "https-priv", BackupTargetEditOptions{URL: "file:///tmp/sneaky.git"}); err == nil || !strings.Contains(err.Error(), "allow-local-file") {
+		t.Fatalf("edit to file:// without --allow-local-file must fail: %v", err)
+	}
+	remote := initBareRemote(t)
+	if _, err := actions.EditBackupTarget(ctx, "https-priv", BackupTargetEditOptions{URL: "file://" + remote, AllowLocalFile: true}); err != nil {
+		t.Fatalf("edit with --allow-local-file: %v", err)
+	}
+	if _, err := actions.EditBackupTarget(ctx, "https-priv", BackupTargetEditOptions{URL: "https://user:token@git.example.com/org/private.git"}); err == nil || !strings.Contains(err.Error(), "credential") {
+		t.Fatalf("edit with embedded credentials must fail: %v", err)
+	}
+}
+
 func TestBackupTargetNeverInfersOriginAndRemoveKeepsRemote(t *testing.T) {
 	ctx, actions := newCheckpointHarness(t)
 	userGit := initUserRepo(t, actions.Root)
@@ -300,15 +320,15 @@ func TestReplicaRefsAreDistinctAndResetIsExplicit(t *testing.T) {
 
 func TestClassifyRemoteBackupErrorsAndAuthBackoff(t *testing.T) {
 	cases := map[string]string{
-		"Could not resolve host example.test":     contracts.BackupErrorDNSFailure,
-		"Network is unreachable":                  contracts.BackupErrorOffline,
-		"Permission denied (publickey)":           contracts.BackupErrorAuthenticationFailed,
-		"remote: Write access denied":             contracts.BackupErrorPermissionDenied,
-		"repository not found":                    contracts.BackupErrorRemoteMissing,
+		"Could not resolve host example.test":         contracts.BackupErrorDNSFailure,
+		"Network is unreachable":                      contracts.BackupErrorOffline,
+		"Permission denied (publickey)":               contracts.BackupErrorAuthenticationFailed,
+		"remote: Write access denied":                 contracts.BackupErrorPermissionDenied,
+		"repository not found":                        contracts.BackupErrorRemoteMissing,
 		"failed to push some refs (non-fast-forward)": contracts.BackupErrorRemoteDiverged,
-		"context deadline exceeded":               contracts.BackupErrorTimeout,
-		"HOST KEY VERIFICATION FAILED":            contracts.BackupErrorHostKeyUnverified,
-		"blocked_remote_diverged":                 contracts.BackupErrorBlockedRemoteDiverged,
+		"context deadline exceeded":                   contracts.BackupErrorTimeout,
+		"HOST KEY VERIFICATION FAILED":                contracts.BackupErrorHostKeyUnverified,
+		"blocked_remote_diverged":                     contracts.BackupErrorBlockedRemoteDiverged,
 	}
 	for msg, want := range cases {
 		got := classifyRemoteBackupError(apperr.New(apperr.CodeConflict, msg))
@@ -317,12 +337,21 @@ func TestClassifyRemoteBackupErrorsAndAuthBackoff(t *testing.T) {
 		}
 	}
 	now := time.Date(2026, 9, 11, 18, 0, 0, 0, time.UTC)
-	authNext, authAttempt := nextBackupRetry(now, 0, contracts.BackupErrorAuthenticationFailed)
-	if authAttempt != 1 || authNext.Sub(now) > backupRetryMax {
-		t.Fatalf("auth backoff out of range: next=%s attempt=%d", authNext, authAttempt)
+	if got := backupRetryWindow(0, contracts.BackupErrorAuthenticationFailed); got != backupRetryMax {
+		t.Fatalf("auth retry window = %s, want max %s", got, backupRetryMax)
 	}
-	if authNext.Sub(now) < backupRetryMax/4 && authNext.Sub(now) != 0 {
-		// full jitter of max interval still belongs at the long interval, not 30s storms
+	if got := backupRetryWindow(0, contracts.BackupErrorPermissionDenied); got != backupRetryMax {
+		t.Fatalf("permission retry window = %s, want max %s", got, backupRetryMax)
+	}
+	if got := backupRetryWindow(0, contracts.BackupErrorHostKeyUnverified); got != backupRetryMax {
+		t.Fatalf("host-key retry window = %s, want max %s", got, backupRetryMax)
+	}
+	if got := backupRetryWindow(0, contracts.BackupErrorOffline); got != backupRetryInitial {
+		t.Fatalf("offline retry window = %s, want initial %s", got, backupRetryInitial)
+	}
+	authNext, authAttempt := nextBackupRetry(now, 0, contracts.BackupErrorAuthenticationFailed)
+	if authAttempt != 1 || authNext.Before(now) || authNext.Sub(now) > backupRetryMax {
+		t.Fatalf("auth backoff out of range: next=%s attempt=%d", authNext, authAttempt)
 	}
 	offlineNext, _ := nextBackupRetry(now, 0, contracts.BackupErrorOffline)
 	if offlineNext.Sub(now) > backupRetryInitial {
@@ -492,7 +521,7 @@ func TestRemoteRecoveryDrill(t *testing.T) {
 	userGit := initUserRepo(t, source.Root)
 	before := captureUserGit(t, userGit)
 	writeBanned(t, source.Root, map[string]string{
-		".env":                                    "TOKEN=secret\n",
+		".env": "TOKEN=secret\n",
 		".tracker/security/keys/private/key.json": `{"k":"secret"}` + "\n",
 		".tracker/runtime/session.json":           `{"tok":"1"}` + "\n",
 	})

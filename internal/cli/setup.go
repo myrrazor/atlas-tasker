@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -150,7 +151,39 @@ func setupEngineFromCWD() (*setup.Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return setup.NewEngine(cwd)
+	engine, err := setup.NewEngine(cwd)
+	if err != nil {
+		return nil, err
+	}
+	engine.Hooks.BackupFirstCheckpoint = runSetupFirstBackup
+	return engine, nil
+}
+
+func runSetupFirstBackup(ctx context.Context, targetID string) (setup.FirstBackupResult, error) {
+	w, err := openWorkspace()
+	if err != nil {
+		return setup.FirstBackupResult{}, err
+	}
+	defer w.close()
+	if _, err := w.actions.EnableAutoBackup(ctx, targetID); err != nil {
+		return setup.FirstBackupResult{}, err
+	}
+	view, err := w.actions.BackupTick(ctx, true)
+	if err != nil {
+		return setup.FirstBackupResult{}, err
+	}
+	result := setup.FirstBackupResult{CheckpointID: view.CheckpointID}
+	if status, statusErr := w.actions.AutoBackupStatus(ctx); statusErr == nil {
+		if status.LastRemoteCheckpointID != "" {
+			result.CheckpointID = status.LastRemoteCheckpointID
+		} else if status.LastLocalCheckpointID != "" {
+			result.CheckpointID = status.LastLocalCheckpointID
+		}
+		result.Verified = status.VerifiedRemote
+		return result, nil
+	}
+	result.Verified = view.State == "verified"
+	return result, nil
 }
 
 func parseSetupAgents(raw string) ([]integrations.Target, error) {

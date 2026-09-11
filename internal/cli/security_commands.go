@@ -285,6 +285,7 @@ func newBackupCommand() *cobra.Command {
 	targetEdit.Flags().String("url", "", "Replacement URL")
 	targetEdit.Flags().Bool("enabled", true, "Enable or disable the target")
 	targetEdit.Flags().Bool("acknowledge-data-boundary", false, "Reconfirm the data boundary")
+	targetEdit.Flags().Bool("allow-local-file", false, "Allow changing the URL to a disposable file:// remote")
 	addReadOutputFlags(targetEdit, &outputFlags{})
 	targetRemove := &cobra.Command{Use: "remove", Short: "Remove local target configuration only", Args: cobra.ExactArgs(1), RunE: runBackupTargetRemove}
 	addReadOutputFlags(targetRemove, &outputFlags{})
@@ -1110,7 +1111,8 @@ func runBackupTargetEdit(cmd *cobra.Command, args []string) error {
 	defer w.close()
 	url, _ := cmd.Flags().GetString("url")
 	ack, _ := cmd.Flags().GetBool("acknowledge-data-boundary")
-	opts := service.BackupTargetEditOptions{URL: url, AcknowledgeBoundary: ack}
+	allowFile, _ := cmd.Flags().GetBool("allow-local-file")
+	opts := service.BackupTargetEditOptions{URL: url, AcknowledgeBoundary: ack, AllowLocalFile: allowFile}
 	if cmd.Flags().Changed("enabled") {
 		enabled, _ := cmd.Flags().GetBool("enabled")
 		opts.Enabled = &enabled
