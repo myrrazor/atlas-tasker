@@ -4,12 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
+
+var backupWorkspaceIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+
+func validBackupWorkspaceID(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" || strings.Contains(id, "..") || strings.ContainsAny(id, `/\`) {
+		return false
+	}
+	return backupWorkspaceIDRe.MatchString(id)
+}
 
 type workspaceMetadata struct {
 	WorkspaceID string    `json:"workspace_id"`
@@ -42,6 +53,9 @@ func ensureWorkspaceIdentity(root string) (string, error) {
 		}
 		if strings.TrimSpace(meta.WorkspaceID) == "" {
 			return "", fmt.Errorf("workspace metadata missing workspace_id")
+		}
+		if !validBackupWorkspaceID(meta.WorkspaceID) {
+			return "", fmt.Errorf("workspace metadata workspace_id is not a portable identity")
 		}
 		return meta.WorkspaceID, nil
 	}
@@ -81,5 +95,9 @@ func loadWorkspaceIdentity(root string) (string, error) {
 	if err := json.Unmarshal(raw, &meta); err != nil {
 		return "", fmt.Errorf("decode workspace metadata: %w", err)
 	}
-	return strings.TrimSpace(meta.WorkspaceID), nil
+	id := strings.TrimSpace(meta.WorkspaceID)
+	if id != "" && !validBackupWorkspaceID(id) {
+		return "", fmt.Errorf("workspace metadata workspace_id is not a portable identity")
+	}
+	return id, nil
 }

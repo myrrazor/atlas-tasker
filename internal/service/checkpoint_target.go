@@ -75,6 +75,9 @@ func (s *ActionService) backupPaths() (checkpointPaths, string, error) {
 	if strings.TrimSpace(workspaceID) == "" {
 		return checkpointPaths{}, "", apperr.New(apperr.CodeInvalidInput, "workspace identity is required")
 	}
+	if !validBackupWorkspaceID(workspaceID) {
+		return checkpointPaths{}, "", apperr.New(apperr.CodeInvalidInput, "workspace identity is not a portable backup id")
+	}
 	paths := backupStatePaths(stateDir, workspaceID)
 	if err := paths.ensure(); err != nil {
 		return checkpointPaths{}, "", err
@@ -364,6 +367,15 @@ func (s *ActionService) EnableAutoBackup(ctx context.Context, targetID string) (
 	cfg := AutoBackupConfig{Format: backupAutoFormat, Enabled: true, DefaultTargetID: targetID, EnabledAt: s.now()}
 	if err := atomicWriteJSON(paths.Auto, cfg); err != nil {
 		return AutoBackupStatus{}, err
+	}
+	if ledger, err := loadLedger(paths.Ledger); err == nil && ledger.LastVerifiedTargetID != "" && ledger.LastVerifiedTargetID != targetID {
+		ledger.LastVerifiedCommit = ""
+		ledger.LastVerifiedAt = time.Time{}
+		ledger.LastVerifiedTargetID = ""
+		ledger.LastVerifiedManifestSHA = ""
+		ledger.LastVerifiedTreeSHA = ""
+		ledger.LastRemoteCheckpointID = ""
+		_ = atomicWriteJSON(paths.Ledger, ledger)
 	}
 	return s.AutoBackupStatus(ctx)
 }

@@ -135,6 +135,8 @@ func (r gitRunner) pinnedArgs(args ...string) []string {
 		"-c", "protocol.ssh.allow=always",
 		"-c", "protocol.https.allow=always",
 		"-c", "credential.interactive=never",
+		"-c", "core.autocrlf=false",
+		"-c", "core.eol=lf",
 	}
 	return append(out, args...)
 }
@@ -247,8 +249,16 @@ func (e *CheckpointEngine) commitSnapshot(ctx context.Context, snap CanonicalSna
 	if err := e.ensureBareRepo(ctx); err != nil {
 		return "", err
 	}
-	index := filepath.Join(e.paths.Tmp, "index-"+manifest.CheckpointID)
-	_ = os.Remove(index)
+	indexFile, err := os.CreateTemp(e.paths.Tmp, "index-*")
+	if err != nil {
+		return "", err
+	}
+	index := indexFile.Name()
+	_ = indexFile.Close()
+	if err := os.Remove(index); err != nil {
+		return "", err
+	}
+	defer func() { _ = os.Remove(index) }()
 	runner := e.gitRunner(snap.SnapshotDir, index)
 	parent, err := runner.run(ctx, "rev-parse", "--verify", "--quiet", backupRefName(e.workspaceID, e.replicaID))
 	if err != nil {
@@ -258,7 +268,7 @@ func (e *CheckpointEngine) commitSnapshot(ctx context.Context, snap CanonicalSna
 		if err := e.crash(CrashDuringSnapshot); err != nil {
 			return "", err
 		}
-		blob, err := runner.run(ctx, "hash-object", "-w", "--", file.Path)
+		blob, err := runner.run(ctx, "hash-object", "-w", "--no-filters", "--", file.Path)
 		if err != nil {
 			return "", err
 		}
@@ -274,7 +284,7 @@ func (e *CheckpointEngine) commitSnapshot(ctx context.Context, snap CanonicalSna
 	if err := os.WriteFile(manifestPath, raw, 0o644); err != nil {
 		return "", err
 	}
-	blob, err := runner.run(ctx, "hash-object", "-w", "--", contracts.CheckpointManifestName)
+	blob, err := runner.run(ctx, "hash-object", "-w", "--no-filters", "--", contracts.CheckpointManifestName)
 	if err != nil {
 		return "", err
 	}
@@ -286,6 +296,9 @@ func (e *CheckpointEngine) commitSnapshot(ctx context.Context, snap CanonicalSna
 	}
 	tree, err := runner.run(ctx, "write-tree")
 	if err != nil {
+		return "", err
+	}
+	if err := verifyCheckpointTree(ctx, runner, tree, manifest); err != nil {
 		return "", err
 	}
 	args := []string{"commit-tree", tree, "-m", backupCommitSubject}
@@ -308,6 +321,37 @@ func (e *CheckpointEngine) commitSnapshot(ctx context.Context, snap CanonicalSna
 	}
 	e.maintenanceMaybe(ctx, runner)
 	return commit, nil
+}
+
+func verifyCheckpointTree(ctx context.Context, runner gitRunner, tree string, manifest contracts.CheckpointManifest) error {
+	listing, err := runner.run(ctx, "ls-tree", "-r", "--name-only", tree)
+	if err != nil {
+		return err
+	}
+	got := map[string]struct{}{}
+	for _, line := range strings.Split(listing, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		got[line] = struct{}{}
+	}
+	want := map[string]struct{}{contracts.CheckpointManifestName: {}}
+	for _, file := range manifest.Files {
+		path := strings.TrimSpace(file.Path)
+		if path != "" {
+			want[path] = struct{}{}
+		}
+	}
+	if len(got) != len(want) {
+		return apperr.New(apperr.CodeConflict, "checkpoint tree does not match the manifest file list")
+	}
+	for path := range want {
+		if _, ok := got[path]; !ok {
+			return apperr.New(apperr.CodeConflict, "checkpoint tree is missing "+path)
+		}
+	}
+	return nil
 }
 
 func (e *CheckpointEngine) maintenanceMaybe(ctx context.Context, runner gitRunner) {

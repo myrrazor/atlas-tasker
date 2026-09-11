@@ -96,6 +96,15 @@ func (s *ActionService) ensureReplicaIdentity(paths checkpointPaths, workspaceID
 	ledger.LastError = ""
 	ledger.NextRetryAt = time.Time{}
 	ledger.RetryAttempt = 0
+	if reset {
+		// A new replica publishes a new ref. Prior target verification does not apply.
+		ledger.LastVerifiedCommit = ""
+		ledger.LastVerifiedAt = time.Time{}
+		ledger.LastVerifiedTargetID = ""
+		ledger.LastVerifiedManifestSHA = ""
+		ledger.LastVerifiedTreeSHA = ""
+		ledger.LastRemoteCheckpointID = ""
+	}
 	if err := atomicWriteJSON(paths.Ledger, ledger); err != nil {
 		return ReplicaIdentity{}, err
 	}

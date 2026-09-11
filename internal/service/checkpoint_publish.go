@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -34,7 +37,7 @@ func (e *CheckpointEngine) publishIfEnabled(ctx context.Context, commit string, 
 	if err != nil {
 		return err
 	}
-	if ledger.LastVerifiedCommit == commit && !ledger.LastVerifiedAt.IsZero() {
+	if ledger.LastVerifiedCommit == commit && ledger.LastVerifiedTargetID == target.TargetID && !ledger.LastVerifiedAt.IsZero() {
 		return nil
 	}
 	if ledger.BlockedReason == contracts.BackupErrorBlockedRemoteDiverged || ledger.LastErrorClass == contracts.BackupErrorBlockedRemoteDiverged {
@@ -107,40 +110,67 @@ func (e *CheckpointEngine) publishAndVerify(ctx context.Context, target contract
 		}
 		return apperr.New(apperr.CodeConflict, "remote ref does not equal the expected commit")
 	}
-	verifyRef := "refs/atlas/verify/" + commit
-	if _, err := runner.run(ctx, "fetch", "--", target.URL, ref+":"+verifyRef); err != nil {
-		return err
-	}
-	fetched, err := runner.run(ctx, "rev-parse", verifyRef)
+	manifest, err := e.verifyRemoteObjects(ctx, target.URL, ref, commit)
 	if err != nil {
 		return err
 	}
-	if fetched != commit {
-		return apperr.New(apperr.CodeConflict, "fetched commit does not match the pushed commit")
-	}
-	tree, err := runner.run(ctx, "rev-parse", commit+"^{tree}")
-	if err != nil {
-		return err
-	}
-	manifest, err := e.readCommitManifest(ctx, commit)
-	if err != nil {
-		return err
-	}
-	if err := manifest.Validate(); err != nil {
-		return apperr.New(apperr.CodeConflict, "corrupt_remote_checkpoint: "+err.Error())
-	}
-	hash, err := contracts.ManifestHash(manifest)
-	if err != nil || hash != manifest.ManifestSHA256 {
-		return apperr.New(apperr.CodeConflict, contracts.BackupErrorCorruptRemoteCheckpoint)
-	}
-	if manifest.WorkspaceID != e.workspaceID {
-		return apperr.New(apperr.CodeConflict, "checkpoint workspace does not match")
-	}
-	_ = tree
 	if err := e.crash(CrashAfterVerifyBeforePersist); err != nil {
 		return err
 	}
 	return e.markVerified(commit, manifest, target.TargetID)
+}
+
+func (e *CheckpointEngine) verifyRemoteObjects(ctx context.Context, url, ref, commit string) (contracts.CheckpointManifest, error) {
+	if err := os.MkdirAll(e.paths.Tmp, 0o700); err != nil {
+		return contracts.CheckpointManifest{}, err
+	}
+	dest, err := os.MkdirTemp(e.paths.Tmp, "verify-*")
+	if err != nil {
+		return contracts.CheckpointManifest{}, err
+	}
+	defer func() { _ = os.RemoveAll(dest) }()
+	init := exec.CommandContext(ctx, e.git, "init", "--bare", dest)
+	init.Env = gitSafeEnv(e.git, dest, "", "")
+	if out, err := init.CombinedOutput(); err != nil {
+		return contracts.CheckpointManifest{}, fmt.Errorf("git init --bare verify repo: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	runner := gitRunner{Git: e.git, Repo: dest, Snapshot: dest}
+	verifyRef := "refs/atlas/verify/" + commit
+	if _, err := runner.run(ctx, "fetch", "--", url, ref+":"+verifyRef); err != nil {
+		return contracts.CheckpointManifest{}, err
+	}
+	fetched, err := runner.run(ctx, "rev-parse", verifyRef)
+	if err != nil {
+		return contracts.CheckpointManifest{}, err
+	}
+	if fetched != commit {
+		return contracts.CheckpointManifest{}, apperr.New(apperr.CodeConflict, "fetched commit does not match the pushed commit")
+	}
+	if _, err := runner.run(ctx, "rev-parse", commit+"^{tree}"); err != nil {
+		return contracts.CheckpointManifest{}, err
+	}
+	raw, err := runner.run(ctx, "show", commit+":"+contracts.CheckpointManifestName)
+	if err != nil {
+		return contracts.CheckpointManifest{}, err
+	}
+	manifest, err := contracts.ParseCheckpointManifest([]byte(raw + "\n"))
+	if err != nil {
+		return contracts.CheckpointManifest{}, err
+	}
+	if err := manifest.Validate(); err != nil {
+		return contracts.CheckpointManifest{}, apperr.New(apperr.CodeConflict, "corrupt_remote_checkpoint: "+err.Error())
+	}
+	hash, err := contracts.ManifestHash(manifest)
+	if err != nil || hash != manifest.ManifestSHA256 {
+		return contracts.CheckpointManifest{}, apperr.New(apperr.CodeConflict, contracts.BackupErrorCorruptRemoteCheckpoint)
+	}
+	if manifest.WorkspaceID != e.workspaceID {
+		return contracts.CheckpointManifest{}, apperr.New(apperr.CodeConflict, "checkpoint workspace does not match")
+	}
+	if err := verifyCheckpointTree(ctx, runner, commit+"^{tree}", manifest); err != nil {
+		return contracts.CheckpointManifest{}, err
+	}
+	return manifest, nil
 }
 
 func (e *CheckpointEngine) lsRemote(ctx context.Context, runner gitRunner, url, ref string) (string, error) {
@@ -188,6 +218,7 @@ func (e *CheckpointEngine) markVerified(commit string, manifest contracts.Checkp
 	now := e.now()
 	ledger.LastVerifiedCommit = commit
 	ledger.LastVerifiedAt = now
+	ledger.LastVerifiedTargetID = targetID
 	ledger.LastVerifiedManifestSHA = manifest.ManifestSHA256
 	ledger.LastVerifiedTreeSHA = manifest.CanonicalTreeSHA256
 	ledger.LastRemoteCheckpointID = manifest.CheckpointID
