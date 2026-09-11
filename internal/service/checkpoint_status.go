@@ -135,7 +135,7 @@ func (s *ActionService) ensurePreDestructiveCheckpoint(ctx context.Context, oper
 	}
 	result, err := engine.Tick(ctx, true)
 	if err != nil {
-		if result.Commit != "" || result.CheckpointID != "" || ledgerHasCheckpoint(engine) {
+		if result.Commit != "" || result.CheckpointID != "" || remotePublishErrorClass(result.ErrorClass) {
 			engine.noteWarning("pre_destructive_remote_publish_failed")
 			return nil
 		}
