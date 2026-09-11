@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.14.0 (release candidate)
+
+Seamless agent setup and automatic verified backup. This is an implementation candidate, not a published release.
+
+- `tracker setup` is one cohesive pass: detect agents, refresh the existing atlas-worker skill, register MCP, map team identities, write managed mode, and optionally enable an already-added backup target. After enable it runs one first checkpoint and remote verify. `--yes` is still not backup consent. Setup never installs the user scheduler and never infers origin.
+- Six provider adapters (Codex, Claude Code, Cursor, OpenClaw, Grok, Generic) stay transactional. Unmanaged `atlas` MCP entries and custom text outside instruction markers are not rewritten. `tracker update` replaces only the binary.
+- Automatic local checkpoints stay in an isolated bare Git repository. Off-device publication is fast-forward only onto `refs/atlas/backups/<workspace>/<replica>`. Push success is not `verified` until ls-remote, fetch, commit, tree, and manifest match. Mutations stay available when backup is offline or diverged.
+- Read-only MCP tools `atlas.context`, `atlas.status`, and `atlas.backup.status` never return backup URLs or credentials. High-impact tools stay hidden from ordinary setup.
+- Recovery uses the existing restore-plan/apply boundary with `backup_restore` governance. Disposable `file://` remotes require `--allow-local-file` on add and edit (DEC-088) and are not an off-device claim.
+
+Remaining before a published v1.14.0: real-client sessions for the five named hosts, real user-level scheduler enablement, macOS installer matrix, the 10k/100k/10k soak, and an owner-authorized private remote disaster drill. Procedural SHA/attestation ceremony is waived as a gate.
+
 ## v1.13.0 - Workflow Consistency
 
 - Canceled work has a separate board column across CLI, JSON, TUI, and web, and the web move control includes canceled. Board and ticket views show assignment directly.

@@ -198,6 +198,11 @@ func (e *Engine) Plan(opts PlanOptions) (*PreparedSetup, error) {
 			deps = append(deps, "optional: tracker backup schedule install")
 			notes = append(notes, "scheduler install remains a separate explicit consent")
 		}
+		if inspection.Backup.TargetConfigured {
+			notes = append(notes, "apply enables the named target and runs one first checkpoint plus remote verify")
+		} else {
+			notes = append(notes, "target must already exist; setup does not add remotes or infer origin")
+		}
 		backupPlan = &BackupPlan{
 			Requested:             true,
 			TargetID:              strings.TrimSpace(opts.BackupTarget),
