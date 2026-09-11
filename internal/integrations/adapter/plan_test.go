@@ -505,6 +505,18 @@ func TestDetectionValidation(t *testing.T) {
 	}
 }
 
+func TestManagedFileWriteRequiresHomeOutsideWorkspace(t *testing.T) {
+	plan := codexPlan(t)
+	plan.Home = ""
+	plan.ConsentedRoots = []string{"/home/victim/.cursor"}
+	plan.Steps[1].Kind = StepWriteManagedFile
+	plan.Steps[1].Path = "/home/victim/.cursor/skills/atlas-worker/SKILL.md"
+	plan.Steps[1].Rollback.Path = plan.Steps[1].Path
+	if err := plan.Validate(); err == nil {
+		t.Fatal("write_managed_file outside the workspace must fail when home is unknown")
+	}
+}
+
 func TestPlanInputValidation(t *testing.T) {
 	good := PlanInput{WorkspaceRoot: testRoot, WorkspaceID: testWorkspaceID, Home: testHome, TrackerPath: testTracker, ActorHint: "agent:codex-1", Detection: codexDetection()}
 	if err := good.Validate(); err != nil {

@@ -40,10 +40,10 @@ type BoardPage struct {
 	// submitted values of a rejected form, echoed back so typed content
 	// survives server-side validation errors; FormTarget names the one form
 	// ("create", "edit", "comment") allowed to consume them
-	Form       url.Values `json:"-"`
-	FormTarget string     `json:"-"`
-	Columns    []BoardColumn
-	Detail     *TicketDetail
+	Form         url.Values `json:"-"`
+	FormTarget   string     `json:"-"`
+	Columns      []BoardColumn
+	Detail       *TicketDetail
 	Flash        string
 	Error        string
 	ShowNew      bool

@@ -50,6 +50,8 @@ Use `--json` when another tool needs structured output:
 
 ## 5. Connect Agents And Optional Backup
 
+`tracker setup` and automatic Atlas backup are in the v1.14 implementation candidate. Build from this source to try them; the latest published installer tag is still v1.13.0.
+
 ```bash
 ./tracker setup --plan
 ./tracker setup --yes --agents generic

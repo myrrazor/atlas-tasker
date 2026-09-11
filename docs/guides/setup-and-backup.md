@@ -1,6 +1,6 @@
 # Setup and backup
 
-This is the regular-user path after `tracker init`. It does not publish a release and it does not turn on off-device backup by itself.
+This is the regular-user path after `tracker init`. `tracker setup` and automatic Atlas backup are part of the v1.14 implementation candidate. They are in this source tree; the latest published installer tag is still v1.13.0. This guide does not publish a release and it does not turn on off-device backup by itself.
 
 ## Connect your coding agents
 
@@ -54,11 +54,11 @@ tracker setup --yes --agents generic --backup --backup-target private
 
 What this means in practice:
 
-- Local checkpoints live outside your working tree. They do not change your repo's current branch, index, or uncommitted files.
-- A push is not "verified" until Atlas checks the remote commit. `tracker setup status` and `tracker backup auto status` stay honest about that.
-- If the remote is offline or has diverged, ticket writes still work. Atlas will not force-push.
+- Local checkpoints live outside your working tree, under `$XDG_STATE_HOME/atlas-tasker/backups/<workspace-id>/` (or `~/.local/state/atlas-tasker/backups/<workspace-id>/`). They do not change your repo's current branch, index, or uncommitted files.
+- A push is not "verified" until Atlas fetches the remote commit into an empty temporary repository and checks the tree and manifest. `tracker setup status` and `tracker backup auto status` report verified only for the current target, and never while the replica is blocked.
+- If the remote is offline or has diverged, ticket writes still work. Atlas will not force-push. A failed remote publish does not block a later local restore from a checkpoint that already landed locally.
 - Restore goes through `tracker backup restore-plan` then `restore-apply`. `--yes` is confirmation, not authorization, when a restore policy is in force.
-- The optional user scheduler is `tracker backup schedule install --yes`. Neither `tracker init` nor `tracker setup` installs it.
+- The optional user scheduler is `tracker backup schedule install --yes`. Neither `tracker init` nor `tracker setup` installs it. Install writes the unit files only. On Linux, activate them with `systemctl --user daemon-reload` and `systemctl --user enable --now atlas-backup-<workspace-id>.timer`. The timer includes `OnStartupSec` so it also fires after login, not only after a previous run. On macOS, load the LaunchAgent after install (`launchctl load ~/Library/LaunchAgents/com.atlas-tasker.backup.<workspace-id>.plist`).
 
 Public GitHub remotes need an explicit public attestation plus `--allow-public-github`. URLs that embed passwords or tokens are rejected.
 

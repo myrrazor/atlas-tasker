@@ -76,7 +76,6 @@ func (s *QueryService) AutoBackupStatus(ctx context.Context) (AutoBackupStatus, 
 	view.LastErrorClass = ledger.LastErrorClass
 	view.HealthWarning = ledger.HealthWarning
 	view.DiskBytes = ledger.DiskBytes
-	view.VerifiedRemote = ledger.LastVerifiedCommit != "" && !ledger.LastVerifiedAt.IsZero()
 	view.LastRemoteCheckpointID = ledger.LastRemoteCheckpointID
 	view.LastRemoteVerifiedAt = ledger.LastVerifiedAt
 	view.SchedulerState = ledger.SchedulerState
@@ -86,6 +85,11 @@ func (s *QueryService) AutoBackupStatus(ctx context.Context) (AutoBackupStatus, 
 	if cfg, err := loadAutoConfig(paths.Auto); err == nil {
 		view.AutomaticEnabled = cfg.Enabled
 		view.DefaultTargetID = cfg.DefaultTargetID
+	}
+	view.VerifiedRemote = ledger.LastVerifiedCommit != "" && !ledger.LastVerifiedAt.IsZero() &&
+		(view.DefaultTargetID == "" || ledger.LastVerifiedTargetID == "" || ledger.LastVerifiedTargetID == view.DefaultTargetID)
+	if view.State == contracts.BackupOutboxBlocked || view.LastErrorClass == contracts.BackupErrorBlockedRemoteDiverged {
+		view.VerifiedRemote = false
 	}
 	if store, err := loadTargetStore(paths.Targets); err == nil {
 		view.TargetCount = len(store.Targets)
@@ -129,7 +133,12 @@ func (s *ActionService) ensurePreDestructiveCheckpoint(ctx context.Context, oper
 		}
 		return nil
 	}
-	if _, err := engine.Tick(ctx, true); err != nil {
+	result, err := engine.Tick(ctx, true)
+	if err != nil {
+		if result.Commit != "" || result.CheckpointID != "" || remotePublishErrorClass(result.ErrorClass) {
+			engine.noteWarning("pre_destructive_remote_publish_failed")
+			return nil
+		}
 		return apperr.New(apperr.CodeConflict, fmt.Sprintf("pre-destructive checkpoint failed before %s: %v", operation, err))
 	}
 	return nil

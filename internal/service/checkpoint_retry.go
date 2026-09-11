@@ -53,6 +53,26 @@ func classifyRemoteBackupError(err error) string {
 	}
 }
 
+func remotePublishErrorClass(class string) bool {
+	switch class {
+	case contracts.BackupErrorOffline,
+		contracts.BackupErrorDNSFailure,
+		contracts.BackupErrorAuthenticationFailed,
+		contracts.BackupErrorPermissionDenied,
+		contracts.BackupErrorRemoteMissing,
+		contracts.BackupErrorRemoteDiverged,
+		contracts.BackupErrorTimeout,
+		contracts.BackupErrorCorruptRemoteCheckpoint,
+		contracts.BackupErrorRetryableTransportFailure,
+		contracts.BackupErrorHostKeyUnverified,
+		contracts.BackupErrorBlockedRemoteDiverged,
+		contracts.BackupErrorRemoteRefMissing:
+		return true
+	default:
+		return false
+	}
+}
+
 func retryableBackupClass(class string) bool {
 	switch class {
 	case contracts.BackupErrorOffline, contracts.BackupErrorDNSFailure, contracts.BackupErrorTimeout, contracts.BackupErrorRetryableTransportFailure, "busy":

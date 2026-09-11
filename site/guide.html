@@ -85,7 +85,7 @@
       <section class="shell">
         <h2>3 · Hand work to agents</h2>
         <p><code>tracker agent create builder-1 --name "Builder" --provider claude --capability go --actor human:owner --reason "register"</code> registers an agent, and <code>tracker ticket assign APP-2 agent:builder-1 --actor human:owner --reason "agent work"</code> hands a ticket over. Or skip the assembly and apply a preset: <code>tracker team apply pair --actor human:owner --reason "team setup"</code>. The full loop is in <a href="docs/agents-and-dispatch.html">agents and dispatch</a>.</p>
-        <p><code>tracker setup --plan</code> shows the same workspace in one place. <code>tracker setup --yes --agents generic</code> refreshes the existing worker skill and registers MCP where the client supports it. <code>--yes</code> is not backup consent. Follow the <a href="mcp.html#connect">Connect your agent journey</a> or the detailed <a href="docs/mcp-setup.html">MCP setup guide</a>.</p>
+        <p><code>tracker setup --plan</code> shows the same workspace in one place. <code>tracker setup --yes --agents generic</code> refreshes the existing worker skill and registers MCP where the client supports it. Those commands are in the v1.14 implementation candidate (latest published tag is still v1.13.0). <code>--yes</code> is not backup consent. Follow the <a href="mcp.html#connect">Connect your agent journey</a> or the detailed <a href="docs/mcp-setup.html">MCP setup guide</a>.</p>
       </section>
       <section class="shell">
         <h2>4 · Optional Atlas backup</h2>

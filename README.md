@@ -43,7 +43,7 @@ tracker ticket move APP-1 ready --actor human:owner --reason "groomed"
 tracker board
 ```
 
-In a terminal, `tracker init` asks `Set up coding-agent integrations now? [Y/n]`; pressing Enter or answering yes opens the picker. This differs from the shell installer's optional workspace setup prompt, which defaults to **no**. In the picker, choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. Later, `tracker setup --plan` shows the same workspace in one place — skills, MCP, managed mode, and optional backup — without guessing your Git origin. The [setup and backup guide](docs/guides/setup-and-backup.md) and [agent integrations guide](docs/guides/agent-integrations.md) cover the full path.
+In a terminal, `tracker init` asks `Set up coding-agent integrations now? [Y/n]`; pressing Enter or answering yes opens the picker. This differs from the shell installer's optional workspace setup prompt, which defaults to **no**. In the picker, choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. Later, on the v1.14 candidate (build from source; the latest published tag is still v1.13.0), `tracker setup --plan` shows the same workspace in one place — skills, MCP, managed mode, and optional backup — without guessing your Git origin. The [setup and backup guide](docs/guides/setup-and-backup.md) and [agent integrations guide](docs/guides/agent-integrations.md) cover the full path.
 
 ![Kanban board in the terminal](docs/assets/board.png)
 
@@ -160,7 +160,7 @@ tracker backup auto enable --target private
 tracker backup run --now
 ```
 
-A successful push is not "verified" until Atlas checks the remote commit. If backup is offline, you can still move tickets. Restore is plan-then-apply. Neither `tracker init` nor `tracker setup --yes` installs a machine scheduler; that stays `tracker backup schedule install --yes`. Details: [setup and backup](docs/guides/setup-and-backup.md).
+A successful push is not "verified" until Atlas fetches the remote commit into an empty temporary repo and checks the tree and manifest. Verification is remembered per target and is not claimed while the replica is blocked. If backup is offline, you can still move tickets. Restore is plan-then-apply. Neither `tracker init` nor `tracker setup --yes` installs a machine scheduler; that stays `tracker backup schedule install --yes`. Details: [setup and backup](docs/guides/setup-and-backup.md).
 
 ## Everything else you'd expect from a real tracker
 

@@ -29,26 +29,27 @@ type BackupLedger struct {
 	LastCanonicalTreeSHA256 string    `json:"last_canonical_tree_sha256,omitempty"`
 	LastManifestSHA256      string    `json:"last_manifest_sha256,omitempty"`
 	LastCheckpointAt        time.Time `json:"last_checkpoint_at,omitempty"`
-	LastVerifiedCommit       string    `json:"last_verified_commit,omitempty"`
-	LastVerifiedAt           time.Time `json:"last_verified_at,omitempty"`
-	LastVerifiedManifestSHA  string    `json:"last_verified_manifest_sha256,omitempty"`
-	LastVerifiedTreeSHA      string    `json:"last_verified_tree_sha256,omitempty"`
-	LastRemoteCheckpointID   string    `json:"last_remote_checkpoint_id,omitempty"`
-	LastCanonicalChangeAt    time.Time `json:"last_canonical_change_at,omitempty"`
-	LastErrorClass           string    `json:"last_error_class,omitempty"`
-	LastError                string    `json:"last_error,omitempty"`
-	NextRetryAt              time.Time `json:"next_retry_at,omitempty"`
-	RetryAttempt             int       `json:"retry_attempt,omitempty"`
-	RetryTargetID            string    `json:"retry_target_id,omitempty"`
-	BlockedReason            string    `json:"blocked_reason,omitempty"`
-	LastDrillAt              time.Time `json:"last_drill_at,omitempty"`
-	SchedulerState           string    `json:"scheduler_state,omitempty"`
-	CommitCount              int       `json:"commit_count,omitempty"`
-	CommitsSinceMaintenance  int       `json:"commits_since_maintenance,omitempty"`
-	DiskBytes                int64     `json:"disk_bytes,omitempty"`
-	HealthWarning            string    `json:"health_warning,omitempty"`
-	KnownCheckpointIDs       []string  `json:"known_checkpoint_ids,omitempty"`
-	CreatedAt                time.Time `json:"created_at"`
+	LastVerifiedCommit      string    `json:"last_verified_commit,omitempty"`
+	LastVerifiedAt          time.Time `json:"last_verified_at,omitempty"`
+	LastVerifiedTargetID    string    `json:"last_verified_target_id,omitempty"`
+	LastVerifiedManifestSHA string    `json:"last_verified_manifest_sha256,omitempty"`
+	LastVerifiedTreeSHA     string    `json:"last_verified_tree_sha256,omitempty"`
+	LastRemoteCheckpointID  string    `json:"last_remote_checkpoint_id,omitempty"`
+	LastCanonicalChangeAt   time.Time `json:"last_canonical_change_at,omitempty"`
+	LastErrorClass          string    `json:"last_error_class,omitempty"`
+	LastError               string    `json:"last_error,omitempty"`
+	NextRetryAt             time.Time `json:"next_retry_at,omitempty"`
+	RetryAttempt            int       `json:"retry_attempt,omitempty"`
+	RetryTargetID           string    `json:"retry_target_id,omitempty"`
+	BlockedReason           string    `json:"blocked_reason,omitempty"`
+	LastDrillAt             time.Time `json:"last_drill_at,omitempty"`
+	SchedulerState          string    `json:"scheduler_state,omitempty"`
+	CommitCount             int       `json:"commit_count,omitempty"`
+	CommitsSinceMaintenance int       `json:"commits_since_maintenance,omitempty"`
+	DiskBytes               int64     `json:"disk_bytes,omitempty"`
+	HealthWarning           string    `json:"health_warning,omitempty"`
+	KnownCheckpointIDs      []string  `json:"known_checkpoint_ids,omitempty"`
+	CreatedAt               time.Time `json:"created_at"`
 }
 
 // BackupOutbox is the reconstructable pending-mark file.
@@ -320,4 +321,3 @@ func hashLiveFiles(root string, files []string) ([]contracts.CheckpointFile, err
 	}
 	return out, nil
 }
-

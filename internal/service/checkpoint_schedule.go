@@ -14,22 +14,22 @@ import (
 )
 
 const (
-	scheduleMarker      = "Atlas-owned backup scheduler. Do not edit by hand."
-	linuxServicePrefix  = "atlas-backup-"
-	macPlistPrefix      = "com.atlas-tasker.backup."
+	scheduleMarker     = "Atlas-owned backup scheduler. Do not edit by hand."
+	linuxServicePrefix = "atlas-backup-"
+	macPlistPrefix     = "com.atlas-tasker.backup."
 )
 
 type BackupSchedulePlan struct {
-	Kind          string             `json:"kind"`
-	GeneratedAt   any                `json:"generated_at"`
-	Platform      string             `json:"platform"`
-	BinaryPath    string             `json:"binary_path"`
-	WorkspaceID   string             `json:"workspace_id"`
-	WorkspaceRoot string             `json:"workspace_root"`
-	UnitName      string             `json:"unit_name"`
+	Kind          string               `json:"kind"`
+	GeneratedAt   any                  `json:"generated_at"`
+	Platform      string               `json:"platform"`
+	BinaryPath    string               `json:"binary_path"`
+	WorkspaceID   string               `json:"workspace_id"`
+	WorkspaceRoot string               `json:"workspace_root"`
+	UnitName      string               `json:"unit_name"`
 	Files         []BackupScheduleFile `json:"files"`
-	Consent       string             `json:"consent"`
-	Notes         []string           `json:"notes,omitempty"`
+	Consent       string               `json:"consent"`
+	Notes         []string             `json:"notes,omitempty"`
 }
 
 type BackupScheduleFile struct {
@@ -311,7 +311,7 @@ func systemdService(binary, workspace, workspaceID string) string {
 }
 
 func systemdTimer(binary, workspace, workspaceID string) string {
-	return fmt.Sprintf("[Unit]\nDescription=Atlas Tasker backup timer (%s)\n# %s\n# binary: %s\n# workspace: %s\n\n[Timer]\nOnUnitActiveSec=30s\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n", workspaceID, scheduleMarker, binary, workspace)
+	return fmt.Sprintf("[Unit]\nDescription=Atlas Tasker backup timer (%s)\n# %s\n# binary: %s\n# workspace: %s\n\n[Timer]\nOnStartupSec=30s\nOnUnitActiveSec=30s\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n", workspaceID, scheduleMarker, binary, workspace)
 }
 
 func launchdPlist(binary, workspace, workspaceID string) string {

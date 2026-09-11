@@ -28,23 +28,23 @@ type ManagedModeView struct {
 
 // BackupHealthSummary is a path-free backup/sync snapshot for MCP status.
 type BackupHealthSummary struct {
-	Configured            bool      `json:"configured"`
-	SnapshotCount         int       `json:"snapshot_count"`
-	LatestBackupID        string    `json:"latest_backup_id,omitempty"`
-	LatestCreatedAt       time.Time `json:"latest_created_at,omitempty"`
-	ManagedModeIncluded   bool      `json:"managed_mode_included"`
-	SyncRemoteCount       int       `json:"sync_remote_count"`
-	SyncReasonCodes       []string  `json:"sync_reason_codes,omitempty"`
-	WorkerState           string    `json:"worker_state,omitempty"`
-	UnbackedEventCount    int       `json:"unbacked_event_count,omitempty"`
-	LastLocalCheckpointID string    `json:"last_local_checkpoint_id,omitempty"`
-	LastLocalCheckpointAt time.Time `json:"last_local_checkpoint_at,omitempty"`
-	LastErrorClass         string    `json:"last_error_class,omitempty"`
-	DiskBytes              int64     `json:"disk_bytes,omitempty"`
-	AutomaticEnabled       bool      `json:"automatic_enabled,omitempty"`
-	LastRemoteCheckpointID string    `json:"last_remote_checkpoint_id,omitempty"`
-	LastRemoteVerifiedAt   time.Time `json:"last_remote_verified_at,omitempty"`
-	SchedulerState         string    `json:"scheduler_state,omitempty"`
+	Configured               bool      `json:"configured"`
+	SnapshotCount            int       `json:"snapshot_count"`
+	LatestBackupID           string    `json:"latest_backup_id,omitempty"`
+	LatestCreatedAt          time.Time `json:"latest_created_at,omitempty"`
+	ManagedModeIncluded      bool      `json:"managed_mode_included"`
+	SyncRemoteCount          int       `json:"sync_remote_count"`
+	SyncReasonCodes          []string  `json:"sync_reason_codes,omitempty"`
+	WorkerState              string    `json:"worker_state,omitempty"`
+	UnbackedEventCount       int       `json:"unbacked_event_count,omitempty"`
+	LastLocalCheckpointID    string    `json:"last_local_checkpoint_id,omitempty"`
+	LastLocalCheckpointAt    time.Time `json:"last_local_checkpoint_at,omitempty"`
+	LastErrorClass           string    `json:"last_error_class,omitempty"`
+	DiskBytes                int64     `json:"disk_bytes,omitempty"`
+	AutomaticEnabled         bool      `json:"automatic_enabled,omitempty"`
+	LastRemoteCheckpointID   string    `json:"last_remote_checkpoint_id,omitempty"`
+	LastRemoteVerifiedAt     time.Time `json:"last_remote_verified_at,omitempty"`
+	SchedulerState           string    `json:"scheduler_state,omitempty"`
 	RestoreDrillAgeSeconds   int       `json:"restore_drill_age_seconds,omitempty"`
 	VerifiedRemote           bool      `json:"verified_remote,omitempty"`
 	OldestUnbackedAgeSeconds int       `json:"oldest_unbacked_age_seconds,omitempty"`

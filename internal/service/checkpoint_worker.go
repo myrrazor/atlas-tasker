@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
@@ -70,6 +71,9 @@ func (s *ActionService) checkpointEngine() (*CheckpointEngine, error) {
 	}
 	if strings.TrimSpace(workspaceID) == "" {
 		return nil, fmt.Errorf("workspace identity is required for automatic backup")
+	}
+	if !validBackupWorkspaceID(workspaceID) {
+		return nil, fmt.Errorf("workspace identity is not a portable backup id")
 	}
 	git, err := validateGitExecutable(s.GitPath)
 	if err != nil {
@@ -203,6 +207,12 @@ func (s *ActionService) BackupWatch(ctx context.Context) error {
 
 func (e *CheckpointEngine) Tick(ctx context.Context, force bool) (AutoBackupResult, error) {
 	result := AutoBackupResult{Kind: "backup_auto_result", GeneratedAt: e.now(), ReplicaID: e.replicaID}
+	unlock, err := e.lockLedger()
+	if err != nil {
+		result.ErrorClass = classifyBackupError(err)
+		return result, err
+	}
+	defer unlock()
 	if err := e.reconstruct(ctx); err != nil {
 		result.ErrorClass = classifyBackupError(err)
 		result.State = contracts.BackupOutboxRetryableFailure
@@ -256,6 +266,27 @@ func (e *CheckpointEngine) finishTickWithPublish(ctx context.Context, result Aut
 		result.State = box.State
 	}
 	return result, nil
+}
+
+func (e *CheckpointEngine) lockLedger() (func(), error) {
+	if e == nil {
+		return func() {}, nil
+	}
+	if err := e.paths.ensure(); err != nil {
+		return nil, err
+	}
+	file, err := os.OpenFile(e.paths.Lock, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open backup ledger lock: %w", err)
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("acquire backup ledger lock: %w", err)
+	}
+	return func() {
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = file.Close()
+	}, nil
 }
 
 func (e *CheckpointEngine) shouldCheckpoint(box BackupOutbox) bool {

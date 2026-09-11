@@ -755,12 +755,16 @@ func (p IntegrationPlan) validateStepPath(path string, localState bool) error {
 // validateManagedFilePath confines managed-file steps to Atlas-owned
 // locations inside the workspace (instruction file, skill directory, command
 // directory, .tracker/integrations) or to a consented root, and never to a
-// file any supported client loads as configuration.
+// file any supported client loads as configuration. Writes outside the
+// workspace require a known Home so those checks can run.
 func (p IntegrationPlan) validateManagedFilePath(path string, caps Capabilities) error {
 	if _, client := clientConfigPaths(p.WorkspaceRoot, p.Home)[path]; client {
 		return fmt.Errorf("path %q is client configuration; use write_config_entry or remove_config_entry", path)
 	}
 	if !isWithin(p.WorkspaceRoot, path) {
+		if strings.TrimSpace(p.Home) == "" {
+			return fmt.Errorf("path %q is outside the workspace and home is unknown; refused", path)
+		}
 		return nil // inside a consented root, proven by validateStepPath
 	}
 	for _, rel := range caps.ManagedRoots() {

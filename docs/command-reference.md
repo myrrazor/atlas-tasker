@@ -418,7 +418,8 @@ Rules:
 - `tracker backup tick`
 - `tracker backup watch`
 - `tracker backup target add --url <URL> --acknowledge-data-boundary --attest-private|--attest-public [--allow-local-file] [--allow-public-github] [--id <ID>]`
-- `tracker backup target list|view|edit|remove`
+- `tracker backup target edit --id <ID> [--url <URL>] [--allow-local-file] [--enabled|--disabled] [--acknowledge-data-boundary]`
+- `tracker backup target list|view|remove`
 - `tracker backup replica view`
 - `tracker backup replica reset --yes`
 - `tracker backup reconcile --yes`
@@ -438,17 +439,18 @@ Rules:
 
 - backup snapshots include canonical Atlas-owned data only; private keys, local trust decisions, redaction previews, backup snapshots, generated goal files, runtime/worktree/provider state, remotes, notifiers, and MCP approvals are excluded
 - backup records and manifests live under `.tracker/backups/manifests/`; archives live under `.tracker/backups/snapshots/`
+- automatic checkpoint state (ledger, isolated bare repo, targets) lives under `$XDG_STATE_HOME/atlas-tasker/backups/<workspace-id>/` and is never stored as a Git remote in the user's project
 - `backup restore-plan` is side-effect free and does not persist a plan or append an event
 - `backup restore-apply` recomputes the plan under the write lock, requires `--yes`, and writes only paths on the restore allowlist
 - `backup drill` without `--target` is read-only against local snapshots; with `--target` it verifies a disposable remote and builds a restore plan without applying it
 - `backup auto status`, `backup tick`, `backup run --now`, and `backup watch` share one checkpoint worker; they never print remote credentials or sensitive URLs
 - automatic checkpoints write an isolated bare Git repository outside the workspace and never touch the user's HEAD, index, or work tree
 - backup targets are machine-local; origin is never inferred; URLs with credentials are rejected; public GitHub needs `--attest-public` plus `--allow-public-github`; `file://` remotes need `--allow-local-file` and are not off-device
-- publication is a fast-forward push of `refs/atlas/backups/<workspace-id>/<replica-id>` (never `refs/heads/*`, never `--force`); push success is not `verified` until ls-remote, fetch, and manifest hash match
+- publication is a fast-forward push of `refs/atlas/backups/<workspace-id>/<replica-id>` (never `refs/heads/*`, never `--force`); push success is not `verified` until ls-remote plus a fetch into an empty temporary repo confirm the commit, tree, and manifest; `file://` edits also require `--allow-local-file`
 - remote divergence becomes `blocked_remote_diverged` until `backup reconcile --yes` or `backup replica reset --yes`; ticket writes stay available
 - `backup restore-apply` and remote restore-apply evaluate `backup_restore` governance before writing; `--yes` is not authorization
 - `tracker setup --backup --backup-target <ID>` enables automatic backup for an already-added target, then runs one first checkpoint and remote verify; `--yes` is still not backup consent; missing targets fail the backup group only; setup does not install the user scheduler
-- `tracker init` never installs a scheduler; `backup schedule install --yes` writes user-level systemd or LaunchAgent files under a fixture or `$HOME`
+- `tracker init` never installs a scheduler; `backup schedule install --yes` writes user-level systemd or LaunchAgent files under a fixture or `$HOME` and does not enable them. On Linux follow with `systemctl --user daemon-reload` and `systemctl --user enable --now atlas-backup-<workspace-id>.timer`; on macOS `launchctl load` the written LaunchAgent. The Linux timer includes `OnStartupSec` so it fires after login.
 - `tracker doctor` includes automatic-backup health (`backup_auto`) without paths or credentials
 - MCP `atlas.backup.status` is read-only backup health; no MCP tool changes targets, restores, prunes, or overrides divergence
 - admin diagnostics are read-only and never print private key material

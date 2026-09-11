@@ -16,15 +16,15 @@ import (
 )
 
 type RemoteCheckpointRef struct {
-	CheckpointID    string            `json:"checkpoint_id"`
-	Commit          string            `json:"commit"`
-	ReplicaID       string            `json:"replica_id"`
-	WorkspaceID     string            `json:"workspace_id"`
-	CreatedAt       time.Time         `json:"created_at"`
-	AtlasVersion    string            `json:"atlas_version,omitempty"`
-	EventWatermarks map[string]int64  `json:"event_watermarks,omitempty"`
-	Ref             string            `json:"ref"`
-	Verified        bool              `json:"verified"`
+	CheckpointID    string           `json:"checkpoint_id"`
+	Commit          string           `json:"commit"`
+	ReplicaID       string           `json:"replica_id"`
+	WorkspaceID     string           `json:"workspace_id"`
+	CreatedAt       time.Time        `json:"created_at"`
+	AtlasVersion    string           `json:"atlas_version,omitempty"`
+	EventWatermarks map[string]int64 `json:"event_watermarks,omitempty"`
+	Ref             string           `json:"ref"`
+	Verified        bool             `json:"verified"`
 }
 
 type RemoteCheckpointListView struct {
@@ -188,16 +188,16 @@ func (s *ActionService) RemoteRecoveryDrill(ctx context.Context, targetID string
 		_ = atomicWriteJSON(paths.Ledger, ledger)
 	}
 	return map[string]any{
-		"kind":            "backup_remote_drill",
-		"generated_at":    s.now(),
-		"verified":        verify.Verified,
-		"checkpoint_id":   latest.CheckpointID,
-		"replica_id":      latest.ReplicaID,
-		"plan_items":      len(plan.Plan.Items),
-		"url_redacted":    listed.URLRedacted,
+		"kind":             "backup_remote_drill",
+		"generated_at":     s.now(),
+		"verified":         verify.Verified,
+		"checkpoint_id":    latest.CheckpointID,
+		"replica_id":       latest.ReplicaID,
+		"plan_items":       len(plan.Plan.Items),
+		"url_redacted":     listed.URLRedacted,
 		"secrets_excluded": true,
 		"side_effect_free": true,
-		"notes":           []string{"destructive workspace deletion is exercised only in isolated tests", reason},
+		"notes":            []string{"destructive workspace deletion is exercised only in isolated tests", reason},
 	}, nil
 }
 

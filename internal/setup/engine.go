@@ -548,6 +548,9 @@ func (e *Engine) recoverInFlight(ctx context.Context) error {
 		return err
 	}
 	for _, entry := range entries {
+		if e.WorkspaceID != "" && strings.TrimSpace(entry.WorkspaceID) != e.WorkspaceID {
+			continue
+		}
 		if !entry.State.InFlight() {
 			continue
 		}
