@@ -159,6 +159,10 @@
 - `tracker backup restore-plan <BACKUP-ID|PATH> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup restore-apply <BACKUP-ID|PATH> --yes [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup drill`
+- `tracker backup auto status`
+- `tracker backup run --now`
+- `tracker backup tick`
+- `tracker backup watch`
 - `tracker admin security-status`
 - `tracker admin trust-store`
 - `tracker admin recovery-status`
@@ -401,6 +405,10 @@ Rules:
 - `tracker backup restore-plan <BACKUP-ID|PATH> [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup restore-apply <BACKUP-ID|PATH> --yes [--actor <ACTOR>] [--reason <TEXT>]`
 - `tracker backup drill`
+- `tracker backup auto status`
+- `tracker backup run --now`
+- `tracker backup tick`
+- `tracker backup watch`
 - `tracker admin security-status`
 - `tracker admin trust-store`
 - `tracker admin recovery-status`
@@ -412,6 +420,9 @@ Rules:
 - `backup restore-plan` is side-effect free and does not persist a plan or append an event
 - `backup restore-apply` recomputes the plan under the write lock, requires `--yes`, and writes only paths on the restore allowlist
 - `backup drill` is read-only and reports recovery warnings without mutating the workspace
+- `backup auto status`, `backup tick`, `backup run --now`, and `backup watch` share one local checkpoint implementation; they never print remote credentials or sensitive URLs
+- automatic checkpoints write an isolated bare Git repository outside the workspace and never touch the user's HEAD, index, or work tree
+- `tracker doctor` includes automatic-backup health (`backup_auto`) without paths or credentials
 - admin diagnostics are read-only and never print private key material
 
 ## Goal Manifests

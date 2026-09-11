@@ -102,6 +102,9 @@ func (s *QueryService) ListArchiveRecords(ctx context.Context, target contracts.
 }
 
 func (s *ActionService) ApplyArchive(ctx context.Context, target contracts.RetentionTarget, projectKey string, confirmed bool, actor contracts.Actor, reason string) (ArchiveApplyResult, error) {
+	if err := s.ensurePreDestructiveCheckpoint(ctx, "archive"); err != nil {
+		return ArchiveApplyResult{}, err
+	}
 	return withWriteLock(ctx, s.LockManager, "apply archive", func(ctx context.Context) (ArchiveApplyResult, error) {
 		if !actor.IsValid() {
 			return ArchiveApplyResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
@@ -196,6 +199,9 @@ func (s *ActionService) ApplyArchive(ctx context.Context, target contracts.Reten
 }
 
 func (s *ActionService) RestoreArchive(ctx context.Context, archiveID string, actor contracts.Actor, reason string) (ArchiveRestoreResult, error) {
+	if err := s.ensurePreDestructiveCheckpoint(ctx, "archive restore"); err != nil {
+		return ArchiveRestoreResult{}, err
+	}
 	return withWriteLock(ctx, s.LockManager, "restore archive", func(ctx context.Context) (ArchiveRestoreResult, error) {
 		if !actor.IsValid() {
 			return ArchiveRestoreResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -247,6 +248,17 @@ func newBackupCommand() *cobra.Command {
 	for _, sub := range []*cobra.Command{restorePlan, drill} {
 		addReadOutputFlags(sub, &outputFlags{})
 	}
+	auto := &cobra.Command{Use: "auto", Short: "Inspect automatic local checkpoints"}
+	autoStatus := &cobra.Command{Use: "status", Short: "Show automatic local checkpoint health", Args: cobra.NoArgs, RunE: runBackupAutoStatus}
+	addReadOutputFlags(autoStatus, &outputFlags{})
+	auto.AddCommand(autoStatus)
+	runNow := &cobra.Command{Use: "run", Short: "Create a local checkpoint immediately", Args: cobra.NoArgs, RunE: runBackupRunNow}
+	runNow.Flags().Bool("now", false, "Run one checkpoint pass immediately")
+	addReadOutputFlags(runNow, &outputFlags{})
+	tick := &cobra.Command{Use: "tick", Short: "Run one automatic checkpoint pass", Args: cobra.NoArgs, RunE: runBackupTick}
+	addReadOutputFlags(tick, &outputFlags{})
+	watch := &cobra.Command{Use: "watch", Short: "Run the automatic checkpoint loop in the foreground", Args: cobra.NoArgs, RunE: runBackupWatch}
+	addReadOutputFlags(watch, &outputFlags{})
 	cmd.AddCommand(
 		create,
 		readCommand("list", "List backup snapshots", cobra.NoArgs, runBackupList),
@@ -255,6 +267,10 @@ func newBackupCommand() *cobra.Command {
 		restorePlan,
 		restoreApply,
 		drill,
+		auto,
+		runNow,
+		tick,
+		watch,
 	)
 	return cmd
 }
@@ -827,6 +843,78 @@ func runBackupDrill(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	return writeCommandOutput(cmd, view, recoveryDrillMarkdown(view), recoveryDrillPretty(view))
+}
+
+func runBackupAutoStatus(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.queries.AutoBackupStatus(cmd.Context())
+	if err != nil {
+		return err
+	}
+	text := autoBackupStatusText(view)
+	return writeCommandOutput(cmd, view, text, text)
+}
+
+func runBackupTick(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.BackupTick(cmd.Context(), false)
+	if err != nil {
+		return err
+	}
+	text := autoBackupResultText(view)
+	return writeCommandOutput(cmd, view, text, text)
+}
+
+func runBackupRunNow(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	now, _ := cmd.Flags().GetBool("now")
+	if !now {
+		return apperr.New(apperr.CodeInvalidInput, "backup run requires --now")
+	}
+	view, err := w.actions.BackupTick(cmd.Context(), true)
+	if err != nil {
+		return err
+	}
+	text := autoBackupResultText(view)
+	return writeCommandOutput(cmd, view, text, text)
+}
+
+func runBackupWatch(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	if err := w.actions.BackupWatch(cmd.Context()); err != nil && err != context.Canceled {
+		return err
+	}
+	return writeCommandOutput(cmd, map[string]any{"kind": "backup_watch_stopped", "ok": true}, "backup watch stopped", "backup watch stopped")
+}
+
+func autoBackupStatusText(view service.AutoBackupStatus) string {
+	return fmt.Sprintf("backup auto: state=%s unbacked=%d last_checkpoint=%s error=%s", view.State, view.UnbackedEventCount, view.LastLocalCheckpointID, view.LastErrorClass)
+}
+
+func autoBackupResultText(view service.AutoBackupResult) string {
+	if view.Created {
+		return fmt.Sprintf("checkpoint created %s", view.CheckpointID)
+	}
+	if view.Skipped {
+		return fmt.Sprintf("checkpoint skipped (%s)", view.SkipReason)
+	}
+	return fmt.Sprintf("checkpoint state=%s", view.State)
 }
 
 func runAdminSecurityStatus(cmd *cobra.Command, _ []string) error {

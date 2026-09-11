@@ -15,47 +15,57 @@ import (
 )
 
 type ActionService struct {
-	Root               string
-	Projects           contracts.ProjectStore
-	Tickets            contracts.TicketStore
-	Collaborators      contracts.CollaboratorStore
-	Memberships        contracts.MembershipStore
-	Mentions           contracts.MentionStore
-	SyncRemotes        contracts.SyncRemoteStore
-	SyncJobs           contracts.SyncJobStore
-	Conflicts          contracts.ConflictStore
-	Agents             contracts.AgentStore
-	PermissionProfiles contracts.PermissionProfileStore
-	Runs               contracts.RunStore
-	Runbooks           contracts.RunbookStore
-	Gates              contracts.GateStore
-	Evidence           contracts.EvidenceStore
-	Handoffs           contracts.HandoffStore
-	Changes            contracts.ChangeStore
-	Checks             contracts.CheckStore
-	ImportJobs         contracts.ImportJobStore
-	ExportBundles      contracts.ExportBundleStore
-	RetentionPolicies  contracts.RetentionPolicyStore
-	Archives           contracts.ArchiveRecordStore
-	SecurityKeys       SecurityKeyStore
-	TrustBindings      SecurityTrustStore
-	Signatures         SecuritySignatureStore
-	GovernancePolicies GovernancePolicyStore
-	GovernancePacks    GovernancePackStore
-	Classifications    ClassificationLabelStore
-	RedactionRules     RedactionRuleStore
-	RedactionPreviews  RedactionPreviewStore
-	AuditReports       AuditReportStore
-	AuditPackets       AuditPacketStore
-	Backups            BackupSnapshotStore
-	RestorePlans       RestorePlanStore
-	GoalManifests      GoalManifestStore
-	Events             contracts.EventLog
-	Projection         contracts.ProjectionStore
-	Clock              func() time.Time
-	LockManager        WriteLockManager
-	Notifier           Notifier
-	Automation         *AutomationEngine
+	Root                            string
+	Projects                        contracts.ProjectStore
+	Tickets                         contracts.TicketStore
+	Collaborators                   contracts.CollaboratorStore
+	Memberships                     contracts.MembershipStore
+	Mentions                        contracts.MentionStore
+	SyncRemotes                     contracts.SyncRemoteStore
+	SyncJobs                        contracts.SyncJobStore
+	Conflicts                       contracts.ConflictStore
+	Agents                          contracts.AgentStore
+	PermissionProfiles              contracts.PermissionProfileStore
+	Runs                            contracts.RunStore
+	Runbooks                        contracts.RunbookStore
+	Gates                           contracts.GateStore
+	Evidence                        contracts.EvidenceStore
+	Handoffs                        contracts.HandoffStore
+	Changes                         contracts.ChangeStore
+	Checks                          contracts.CheckStore
+	ImportJobs                      contracts.ImportJobStore
+	ExportBundles                   contracts.ExportBundleStore
+	RetentionPolicies               contracts.RetentionPolicyStore
+	Archives                        contracts.ArchiveRecordStore
+	SecurityKeys                    SecurityKeyStore
+	TrustBindings                   SecurityTrustStore
+	Signatures                      SecuritySignatureStore
+	GovernancePolicies              GovernancePolicyStore
+	GovernancePacks                 GovernancePackStore
+	Classifications                 ClassificationLabelStore
+	RedactionRules                  RedactionRuleStore
+	RedactionPreviews               RedactionPreviewStore
+	AuditReports                    AuditReportStore
+	AuditPackets                    AuditPacketStore
+	Backups                         BackupSnapshotStore
+	RestorePlans                    RestorePlanStore
+	GoalManifests                   GoalManifestStore
+	Events                          contracts.EventLog
+	Projection                      contracts.ProjectionStore
+	Clock                           func() time.Time
+	LockManager                     WriteLockManager
+	Notifier                        Notifier
+	Automation                      *AutomationEngine
+	StateDir                        string
+	Home                            string
+	GitPath                         string
+	CheckpointCrashAt               string
+	QuietPeriod                     time.Duration
+	MaxUnbackedDelay                time.Duration
+	MaxEventsPerCheckpoint          int
+	WatchInterval                   time.Duration
+	GitMaintenanceEvery             int
+	RequirePreDestructiveCheckpoint bool
 }
 
 func NewActionService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time, locks WriteLockManager, notifier Notifier, automation *AutomationEngine) *ActionService {
@@ -174,6 +184,9 @@ func (s *ActionService) commitMutation(ctx context.Context, purpose string, cano
 	}
 	if !historicalReplay(ctx) && s.Automation != nil {
 		_, _ = s.Automation.Run(ctx, s, NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock), event)
+	}
+	if !historicalReplay(ctx) {
+		s.markBackupOutbox(ctx, event)
 	}
 	return nil
 }

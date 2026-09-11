@@ -28,14 +28,20 @@ type ManagedModeView struct {
 
 // BackupHealthSummary is a path-free backup/sync snapshot for MCP status.
 type BackupHealthSummary struct {
-	Configured          bool      `json:"configured"`
-	SnapshotCount       int       `json:"snapshot_count"`
-	LatestBackupID      string    `json:"latest_backup_id,omitempty"`
-	LatestCreatedAt     time.Time `json:"latest_created_at,omitempty"`
-	ManagedModeIncluded bool      `json:"managed_mode_included"`
-	SyncRemoteCount     int       `json:"sync_remote_count"`
-	SyncReasonCodes     []string  `json:"sync_reason_codes,omitempty"`
-	Notes               []string  `json:"notes,omitempty"`
+	Configured            bool      `json:"configured"`
+	SnapshotCount         int       `json:"snapshot_count"`
+	LatestBackupID        string    `json:"latest_backup_id,omitempty"`
+	LatestCreatedAt       time.Time `json:"latest_created_at,omitempty"`
+	ManagedModeIncluded   bool      `json:"managed_mode_included"`
+	SyncRemoteCount       int       `json:"sync_remote_count"`
+	SyncReasonCodes       []string  `json:"sync_reason_codes,omitempty"`
+	WorkerState           string    `json:"worker_state,omitempty"`
+	UnbackedEventCount    int       `json:"unbacked_event_count,omitempty"`
+	LastLocalCheckpointID string    `json:"last_local_checkpoint_id,omitempty"`
+	LastLocalCheckpointAt time.Time `json:"last_local_checkpoint_at,omitempty"`
+	LastErrorClass        string    `json:"last_error_class,omitempty"`
+	DiskBytes             int64     `json:"disk_bytes,omitempty"`
+	Notes                 []string  `json:"notes,omitempty"`
 }
 
 // LoadManagedModePolicy reads .tracker/managed-mode.json. A missing file is
@@ -183,6 +189,18 @@ func (s *QueryService) BackupHealth(ctx context.Context) (BackupHealthSummary, e
 		summary.SyncRemoteCount = len(syncView.Remotes)
 		summary.SyncReasonCodes = append([]string(nil), syncView.ReasonCodes...)
 		if summary.SyncRemoteCount > 0 {
+			summary.Configured = true
+		}
+	}
+	auto, autoErr := s.AutoBackupStatus(ctx)
+	if autoErr == nil {
+		summary.WorkerState = string(auto.State)
+		summary.UnbackedEventCount = auto.UnbackedEventCount
+		summary.LastLocalCheckpointID = auto.LastLocalCheckpointID
+		summary.LastLocalCheckpointAt = auto.LastLocalCheckpointAt
+		summary.LastErrorClass = auto.LastErrorClass
+		summary.DiskBytes = auto.DiskBytes
+		if auto.LastLocalCheckpointID != "" || auto.UnbackedEventCount > 0 {
 			summary.Configured = true
 		}
 	}

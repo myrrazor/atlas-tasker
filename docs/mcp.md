@@ -35,7 +35,7 @@ Stdio framing: Atlas speaks newline-delimited JSON-RPC and also accepts LSP-styl
 
 High-impact tools are hidden unless both the selected profile and server flag allow them. MCP-first agents should start at `workflow`, not `read`.
 
-`atlas.context` and `atlas.status` are read-only. `atlas.context` returns workspace identity, project inventory, the configured actor, declared and effective managed-mode policy, assigned/available/pending work, active runs, backup health, and a state revision. `atlas.status` accepts `workspace`, `project`, `ticket`, `agent`, or `run` scope and returns structured JSON plus deterministic compact Markdown derived from that payload. Unknown projects disambiguate; multiple projects stay a workspace overview unless one is named. Hosts that render MCP Apps also receive a read-only CSP-constrained board document; Markdown remains the universal fallback.
+`atlas.context` and `atlas.status` are read-only. `atlas.context` returns workspace identity, project inventory, the configured actor, declared and effective managed-mode policy, assigned/available/pending work, active runs, backup health (including automatic local checkpoint state, never remote credentials or URLs), and a state revision. `atlas.status` accepts `workspace`, `project`, `ticket`, `agent`, or `run` scope and returns structured JSON plus deterministic compact Markdown derived from that payload. Unknown projects disambiguate; multiple projects stay a workspace overview unless one is named. Hosts that render MCP Apps also receive a read-only CSP-constrained board document; Markdown remains the universal fallback.
 
 ## Ordinary Workflow Additions
 

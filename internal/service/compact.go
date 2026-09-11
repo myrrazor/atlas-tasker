@@ -30,6 +30,9 @@ func (s *QueryService) CompactPlan(ctx context.Context) (CompactResult, error) {
 }
 
 func (s *ActionService) CompactWorkspace(ctx context.Context, confirmed bool, actor contracts.Actor, reason string) (CompactResult, error) {
+	if err := s.ensurePreDestructiveCheckpoint(ctx, "compact"); err != nil {
+		return CompactResult{}, err
+	}
 	return withWriteLock(ctx, s.LockManager, "compact workspace", func(ctx context.Context) (CompactResult, error) {
 		if !actor.IsValid() {
 			return CompactResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))

@@ -49,6 +49,8 @@ type QueryService struct {
 	Projection         contracts.ProjectionStore
 	Views              ViewStore
 	Clock              func() time.Time
+	StateDir           string
+	Home               string
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {

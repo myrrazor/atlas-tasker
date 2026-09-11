@@ -1908,6 +1908,8 @@ func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repai
 	}
 	defer func() { _ = projection.Close() }()
 	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
+	home, _ := os.UserHomeDir()
+	service.AttachUserState(nil, queries, home, "")
 	projectIssues := 0
 	for _, project := range projects {
 		if err := project.Validate(); err != nil {
@@ -2036,6 +2038,12 @@ func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repai
 			"ticket_issues":  ticketIssues,
 			"orchestration":  orchestrationReport,
 		},
+	}
+	if auto, autoErr := queries.AutoBackupStatus(ctx); autoErr == nil {
+		payload["backup_auto"] = auto
+		if auto.LastErrorClass != "" {
+			issueCodes = append(issueCodes, auto.LastErrorClass)
+		}
 	}
 	return writeCommandOutput(cmd, payload, message, message)
 }

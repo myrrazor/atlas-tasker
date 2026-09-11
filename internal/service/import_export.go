@@ -252,6 +252,9 @@ func (s *ActionService) PreviewImport(ctx context.Context, sourcePath string, ac
 }
 
 func (s *ActionService) ApplyImport(ctx context.Context, jobID string, actor contracts.Actor, reason string) (ImportJobDetailView, error) {
+	if err := s.ensurePreDestructiveCheckpoint(ctx, "import"); err != nil {
+		return ImportJobDetailView{}, err
+	}
 	return withWriteLock(ctx, s.LockManager, "apply import", func(ctx context.Context) (ImportJobDetailView, error) {
 		if !actor.IsValid() {
 			return ImportJobDetailView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
@@ -436,36 +439,7 @@ func (s *ActionService) resolveExportBundle(ctx context.Context, bundleRef strin
 }
 
 func collectExportFiles(root string) ([]string, error) {
-	candidates := []string{
-		"projects",
-		filepath.ToSlash(filepath.Join(".tracker", "config.toml")),
-		filepath.ToSlash(filepath.Join(".tracker", "managed-mode.json")),
-		filepath.ToSlash(filepath.Join(".tracker", "events")),
-		filepath.ToSlash(filepath.Join(".tracker", "automations")),
-		filepath.ToSlash(filepath.Join(".tracker", "views")),
-		filepath.ToSlash(filepath.Join(".tracker", "subscriptions")),
-		filepath.ToSlash(filepath.Join(".tracker", "agents")),
-		filepath.ToSlash(filepath.Join(".tracker", "runbooks")),
-		filepath.ToSlash(filepath.Join(".tracker", "runs")),
-		filepath.ToSlash(filepath.Join(".tracker", "gates")),
-		filepath.ToSlash(filepath.Join(".tracker", "handoffs")),
-		filepath.ToSlash(filepath.Join(".tracker", "evidence")),
-		filepath.ToSlash(filepath.Join(".tracker", "changes")),
-		filepath.ToSlash(filepath.Join(".tracker", "checks")),
-		filepath.ToSlash(filepath.Join(".tracker", "permission-profiles")),
-		filepath.ToSlash(filepath.Join(".tracker", "imports")),
-		filepath.ToSlash(filepath.Join(".tracker", "retention")),
-		filepath.ToSlash(filepath.Join(".tracker", "security", "keys", "public")),
-		filepath.ToSlash(filepath.Join(".tracker", "security", "revocations")),
-		filepath.ToSlash(filepath.Join(".tracker", "security", "signatures")),
-		filepath.ToSlash(filepath.Join(".tracker", "governance", "policies")),
-		filepath.ToSlash(filepath.Join(".tracker", "governance", "packs")),
-		filepath.ToSlash(filepath.Join(".tracker", "classification", "labels")),
-		filepath.ToSlash(filepath.Join(".tracker", "classification", "policies")),
-		filepath.ToSlash(filepath.Join(".tracker", "redaction", "rules")),
-		filepath.ToSlash(filepath.Join(".tracker", "audit", "reports")),
-		filepath.ToSlash(filepath.Join(".tracker", "audit", "packets")),
-	}
+	candidates := ExportCandidateRoots()
 	files := make([]string, 0)
 	seen := map[string]struct{}{}
 	for _, candidate := range candidates {
@@ -493,7 +467,7 @@ func collectExportFiles(root string) ([]string, error) {
 				return apperr.New(apperr.CodeInvalidInput, "export_symlink_rejected: symlink entries are not allowed")
 			}
 			if entry.IsDir() {
-				if strings.Contains(filepath.ToSlash(path), "/runtime") || strings.Contains(filepath.ToSlash(path), "/archives") || strings.Contains(filepath.ToSlash(path), "/exports") || strings.Contains(filepath.ToSlash(path), "/mutations") {
+				if shouldSkipExportWalkDir(root, path) {
 					return filepath.SkipDir
 				}
 				return nil
