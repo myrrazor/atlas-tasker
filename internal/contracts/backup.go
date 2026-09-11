@@ -228,6 +228,8 @@ func isCanonicalRestorePlanPath(rel string) bool {
 		return true
 	case strings.HasPrefix(rel, ".tracker/events/") && strings.HasSuffix(rel, ".jsonl"):
 		return true
+	case rel == ".tracker/managed-mode.json":
+		return true
 	default:
 		return false
 	}

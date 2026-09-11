@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/myrrazor/atlas-tasker/internal/config"
-	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/integrations"
 	"github.com/myrrazor/atlas-tasker/internal/integrations/adapter"
 	"github.com/myrrazor/atlas-tasker/internal/service"
@@ -194,5 +193,5 @@ func listStemNames(dir, ext string) []string {
 }
 
 func managedModePath(root string) string {
-	return filepath.Join(storage.TrackerDir(root), contracts.ManagedModeFileName)
+	return storage.ManagedModeFile(root)
 }

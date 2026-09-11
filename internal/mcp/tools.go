@@ -33,6 +33,8 @@ func ToolSpecs() []ToolSpec {
 		readTool("atlas.team.show", "Show one agent team preset.", readProfiles, objectSchema([]string{"preset"}, map[string]any{"preset": stringProp("Preset name: solo, pair, swarm, or crossfire."), "provider": stringProp("Optional provider: claude, codex, or mixed.")}), "TeamPresetByName", teamShowTool),
 		readTool("atlas.goal.brief", "Read a pasteable goal brief for a ticket or run.", readProfiles, objectSchema([]string{"target"}, map[string]any{"target": stringProp("Ticket ID or run ID.")}), "ActionService.GoalBrief", goalBriefTool),
 		readTool("atlas.search", "Search tickets with Atlas query syntax.", readProfiles, objectSchema([]string{"query"}, mergeProps(commonReadProps(), map[string]any{"query": stringProp("Atlas ticket search query.")})), "QueryService.Search", searchTool),
+		readTool("atlas.context", "Read workspace identity, managed-mode policy, assigned work, and backup health.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"project": stringProp("Optional project key."), "actor": stringProp("Optional Atlas actor for this integration.")})), "QueryService.ManagedModeView", contextTool),
+		readTool("atlas.status", "Read a fresh workspace, project, ticket, agent, or run status with compact Markdown.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"scope": stringProp("Optional scope: workspace, project, ticket, agent, or run."), "project": stringProp("Optional project key."), "ticket_id": stringProp("Optional ticket ID for ticket scope."), "agent_id": stringProp("Optional agent ID for agent scope."), "run_id": stringProp("Optional run ID for run scope."), "actor": stringProp("Optional Atlas actor.")})), "QueryService.Board", statusTool),
 		readTool("atlas.board", "Read the board grouped by status.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_status", "Optional per-status cursors keyed by Atlas status."), map[string]any{"project": stringProp("Optional project key."), "assignee": stringProp("Optional assignee actor."), "type": stringProp("Optional ticket type.")})), "QueryService.Board", boardTool),
 		readTool("atlas.ticket.view", "Read one ticket detail view.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID.")}), "QueryService.TicketDetail", ticketViewTool),
 		readTool("atlas.ticket.history", "Read ticket event history.", readProfiles, objectSchema([]string{"ticket_id"}, mergeProps(commonReadProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "QueryService.History", ticketHistoryTool),
@@ -273,7 +275,13 @@ func boardTool(tc ToolContext, args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return paginateBoard(view, args, tc.Server.Options.MaxItems), nil
+	paged := paginateBoard(view, args, tc.Server.Options.MaxItems)
+	cursors, _ := paged["next_cursor_by_status"].(map[string]string)
+	board := render.NewCompactBoard(stringArg(args, "project"), view.Board.Columns, tc.Server.Options.MaxItems, cursors)
+	paged["markdown"] = render.CompactBoardMarkdown(board)
+	paged["mcp_app"] = newBoardApp(board)
+	paged["board_url"] = board.BoardURL
+	return paged, nil
 }
 
 func ticketViewTool(tc ToolContext, args map[string]any) (any, error) {

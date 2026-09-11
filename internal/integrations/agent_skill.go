@@ -181,9 +181,10 @@ Grok-style agents that load root `+"`AGENTS.md`"+` get the managed Atlas block f
 func atlasWorkerSkill(provider string) string {
 	// keep the description free of ": " -- a plain YAML scalar cannot hold one and
 	// a skill whose frontmatter will not parse never loads
+	label := skillProviderLabel(provider)
 	frontmatter := fmt.Sprintf(`---
 name: atlas-worker
-description: Use inside an Atlas Tasker workspace -- "what should I work on", "pick up the next ticket", "claim APP-12", "why is this blocked", "ready for review", "hand this off". Drives the tracker from %s sessions; finds available work, claims tickets, respects dependency and policy blockers, records evidence, and requests review.`, skillProviderLabel(provider))
+description: Use inside an Atlas Tasker workspace -- "what should I work on", "pick up the next ticket", "claim APP-12", "why is this blocked", "ready for review", "hand this off", "current status", "show the board". Drives the tracker from %s sessions; finds available work, claims tickets, respects dependency and policy blockers, records evidence, and requests review.`, label)
 	if provider == "openclaw" {
 		// keeps the skill out of the prompt in workspaces with no tracker binary
 		frontmatter += "\nmetadata: { \"openclaw\": { \"requires\": { \"bins\": [\"tracker\"] } } }"
@@ -193,38 +194,68 @@ description: Use inside an Atlas Tasker workspace -- "what should I work on", "p
 
 # Atlas Worker
 
-Atlas Tasker is the source of truth for ticket state. Prefer JSON reads, mutate only with explicit actor and reason, and never bypass dependency or governance blockers.
+You are driving Atlas Tasker from %s. Atlas Tasker is the source of truth for ticket state. Prefer MCP tools when this session has them. Prefer JSON reads. Mutate only with an explicit actor and reason. Never bypass dependency or governance blockers.
 
 Moving a ticket to its current status is a successful no-op. Inspect the ticket before choosing a different transition.
 
-## Bootstrap
-
-If the workspace has no agent profiles yet (`+"`tracker agent list --json`"+` is empty), set the team up first or ask the human to:
-
-1. `+"`tracker team list`"+` shows the ready-made rosters (solo, pair, swarm, crossfire).
-2. `+"`tracker team apply pair --actor human:owner --reason \"team setup\"`"+` creates builder + reviewer profiles, the standard-build runbook, separation-of-duties permissions, and the review gate in one shot. Use `+"`--dry-run`"+` to preview.
-3. Your agent id should match one of the roster ids (builder-1, reviewer-1, ...).
-
-## Start
-
-1. Resolve your actor, usually `+"`agent:<agent-id>`"+`.
-2. Run `+"`tracker agent available <agent-id> --json`"+`.
-3. If nothing is available, run `+"`tracker agent pending <agent-id> --json`"+` and report the blocker reason codes.
-4. If you were launched by a wake-up, acknowledge it: `+"`tracker agent wakeups list <agent-id> --json`"+`, then `+"`tracker agent wakeups ack <WAKEUP-ID> --actor agent:<agent-id> --reason \"picked up\"`"+`.
-5. Before editing, claim the ticket and move it to `+"`in_progress`"+` if it is still ready. An entry with action `+"`promote`"+` is still in `+"`backlog`"+` with every blocker `+"`done`"+`; its first suggested command moves it to `+"`ready`"+`.
-6. When a run is needed, dispatch yourself with `+"`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`"+`.
-
-## Work
-
-- Use `+"`tracker inspect <ID> --actor agent:<agent-id> --json`"+` before making workflow decisions.
-- Do not work a ticket with `+"`dependency_blocked`"+`, `+"`policy_blocked`"+`, `+"`claimed_by_other`"+`, or `+"`waiting_for_review`"+`.
-- Record durable context with comments, checkpoints, evidence, or handoffs.
-- Self-approval is allowed by default when no reviewer or governance separation rule is configured; respect stricter workspace policies when they exist.
+<!-- atlas-managed-lifecycle -->
+%s
+<!-- /atlas-managed-lifecycle -->
 
 ## More Detail
 
 Read `+"`references/workflow.md`"+` when you need the full loop, blocker handling, reviewer behavior, or handoff patterns.
-`, frontmatter)) + "\n"
+`, frontmatter, label, atlasManagedLifecycle())) + "\n"
+}
+
+func atlasManagedLifecycle() string {
+	return strings.TrimSpace(`
+## Bootstrap
+
+If the workspace has no agent profiles yet (` + "`tracker agent list --json`" + ` is empty), set the team up first or ask the human to:
+
+1. ` + "`tracker team list`" + ` shows the ready-made rosters (solo, pair, swarm, crossfire).
+2. ` + "`tracker team apply pair --actor human:owner --reason \"team setup\"`" + ` creates builder + reviewer profiles, the standard-build runbook, separation-of-duties permissions, and the review gate in one shot. Use ` + "`--dry-run`" + ` to preview.
+3. Your agent id should match one of the roster ids (builder-1, reviewer-1, ...).
+
+## MCP first
+
+- Prefer Atlas MCP tools when this session has them. Call ` + "`atlas.context`" + ` when starting material work. Call ` + "`atlas.status`" + ` before every status report. Use ` + "`atlas.board`" + ` or ` + "`atlas.status`" + ` with a named project to show a board.
+- If MCP is unavailable (guidance mode, the server is not registered, or a tool call failed), fall back to the CLI commands in this skill. Do not invent Atlas state from conversational memory. Report a failed read instead of guessing.
+- Do not invoke high-impact Atlas operations. Do not tell the user to run low-level tracker internals as a required step.
+
+## Capture
+
+Classify the user request before creating or attaching a ticket.
+
+- Status queries, read-only explanations, casual discussion, and simple questions never create tickets (` + "`no_ticket`" + `).
+- Material repository changes attach to an existing ticket or create one only when policy is ` + "`material_work`" + ` (` + "`attach_or_create`" + `). Search first with ` + "`atlas.search`" + ` or ` + "`tracker search`" + `. Use the ticket the user named. Avoid duplicate work.
+- Capture policy ` + "`ask`" + ` means ask before creating; a ticket the user named may still be used.
+- Capture policy ` + "`never`" + `, mode ` + "`disabled`" + `, or an explicit user request not to track (` + "`tracking_excluded`" + `) disables tracking for that task.
+- Read declared and effective managed mode from ` + "`atlas.context`" + `. Completion always follows the workspace policy (` + "`follow_workspace`" + `). Managed mode cannot relax review, approval, or dependencies.
+
+## Start
+
+1. Resolve your configured Atlas actor, usually ` + "`agent:<agent-id>`" + `. A missing actor is a setup error -- stop and say so.
+2. Call ` + "`atlas.context`" + ` (or ` + "`tracker agent available <agent-id> --json`" + `) for assigned work, available work, and pending blockers.
+3. If nothing is available, call ` + "`atlas.agent.pending`" + ` or ` + "`tracker agent pending <agent-id> --json`" + ` and report the stable blocker reason codes.
+4. If you were launched by a wake-up, acknowledge it: ` + "`tracker agent wakeups list <agent-id> --json`" + `, then ` + "`tracker agent wakeups ack <WAKEUP-ID> --actor agent:<agent-id> --reason \"picked up\"`" + `.
+5. Claim before substantial edits. Move to ` + "`in_progress`" + ` only through a legal workflow edge. ` + "`backlog -> in_progress`" + ` is forbidden; an entry with action ` + "`promote`" + ` is still in ` + "`backlog`" + ` with every blocker ` + "`done`" + `, and its first suggested command moves it to ` + "`ready`" + `.
+6. Do not start work that is ` + "`dependency_blocked`" + `, ` + "`policy_blocked`" + `, ` + "`claimed_by_other`" + `, or ` + "`waiting_for_review`" + `.
+7. When a run is needed, dispatch yourself with ` + "`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`" + `.
+
+## Work
+
+- Use ` + "`atlas.ticket.inspect`" + ` or ` + "`tracker inspect <ID> --actor agent:<agent-id> --json`" + ` before making workflow decisions.
+- Record milestone progress, not every command. Default progress policy is ` + "`milestones`" + ` (tests passing, review requested, a deliverable). Attach durable evidence for tests and reviews (comments, checkpoints, evidence, or handoffs).
+- Request review or complete according to the workspace completion mode. In ` + "`review_gate`" + ` or ` + "`dual_gate`" + `, approval is not self-service when a reviewer or separation-of-duties rule applies.
+- Self-approval is allowed by default only when no reviewer or governance separation rule is configured; respect stricter workspace policies when they exist.
+
+## Status and completion
+
+- Query Atlas before every status report. Never answer "what is the status" from memory.
+- Reconcile Atlas state before final completion messaging. The board and ticket view must already show the new status.
+`)
 }
 
 func atlasWorkerReference() string {
@@ -255,13 +286,17 @@ Moving a ticket to its current status is a successful no-op across CLI, MCP, bul
 
 ## Worker Loop
 
-1. Read available work.
-2. Claim the ticket.
-3. Move it to `+"`in_progress`"+`.
-4. Dispatch yourself if the workflow needs a run snapshot: `+"`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`"+`.
-5. Implement narrowly.
-6. Attach evidence with `+"`tracker run evidence add`"+` or ticket comments.
-7. Request review with `+"`tracker ticket request-review <ID> --actor agent:<agent-id> --reason \"ready for review\"`"+`.
+Prefer MCP (`+"`atlas.context`"+`, `+"`atlas.status`"+`, claim/move/comment tools) when this session has Atlas MCP. Fall back to the CLI commands below when MCP is unavailable.
+
+1. Call `+"`atlas.context`"+` or read available work.
+2. Search before creating a ticket. Use the ticket the user named. Status and read-only questions never create tickets.
+3. Claim the ticket before substantial edits.
+4. Move it to `+"`in_progress`"+` only through a legal edge.
+5. Dispatch yourself if the workflow needs a run snapshot: `+"`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`"+`.
+6. Implement narrowly. Record milestone progress, not every command.
+7. Attach durable evidence with `+"`tracker run evidence add`"+` or ticket comments.
+8. Request review with `+"`tracker ticket request-review <ID> --actor agent:<agent-id> --reason \"ready for review\"`"+` according to workspace completion policy.
+9. Query Atlas before every status report. Reconcile Atlas state before saying work is complete.
 
 ## Reviewer Loop
 

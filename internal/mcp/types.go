@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/myrrazor/atlas-tasker/internal/contracts"
 )
 
 const FormatVersion = "v1"
@@ -65,6 +67,7 @@ type Options struct {
 	MaxItems              int
 	MaxTextTokensEstimate int
 	IncludeLocalOnlyPaths bool
+	ConfiguredActor       contracts.Actor
 	Now                   func() time.Time
 }
 
