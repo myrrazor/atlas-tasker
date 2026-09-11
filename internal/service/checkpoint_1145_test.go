@@ -374,7 +374,10 @@ func TestSchedulerInstallRemoveRepairInFixtureHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	moved := strings.Replace(string(raw), plan.WorkspaceRoot, plan.WorkspaceRoot+"-moved", 1)
+	moved := strings.ReplaceAll(string(raw), plan.WorkspaceRoot, "/tmp/atlas-moved-workspace")
+	if !strings.Contains(moved, "/tmp/atlas-moved-workspace") {
+		t.Fatalf("failed to rewrite workspace path in %s", plan.Files[0].Path)
+	}
 	if err := os.WriteFile(plan.Files[0].Path, []byte(moved), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -426,16 +429,20 @@ func TestApplyRestorePlanGovernanceDenyWritesNothing(t *testing.T) {
 	}
 	before := ticket.Title
 	if err := actions.GovernancePolicies.SaveGovernancePolicy(ctx, contracts.GovernancePolicy{
-		PolicyID:           "deny-restore",
-		Name:               "Deny restore",
-		ScopeKind:          contracts.PolicyScopeWorkspace,
-		ProtectedActions:   []contracts.ProtectedAction{contracts.ProtectedActionBackupRestore},
-		RequiredSignatures: 1,
-		SchemaVersion:      contracts.CurrentSchemaVersion,
+		PolicyID:         "deny-restore",
+		Name:             "Deny restore",
+		ScopeKind:        contracts.PolicyScopeWorkspace,
+		ProtectedActions: []contracts.ProtectedAction{contracts.ProtectedActionBackupRestore},
+		QuorumRules: []contracts.QuorumRule{{
+			RuleID:        "restore-quorum",
+			ActionKind:    contracts.ProtectedActionBackupRestore,
+			RequiredCount: 2,
+		}},
+		SchemaVersion: contracts.CurrentSchemaVersion,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = actions.ApplyRestorePlan(ctx, view.Snapshot.BackupID, contracts.Actor("human:owner"), "should deny", true)
+	_, err = actions.ApplyRestorePlan(ctx, view.Snapshot.BackupID, contracts.Actor("human:alice"), "should deny", true)
 	if err == nil || apperr.CodeOf(err) != apperr.CodePermissionDenied {
 		t.Fatalf("denying backup_restore policy must exit permission_denied: %v", err)
 	}
@@ -549,6 +556,14 @@ func TestRemoteRecoveryDrill(t *testing.T) {
 		got, err := fileSHA256(filepath.Join(dest.Root, filepath.FromSlash(path)))
 		if err != nil {
 			t.Fatalf("restored %s: %v", path, err)
+		}
+		if strings.HasPrefix(path, ".tracker/events/") {
+			// apply records backup.restored, so the live log is a superset of the checkpoint.
+			raw, err := os.ReadFile(filepath.Join(dest.Root, filepath.FromSlash(path)))
+			if err != nil || !strings.Contains(string(raw), "APP-1") {
+				t.Fatalf("restored event log missing original work: %v", err)
+			}
+			continue
 		}
 		if got != sum {
 			t.Fatalf("hash mismatch for %s", path)

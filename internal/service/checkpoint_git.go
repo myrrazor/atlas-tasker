@@ -104,6 +104,19 @@ func backupRefName(workspaceID, replicaID string) string {
 	return "refs/atlas/backups/" + workspaceID + "/" + replicaID
 }
 
+func isGitCommitID(value string) bool {
+	if len(value) < 40 || len(value) > 64 {
+		return false
+	}
+	for _, r := range value {
+		if r >= '0' && r <= '9' || r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 type gitRunner struct {
 	Git      string
 	Repo     string
@@ -237,7 +250,10 @@ func (e *CheckpointEngine) commitSnapshot(ctx context.Context, snap CanonicalSna
 	index := filepath.Join(e.paths.Tmp, "index-"+manifest.CheckpointID)
 	_ = os.Remove(index)
 	runner := e.gitRunner(snap.SnapshotDir, index)
-	parent, _ := runner.run(ctx, "rev-parse", backupRefName(e.workspaceID, e.replicaID))
+	parent, err := runner.run(ctx, "rev-parse", "--verify", "--quiet", backupRefName(e.workspaceID, e.replicaID))
+	if err != nil {
+		parent = ""
+	}
 	for _, file := range snap.Files {
 		if err := e.crash(CrashDuringSnapshot); err != nil {
 			return "", err
@@ -273,7 +289,7 @@ func (e *CheckpointEngine) commitSnapshot(ctx context.Context, snap CanonicalSna
 		return "", err
 	}
 	args := []string{"commit-tree", tree, "-m", backupCommitSubject}
-	if parent != "" && !strings.Contains(strings.ToLower(parent), "unknown revision") && !strings.Contains(strings.ToLower(parent), "needed a single revision") {
+	if isGitCommitID(parent) {
 		args = append(args, "-p", parent)
 	}
 	commit, err := runner.run(ctx, args...)

@@ -126,7 +126,7 @@ func (s *ActionService) BackupSchedulePlan(ctx context.Context) (BackupScheduleP
 			{
 				Path:    filepath.Join(root, base+".timer"),
 				Mode:    "0600",
-				Content: systemdTimer(workspaceID),
+				Content: systemdTimer(binary, workspaceRoot, workspaceID),
 			},
 		}
 	}
@@ -310,8 +310,8 @@ func systemdService(binary, workspace, workspaceID string) string {
 	return fmt.Sprintf("[Unit]\nDescription=Atlas Tasker backup tick (%s)\n# %s\n\n[Service]\nType=oneshot\nExecStart=%s backup tick\nWorkingDirectory=%s\n", workspaceID, scheduleMarker, binary, workspace)
 }
 
-func systemdTimer(workspaceID string) string {
-	return fmt.Sprintf("[Unit]\nDescription=Atlas Tasker backup timer (%s)\n# %s\n\n[Timer]\nOnUnitActiveSec=30s\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n", workspaceID, scheduleMarker)
+func systemdTimer(binary, workspace, workspaceID string) string {
+	return fmt.Sprintf("[Unit]\nDescription=Atlas Tasker backup timer (%s)\n# %s\n# binary: %s\n# workspace: %s\n\n[Timer]\nOnUnitActiveSec=30s\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n", workspaceID, scheduleMarker, binary, workspace)
 }
 
 func launchdPlist(binary, workspace, workspaceID string) string {
