@@ -129,7 +129,7 @@ tracker update --version v1.13.0 --yes</pre>
         </div>
 
         <h2>Initialize a workspace</h2>
-        <p>Run this inside the repository you want Atlas to manage. It writes local tracker state under <code>.tracker/</code>. In an interactive terminal, init then offers to detect coding agents and install repository guidance; decline if you only want the tracker workspace.</p>
+        <p>Run this inside the repository you want Atlas to manage. It writes local tracker state under <code>.tracker/</code>. In an interactive terminal, init then offers to detect coding agents and install repository guidance; decline if you only want the tracker workspace. Later, <code>tracker setup --plan</code> shows skills, MCP, managed mode, and optional backup as one picture without guessing your Git origin.</p>
         <div class="code-block">
           <div class="snippet-title"><span>one-time setup</span><button class="copy-button" type="button" data-copy="gs-init" aria-label="Copy init command">Copy</button></div>
           <pre id="gs-init">tracker init
@@ -174,6 +174,27 @@ tracker web serve --open <span class="c"># local kanban in your browser</span></
         <div class="docs-note">
           <p>Something looks off? <code>tracker doctor</code> audits the workspace and <code>tracker doctor --repair</code> fixes projection problems. It never destroys ticket Markdown or event history.</p>
         </div>
+
+        <h2>Connect agents in one pass</h2>
+        <p><code>tracker setup</code> refreshes the existing Atlas worker skill and, where the client supports it, registers a workspace-bound MCP server. It will not rewrite custom text outside the Atlas markers, and it will not rewrite an unmanaged MCP entry named like <code>atlas-legacy</code>.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>plan, then apply</span><button class="copy-button" type="button" data-copy="gs-setup" aria-label="Copy setup commands">Copy</button></div>
+          <pre id="gs-setup">tracker setup --plan
+tracker setup --yes --agents generic</pre>
+        </div>
+        <p><code>--yes</code> applies the plan. It is not consent for backup, and it is not consent for machine-wide OpenClaw writes.</p>
+
+        <h2>Optional Atlas backup</h2>
+        <p>Tickets already travel with Git. Automatic backup is a second isolated Git repository for Atlas records. Atlas never selects <code>origin</code> for you. A successful push is not verified until Atlas checks the remote commit. Ticket writes stay available if backup is offline.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>name a target, then enable</span><button class="copy-button" type="button" data-copy="gs-backup" aria-label="Copy backup commands">Copy</button></div>
+          <pre id="gs-backup">tracker backup target add --id private \
+  --url git@github.com:you/atlas-backups.git \
+  --acknowledge-data-boundary --attest-private
+tracker backup auto enable --target private
+tracker backup run --now</pre>
+        </div>
+        <p>Neither <code>tracker init</code> nor <code>tracker setup</code> installs a user-level scheduler. That stays <code>tracker backup schedule install --yes</code>. URLs with embedded passwords are rejected. Public GitHub remotes need an explicit public attestation plus <code>--allow-public-github</code>.</p>
 
         <h2>Where next</h2>
         <ul>

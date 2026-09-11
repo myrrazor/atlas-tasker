@@ -1,4 +1,3 @@
-<!-- review with counsel before charging money -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -86,10 +85,14 @@
       <section class="shell">
         <h2>3 · Hand work to agents</h2>
         <p><code>tracker agent create builder-1 --name "Builder" --provider claude --capability go --actor human:owner --reason "register"</code> registers an agent, and <code>tracker ticket assign APP-2 agent:builder-1 --actor human:owner --reason "agent work"</code> hands a ticket over. Or skip the assembly and apply a preset: <code>tracker team apply pair --actor human:owner --reason "team setup"</code>. The full loop is in <a href="docs/agents-and-dispatch.html">agents and dispatch</a>.</p>
-        <p><code>tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic</code> shows all six repository-guidance targets. Choose only the runtimes this repo uses. Guidance teaches the workflow; registering <code>tracker mcp serve</code> with a compatible client is a separate step. Follow the <a href="mcp.html#connect">Connect your agent journey</a> or the detailed <a href="docs/mcp-setup.html">MCP setup guide</a>.</p>
+        <p><code>tracker setup --plan</code> shows the same workspace in one place. <code>tracker setup --yes --agents generic</code> refreshes the existing worker skill and registers MCP where the client supports it. <code>--yes</code> is not backup consent. Follow the <a href="mcp.html#connect">Connect your agent journey</a> or the detailed <a href="docs/mcp-setup.html">MCP setup guide</a>.</p>
       </section>
       <section class="shell">
-        <h2>4 · Keep it honest</h2>
+        <h2>4 · Optional Atlas backup</h2>
+        <p>Your tickets already live in Git. Automatic backup is a second, isolated Git repository for Atlas records — not a silent copy of <code>origin</code>. Add a target, then enable it, or pass <code>--backup --backup-target</code> to setup after the target exists. A push is not verified until Atlas checks the remote. Init and setup never install a machine scheduler.</p>
+      </section>
+      <section class="shell">
+        <h2>5 · Keep it honest</h2>
         <p>Statuses move backlog to ready to in progress to in review to done, with blocked as the exception lane. Review and completion run gates, evidence attaches to runs, and everything lands in an append-only event log in your repo. The mechanics are in <a href="docs/tickets-and-workflow.html">tickets and workflow</a>, and the storage story is told straight in <a href="docs/faq.html">the FAQ</a>.</p>
       </section>
     </div>

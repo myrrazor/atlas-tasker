@@ -48,9 +48,19 @@ Use `--json` when another tool needs structured output:
 ./tracker inspect APP-1 --actor human:owner --json
 ```
 
-## 5. Keep Going
+## 5. Connect Agents And Optional Backup
+
+```bash
+./tracker setup --plan
+./tracker setup --yes --agents generic
+```
+
+That refreshes the existing worker skill and, where the client supports it, registers a workspace-bound MCP server. `--yes` is not backup consent. To turn on automatic Atlas checkpoints you first add a target, then either `tracker backup auto enable` or `tracker setup --backup --backup-target <ID>`. The short guide is [setup and backup](guides/setup-and-backup.md).
+
+## 6. Keep Going
 
 - [Quickstart](quickstart.md) gives one copyable flow.
+- [Setup and backup](guides/setup-and-backup.md) covers `tracker setup` and automatic Atlas checkpoints.
 - [Coding-agent integrations](guides/agent-integrations.md) explains Claude, Codex, Cursor, OpenClaw, Grok, and generic setup.
 - [First agent workflow](first-agent-workflow.md) shows the agent run lifecycle.
 - [Updating](guides/updating.md) explains check, dry-run, version pinning, and verified replacement.

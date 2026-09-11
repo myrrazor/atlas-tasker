@@ -41,6 +41,25 @@ func TestBackupTargetRejectsCredentialsAndPublicGitHub(t *testing.T) {
 	}
 }
 
+func TestBackupTargetRejectsPaddedFileURLWithoutAllowLocalFile(t *testing.T) {
+	ctx, actions := newCheckpointHarness(t)
+	_, err := actions.AddBackupTarget(ctx, BackupTargetAddOptions{
+		URL: " file:///tmp/sneaky.git", AcknowledgeBoundary: true, AttestPrivate: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "allow-local-file") {
+		t.Fatalf("padded file:// without --allow-local-file must fail: %v", err)
+	}
+	if _, err := actions.AddBackupTarget(ctx, BackupTargetAddOptions{
+		TargetID: "https-priv", URL: "https://git.example.com/org/private.git",
+		AcknowledgeBoundary: true, AttestPrivate: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := actions.EditBackupTarget(ctx, "https-priv", BackupTargetEditOptions{URL: "\tfile:///tmp/sneaky.git"}); err == nil || !strings.Contains(err.Error(), "allow-local-file") {
+		t.Fatalf("padded edit to file:// without --allow-local-file must fail: %v", err)
+	}
+}
+
 func TestBackupTargetEditRequiresAllowLocalFile(t *testing.T) {
 	ctx, actions := newCheckpointHarness(t)
 	if _, err := actions.AddBackupTarget(ctx, BackupTargetAddOptions{

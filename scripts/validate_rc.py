@@ -160,7 +160,7 @@ def active_release_text_files(repo: Path) -> list[Path]:
         rel = path.relative_to(repo).as_posix()
         if rel.startswith("docs/v1") or rel.startswith("docs/upgrade-"):
             continue
-        if rel in {"docs/v1-decision-log.md", "docs/v1-implementation-plan.md", "docs/v1-ticket-pr-breakdown.md"}:
+        if rel in {"docs/v1-decision-log.md", "docs/v1-implementation-plan.md"}:
             continue
         candidates.append(path)
     candidates.extend(sorted((repo / "scripts").glob("*.sh")))

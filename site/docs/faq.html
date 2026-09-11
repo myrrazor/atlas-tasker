@@ -124,7 +124,10 @@
         <p>Do not. Writes go through the CLI, web board, or MCP so the event log, the index, and lease state stay in agreement. If you already hand-edited something, <code>tracker doctor --repair</code> rebuilds the projection from Markdown and events and reports what it found.</p>
 
         <h2>How do I use Atlas on two machines?</h2>
-        <p>The repo is the database, so Git movement moves the tracker with it. For tracker-aware transfer there are signed export bundles (<code>tracker export create</code>, <code>tracker bundle</code>), remotes and sync (<code>tracker remote</code>, <code>tracker sync</code>), and conflict tooling (<code>tracker conflict</code>). Sync operations are explicit commands, never background daemons.</p>
+        <p>The repo is the database, so Git movement moves the tracker with it. For tracker-aware transfer there are signed export bundles (<code>tracker export create</code>, <code>tracker bundle</code>), remotes and sync (<code>tracker remote</code>, <code>tracker sync</code>), and conflict tooling (<code>tracker conflict</code>). Sync operations are explicit commands, never background daemons. Automatic Atlas backup is a separate isolated Git remote you name; it is not a silent copy of <code>origin</code> and a push is not verified until Atlas checks the remote commit.</p>
+
+        <h2>Does setup turn on backup or a scheduler?</h2>
+        <p>No. <code>tracker setup --yes</code> is not backup consent. Backup stays a named target you add first, then enable with <code>tracker backup auto enable</code> or <code>tracker setup --backup --backup-target</code>. Neither init nor setup installs a user-level scheduler.</p>
 
         <h2>What platforms are supported?</h2>
         <p>The release installer covers macOS and Linux on arm64 and amd64, verifying checksums and GitHub build attestations on the way in. Building from source needs Go 1.26.6 or newer. Unstamped source builds report <code>version: "dev"</code> in <code>tracker version --json</code>, which is expected and harmless.</p>

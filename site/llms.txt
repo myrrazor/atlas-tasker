@@ -16,7 +16,7 @@ Install with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker
 
 ## Documentation
 - [Docs overview](https://atlastasker.com/docs/): the manual's front door
-- [Getting started](https://atlastasker.com/docs/getting-started.html): install, init, first project, first ticket, first board
+- [Getting started](https://atlastasker.com/docs/getting-started.html): install, init, first project, first ticket, first board, setup, optional Atlas backup
 - [Tickets and workflow](https://atlastasker.com/docs/tickets-and-workflow.html): statuses, edges, claims, dependencies, reviews, bulk ops
 - [Views and search](https://atlastasker.com/docs/views-and-search.html): queues, search syntax, saved views, watchers, the TUI
 - [The web board](https://atlastasker.com/docs/web-board.html): local kanban, session tokens, drawer tabs, read-only mode
