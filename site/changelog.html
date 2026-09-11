@@ -76,7 +76,7 @@
         <ul>
           <li><code>tracker setup</code> is one pass for skills, MCP, managed mode, and an optional already-added backup target. <code>--yes</code> is not backup consent, and setup never installs a user scheduler or selects Git <code>origin</code>.</li>
           <li>Six coding-agent adapters stay transactional. Custom instruction text and unmanaged <code>atlas-*</code> MCP entries are left alone. <code>tracker update</code> still replaces only the binary.</li>
-          <li>Automatic Atlas checkpoints write an isolated Git repository. Off-device publication is fast-forward only; a push is not verified until Atlas checks the remote commit. Ticket writes stay available when backup is offline.</li>
+          <li>Automatic Atlas checkpoints write an isolated Git repository. Off-device publication is fast-forward only; a push is not verified until Atlas fetches the remote commit into an empty temporary repo. Verification is per target and is not claimed while the replica is blocked. Ticket writes stay available when backup is offline.</li>
         </ul>
         <p>This is source on the development branch, not a published GitHub release. The latest tagged installer remains <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">the latest stable release</a>. Hosted verification is recorded only on a release page.</p>
       </section>
