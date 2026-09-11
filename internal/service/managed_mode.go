@@ -39,9 +39,16 @@ type BackupHealthSummary struct {
 	UnbackedEventCount    int       `json:"unbacked_event_count,omitempty"`
 	LastLocalCheckpointID string    `json:"last_local_checkpoint_id,omitempty"`
 	LastLocalCheckpointAt time.Time `json:"last_local_checkpoint_at,omitempty"`
-	LastErrorClass        string    `json:"last_error_class,omitempty"`
-	DiskBytes             int64     `json:"disk_bytes,omitempty"`
-	Notes                 []string  `json:"notes,omitempty"`
+	LastErrorClass         string    `json:"last_error_class,omitempty"`
+	DiskBytes              int64     `json:"disk_bytes,omitempty"`
+	AutomaticEnabled       bool      `json:"automatic_enabled,omitempty"`
+	LastRemoteCheckpointID string    `json:"last_remote_checkpoint_id,omitempty"`
+	LastRemoteVerifiedAt   time.Time `json:"last_remote_verified_at,omitempty"`
+	SchedulerState         string    `json:"scheduler_state,omitempty"`
+	RestoreDrillAgeSeconds   int       `json:"restore_drill_age_seconds,omitempty"`
+	VerifiedRemote           bool      `json:"verified_remote,omitempty"`
+	OldestUnbackedAgeSeconds int       `json:"oldest_unbacked_age_seconds,omitempty"`
+	Notes                    []string  `json:"notes,omitempty"`
 }
 
 // LoadManagedModePolicy reads .tracker/managed-mode.json. A missing file is
@@ -200,7 +207,14 @@ func (s *QueryService) BackupHealth(ctx context.Context) (BackupHealthSummary, e
 		summary.LastLocalCheckpointAt = auto.LastLocalCheckpointAt
 		summary.LastErrorClass = auto.LastErrorClass
 		summary.DiskBytes = auto.DiskBytes
-		if auto.LastLocalCheckpointID != "" || auto.UnbackedEventCount > 0 {
+		summary.AutomaticEnabled = auto.AutomaticEnabled
+		summary.LastRemoteCheckpointID = auto.LastRemoteCheckpointID
+		summary.LastRemoteVerifiedAt = auto.LastRemoteVerifiedAt
+		summary.SchedulerState = auto.SchedulerState
+		summary.RestoreDrillAgeSeconds = auto.RestoreDrillAgeSeconds
+		summary.VerifiedRemote = auto.VerifiedRemote
+		summary.OldestUnbackedAgeSeconds = auto.OldestUnbackedAgeSeconds
+		if auto.LastLocalCheckpointID != "" || auto.UnbackedEventCount > 0 || auto.AutomaticEnabled {
 			summary.Configured = true
 		}
 	}

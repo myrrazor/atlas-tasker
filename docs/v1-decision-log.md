@@ -1240,3 +1240,15 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 7. **Confidence:** high
 8. **Revisit Trigger:** A real-client run shows a provider's list/get JSON schema that this parser misses, or `grok mcp remove --scope project` is rejected by the shipped CLI.
 9. **Affected PRs/Files:** internal/integrations/adapter/host/{apply,existing,cli,plan}.go, docs/v1.14-acceptance.md.
+
+## DEC-088
+
+1. **Decision ID:** DEC-088
+2. **Date:** 2026-09-11
+3. **Question:** How can Sprint 114.5 test off-device Git backup publication and restore without creating a real remote repository or claiming a public backup target?
+4. **Options Considered:** Use a real GitHub/SSH remote in CI; invent an encrypted archive provider; accept disposable `file://` remotes only under `--allow-local-file`, keep ADR production schemes as `https` and SSH, and never treat `file://` as an off-device claim.
+5. **Chosen Option:** The third. `ValidateBackupTargetURL` accepts `https`, `ssh://`, scp-like `git@host:path`, and `file://` paths. `file://` additionally requires `--allow-local-file`. HTTPS with any userinfo is rejected; SSH user without a password is allowed. Public `github.com` / `gist.github.com` / `www.github.com` hosts are refused unless `--attest-private` or (`--attest-public` and `--allow-public-github`). Push is by URL onto `refs/atlas/backups/<workspace-id>/<replica-id>` and does not persist remotes on the isolated backup repo. `protocol.file.allow=always` is pinned only so those disposable remotes work in tests and drills.
+6. **Why We Chose It:** Execution overrides forbid real remotes, public backup targets, and irreversible external action. ADR §3.2 names ssh/https for production; a named local exception keeps the drill honest without inventing a second provider. The isolated repo still has no configured remotes, and status redacts `file://` to `file://local`.
+7. **Confidence:** high
+8. **Revisit Trigger:** An owner-authorized private SSH/HTTPS target is used for a live off-device drill; then `file://` remains test-only and the off-device claim is evidenced against that target.
+9. **Affected PRs/Files:** internal/contracts/backup_target.go, internal/service/checkpoint_{target,publish,remote,git}.go, docs/backup-disaster-recovery.md, docs/v1.14-acceptance.md (AT114-501, AT114-507).

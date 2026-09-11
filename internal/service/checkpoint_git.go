@@ -126,20 +126,73 @@ func (r gitRunner) pinnedArgs(args ...string) []string {
 	return append(out, args...)
 }
 
+func rejectForcedGitArgs(args []string) error {
+	for _, arg := range args {
+		switch {
+		case arg == "--force", arg == "-f", strings.HasPrefix(arg, "--force="), strings.HasPrefix(arg, "--force-with-lease"):
+			return fmt.Errorf("backup git refuses force updates")
+		case strings.HasPrefix(arg, "+"):
+			return fmt.Errorf("backup git refuses forced refspecs")
+		}
+	}
+	return nil
+}
+
 func (r gitRunner) run(ctx context.Context, args ...string) (string, error) {
+	out, _, err := r.runFull(ctx, args...)
+	return out, err
+}
+
+func (r gitRunner) runFull(ctx context.Context, args ...string) (string, string, error) {
+	if err := rejectForcedGitArgs(args); err != nil {
+		return "", "", err
+	}
 	cmd := exec.CommandContext(ctx, r.Git, r.pinnedArgs(args...)...)
 	cmd.Dir = r.Snapshot
 	if cmd.Dir == "" {
 		cmd.Dir = r.Repo
 	}
 	cmd.Env = gitSafeEnv(r.Git, r.Repo, r.Index, r.Snapshot)
+	if strings.HasPrefix(joinGitURLArg(args), "ssh://") || looksSCPGitArg(args) {
+		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o UpdateHostKeys=no")
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), fmt.Errorf("git %s: %w: %s", safeGitArgJoin(args), err, sanitizeGitMessage(stderr.String()))
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), nil
+}
+
+func joinGitURLArg(args []string) string {
+	for _, arg := range args {
+		if strings.Contains(arg, "://") || strings.Contains(arg, "@") {
+			return arg
+		}
+	}
+	return ""
+}
+
+func looksSCPGitArg(args []string) bool {
+	for _, arg := range args {
+		if strings.Contains(arg, "@") && strings.Contains(arg, ":") && !strings.Contains(arg, "://") {
+			return true
+		}
+	}
+	return false
+}
+
+func safeGitArgJoin(args []string) string {
+	out := make([]string, len(args))
+	for i, arg := range args {
+		if strings.Contains(arg, "://") || (strings.Contains(arg, "@") && strings.Contains(arg, ":")) {
+			out[i] = contracts.RedactBackupURL(arg)
+			continue
+		}
+		out[i] = arg
+	}
+	return strings.Join(out, " ")
 }
 
 func (e *CheckpointEngine) ensureBareRepo(ctx context.Context) error {

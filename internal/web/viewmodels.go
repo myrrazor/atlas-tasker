@@ -44,9 +44,10 @@ type BoardPage struct {
 	FormTarget string     `json:"-"`
 	Columns    []BoardColumn
 	Detail     *TicketDetail
-	Flash      string
-	Error      string
-	ShowNew    bool
+	Flash        string
+	Error        string
+	ShowNew      bool
+	BackupHealth *service.BackupHealthSummary
 }
 
 type WelcomePage struct {
@@ -207,6 +208,11 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 			page.Error = err.Error()
 		} else {
 			page.Detail = &detail
+		}
+	}
+	if s.queries != nil {
+		if health, err := s.queries.BackupHealth(ctx); err == nil {
+			page.BackupHealth = &health
 		}
 	}
 	return page, nil

@@ -322,6 +322,16 @@ func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor 
 				return RestoreApplyResultView{}, apperr.New(apperr.CodeConflict, "restore plan has blocked items")
 			}
 		}
+		governanceInput := GovernanceEvaluationInput{
+			Action: contracts.ProtectedActionBackupRestore,
+			Target: "workspace",
+			Actor:  actor,
+			Reason: reason,
+		}
+		governanceExplanation, err := s.requireGovernance(ctx, governanceInput)
+		if err != nil {
+			return RestoreApplyResultView{}, err
+		}
 		files, err := readBundleArchive(archivePath)
 		if err != nil {
 			return RestoreApplyResultView{}, err
@@ -353,6 +363,9 @@ func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor 
 			}
 			return nil
 		}); err != nil {
+			return RestoreApplyResultView{}, err
+		}
+		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
 			return RestoreApplyResultView{}, err
 		}
 		return RestoreApplyResultView{Kind: "backup_restore_result", GeneratedAt: s.now(), Plan: plan, Applied: applied, Skipped: skipped}, nil

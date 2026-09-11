@@ -24,7 +24,7 @@ READ_TOOLS = set(
     atlas.queue atlas.next atlas.agent.available atlas.agent.pending
     atlas.agent.list atlas.agent.view atlas.agent.wakeup.list atlas.agent.wakeup.view
     atlas.team.list atlas.team.show atlas.goal.brief atlas.search atlas.context
-    atlas.status atlas.board
+    atlas.status atlas.board atlas.backup.status
     atlas.ticket.view atlas.ticket.history atlas.ticket.inspect
     atlas.schedule.list atlas.schedule.history atlas.dashboard atlas.timeline
     atlas.run.view atlas.evidence.list atlas.evidence.view atlas.handoff.view

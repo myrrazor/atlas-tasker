@@ -251,7 +251,12 @@ func newBackupCommand() *cobra.Command {
 	auto := &cobra.Command{Use: "auto", Short: "Inspect automatic local checkpoints"}
 	autoStatus := &cobra.Command{Use: "status", Short: "Show automatic local checkpoint health", Args: cobra.NoArgs, RunE: runBackupAutoStatus}
 	addReadOutputFlags(autoStatus, &outputFlags{})
-	auto.AddCommand(autoStatus)
+	autoEnable := &cobra.Command{Use: "enable", Short: "Enable automatic backup for a configured target", Args: cobra.NoArgs, RunE: runBackupAutoEnable}
+	autoEnable.Flags().String("target", "", "Backup target ID")
+	addReadOutputFlags(autoEnable, &outputFlags{})
+	autoDisable := &cobra.Command{Use: "disable", Short: "Disable automatic backup publication", Args: cobra.NoArgs, RunE: runBackupAutoDisable}
+	addReadOutputFlags(autoDisable, &outputFlags{})
+	auto.AddCommand(autoStatus, autoEnable, autoDisable)
 	runNow := &cobra.Command{Use: "run", Short: "Create a local checkpoint immediately", Args: cobra.NoArgs, RunE: runBackupRunNow}
 	runNow.Flags().Bool("now", false, "Run one checkpoint pass immediately")
 	addReadOutputFlags(runNow, &outputFlags{})
@@ -259,6 +264,83 @@ func newBackupCommand() *cobra.Command {
 	addReadOutputFlags(tick, &outputFlags{})
 	watch := &cobra.Command{Use: "watch", Short: "Run the automatic checkpoint loop in the foreground", Args: cobra.NoArgs, RunE: runBackupWatch}
 	addReadOutputFlags(watch, &outputFlags{})
+	target := &cobra.Command{Use: "target", Short: "Configure machine-local Git backup targets"}
+	targetAdd := &cobra.Command{Use: "add", Short: "Add a Git backup target", Args: cobra.NoArgs, RunE: runBackupTargetAdd}
+	targetAdd.Flags().String("id", "", "Optional target ID")
+	targetAdd.Flags().String("url", "", "Git remote URL")
+	targetAdd.Flags().String("scope", "workspace", "Default workspace scope")
+	targetAdd.Flags().Int("timeout-ms", 0, "Optional transport timeout")
+	targetAdd.Flags().Bool("attest-private", false, "Attest that the target is a private repository")
+	targetAdd.Flags().Bool("attest-public", false, "Attest that the target is public")
+	targetAdd.Flags().Bool("allow-public-github", false, "Independent advanced override for a public GitHub repository")
+	targetAdd.Flags().Bool("acknowledge-data-boundary", false, "Confirm Atlas-owned data will leave this machine")
+	targetAdd.Flags().Bool("allow-local-file", false, "Allow a disposable file:// remote")
+	targetAdd.Flags().Bool("enabled", true, "Whether the target is eligible for publication")
+	addReadOutputFlags(targetAdd, &outputFlags{})
+	targetList := &cobra.Command{Use: "list", Short: "List backup targets", Args: cobra.NoArgs, RunE: runBackupTargetList}
+	addReadOutputFlags(targetList, &outputFlags{})
+	targetView := &cobra.Command{Use: "view", Short: "Show one backup target", Args: cobra.ExactArgs(1), RunE: runBackupTargetView}
+	addReadOutputFlags(targetView, &outputFlags{})
+	targetEdit := &cobra.Command{Use: "edit", Short: "Edit a backup target", Args: cobra.ExactArgs(1), RunE: runBackupTargetEdit}
+	targetEdit.Flags().String("url", "", "Replacement URL")
+	targetEdit.Flags().Bool("enabled", true, "Enable or disable the target")
+	targetEdit.Flags().Bool("acknowledge-data-boundary", false, "Reconfirm the data boundary")
+	addReadOutputFlags(targetEdit, &outputFlags{})
+	targetRemove := &cobra.Command{Use: "remove", Short: "Remove local target configuration only", Args: cobra.ExactArgs(1), RunE: runBackupTargetRemove}
+	addReadOutputFlags(targetRemove, &outputFlags{})
+	target.AddCommand(targetAdd, targetList, targetView, targetEdit, targetRemove)
+	remote := &cobra.Command{Use: "remote", Short: "Discover and restore remote checkpoints"}
+	remoteList := &cobra.Command{Use: "list", Short: "List remote checkpoints", Args: cobra.NoArgs, RunE: runBackupRemoteList}
+	remoteList.Flags().String("target", "", "Backup target ID")
+	addReadOutputFlags(remoteList, &outputFlags{})
+	remoteVerify := &cobra.Command{Use: "verify", Short: "Verify one remote checkpoint", Args: cobra.ExactArgs(1), RunE: runBackupRemoteVerify}
+	remoteVerify.Flags().String("target", "", "Backup target ID")
+	addReadOutputFlags(remoteVerify, &outputFlags{})
+	remotePlan := &cobra.Command{Use: "restore-plan", Short: "Preview a remote checkpoint restore", Args: cobra.ExactArgs(1), RunE: runBackupRemoteRestorePlan}
+	remotePlan.Flags().String("target", "", "Backup target ID")
+	remotePlan.Flags().Bool("allow-workspace-mismatch", false, "Allow restoring into a different workspace")
+	addReadOutputFlags(remotePlan, &outputFlags{})
+	remoteApply := &cobra.Command{Use: "restore-apply", Short: "Apply a remote checkpoint restore", Args: cobra.ExactArgs(1), RunE: runBackupRemoteRestoreApply}
+	remoteApply.Flags().String("target", "", "Backup target ID")
+	remoteApply.Flags().Bool("yes", false, "Apply restore without prompting")
+	remoteApply.Flags().Bool("allow-workspace-mismatch", false, "Allow restoring into a different workspace")
+	addMutationFlags(remoteApply, &mutationFlags{Actor: "human:owner"})
+	addReadOutputFlags(remoteApply, &outputFlags{})
+	remote.AddCommand(remoteList, remoteVerify, remotePlan, remoteApply)
+	replica := &cobra.Command{Use: "replica", Short: "Inspect or reset the local replica identity"}
+	replicaView := &cobra.Command{Use: "view", Short: "Show the local replica identity", Args: cobra.NoArgs, RunE: runBackupReplicaView}
+	addReadOutputFlags(replicaView, &outputFlags{})
+	replicaReset := &cobra.Command{Use: "reset", Short: "Assign a new replica identity", Args: cobra.NoArgs, RunE: runBackupReplicaReset}
+	replicaReset.Flags().Bool("yes", false, "Confirm replica reset")
+	addReadOutputFlags(replicaReset, &outputFlags{})
+	replica.AddCommand(replicaView, replicaReset)
+	reconcile := &cobra.Command{Use: "reconcile", Short: "Assign a new replica ref after copy or divergence", Args: cobra.NoArgs, RunE: runBackupReconcile}
+	reconcile.Flags().Bool("yes", false, "Confirm reconcile")
+	addReadOutputFlags(reconcile, &outputFlags{})
+	schedule := &cobra.Command{Use: "schedule", Short: "Plan and manage a user-level backup scheduler"}
+	schedulePlan := &cobra.Command{Use: "plan", Short: "Show the scheduler plan", Args: cobra.NoArgs, RunE: runBackupSchedulePlan}
+	addReadOutputFlags(schedulePlan, &outputFlags{})
+	scheduleInstall := &cobra.Command{Use: "install", Short: "Install the user-level scheduler", Args: cobra.NoArgs, RunE: runBackupScheduleInstall}
+	scheduleInstall.Flags().Bool("yes", false, "Explicit scheduler consent")
+	addReadOutputFlags(scheduleInstall, &outputFlags{})
+	scheduleStatus := &cobra.Command{Use: "status", Short: "Show scheduler status", Args: cobra.NoArgs, RunE: runBackupScheduleStatus}
+	addReadOutputFlags(scheduleStatus, &outputFlags{})
+	scheduleRemove := &cobra.Command{Use: "remove", Short: "Remove Atlas-owned scheduler files only", Args: cobra.NoArgs, RunE: runBackupScheduleRemove}
+	scheduleRemove.Flags().Bool("yes", false, "Confirm removal")
+	addReadOutputFlags(scheduleRemove, &outputFlags{})
+	scheduleRepair := &cobra.Command{Use: "repair", Short: "Rewrite scheduler files after a move", Args: cobra.NoArgs, RunE: runBackupScheduleRepair}
+	scheduleRepair.Flags().Bool("yes", false, "Confirm repair")
+	addReadOutputFlags(scheduleRepair, &outputFlags{})
+	schedule.AddCommand(schedulePlan, scheduleInstall, scheduleStatus, scheduleRemove, scheduleRepair)
+	prune := &cobra.Command{Use: "prune", Short: "Bounded local retention for generated backup state"}
+	prunePlan := &cobra.Command{Use: "plan", Short: "Preview local retention", Args: cobra.NoArgs, RunE: runBackupPrunePlan}
+	addReadOutputFlags(prunePlan, &outputFlags{})
+	pruneApply := &cobra.Command{Use: "apply", Short: "Apply local retention", Args: cobra.NoArgs, RunE: runBackupPruneApply}
+	pruneApply.Flags().Bool("yes", false, "Apply local prune")
+	pruneApply.Flags().Bool("remote", false, "Refused: remote history is append-only")
+	addReadOutputFlags(pruneApply, &outputFlags{})
+	prune.AddCommand(prunePlan, pruneApply)
+	drill.Flags().String("target", "", "Optional backup target for a remote recovery drill")
 	cmd.AddCommand(
 		create,
 		readCommand("list", "List backup snapshots", cobra.NoArgs, runBackupList),
@@ -271,6 +353,12 @@ func newBackupCommand() *cobra.Command {
 		runNow,
 		tick,
 		watch,
+		target,
+		remote,
+		replica,
+		reconcile,
+		schedule,
+		prune,
 	)
 	return cmd
 }
@@ -838,6 +926,21 @@ func runBackupDrill(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer w.close()
+	target, _ := cmd.Flags().GetString("target")
+	if strings.TrimSpace(target) != "" {
+		actor, reason := mutationActorReason(cmd)
+		if strings.TrimSpace(string(actor)) == "" {
+			actor = contracts.Actor("human:owner")
+		}
+		if strings.TrimSpace(reason) == "" {
+			reason = "remote recovery drill"
+		}
+		view, err := w.actions.RemoteRecoveryDrill(cmd.Context(), target, actor, reason)
+		if err != nil {
+			return err
+		}
+		return writeCommandOutput(cmd, view, "remote recovery drill", "remote recovery drill")
+	}
 	view, err := w.actions.RecoveryDrill(cmd.Context())
 	if err != nil {
 		return err
@@ -915,6 +1018,326 @@ func autoBackupResultText(view service.AutoBackupResult) string {
 		return fmt.Sprintf("checkpoint skipped (%s)", view.SkipReason)
 	}
 	return fmt.Sprintf("checkpoint state=%s", view.State)
+}
+
+func runBackupAutoEnable(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	target, _ := cmd.Flags().GetString("target")
+	view, err := w.actions.EnableAutoBackup(cmd.Context(), target)
+	if err != nil {
+		return err
+	}
+	text := autoBackupStatusText(view)
+	return writeCommandOutput(cmd, view, text, text)
+}
+
+func runBackupAutoDisable(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.DisableAutoBackup(cmd.Context())
+	if err != nil {
+		return err
+	}
+	text := autoBackupStatusText(view)
+	return writeCommandOutput(cmd, view, text, text)
+}
+
+func runBackupTargetAdd(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	url, _ := cmd.Flags().GetString("url")
+	id, _ := cmd.Flags().GetString("id")
+	scope, _ := cmd.Flags().GetString("scope")
+	timeout, _ := cmd.Flags().GetInt("timeout-ms")
+	attestPrivate, _ := cmd.Flags().GetBool("attest-private")
+	attestPublic, _ := cmd.Flags().GetBool("attest-public")
+	allowPublic, _ := cmd.Flags().GetBool("allow-public-github")
+	ack, _ := cmd.Flags().GetBool("acknowledge-data-boundary")
+	allowFile, _ := cmd.Flags().GetBool("allow-local-file")
+	enabled, _ := cmd.Flags().GetBool("enabled")
+	view, err := w.actions.AddBackupTarget(cmd.Context(), service.BackupTargetAddOptions{
+		TargetID: id, URL: url, Enabled: enabled, Scope: scope, TimeoutMS: timeout,
+		AttestPrivate: attestPrivate, AttestPublic: attestPublic, AllowPublicGitHub: allowPublic,
+		AcknowledgeBoundary: ack, AllowLocalFile: allowFile,
+	})
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.URLRedacted, view.URLRedacted)
+}
+
+func runBackupTargetList(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ListBackupTargets(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, fmt.Sprintf("targets=%d", len(view.Items)), fmt.Sprintf("targets=%d", len(view.Items)))
+}
+
+func runBackupTargetView(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ViewBackupTarget(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.URLRedacted, view.URLRedacted)
+}
+
+func runBackupTargetEdit(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	url, _ := cmd.Flags().GetString("url")
+	ack, _ := cmd.Flags().GetBool("acknowledge-data-boundary")
+	opts := service.BackupTargetEditOptions{URL: url, AcknowledgeBoundary: ack}
+	if cmd.Flags().Changed("enabled") {
+		enabled, _ := cmd.Flags().GetBool("enabled")
+		opts.Enabled = &enabled
+	}
+	view, err := w.actions.EditBackupTarget(cmd.Context(), args[0], opts)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.URLRedacted, view.URLRedacted)
+}
+
+func runBackupTargetRemove(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.RemoveBackupTarget(cmd.Context(), args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, "target removed; remote data retained", "target removed; remote data retained")
+}
+
+func runBackupRemoteList(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	target, _ := cmd.Flags().GetString("target")
+	view, err := w.actions.ListRemoteCheckpoints(cmd.Context(), target)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, fmt.Sprintf("remote checkpoints=%d", len(view.Items)), fmt.Sprintf("remote checkpoints=%d", len(view.Items)))
+}
+
+func runBackupRemoteVerify(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	target, _ := cmd.Flags().GetString("target")
+	view, err := w.actions.VerifyRemoteCheckpoint(cmd.Context(), target, args[0])
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, fmt.Sprintf("verified=%t", view.Verified), fmt.Sprintf("verified=%t", view.Verified))
+}
+
+func runBackupRemoteRestorePlan(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	target, _ := cmd.Flags().GetString("target")
+	mismatch, _ := cmd.Flags().GetBool("allow-workspace-mismatch")
+	actor, _ := mutationActorReason(cmd)
+	if !actor.IsValid() {
+		actor = contracts.Actor("human:owner")
+	}
+	view, err := w.actions.RemoteRestorePlan(cmd.Context(), service.RemoteRestoreOptions{
+		TargetID: target, Checkpoint: args[0], AllowWorkspaceMismatch: mismatch, Actor: actor,
+	})
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, restorePlanPretty(view), restorePlanPretty(view))
+}
+
+func runBackupRemoteRestoreApply(cmd *cobra.Command, args []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	target, _ := cmd.Flags().GetString("target")
+	yes, _ := cmd.Flags().GetBool("yes")
+	mismatch, _ := cmd.Flags().GetBool("allow-workspace-mismatch")
+	actor, reason := mutationActorReason(cmd)
+	view, err := w.actions.RemoteRestoreApply(cmd.Context(), service.RemoteRestoreOptions{
+		TargetID: target, Checkpoint: args[0], AllowWorkspaceMismatch: mismatch, Yes: yes, Actor: actor, Reason: reason,
+	})
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, restoreApplyPretty(view), restoreApplyPretty(view))
+}
+
+func runBackupReplicaView(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.ReplicaStatus(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.Ref, view.Ref)
+}
+
+func runBackupReplicaReset(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	yes, _ := cmd.Flags().GetBool("yes")
+	view, err := w.actions.ResetReplica(cmd.Context(), yes)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.Ref, view.Ref)
+}
+
+func runBackupReconcile(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	yes, _ := cmd.Flags().GetBool("yes")
+	view, err := w.actions.ReconcileReplica(cmd.Context(), yes)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.Ref, view.Ref)
+}
+
+func runBackupSchedulePlan(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.BackupSchedulePlan(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.UnitName, view.UnitName)
+}
+
+func runBackupScheduleInstall(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	yes, _ := cmd.Flags().GetBool("yes")
+	view, err := w.actions.BackupScheduleInstall(cmd.Context(), yes)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.State, view.State)
+}
+
+func runBackupScheduleStatus(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.BackupScheduleStatus(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.State, view.State)
+}
+
+func runBackupScheduleRemove(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	yes, _ := cmd.Flags().GetBool("yes")
+	view, err := w.actions.BackupScheduleRemove(cmd.Context(), yes)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.State, view.State)
+}
+
+func runBackupScheduleRepair(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	yes, _ := cmd.Flags().GetBool("yes")
+	view, err := w.actions.BackupScheduleRepair(cmd.Context(), yes)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.State, view.State)
+}
+
+func runBackupPrunePlan(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	view, err := w.actions.BackupPrunePlan(cmd.Context())
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.RemotePrune, view.RemotePrune)
+}
+
+func runBackupPruneApply(cmd *cobra.Command, _ []string) error {
+	w, err := openWorkspace()
+	if err != nil {
+		return err
+	}
+	defer w.close()
+	yes, _ := cmd.Flags().GetBool("yes")
+	remote, _ := cmd.Flags().GetBool("remote")
+	view, err := w.actions.BackupPruneApply(cmd.Context(), yes, remote)
+	if err != nil {
+		return err
+	}
+	return writeCommandOutput(cmd, view, view.RemotePrune, view.RemotePrune)
 }
 
 func runAdminSecurityStatus(cmd *cobra.Command, _ []string) error {

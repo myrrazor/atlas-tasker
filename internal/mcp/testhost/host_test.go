@@ -104,7 +104,7 @@ func TestConformanceHostDiscoversAndInvokesAtlas(t *testing.T) {
 	for _, name := range report.Tools {
 		have[name] = true
 	}
-	for _, name := range []string{"atlas.context", "atlas.status", "atlas.board"} {
+	for _, name := range []string{"atlas.context", "atlas.status", "atlas.board", "atlas.backup.status"} {
 		if !have[name] {
 			t.Fatalf("conformance host missing %s in %v", name, report.Tools)
 		}

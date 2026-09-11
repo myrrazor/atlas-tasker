@@ -129,8 +129,38 @@ func inspectWorkspace(workspaceRoot, home, stateDir string, lookPath func(string
 	if inspection.Manifest != nil && inspection.Manifest.Backup.Enabled {
 		inspection.Backup.TargetConfigured = true
 	}
-	inspection.Backup.Notes = []string{"off-device backup configuration is implemented in Sprint 114.5 (AT114-501)"}
-	inspection.Scheduler.Notes = []string{"user-level backup scheduling is implemented in Sprint 114.5 (AT114-505)"}
+	if inspection.WorkspaceID != "" && stateDir != "" {
+		targetPath := filepath.Join(stateDir, "backups", inspection.WorkspaceID, "targets.json")
+		if _, err := os.Stat(targetPath); err == nil {
+			inspection.Backup.TargetConfigured = true
+		}
+		if _, err := os.Stat(filepath.Join(stateDir, "backups", inspection.WorkspaceID, "auto.json")); err == nil {
+			inspection.Backup.TargetConfigured = true
+		}
+	}
+	if home != "" {
+		for _, rel := range []string{
+			filepath.Join(".config", "systemd", "user"),
+			filepath.Join("Library", "LaunchAgents"),
+		} {
+			dir := filepath.Join(home, rel)
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				if strings.Contains(entry.Name(), "atlas-backup") || strings.Contains(entry.Name(), "atlas-tasker.backup") {
+					inspection.Scheduler.UserServicePresent = true
+				}
+			}
+		}
+	}
+	if !inspection.Backup.TargetConfigured {
+		inspection.Backup.Notes = []string{"no machine-local backup target is configured"}
+	}
+	if !inspection.Scheduler.UserServicePresent {
+		inspection.Scheduler.Notes = []string{"no user-level backup scheduler is installed"}
+	}
 	return inspection, nil
 }
 

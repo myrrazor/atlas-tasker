@@ -487,6 +487,19 @@ func TestFiltersFormDoesNotExposeImplicitProject(t *testing.T) {
 	}
 }
 
+func TestBoardRendersBackupHealth(t *testing.T) {
+	h := newWebHarness(t, false)
+	res := h.doAuthed(t, http.MethodGet, "/board", "", nil)
+	if res.code != http.StatusOK {
+		t.Fatalf("board status = %d", res.code)
+	}
+	for _, want := range []string{`class="backup-health"`, "Backup health", "Automatic backup", "Unbacked events"} {
+		if !strings.Contains(res.body, want) {
+			t.Fatalf("board missing backup health %q:\n%s", want, excerpt(res.body, "backup"))
+		}
+	}
+}
+
 func TestBoardRendersErrorFlashParam(t *testing.T) {
 	h := newWebHarness(t, false)
 	res := h.doAuthed(t, http.MethodGet, "/board?error_flash=boom-xyz", "", nil)
