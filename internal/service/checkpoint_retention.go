@@ -60,11 +60,11 @@ func pruneDirByAge(dir string, now time.Time, maxAge time.Duration, keepNewest i
 }
 
 type BackupPrunePlan struct {
-	Kind        string   `json:"kind"`
+	Kind        string    `json:"kind"`
 	GeneratedAt time.Time `json:"generated_at"`
-	LocalPaths  int      `json:"local_generated_paths"`
-	RemotePrune string   `json:"remote_prune"`
-	Notes       []string `json:"notes,omitempty"`
+	LocalPaths  int       `json:"local_generated_paths"`
+	RemotePrune string    `json:"remote_prune"`
+	Notes       []string  `json:"notes,omitempty"`
 }
 
 func (s *ActionService) BackupPrunePlan(ctx context.Context) (BackupPrunePlan, error) {

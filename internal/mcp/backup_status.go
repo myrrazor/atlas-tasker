@@ -3,9 +3,9 @@ package mcp
 import "github.com/myrrazor/atlas-tasker/internal/service"
 
 type backupStatusPayload struct {
-	Kind          string                      `json:"kind"`
-	BackupHealth  service.BackupHealthSummary `json:"backup_health"`
-	Auto          service.AutoBackupStatus    `json:"automatic"`
+	Kind         string                      `json:"kind"`
+	BackupHealth service.BackupHealthSummary `json:"backup_health"`
+	Auto         service.AutoBackupStatus    `json:"automatic"`
 }
 
 func backupStatusTool(tc ToolContext, _ map[string]any) (any, error) {
