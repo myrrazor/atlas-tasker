@@ -123,6 +123,7 @@ func (s *ActionService) AddBackupTarget(ctx context.Context, opts BackupTargetAd
 	if !opts.AcknowledgeBoundary {
 		return BackupTargetView{}, apperr.New(apperr.CodeInvalidInput, "backup target add requires --acknowledge-data-boundary")
 	}
+	opts.URL = strings.TrimSpace(opts.URL)
 	if err := contracts.ValidateBackupTargetURL(opts.URL); err != nil {
 		return BackupTargetView{}, apperr.New(apperr.CodeInvalidInput, err.Error())
 	}
@@ -256,6 +257,7 @@ func (s *ActionService) EditBackupTarget(ctx context.Context, id string, opts Ba
 			continue
 		}
 		if opts.URL != "" {
+			opts.URL = strings.TrimSpace(opts.URL)
 			if err := contracts.ValidateBackupTargetURL(opts.URL); err != nil {
 				return BackupTargetView{}, apperr.New(apperr.CodeInvalidInput, err.Error())
 			}
