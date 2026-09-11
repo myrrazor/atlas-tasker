@@ -2,6 +2,8 @@ package all
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/integrations"
 	"github.com/myrrazor/atlas-tasker/internal/integrations/adapter"
+	"github.com/myrrazor/atlas-tasker/internal/integrations/adapter/openclaw"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
@@ -207,16 +210,16 @@ func TestGrokWarnsOnCompatibilityDuplicate(t *testing.T) {
 		t.Fatal(err)
 	}
 	item, _ := reg.Lookup(integrations.TargetGrok)
-	name := mustServer(t, "ws-adapter-test")
+	other := "atlas-ffffffffffff"
 	input, root := testPlanInput(t, integrations.TargetGrok, adapter.Detection{
 		VersionSupport:  adapter.VersionUnknown,
-		ExistingServers: []adapter.ExistingServer{{Name: name, Scope: adapter.ScopeProjectShared, AtlasOwned: true}},
-		Reasons:         []string{"compatibility import also loads Atlas server " + name + " from .cursor/mcp.json"},
+		ExistingServers: []adapter.ExistingServer{{Name: other, Scope: adapter.ScopeProjectShared}},
+		Reasons:         []string{"compatibility import also loads Atlas server " + other + " from .cursor/mcp.json"},
 	})
 	if err := os.MkdirAll(filepath.Join(root, ".cursor"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".cursor", "mcp.json"), []byte(`{"mcpServers":{"`+name+`":{"type":"stdio","command":"tracker","args":[]}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".cursor", "mcp.json"), []byte(`{"mcpServers":{"`+other+`":{"type":"stdio","command":"tracker","args":[]}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	plan, err := item.Plan(context.Background(), input)
@@ -507,12 +510,273 @@ func TestRepairAndRemovePreserveUnrelatedConfig(t *testing.T) {
 	}
 }
 
+func TestUnrelatedClientListDoesNotConnect(t *testing.T) {
+	runner := &scriptedRunner{handle: func(cmd adapter.Command) (adapter.CommandResult, error) {
+		return adapter.CommandResult{Stdout: []byte("other-server\nfilesystem\n")}, nil
+	}}
+	reg, err := New(Options{StateDir: t.TempDir(), Runner: runner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := reg.Lookup(integrations.TargetClaude)
+	exe := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input, _ := testPlanInput(t, integrations.TargetClaude, adapter.Detection{
+		Installed: true, ExecutablePath: exe, VersionSupport: adapter.VersionSupported,
+		Version: adapter.ClientVersion{Raw: "2.1.219", Major: 2, Minor: 1, Patch: 219, Known: true},
+	})
+	plan, err := item.Plan(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := adapter.IntegrationState{
+		Target: integrations.TargetClaude, ContractVersion: adapter.ContractVersion,
+		State: adapter.StateConfiguredUnverified, Scope: plan.Scope,
+		WorkspaceID: input.WorkspaceID, WorkspaceRoot: input.WorkspaceRoot,
+		ClientExecutable: exe, Registration: plan.Registration, UpdatedAt: time.Now().UTC(),
+	}
+	v, err := item.Verify(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.State.Verified() {
+		t.Fatalf("list without this Atlas server must not verify, got %s kind %s", v.State, v.ConnectionKind)
+	}
+}
+
+func TestOpenClawShowIsNotConnected(t *testing.T) {
+	name := mustServer(t, "ws-adapter-test")
+	reg, err := New(Options{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := reg.Lookup(integrations.TargetOpenClaw)
+	exe := filepath.Join(t.TempDir(), "openclaw")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input, _ := testPlanInput(t, integrations.TargetOpenClaw, adapter.Detection{
+		Installed: true, ExecutablePath: exe, VersionSupport: adapter.VersionSupported,
+		Version: adapter.ClientVersion{Raw: "1.2.3", Major: 1, Minor: 2, Patch: 3, Known: true},
+	})
+	plan, err := item.Plan(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &scriptedRunner{handle: func(cmd adapter.Command) (adapter.CommandResult, error) {
+		joined := strings.Join(cmd.Args, " ")
+		if strings.Contains(joined, "doctor") {
+			return adapter.CommandResult{ExitCode: 1, Stdout: []byte("gateway offline")}, fmt.Errorf("doctor failed")
+		}
+		return adapter.CommandResult{Stdout: []byte(`{"name":"` + name + `","command":"/usr/bin/other"}`)}, nil
+	}}
+	verifier := openclaw.New().WithStateDir(t.TempDir()).WithRunner(runner)
+	state := adapter.IntegrationState{
+		Target: integrations.TargetOpenClaw, ContractVersion: adapter.ContractVersion,
+		State: adapter.StateConfiguredUnverified, Scope: plan.Scope,
+		WorkspaceID: input.WorkspaceID, WorkspaceRoot: input.WorkspaceRoot,
+		ClientExecutable: exe, Registration: plan.Registration, UpdatedAt: time.Now().UTC(),
+	}
+	v, err := verifier.Verify(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.State == adapter.StateConnected {
+		t.Fatalf("openclaw show must not report connected, got %s kind %s", v.State, v.ConnectionKind)
+	}
+}
+
+func TestCLIRemovePlansClientCommand(t *testing.T) {
+	cases := []struct {
+		target integrations.Target
+		want   string
+	}{
+		{integrations.TargetClaude, "mcp remove"},
+		{integrations.TargetOpenClaw, "mcp unset"},
+		{integrations.TargetGrok, "mcp remove"},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.target), func(t *testing.T) {
+			reg, err := New(Options{StateDir: t.TempDir(), Home: t.TempDir()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			item, _ := reg.Lookup(tc.target)
+			exe := filepath.Join(t.TempDir(), string(tc.target))
+			if err := os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			input, _ := testPlanInput(t, tc.target, adapter.Detection{
+				Installed: true, ExecutablePath: exe, VersionSupport: adapter.VersionSupported,
+				Version: adapter.ClientVersion{Raw: "1.0.0", Major: 1, Minor: 0, Patch: 0, Known: true},
+			})
+			plan, err := item.Plan(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if plan.Registration == nil {
+				t.Fatal("missing registration")
+			}
+			state := adapter.IntegrationState{
+				Target: tc.target, ContractVersion: adapter.ContractVersion,
+				State: adapter.StateConfiguredUnverified, Scope: plan.Scope,
+				WorkspaceID: input.WorkspaceID, WorkspaceRoot: input.WorkspaceRoot,
+				ClientExecutable: exe, ClientVersion: input.Detection.Version,
+				Registration: plan.Registration, UpdatedAt: time.Now().UTC(),
+			}
+			removal, err := item.Remove(context.Background(), state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, step := range removal.Plan.Steps {
+				if step.Kind == adapter.StepRunClientCommand && step.Command != nil {
+					found = true
+					if step.Command.Executable != exe {
+						t.Fatalf("remove exe %s", step.Command.Executable)
+					}
+					joined := strings.Join(step.Command.Args, " ")
+					if !strings.Contains(joined, tc.want) {
+						t.Fatalf("args %v", step.Command.Args)
+					}
+					if !strings.Contains(joined, plan.Registration.ServerName) {
+						t.Fatalf("remove missing server name %s in %v", plan.Registration.ServerName, step.Command.Args)
+					}
+				}
+			}
+			if !found {
+				t.Fatalf("expected %s CLI remove, steps %#v", tc.target, removal.Plan.Steps)
+			}
+		})
+	}
+}
+
+func TestCodexTOMLUnmanagedSameNameRefusesOverwrite(t *testing.T) {
+	reg, err := New(Options{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := reg.Lookup(integrations.TargetCodex)
+	input, root := testPlanInput(t, integrations.TargetCodex, adapter.Detection{VersionSupport: adapter.VersionUnknown})
+	name := mustServer(t, input.WorkspaceID)
+	if err := os.MkdirAll(filepath.Join(root, ".codex"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".codex", "config.toml"), []byte("[mcp_servers."+name+"]\ncommand = \"/usr/bin/other\"\nargs = [\"serve\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".tracker", "workspace.json"), []byte(`{"workspace_id":"ws-adapter-test"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := item.Plan(context.Background(), input); err == nil {
+		t.Fatal("expected unmanaged Codex TOML same-name refusal")
+	}
+}
+
+func TestOpenClawLocalStateDoesNotRecordVerifiedState(t *testing.T) {
+	reg, err := New(Options{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := reg.Lookup(integrations.TargetOpenClaw)
+	exe := filepath.Join(t.TempDir(), "openclaw")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input, _ := testPlanInput(t, integrations.TargetOpenClaw, adapter.Detection{
+		Installed: true, ExecutablePath: exe, VersionSupport: adapter.VersionSupported,
+		Version: adapter.ClientVersion{Raw: "1.2.3", Major: 1, Minor: 2, Patch: 3, Known: true},
+	})
+	plan, err := item.Plan(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.ResultingState != adapter.StateConnectedRestartRequired {
+		t.Fatalf("plan state %s", plan.ResultingState)
+	}
+	src, ok := item.(interface{ LastPayloads() map[string][]byte })
+	if !ok {
+		t.Fatal("missing payloads")
+	}
+	var recorded adapter.IntegrationState
+	found := false
+	for id, body := range src.LastPayloads() {
+		if !strings.HasPrefix(id, "state-") {
+			continue
+		}
+		found = true
+		if err := json.Unmarshal(body, &recorded); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !found {
+		t.Fatal("missing local state payload")
+	}
+	if recorded.State.Verified() {
+		t.Fatalf("local state recorded verified %s", recorded.State)
+	}
+}
+
+func TestRemoveDeletesGeneratedContext(t *testing.T) {
+	reg, err := New(Options{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := reg.Lookup(integrations.TargetGeneric)
+	input, _ := testPlanInput(t, integrations.TargetGeneric, adapter.Detection{VersionSupport: adapter.VersionUnknown})
+	plan, err := item.Plan(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := item.Apply(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	contextPath := filepath.Join(input.WorkspaceRoot, ".tracker", "integrations", "generic-agent-skill", "references", "atlas-context.md")
+	if _, err := os.Stat(contextPath); err != nil {
+		t.Fatal(err)
+	}
+	state := adapter.IntegrationState{
+		Target: integrations.TargetGeneric, ContractVersion: adapter.ContractVersion,
+		State: adapter.StatePortableReady, Scope: plan.Scope,
+		WorkspaceID: input.WorkspaceID, WorkspaceRoot: input.WorkspaceRoot,
+		Registration: plan.Registration, UpdatedAt: time.Now().UTC(),
+	}
+	removal, err := item.Remove(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, step := range removal.Plan.Steps {
+		if step.Path == contextPath && step.Kind == adapter.StepRemoveManagedFile {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected context file removal, steps %#v", removal.Plan.Steps)
+	}
+}
+
 type recordingRunner struct {
 	calls []adapter.Command
 }
 
 func (r *recordingRunner) Run(_ context.Context, cmd adapter.Command) (adapter.CommandResult, error) {
 	r.calls = append(r.calls, cmd)
+	return adapter.CommandResult{Stdout: []byte("ok")}, nil
+}
+
+type scriptedRunner struct {
+	calls  []adapter.Command
+	handle func(cmd adapter.Command) (adapter.CommandResult, error)
+}
+
+func (r *scriptedRunner) Run(_ context.Context, cmd adapter.Command) (adapter.CommandResult, error) {
+	r.calls = append(r.calls, cmd)
+	if r.handle != nil {
+		return r.handle(cmd)
+	}
 	return adapter.CommandResult{Stdout: []byte("ok")}, nil
 }
 

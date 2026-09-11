@@ -24,7 +24,7 @@ func (e *Engine) ensureRegistry() error {
 	if e.Registry != nil {
 		return nil
 	}
-	reg, err := all.New(all.Options{StateDir: e.StateDir})
+	reg, err := all.New(all.Options{StateDir: e.StateDir, Home: e.Home})
 	if err != nil {
 		return err
 	}

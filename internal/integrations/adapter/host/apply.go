@@ -211,6 +211,9 @@ func (a *Adapter) Verify(ctx context.Context, state adapter.IntegrationState) (a
 	case nativeOK:
 		v.State = adapter.StateConnected
 		v.ConnectionKind = adapter.ConnectionKindClientNative
+	case selfOK && a.target == integrations.TargetCursor:
+		v.State = adapter.StateConnectedRestartRequired
+		v.ConnectionKind = adapter.ConnectionKindSelfProbe
 	case selfOK:
 		v.State = adapter.StateConnected
 		v.ConnectionKind = adapter.ConnectionKindSelfProbe
@@ -255,15 +258,18 @@ func (a *Adapter) runClientNativeChecks(ctx context.Context, v *adapter.Verifica
 		if err != nil && detail == "" {
 			detail = err.Error()
 		}
-		passed := err == nil && result.ExitCode == 0 && !result.TimedOut
+		exitedOK := err == nil && result.ExitCode == 0 && !result.TimedOut
 		method := methodForInspect(cmd)
-		v.Checks = append(v.Checks, adapter.VerificationCheck{Name: string(method), Method: method, Passed: passed, Detail: truncateDetail(detail)})
+		mentioned := mentionsServer(detail, name)
+		checkPassed := exitedOK && (method == adapter.VerificationClientCLIList || mentioned)
+		v.Checks = append(v.Checks, adapter.VerificationCheck{Name: string(method), Method: method, Passed: checkPassed, Detail: truncateDetail(detail)})
 		v.Probes = append(v.Probes, adapter.ProbeRecord{Command: cmd, ExitCode: result.ExitCode, TimedOut: result.TimedOut, Summary: truncateDetail(detail)})
-		if passed {
+		proves, isDoctor := nativeProof(a.target, method, exitedOK, mentioned)
+		if proves {
 			nativeOK = true
-			if method == adapter.VerificationClientCLIDoctor {
-				doctorOK = true
-			}
+		}
+		if isDoctor {
+			doctorOK = true
 		}
 	}
 	return nativeOK, doctorOK
@@ -299,46 +305,6 @@ func (a *Adapter) runGenericConformance(ctx context.Context, v *adapter.Verifica
 	}
 	v.Checks = append(v.Checks, adapter.VerificationCheck{Name: "conformance_host", Method: adapter.VerificationConformanceHost, Passed: passed, Detail: detail})
 	return passed
-}
-
-func clientInspectCommands(target integrations.Target, exe, serverName, workspaceRoot string) []adapter.Command {
-	timeout := 15 * time.Second
-	switch target {
-	case integrations.TargetCodex:
-		return []adapter.Command{
-			{Purpose: adapter.CommandPurposeInspect, Executable: exe, Args: []string{"mcp", "list"}, Timeout: timeout},
-			{Purpose: adapter.CommandPurposeInspect, Executable: exe, Args: []string{"mcp", "get", serverName}, Timeout: timeout},
-		}
-	case integrations.TargetClaude:
-		return []adapter.Command{
-			{Purpose: adapter.CommandPurposeInspect, Executable: exe, Args: []string{"mcp", "list"}, Timeout: timeout},
-			{Purpose: adapter.CommandPurposeInspect, Executable: exe, Args: []string{"mcp", "get", serverName}, Timeout: timeout},
-		}
-	case integrations.TargetOpenClaw:
-		return []adapter.Command{
-			{Purpose: adapter.CommandPurposeInspect, Executable: exe, Args: []string{"mcp", "doctor", serverName, "--probe"}, Timeout: 20 * time.Second},
-			{Purpose: adapter.CommandPurposeInspect, Executable: exe, Args: []string{"mcp", "show", serverName, "--json"}, Timeout: timeout},
-		}
-	case integrations.TargetGrok:
-		return []adapter.Command{
-			{Purpose: adapter.CommandPurposeInspect, Executable: exe, Args: []string{"mcp", "list", "--json"}, Dir: workspaceRoot, Timeout: timeout},
-			{Purpose: adapter.CommandPurposeInspect, Executable: exe, Args: []string{"mcp", "doctor", serverName, "--json"}, Dir: workspaceRoot, Timeout: 20 * time.Second},
-		}
-	default:
-		return nil
-	}
-}
-
-func methodForInspect(cmd adapter.Command) adapter.VerificationMethod {
-	joined := strings.Join(cmd.Args, " ")
-	switch {
-	case strings.Contains(joined, "doctor"):
-		return adapter.VerificationClientCLIDoctor
-	case strings.Contains(joined, "get") || strings.Contains(joined, "show"):
-		return adapter.VerificationClientCLIGet
-	default:
-		return adapter.VerificationClientCLIList
-	}
 }
 
 func truncateDetail(s string) string {
@@ -380,7 +346,7 @@ func (a *Adapter) Repair(ctx context.Context, state adapter.IntegrationState) (a
 	input := adapter.PlanInput{
 		WorkspaceRoot: state.WorkspaceRoot,
 		WorkspaceID:   state.WorkspaceID,
-		Home:          a.guessHome(state),
+		Home:          a.effectiveHome(),
 		TrackerPath:   firstAbs(state),
 		ActorHint:     state.ActorHint,
 		Detection: adapter.Detection{
@@ -422,11 +388,14 @@ func (a *Adapter) Remove(ctx context.Context, state adapter.IntegrationState) (a
 	if state.ClientExecutable != "" {
 		detection.Installed = true
 		detection.ExecutablePath = state.ClientExecutable
-		detection.VersionSupport = adapter.VersionUnknown
+		detection.Version = state.ClientVersion
+		if !detection.Version.Known {
+			detection.Version = adapter.ClientVersion{Raw: "recorded", Known: true}
+		}
+		detection.VersionSupport = adapter.VersionSupported
 	}
 	steps := []adapter.PlanStep{}
 	payloads := map[string][]byte{}
-	_ = payloads
 	installer := installerPreview(state.WorkspaceRoot, a.target)
 	ownership := true
 	for _, file := range installer {
@@ -461,7 +430,6 @@ func (a *Adapter) Remove(ctx context.Context, state adapter.IntegrationState) (a
 		}
 		if string(current) != file.Body {
 			ownership = false
-			continue
 		}
 		steps = append(steps, adapter.PlanStep{
 			StepID: "remove-" + shortHash([]byte(file.Path)), Kind: adapter.StepRemoveManagedFile,
@@ -469,47 +437,79 @@ func (a *Adapter) Remove(ctx context.Context, state adapter.IntegrationState) (a
 			Reversibility: adapter.Reversible, Rollback: &adapter.RollbackAction{Kind: adapter.RollbackRestoreSnapshot, Path: file.Path},
 		})
 	}
-	if state.ConfigPath == "" {
-		if preferred, ok := caps.Preferred(); ok {
-			if path, ok := preferred.ResolvePath(state.WorkspaceRoot, a.guessHome(state)); ok {
-				state.ConfigPath = path
-			}
-		} else if len(caps.Scopes) > 0 {
-			if path, ok := caps.Scopes[0].ResolvePath(state.WorkspaceRoot, a.guessHome(state)); ok {
-				state.ConfigPath = path
-			}
+	if contextPath := generatedContextPath(state.WorkspaceRoot, caps.SkillDir); contextPath != "" {
+		if raw, err := os.ReadFile(contextPath); err == nil && strings.Contains(string(raw), "Atlas provider context") {
+			steps = append(steps, adapter.PlanStep{
+				StepID: "remove-context-" + string(a.target), Kind: adapter.StepRemoveManagedFile,
+				Description: "remove generated provider/actor context", Path: contextPath,
+				Reversibility: adapter.Reversible, Rollback: &adapter.RollbackAction{Kind: adapter.RollbackRestoreSnapshot, Path: contextPath},
+			})
 		}
 	}
-	if state.ConfigPath != "" {
-		if raw, err := os.ReadFile(state.ConfigPath); err == nil && state.Registration != nil {
-			owned := false
-			switch caps.Scopes[0].Format {
-			case adapter.ConfigFormatJSON:
-				_, owned, _ = DecodeAtlasEntry(raw, *state.Registration)
-			default:
-				owned = state.NativeEntryFingerprint == "" || NativeFingerprint(extractNative(raw, state.Registration.ServerName)) == state.NativeEntryFingerprint
-			}
-			if owned {
-				var next []byte
-				var err error
-				if caps.Scopes[0].Format == adapter.ConfigFormatJSON || looksJSON(state.ConfigPath) {
-					next, err = RemoveJSONServer(raw, state.Registration.ServerName)
-				} else {
-					next, err = RemoveTOMLServer(raw, state.Registration.ServerName)
+	cliRemoved := false
+	if preferred, ok := caps.Preferred(); ok && preferred.WriteMethod == adapter.WriteMethodClientCLI && state.Registration != nil {
+		if remove := clientRemoveCommand(a.target, state.ClientExecutable, state.Registration.ServerName, state.WorkspaceRoot); remove != nil && remove.Validate() == nil {
+			steps = append(steps, adapter.PlanStep{
+				StepID: "remove-cli-" + state.Registration.ServerName, Kind: adapter.StepRunClientCommand,
+				Description: "remove Atlas-owned MCP server via client CLI", Command: remove,
+				Reversibility:      adapter.Irreversible,
+				IrreversibleReason: "client MCP removal is applied through the provider CLI; re-adding requires a new setup",
+			})
+			cliRemoved = true
+		}
+	}
+	if !cliRemoved {
+		if state.ConfigPath == "" {
+			if preferred, ok := caps.Preferred(); ok {
+				if path, ok := preferred.ResolvePath(state.WorkspaceRoot, a.effectiveHome()); ok {
+					state.ConfigPath = path
 				}
-				if err != nil {
-					ownership = false
-				} else {
-					id := "remove-config-" + state.Registration.ServerName
+			} else if len(caps.Scopes) > 0 {
+				if path, ok := caps.Scopes[0].ResolvePath(state.WorkspaceRoot, a.effectiveHome()); ok {
+					state.ConfigPath = path
+				}
+			}
+		}
+		if state.ConfigPath != "" {
+			if raw, err := os.ReadFile(state.ConfigPath); err == nil && state.Registration != nil {
+				owned := false
+				method := writeMethodForPath(caps, state.ConfigPath, state.WorkspaceRoot, a.effectiveHome())
+				switch {
+				case looksJSON(state.ConfigPath) || method == adapter.WriteMethodPortableOnly:
+					_, owned, _ = DecodeAtlasEntry(raw, *state.Registration)
+				case strings.HasSuffix(state.ConfigPath, ".toml"):
+					owned = tomlEntryOwned(raw, state.Registration.ServerName, state.WorkspaceID)
+				default:
+					owned = state.NativeEntryFingerprint == "" || NativeFingerprint(extractNative(raw, state.Registration.ServerName)) == state.NativeEntryFingerprint
+				}
+				if owned && method == adapter.WriteMethodPortableOnly {
 					steps = append(steps, adapter.PlanStep{
-						StepID: id, Kind: adapter.StepRemoveConfigEntry, Scope: state.Scope,
-						Description: "remove Atlas MCP entry", Path: state.ConfigPath,
+						StepID: "remove-portable-" + state.Registration.ServerName, Kind: adapter.StepRemoveManagedFile,
+						Description: "remove portable Atlas MCP descriptor", Path: state.ConfigPath,
 						Reversibility: adapter.Reversible, Rollback: &adapter.RollbackAction{Kind: adapter.RollbackRestoreSnapshot, Path: state.ConfigPath},
 					})
-					payloads[id] = next
+				} else if owned && method == adapter.WriteMethodAtlasFileEdit {
+					var next []byte
+					var err error
+					if looksJSON(state.ConfigPath) {
+						next, err = RemoveJSONServer(raw, state.Registration.ServerName)
+					} else {
+						next, err = RemoveTOMLServer(raw, state.Registration.ServerName)
+					}
+					if err != nil {
+						ownership = false
+					} else {
+						id := "remove-config-" + state.Registration.ServerName
+						steps = append(steps, adapter.PlanStep{
+							StepID: id, Kind: adapter.StepRemoveConfigEntry, Scope: state.Scope,
+							Description: "remove Atlas MCP entry", Path: state.ConfigPath,
+							Reversibility: adapter.Reversible, Rollback: &adapter.RollbackAction{Kind: adapter.RollbackRestoreSnapshot, Path: state.ConfigPath},
+						})
+						payloads[id] = next
+					}
+				} else if !owned {
+					ownership = false
 				}
-			} else {
-				ownership = false
 			}
 		}
 	}
@@ -525,12 +525,9 @@ func (a *Adapter) Remove(ctx context.Context, state adapter.IntegrationState) (a
 		PlanID: "remove-" + string(a.target), ContractVersion: adapter.ContractVersion,
 		Operation: adapter.PlanOperationRemove, Target: a.target,
 		WorkspaceID: state.WorkspaceID, WorkspaceRoot: state.WorkspaceRoot,
-		Home: a.guessHome(state), LocalStateRoot: a.stateDir, Scope: state.Scope,
+		Home: a.effectiveHome(), LocalStateRoot: a.stateDir, Scope: state.Scope,
 		Detection: detection, Steps: steps, GeneratedAt: time.Now().UTC(), NoOp: len(steps) == 0,
 		ConsentedRoots: nil,
-	}
-	if plan.Home == "" {
-		plan.Home = "/tmp"
 	}
 	if err := plan.Validate(); err != nil {
 		return adapter.RemovalPlan{}, err
@@ -541,11 +538,36 @@ func (a *Adapter) Remove(ctx context.Context, state adapter.IntegrationState) (a
 
 var _ adapter.AgentIntegrationAdapter = (*Adapter)(nil)
 
-func (a *Adapter) guessHome(state adapter.IntegrationState) string {
-	if state.WorkspaceRoot != "" {
-		return "/tmp"
+func (a *Adapter) effectiveHome() string {
+	return a.home
+}
+
+func generatedContextPath(workspaceRoot, skillDir string) string {
+	if workspaceRoot == "" || skillDir == "" {
+		return ""
 	}
-	return "/tmp"
+	return filepath.Join(workspaceRoot, filepath.FromSlash(skillDir), "references", "atlas-context.md")
+}
+
+func writeMethodForPath(caps adapter.Capabilities, path, root, home string) adapter.WriteMethod {
+	for _, scope := range caps.Scopes {
+		if resolved, ok := scope.ResolvePath(root, home); ok && resolved == path {
+			return scope.WriteMethod
+		}
+	}
+	if strings.Contains(filepath.ToSlash(path), "/.tracker/integrations/") {
+		return adapter.WriteMethodPortableOnly
+	}
+	return adapter.WriteMethodAtlasFileEdit
+}
+
+func tomlEntryOwned(raw []byte, name, workspaceID string) bool {
+	for _, found := range serversFromTOML(raw) {
+		if found.Name == name {
+			return found.OK && atlasOwnedEntry(found.Entry, workspaceID)
+		}
+	}
+	return false
 }
 
 func firstAbs(state adapter.IntegrationState) string {

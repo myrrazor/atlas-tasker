@@ -34,6 +34,9 @@ func configure(bc *host.BuildContext) error {
 	if err != nil {
 		return err
 	}
+	if host.TOMLHasUnmanaged(existing, bc.Reg.ServerName, bc.Input.WorkspaceID) {
+		return fmt.Errorf("existing unmanaged Codex server %s", bc.Reg.ServerName)
+	}
 	required := false
 	merged, err := host.MergeTOMLServer(existing, bc.Reg.ServerName, []host.TOMLField{
 		{Key: "command", Value: bc.Reg.Command},

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -54,6 +53,7 @@ type Adapter struct {
 	preferStdMCP bool
 	customConfig string
 	lastPayloads map[string][]byte
+	home         string
 }
 
 func New(target integrations.Target, configure Configurator) *Adapter {
@@ -65,6 +65,7 @@ func (a *Adapter) WithNow(now func() time.Time) *Adapter       { a.now = now; re
 func (a *Adapter) WithStateDir(dir string) *Adapter            { a.stateDir = dir; return a }
 func (a *Adapter) WithPreferStandardMCP(v bool) *Adapter       { a.preferStdMCP = v; return a }
 func (a *Adapter) WithCustomConfig(path string) *Adapter       { a.customConfig = path; return a }
+func (a *Adapter) WithHome(home string) *Adapter               { a.home = home; return a }
 
 func (a *Adapter) Target() integrations.Target { return a.target }
 
@@ -78,66 +79,9 @@ func (a *Adapter) Detect(ctx context.Context, input adapter.DetectInput) adapter
 		input.Runner = a.runner
 	}
 	detection := DetectClient(ctx, a.target, adapter.PlanInput{WorkspaceRoot: input.WorkspaceRoot, Home: input.Home}, input)
-	if a.configure != nil {
-		_ = a.scanExistingServers(&detection, input)
-	}
+	_ = a.scanExistingServers(ctx, &detection, input)
 	_ = detection.Validate()
 	return detection
-}
-
-func (a *Adapter) scanExistingServers(detection *adapter.Detection, input adapter.DetectInput) error {
-	caps := a.Capabilities()
-	root := input.WorkspaceRoot
-	home := input.Home
-	read := input.ReadFile
-	if read == nil {
-		read = os.ReadFile
-	}
-	for _, scope := range caps.Scopes {
-		path, ok := scope.ResolvePath(root, home)
-		if !ok {
-			continue
-		}
-		raw, err := read(path)
-		if err != nil {
-			continue
-		}
-		switch scope.Format {
-		case adapter.ConfigFormatJSON:
-			var cfg adapter.StandardConfig
-			if json.Unmarshal(raw, &cfg) != nil {
-				continue
-			}
-			for name := range cfg.MCPServers {
-				if strings.HasPrefix(name, adapter.ServerNamePrefix) {
-					detection.ExistingServers = append(detection.ExistingServers, adapter.ExistingServer{Name: name, Scope: scope.Scope, AtlasOwned: true})
-				} else {
-					detection.ExistingServers = append(detection.ExistingServers, adapter.ExistingServer{Name: name, Scope: scope.Scope})
-				}
-			}
-		}
-	}
-	for _, also := range caps.AlsoLoads {
-		resolved, ok := (adapter.ScopeCapability{Path: also}).ResolvePath(root, home)
-		if !ok {
-			continue
-		}
-		raw, err := read(resolved)
-		if err != nil {
-			continue
-		}
-		var cfg adapter.StandardConfig
-		if json.Unmarshal(raw, &cfg) != nil {
-			continue
-		}
-		for name := range cfg.MCPServers {
-			if strings.HasPrefix(name, adapter.ServerNamePrefix) {
-				detection.ExistingServers = append(detection.ExistingServers, adapter.ExistingServer{Name: name, Scope: adapter.ScopeProjectShared, AtlasOwned: true})
-				detection.Reasons = append(detection.Reasons, "compatibility import also loads Atlas server "+name+" from "+also)
-			}
-		}
-	}
-	return nil
 }
 
 func (a *Adapter) Plan(ctx context.Context, input adapter.PlanInput) (adapter.IntegrationPlan, error) {
@@ -155,6 +99,8 @@ func (a *Adapter) Prepare(ctx context.Context, input adapter.PlanInput) (Prepare
 	if input.Detection.Target != a.target {
 		return Prepared{}, fmt.Errorf("detection target %s does not match %s", input.Detection.Target, a.target)
 	}
+	detectIn := adapter.DetectInput{WorkspaceRoot: input.WorkspaceRoot, Home: input.Home, Runner: a.runner}
+	_ = a.scanExistingServers(ctx, &input.Detection, detectIn)
 	caps := a.Capabilities()
 	scope, err := pickScope(caps, input.Scope)
 	if err != nil {
@@ -234,7 +180,7 @@ func (a *Adapter) Prepare(ctx context.Context, input adapter.PlanInput) (Prepare
 	record := adapter.IntegrationState{
 		Target:                 a.target,
 		ContractVersion:        adapter.ContractVersion,
-		State:                  bc.Resulting,
+		State:                  persistableState(bc.Resulting),
 		Scope:                  scope.Scope,
 		WorkspaceID:            input.WorkspaceID,
 		WorkspaceRoot:          input.WorkspaceRoot,
@@ -391,7 +337,7 @@ func addStateStep(bc *BuildContext) error {
 	record := adapter.IntegrationState{
 		Target:              bc.Input.Detection.Target,
 		ContractVersion:     adapter.ContractVersion,
-		State:               bc.Resulting,
+		State:               persistableState(bc.Resulting),
 		Scope:               bc.Scope.Scope,
 		WorkspaceID:         bc.Input.WorkspaceID,
 		WorkspaceRoot:       bc.Input.WorkspaceRoot,

@@ -44,7 +44,9 @@ func configure(bc *host.BuildContext) error {
 	if err := add.Validate(); err != nil {
 		return err
 	}
-	host.AddCommandStep(bc, "openclaw-mcp-add", "register workspace-namespaced OpenClaw MCP server", add, &unset)
+	if !host.AtlasOwnedSameName(bc.Detection, bc.Reg.ServerName) {
+		host.AddCommandStep(bc, "openclaw-mcp-add", "register workspace-namespaced OpenClaw MCP server", add, &unset)
+	}
 	bc.Resulting = adapter.StateConnectedRestartRequired
 	bc.Warnings = append(bc.Warnings, "OpenClaw Gateway/agent processes need their own reload or restart after add; saved configuration is distinct from a live doctor --probe.")
 	return nil

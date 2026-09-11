@@ -1211,7 +1211,7 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 2. **Date:** 2026-09-11
 3. **Question:** What does `tracker setup --team` actually write now that Sprint 114.2 owns AT114-209?
 4. **Options Considered:** Keep `--team` as a plan-only note (Sprint 114.1); invent new agent records that overwrite existing roles; apply the named `solo`/`pair`/`swarm`/`crossfire` preset through `ActionService.ApplyTeamPreset` without overwriting existing assignments, and map each selected provider to a distinct actor hint.
-5. **Chosen Option:** The third. One selected provider suggests `solo`, two suggest `pair`, three or four suggest `swarm`, and more suggest `crossfire`. The requested preset is applied with `overwrite=false`. Provider and Atlas actor stay distinct: the hint is `agent:<preset-agent-id>` when the preset has a matching slot, otherwise `agent:<target>`. MCP writes still require an explicit actor and reason.
+5. **Chosen Option:** The third. One selected provider suggests `solo`, two suggest `pair`, three or four suggest `swarm`, and more suggest `crossfire`. Existing agents, runbooks, and permission profiles are skipped when present. An existing `review_gate` / `owner_gate` / `dual_gate` completion mode or a non-empty required reviewer is left in place (so `--team solo` cannot silently undo review separation). A default `open` workspace may still be strengthened to a review-gate preset. Provider and Atlas actor stay distinct: the hint is `agent:<preset-agent-id>` when the preset has a matching slot, otherwise `agent:<target>`. MCP writes still require an explicit actor and reason.
 6. **Why We Chose It:** AT114-209 forbids silently overwriting roles and requires reuse of compatible existing agents when they are already present. Applying the preset makes `--team` a real write so a re-plan that includes `--team` does not stale (DEC-081 revisit).
 7. **Confidence:** high
 8. **Revisit Trigger:** Setup needs an interactive picker to reuse a named existing agent instead of the positional preset slot.
@@ -1228,3 +1228,15 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 7. **Confidence:** high
 8. **Revisit Trigger:** Official OpenClaw docs show that `mcp add` makes the server live in already-running Gateway processes without a reload.
 9. **Affected PRs/Files:** internal/integrations/adapter/host/apply.go, internal/integrations/adapter/openclaw/adapter.go.
+
+## DEC-087
+
+1. **Decision ID:** DEC-087
+2. **Date:** 2026-09-11
+3. **Question:** What evidence may Verify treat as a live connection, and what must Detect/Remove prove before touching another client's MCP server?
+4. **Options Considered:** Treat any client CLI exit 0 as connected and delete Atlas-prefixed names on sight; require the exact `ServerName` (and command/argv when present) before claiming `client_native`, treat `mcp list` and OpenClaw `mcp show` as inventory only, and remove or overwrite a same-name entry only when it matches the canonical registration.
+5. **Chosen Option:** The second. `nativeOK` requires the inspect output to mention this workspace's server name. List never upgrades a connection. OpenClaw `show` is configuration evidence; only `doctor --probe` or a passed self-probe may verify. Detect parses JSON `mcpServers`, TOML `[mcp_servers.<name>]`, nested Claude project maps, and read-only CLI list/get/show. `AtlasOwned` is true only when command/args include `mcp serve` and `--expected-workspace-id` for this workspace (a user-created `atlas-<12 hex>` is unmanaged). CLI-registered targets plan `claude mcp remove`, `openclaw mcp unset`, or `grok mcp remove --scope project` on the detected binary.
+6. **Why We Chose It:** Independent review of Sprint 114.2 found that exit 0 on an unrelated `mcp list` reported `connected`, that disconnect never unset CLI servers, and that Codex TOML / Claude / OpenClaw collisions were invisible. Saved configuration is not a live probe (DEC-086).
+7. **Confidence:** high
+8. **Revisit Trigger:** A real-client run shows a provider's list/get JSON schema that this parser misses, or `grok mcp remove --scope project` is rejected by the shipped CLI.
+9. **Affected PRs/Files:** internal/integrations/adapter/host/{apply,existing,cli,plan}.go, docs/v1.14-acceptance.md.

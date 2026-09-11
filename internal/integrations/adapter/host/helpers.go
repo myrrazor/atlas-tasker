@@ -6,7 +6,15 @@ import (
 	"strings"
 
 	"github.com/myrrazor/atlas-tasker/internal/integrations"
+	"github.com/myrrazor/atlas-tasker/internal/integrations/adapter"
 )
+
+func persistableState(state adapter.State) adapter.State {
+	if state.Verified() {
+		return adapter.StateConfiguredUnverified
+	}
+	return state
+}
 
 func shortHash(data []byte) string {
 	sum := sha256.Sum256(data)

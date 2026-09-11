@@ -47,7 +47,11 @@ func configure(bc *host.BuildContext) error {
 	if err := add.Validate(); err != nil {
 		return err
 	}
-	host.AddCommandStep(bc, "grok-mcp-add", "register native Grok project MCP server", add, &remove)
+	if host.AtlasOwnedSameName(bc.Detection, bc.Reg.ServerName) {
+		bc.Warnings = append(bc.Warnings, "skipping native grok mcp add because a same-name Atlas catalog is already present")
+	} else {
+		host.AddCommandStep(bc, "grok-mcp-add", "register native Grok project MCP server", add, &remove)
+	}
 	bc.Resulting = adapter.StateConfiguredUnverified
 	return nil
 }
