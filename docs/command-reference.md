@@ -182,7 +182,7 @@ Setup and update behavior:
 - `tracker setup --yes` applies the plan; it is not consent for backup or for unnamed machine-wide scopes such as OpenClaw
 - OpenClaw and other machine-wide targets must be named with `--agents`; generic is never auto-selected
 - Selected providers refresh their skill and register a workspace-bound `workflow` MCP server; apply never reports `connected` until Verify runs a self-probe or a client-native check
-- `--backup` / `--backup-target` are a separate consent group; Sprint 114.1 records the request and does not write backup state (AT114-501/505)
+- `--backup` / `--backup-target` are a separate consent group; `--yes` is not backup consent. When the named target already exists, apply enables it and runs one first checkpoint plus remote verify; setup never installs the user scheduler
 - `--mode delivery` is refused; enable delivery as a separate power-user action
 - `--team` applies the named preset (`solo`, `pair`, `swarm`, `crossfire`) and does not overwrite existing agent roles (AT114-209)
 - Re-running setup is a no-op when the workspace is already current; interactive cancel and EOF write nothing
@@ -447,7 +447,7 @@ Rules:
 - publication is a fast-forward push of `refs/atlas/backups/<workspace-id>/<replica-id>` (never `refs/heads/*`, never `--force`); push success is not `verified` until ls-remote, fetch, and manifest hash match
 - remote divergence becomes `blocked_remote_diverged` until `backup reconcile --yes` or `backup replica reset --yes`; ticket writes stay available
 - `backup restore-apply` and remote restore-apply evaluate `backup_restore` governance before writing; `--yes` is not authorization
-- `tracker setup --backup --backup-target <ID>` enables automatic backup for an already-added target; `--yes` is still not backup consent; missing targets fail the backup group only
+- `tracker setup --backup --backup-target <ID>` enables automatic backup for an already-added target, then runs one first checkpoint and remote verify; `--yes` is still not backup consent; missing targets fail the backup group only; setup does not install the user scheduler
 - `tracker init` never installs a scheduler; `backup schedule install --yes` writes user-level systemd or LaunchAgent files under a fixture or `$HOME`
 - `tracker doctor` includes automatic-backup health (`backup_auto`) without paths or credentials
 - MCP `atlas.backup.status` is read-only backup health; no MCP tool changes targets, restores, prunes, or overrides divergence
