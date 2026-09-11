@@ -107,10 +107,8 @@ func nativeProof(target integrations.Target, method adapter.VerificationMethod, 
 		}
 		return true, true
 	case adapter.VerificationClientCLIGet:
-		if target == integrations.TargetOpenClaw {
-			return false, false
-		}
-		return true, false
+		// mcp get / equivalent echoes saved configuration. That is not a live probe.
+		return false, false
 	default:
 		return false, false
 	}

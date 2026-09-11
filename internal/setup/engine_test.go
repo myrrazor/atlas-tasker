@@ -686,6 +686,37 @@ func TestStatusDoesNotRecoverInFlight(t *testing.T) {
 	}
 }
 
+func TestRecoverInFlightSkipsOtherWorkspaceJournals(t *testing.T) {
+	engine := testEngine(t)
+	other := &JournalEntry{
+		OperationID:   "op-other-ws",
+		Kind:          JournalKindProvider,
+		WorkspaceID:   "other-ws",
+		WorkspaceRoot: engine.WorkspaceRoot,
+		State:         StateApplying,
+		CreatedAt:     time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC),
+		Steps: []journalStepRecord{{
+			StepID:  "skill",
+			Kind:    adapter.StepWriteManagedFile,
+			Path:    filepath.Join(engine.WorkspaceRoot, "AGENTS.md"),
+			Started: true,
+		}},
+	}
+	if err := writeJournal(engine.StateDir, other); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.recoverInFlight(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readJournal(engine.StateDir, "op-other-ws")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.State != StateApplying {
+		t.Fatalf("foreign workspace journal must stay untouched, got %s", got.State)
+	}
+}
+
 func TestLockDoesNotWaitOnSecondHolder(t *testing.T) {
 	dir := t.TempDir()
 	var started sync.WaitGroup
