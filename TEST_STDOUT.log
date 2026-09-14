@@ -638,3 +638,40 @@ EXIT 0
 
 $ go build -o <TASK>/evidence/v1.15-tracker ./cmd/tracker
 EXIT 0
+
+=== PR #155 stability correction: local verification ===
+Hosted run 34865271389 at 9a74612 passed macOS, Ubuntu, security, workflow policy and all three race packages. FuzzReadEventFile reported only context deadline exceeded after 7595 executions. The corrected script uses documented, measured execution counts for all targets; it preserves the 60s package guard and propagates test failures. Product Go code is unchanged from the full-suite/vet/build and remote regression validation recorded above.
+
+$ sh -n scripts/stability-smoke.sh
+
+$ sh scripts/stability-smoke.sh
+ok  	github.com/myrrazor/atlas-tasker/internal/service	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	134.562s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	5.547s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/143 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 143/143 completed, now fuzzing with 10 workers
+fuzz: elapsed: 1s, execs: 300000 (565742/sec), new interesting: 3 (total: 146)
+PASS
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	0.884s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/123 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 123/123 completed, now fuzzing with 10 workers
+fuzz: elapsed: 1s, execs: 150000 (244807/sec), new interesting: 7 (total: 130)
+PASS
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.831s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/74 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 74/74 completed, now fuzzing with 10 workers
+fuzz: elapsed: 0s, execs: 80000 (187594/sec), new interesting: 9 (total: 83)
+PASS
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	0.659s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/43 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 43/43 completed, now fuzzing with 10 workers
+fuzz: elapsed: 3s, execs: 5027 (1784/sec), new interesting: 21 (total: 64)
+PASS
+ok  	github.com/myrrazor/atlas-tasker/internal/service	3.181s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/97 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 97/97 completed, now fuzzing with 10 workers
+fuzz: elapsed: 3s, execs: 8025 (2716/sec), new interesting: 20 (total: 117)
+PASS
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	3.167s
+
+$ git diff --check

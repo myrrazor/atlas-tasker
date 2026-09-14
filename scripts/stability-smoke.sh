@@ -1,14 +1,13 @@
 #!/bin/sh
 set -eu
 
-# Each fuzz target needs a test timeout well above -fuzztime. Go cancels the
-# fuzz context when the time elapses; if the package timeout is only about
-# fuzztime+1s, loaded CI runners fail the target with "context deadline
-# exceeded" even though no input crashed. That flake already hit FuzzParse
-# and FuzzReadEventFile on this stack.
+# Count-based fuzzing avoids Go's deadline-cancellation race (golang/go#75804).
+# Counts round up the executions measured in PR #155 CI run 34865271389;
+# retain the 60s package guard and fail immediately on any real test error.
+# See DEC-105 for measurements and the smoke-workload tradeoff.
 go test -race ./internal/service ./internal/cli ./internal/tui
-go test -timeout 60s -run=^$ -fuzz=FuzzParse -fuzztime=2s ./internal/slashcmd
-go test -timeout 60s -run=^$ -fuzz=FuzzParseSearchQuery -fuzztime=2s ./internal/contracts
-go test -timeout 60s -run=^$ -fuzz=FuzzDecodeTicketMarkdown -fuzztime=2s ./internal/storage/markdown
-go test -timeout 60s -run=^$ -fuzz=FuzzAutomationStoreLoadRule -fuzztime=2s ./internal/service
-go test -timeout 60s -run=^$ -fuzz=FuzzReadEventFile -fuzztime=2s ./internal/storage/events
+go test -timeout 60s -run=^$ -fuzz=FuzzParse -fuzztime=300000x ./internal/slashcmd
+go test -timeout 60s -run=^$ -fuzz=FuzzParseSearchQuery -fuzztime=150000x ./internal/contracts
+go test -timeout 60s -run=^$ -fuzz=FuzzDecodeTicketMarkdown -fuzztime=80000x ./internal/storage/markdown
+go test -timeout 60s -run=^$ -fuzz=FuzzAutomationStoreLoadRule -fuzztime=5000x ./internal/service
+go test -timeout 60s -run=^$ -fuzz=FuzzReadEventFile -fuzztime=8000x ./internal/storage/events

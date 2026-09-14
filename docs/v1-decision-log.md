@@ -1464,3 +1464,16 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 - **Confidence:** high
 - **Revisit Trigger:** Reconstructed archive bytes change for the same verified checkpoint because of another host-dependent metadata field or serialization change.
 - **Affected PRs/Files:** PR #155; `internal/service/checkpoint_remote.go`, `internal/service/import_export.go`, remote recovery regressions, and local verification evidence.
+
+
+## DEC-105 — Finish smoke fuzzing by execution count
+
+- **Decision ID:** DEC-105
+- **Date:** 2026-09-14
+- **Question:** How should the stability smoke lane stop fuzzing without Go's wall-clock cancellation race reporting a false failure?
+- **Options Considered:** Retry or ignore bare deadline errors; raise the package timeout; increase the timed fuzz window; use measured execution counts while preserving every target and failure exit.
+- **Chosen Option:** Use Go's `-fuzztime=Nx` form for all five smoke targets, with counts rounded upward from PR #155 run `34865271389`: slash parser 260710 to 300000; search query 128171 to 150000; Markdown decoder 78391 to 80000; automation store 4909 to 5000; event reader 7595 to 8000. Keep the existing 60-second package guard, race tests, target assertions, corpus handling, and shell fail-fast behavior.
+- **Why We Chose It:** `FuzzReadEventFile` completed 7595 executions and then reported only `context deadline exceeded` at 3.00 seconds, despite the existing 60-second package timeout. Go's fuzz coordinator installs a separate timer for time-based fuzzing; its parent/child cancellation ordering can let that timer error escape, matching [golang/go#75804](https://github.com/golang/go/issues/75804). Count mode avoids that coordinator deadline and still propagates real failures. These are measured smoke workloads, not a guarantee of identical random coverage or a replacement for longer fuzz campaigns. This corrects the script's prior timeout explanation.
+- **Confidence:** high
+- **Revisit Trigger:** The pinned Go toolchain changes, corpus growth consumes the smoke workload, or measured CI throughput warrants recalibrating the documented counts.
+- **Affected PRs/Files:** PR #155; `scripts/stability-smoke.sh`, `TEST_STDOUT.log`, and release evidence.
