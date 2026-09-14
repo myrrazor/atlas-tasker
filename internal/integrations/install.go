@@ -300,6 +300,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 				{path: filepath.Join(i.Root, ".tracker", "integrations", "commands", "atlas-next.md"), body: atlasNextCommandTemplate(), kind: "command"},
 				{path: filepath.Join(i.Root, ".tracker", "integrations", "commands", "atlas-take.md"), body: atlasTakeCommandTemplate(), kind: "command"},
 				{path: filepath.Join(i.Root, ".tracker", "integrations", "commands", "atlas-review.md"), body: atlasReviewCommandTemplate(), kind: "command"},
+				{path: filepath.Join(i.Root, ".tracker", "integrations", "commands", "atlas-uninstall.md"), body: atlasUninstallCommandTemplate(), kind: "command"},
 			},
 		}, nil
 	case TargetClaude:
@@ -321,6 +322,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 				{path: filepath.Join(commandDir, "atlas-next.md"), body: atlasNextCommandTemplate(), kind: "command"},
 				{path: filepath.Join(commandDir, "atlas-take.md"), body: atlasTakeCommandTemplate(), kind: "command"},
 				{path: filepath.Join(commandDir, "atlas-review.md"), body: atlasReviewCommandTemplate(), kind: "command"},
+				{path: filepath.Join(commandDir, "atlas-uninstall.md"), body: atlasUninstallCommandTemplate(), kind: "command"},
 			},
 		}, nil
 	case TargetOpenClaw:
@@ -341,6 +343,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 				{path: filepath.Join(skillDir, "commands", "atlas-next.md"), body: atlasNextCommandTemplate(), kind: "command"},
 				{path: filepath.Join(skillDir, "commands", "atlas-take.md"), body: atlasTakeCommandTemplate(), kind: "command"},
 				{path: filepath.Join(skillDir, "commands", "atlas-review.md"), body: atlasReviewCommandTemplate(), kind: "command"},
+				{path: filepath.Join(skillDir, "commands", "atlas-uninstall.md"), body: atlasUninstallCommandTemplate(), kind: "command"},
 			},
 		}, nil
 	case TargetGeneric:
@@ -360,6 +363,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 				{path: filepath.Join(skillDir, "commands", "atlas-next.md"), body: atlasNextCommandTemplate(), kind: "command"},
 				{path: filepath.Join(skillDir, "commands", "atlas-take.md"), body: atlasTakeCommandTemplate(), kind: "command"},
 				{path: filepath.Join(skillDir, "commands", "atlas-review.md"), body: atlasReviewCommandTemplate(), kind: "command"},
+				{path: filepath.Join(skillDir, "commands", "atlas-uninstall.md"), body: atlasUninstallCommandTemplate(), kind: "command"},
 			},
 		}, nil
 	case TargetCursor:
@@ -378,6 +382,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 				{path: filepath.Join(skillDir, "commands", "atlas-next.md"), body: atlasNextCommandTemplate(), kind: "command"},
 				{path: filepath.Join(skillDir, "commands", "atlas-take.md"), body: atlasTakeCommandTemplate(), kind: "command"},
 				{path: filepath.Join(skillDir, "commands", "atlas-review.md"), body: atlasReviewCommandTemplate(), kind: "command"},
+				{path: filepath.Join(skillDir, "commands", "atlas-uninstall.md"), body: atlasUninstallCommandTemplate(), kind: "command"},
 			},
 		}, nil
 	case TargetGrok:
@@ -393,6 +398,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 			extraFiles: []managedInstallFile{
 				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("grok"), kind: "skill"},
 				{path: filepath.Join(skillDir, "references", "workflow.md"), body: atlasWorkerReference(), kind: "skill"},
+				{path: filepath.Join(skillDir, "commands", "atlas-uninstall.md"), body: atlasUninstallCommandTemplate(), kind: "command"},
 			},
 		}, nil
 	default:

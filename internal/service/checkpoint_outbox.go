@@ -282,10 +282,13 @@ func (e *CheckpointEngine) reconstruct(ctx context.Context) error {
 		box.Format = checkpointOutboxFormat
 	}
 	if ledger.LastCanonicalTreeSHA256 != "" && ledger.LastCanonicalTreeSHA256 == tree {
-		if box.State == contracts.BackupOutboxPending || box.State == "" {
+		box.PendingEventCount = 0
+		box.PendingSince = time.Time{}
+		switch box.State {
+		case contracts.BackupOutboxVerified, contracts.BackupOutboxBlocked, contracts.BackupOutboxPushPending, contracts.BackupOutboxPushedUnverified:
+			// keep publication/blocked state; the tree is already checkpointed
+		default:
 			box.State = contracts.BackupOutboxCheckpointCreated
-			box.PendingEventCount = 0
-			box.PendingSince = time.Time{}
 		}
 	} else if ledger.LastCanonicalTreeSHA256 != tree {
 		if box.State == "" || box.State == contracts.BackupOutboxCheckpointCreated || box.State == contracts.BackupOutboxVerified {

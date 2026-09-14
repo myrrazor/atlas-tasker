@@ -34,6 +34,7 @@ type Engine struct {
 	Stdout         io.Writer
 	Hooks          Hooks
 	Runner         CommandRunner
+	ClientRunner   adapter.CommandRunner
 	ProbeAbsent    func(cmd adapter.Command) (bool, error)
 	currentUID     int
 }

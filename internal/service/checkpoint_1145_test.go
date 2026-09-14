@@ -490,6 +490,9 @@ func TestApplyRestorePlanGovernanceDenyWritesNothing(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := actions.CreateRestorePlan(ctx, view.Snapshot.BackupID, contracts.Actor("human:owner")); err != nil {
+		t.Fatal(err)
+	}
 	_, err = actions.ApplyRestorePlan(ctx, view.Snapshot.BackupID, contracts.Actor("human:alice"), "should deny", true)
 	if err == nil || apperr.CodeOf(err) != apperr.CodePermissionDenied {
 		t.Fatalf("denying backup_restore policy must exit permission_denied: %v", err)
@@ -579,6 +582,22 @@ func TestRemoteRecoveryDrill(t *testing.T) {
 	if _, err := addDisposableTarget(t, dest, url, "drill"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := dest.RemoteRestoreApply(ctx, RemoteRestoreOptions{
+		TargetID: "drill", Checkpoint: published.CheckpointID, AllowWorkspaceMismatch: true,
+		Yes: true, Actor: contracts.Actor("human:owner"), Reason: "disaster recovery drill",
+	}); err == nil {
+		t.Fatal("two-phase restore must refuse apply without a bound plan")
+	}
+	planned, err := dest.RemoteRestorePlan(ctx, RemoteRestoreOptions{
+		TargetID: "drill", Checkpoint: published.CheckpointID, AllowWorkspaceMismatch: true,
+		Actor: contracts.Actor("human:owner"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if planned.PlanID == "" || planned.PlanDigest == "" || len(planned.Plan.Items) == 0 {
+		t.Fatalf("clean-dir restore plan was incomplete: %#v", planned)
+	}
 	applied, err := dest.RemoteRestoreApply(ctx, RemoteRestoreOptions{
 		TargetID: "drill", Checkpoint: published.CheckpointID, AllowWorkspaceMismatch: true,
 		Yes: true, Actor: contracts.Actor("human:owner"), Reason: "disaster recovery drill",
@@ -630,6 +649,54 @@ func TestRemoteRecoveryDrill(t *testing.T) {
 	}
 	_ = before
 	t.Logf("AT114-507 exported-only list remains unrestored and is recreated by init/setup: %s", strings.Join(ExportedOnlyCandidateRoots(), ", "))
+}
+
+func TestRewrittenRemoteHistoryBlocksPublish(t *testing.T) {
+	ctx, actions := newCheckpointHarness(t)
+	remote := initBareRemote(t)
+	url := "file://" + remote
+	if _, err := addDisposableTarget(t, actions, url, "rewrite"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := actions.EnableAutoBackup(ctx, "rewrite"); err != nil {
+		t.Fatal(err)
+	}
+	first, err := actions.BackupTick(ctx, true)
+	if err != nil || first.State != contracts.BackupOutboxVerified {
+		t.Fatalf("seed publish: %#v %v", first, err)
+	}
+	engine, err := actions.checkpointEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plantDivergedTip(t, remote, backupRefName(engine.workspaceID, engine.replicaID))
+	if err := mutateTicketTitle(ctx, actions, "after rewrite"); err != nil {
+		t.Fatal(err)
+	}
+	blocked, err := actions.BackupTick(ctx, true)
+	if err != nil {
+		t.Fatalf("rewritten remote must not fail the mutation path: %v", err)
+	}
+	if blocked.State != contracts.BackupOutboxBlocked || blocked.ErrorClass != contracts.BackupErrorBlockedRemoteDiverged {
+		t.Fatalf("expected blocked rewritten remote, got %#v", blocked)
+	}
+	if err := mutateTicketTitle(ctx, actions, "offline editors still work"); err != nil {
+		t.Fatalf("editor operations must stay available: %v", err)
+	}
+}
+
+func TestSanitizeGitMessageRedactsURLsAndCredentials(t *testing.T) {
+	msg := sanitizeGitMessage("fatal: could not read from remote https://user:token@github.com/org/secret.git")
+	if strings.Contains(msg, "token") || strings.Contains(msg, "github.com/org") || strings.Contains(msg, "user:") {
+		t.Fatalf("git stderr leaked credentials or path: %q", msg)
+	}
+	if !strings.Contains(msg, "redacted-url") {
+		t.Fatalf("expected redacted-url, got %q", msg)
+	}
+	fileMsg := sanitizeGitMessage("git fetch file:///tmp/atlas-secret.git failed")
+	if strings.Contains(fileMsg, "/tmp/atlas-secret") {
+		t.Fatalf("file url not redacted: %q", fileMsg)
+	}
 }
 
 func addDisposableTarget(t *testing.T, actions *ActionService, url, id string) (BackupTargetView, error) {

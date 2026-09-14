@@ -11,7 +11,10 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 )
 
-const registryFormat = "atlas_workspace_registry_v1"
+const (
+	registryFormat   = "atlas_workspace_registry_v1"
+	registryFormatV2 = "atlas_workspace_registry_v2"
+)
 
 // RegistryEntry is one machine-local binding from a workspace ID to the
 // canonical path last verified on this host. The registry is never used as a
@@ -19,10 +22,13 @@ const registryFormat = "atlas_workspace_registry_v1"
 type RegistryEntry struct {
 	WorkspaceID   string    `json:"workspace_id"`
 	CanonicalPath string    `json:"canonical_path"`
+	DisplayName   string    `json:"display_name,omitempty"`
 	Dev           uint64    `json:"dev,omitempty"`
 	Ino           uint64    `json:"ino,omitempty"`
 	RegisteredAt  time.Time `json:"registered_at"`
 	VerifiedAt    time.Time `json:"verified_at"`
+	LastSeenAt    time.Time `json:"last_seen_at,omitempty"`
+	Visibility    string    `json:"visibility,omitempty"`
 }
 
 type workspaceRegistry struct {
@@ -42,10 +48,12 @@ func loadRegistry(stateDir string) (workspaceRegistry, error) {
 	if err := json.Unmarshal(raw, &reg); err != nil {
 		return reg, fmt.Errorf("decode workspace registry: %w", err)
 	}
-	if reg.Format != "" && reg.Format != registryFormat {
+	if reg.Format != "" && reg.Format != registryFormat && reg.Format != registryFormatV2 {
 		return workspaceRegistry{}, fmt.Errorf("unsupported workspace registry format %q", reg.Format)
 	}
-	reg.Format = registryFormat
+	if reg.Format == "" {
+		reg.Format = registryFormat
+	}
 	if reg.Workspaces == nil {
 		reg.Workspaces = map[string]RegistryEntry{}
 	}

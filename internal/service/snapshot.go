@@ -321,38 +321,6 @@ func eventWatermarks(ctx context.Context, events contracts.EventLog) (map[string
 	return marks, nil
 }
 
-func defaultUserStateDir(home string, getenv func(string) string) (string, error) {
-	if getenv == nil {
-		getenv = os.Getenv
-	}
-	if xdg := strings.TrimSpace(getenv("XDG_STATE_HOME")); xdg != "" {
-		if !filepath.IsAbs(xdg) {
-			return "", fmt.Errorf("XDG_STATE_HOME must be an absolute path")
-		}
-		return filepath.Clean(filepath.Join(xdg, "atlas-tasker")), nil
-	}
-	if strings.TrimSpace(home) == "" {
-		home = strings.TrimSpace(getenv("HOME"))
-	}
-	if strings.TrimSpace(home) == "" {
-		return "", fmt.Errorf("home is required to resolve the Atlas state directory")
-	}
-	if !filepath.IsAbs(home) {
-		return "", fmt.Errorf("home must be an absolute path")
-	}
-	return filepath.Join(filepath.Clean(home), ".local", "state", "atlas-tasker"), nil
-}
-
-func resolveUserStateDir(stateDir, home string) (string, error) {
-	if strings.TrimSpace(stateDir) != "" {
-		if !filepath.IsAbs(stateDir) {
-			return "", fmt.Errorf("state dir must be absolute")
-		}
-		return filepath.Clean(stateDir), nil
-	}
-	return defaultUserStateDir(home, os.Getenv)
-}
-
 func candidateCoversPrefix(candidate, prefix string) bool {
 	candidate = strings.TrimSuffix(filepath.ToSlash(candidate), "/")
 	prefix = filepath.ToSlash(prefix)

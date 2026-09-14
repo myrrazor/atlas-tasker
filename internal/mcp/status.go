@@ -159,8 +159,9 @@ func fillBoardStatus(tc ToolContext, payload *statusPayload, args map[string]any
 		return err
 	}
 	payload.Board = board
-	payload.BoardURL = board.BoardURL
-	payload.MCPApp = newBoardApp(board)
+	render.AttachBackup(&payload.Board, backupSignalFromHealth(payload.BackupHealth))
+	payload.BoardURL = payload.Board.BoardURL
+	payload.MCPApp = newBoardApp(payload.Board)
 	payload.Pagination = map[string]any{"board": paged}
 	counts := map[string]int{}
 	agents := map[string]struct{}{}
@@ -228,8 +229,9 @@ func fillTicketStatus(tc ToolContext, payload *statusPayload, ticketID string) e
 	board, _, err := boardPresentation(tc, ticket.Project, map[string]any{})
 	if err == nil {
 		payload.Board = board
-		payload.BoardURL = board.BoardURL
-		payload.MCPApp = newBoardApp(board)
+		render.AttachBackup(&payload.Board, backupSignalFromHealth(payload.BackupHealth))
+		payload.BoardURL = payload.Board.BoardURL
+		payload.MCPApp = newBoardApp(payload.Board)
 	}
 	payload.RecommendedNext = recommendNext(*payload, actorResolution{Actor: contracts.Actor(payload.Actor), Configured: payload.Actor != ""})
 	return nil
@@ -375,6 +377,14 @@ func statusMarkdown(payload statusPayload) string {
 	}
 	b.WriteString(fmt.Sprintf("Managed mode declared `%s`, effective `%s`. Completion `%s`.\n",
 		payload.ManagedMode.DeclaredMode, payload.ManagedMode.EffectiveMode, payload.ManagedMode.CompletionMode))
+	b.WriteString("Backup: ")
+	b.WriteString(backupSignalFromHealth(payload.BackupHealth).SummaryLine())
+	b.WriteString(".\n")
+	if len(payload.Board.Attention) > 0 {
+		b.WriteString("Attention: ")
+		b.WriteString(strings.Join(payload.Board.Attention, "; "))
+		b.WriteString(".\n")
+	}
 	if len(payload.CountsByStatus) > 0 {
 		b.WriteString("Counts:")
 		keys := make([]string, 0, len(payload.CountsByStatus))
@@ -420,4 +430,19 @@ func statusMarkdown(payload statusPayload) string {
 		md = strings.ReplaceAll(md, "% complete", "complete")
 	}
 	return md
+}
+
+func backupSignalFromHealth(h service.BackupHealthSummary) render.BackupSignal {
+	return render.BackupSignal{
+		Configured:             h.Configured,
+		SnapshotCount:          h.SnapshotCount,
+		WorkerState:            h.WorkerState,
+		LastErrorClass:         h.LastErrorClass,
+		AutomaticEnabled:       h.AutomaticEnabled,
+		VerifiedRemote:         h.VerifiedRemote,
+		UnbackedEventCount:     h.UnbackedEventCount,
+		LastLocalCheckpointID:  h.LastLocalCheckpointID,
+		LastRemoteCheckpointID: h.LastRemoteCheckpointID,
+		Notes:                  append([]string(nil), h.Notes...),
+	}
 }

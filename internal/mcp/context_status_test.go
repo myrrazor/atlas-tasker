@@ -223,6 +223,9 @@ func TestBoardToolIncludesSharedPresentation(t *testing.T) {
 	if !strings.Contains(md, "# Board APP") {
 		t.Fatalf("board markdown = %q", md)
 	}
+	if strings.ContainsRune(md, 0x1b) {
+		t.Fatalf("atlas.board markdown must not include ANSI: %q", md)
+	}
 	if inner["board_url"] != "/board?project=APP" {
 		t.Fatalf("board url = %#v", inner["board_url"])
 	}
@@ -233,28 +236,33 @@ func TestReadInventoryIncludesContextAndStatus(t *testing.T) {
 	if !toolEnabled(read, "atlas.context") || !toolEnabled(read, "atlas.status") || !toolEnabled(read, "atlas.backup.status") {
 		t.Fatal("read profile must expose atlas.context, atlas.status, and atlas.backup.status")
 	}
-	if countEnabled(read) != 44 {
-		t.Fatalf("read profile count = %d, want 44", countEnabled(read))
+	extraRead, extraWorkflow := 0, 0
+	for _, spec := range extraWorkspaceSpecs() {
+		switch spec.Class {
+		case ClassRead:
+			extraRead++
+		case ClassWorkflow:
+			extraWorkflow++
+		}
+	}
+	if countEnabled(read) != 44+extraRead {
+		t.Fatalf("read profile count = %d, want %d", countEnabled(read), 44+extraRead)
 	}
 	workflow := Inventory(Options{Profile: ProfileWorkflow}.Normalized())
-	if countEnabled(workflow) != 76 {
-		t.Fatalf("workflow profile count = %d, want 76", countEnabled(workflow))
+	if countEnabled(workflow) != 76+extraRead+extraWorkflow {
+		t.Fatalf("workflow profile count = %d, want %d", countEnabled(workflow), 76+extraRead+extraWorkflow)
 	}
 	delivery := Inventory(Options{Profile: ProfileDelivery}.Normalized())
-	if countEnabled(delivery) != 80 {
-		t.Fatalf("delivery profile count = %d, want 80", countEnabled(delivery))
+	if countEnabled(delivery) != 80+extraRead+extraWorkflow {
+		t.Fatalf("delivery profile count = %d, want %d", countEnabled(delivery), 80+extraRead+extraWorkflow)
 	}
 	admin := Inventory(Options{Profile: ProfileAdmin}.Normalized())
-	if countEnabled(admin) != 80 {
-		t.Fatalf("admin profile count = %d, want 80", countEnabled(admin))
+	if countEnabled(admin) != 80+extraRead+extraWorkflow {
+		t.Fatalf("admin profile count = %d, want %d", countEnabled(admin), 80+extraRead+extraWorkflow)
 	}
-	for _, spec := range ToolSpecs() {
-		if spec.Name == "atlas.backup.status" {
-			continue
-		}
-		if strings.HasPrefix(spec.Name, "atlas.backup.") {
-			t.Fatalf("workflow must not expose backup mutation tool %s", spec.Name)
-		}
+	workflowEnabled := Inventory(Options{Profile: ProfileWorkflow}.Normalized())
+	if toolEnabled(workflowEnabled, "atlas.backup.configure") || toolEnabled(workflowEnabled, "atlas.restore.apply") {
+		t.Fatal("workflow must not expose high-impact backup/restore tools")
 	}
 }
 

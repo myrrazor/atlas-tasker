@@ -20,7 +20,7 @@ func ToolSpecs() []ToolSpec {
 	adminProfiles := []ToolProfile{ProfileAdmin}
 	deliveryHighProfiles := []ToolProfile{ProfileDelivery, ProfileAdmin}
 
-	return []ToolSpec{
+	specs := []ToolSpec{
 		readTool("atlas.queue", "Read the actor queue.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor filter.")})), "QueryService.Queue", queueTool),
 		readTool("atlas.next", "Read the next recommended ticket for an actor.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor filter.")})), "QueryService.Next", nextTool),
 		readTool("atlas.agent.available", "Read tickets the selected agent can act on now.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"actor": stringProp("Optional actor such as agent:builder-1."), "agent_id": stringProp("Optional agent ID; maps to actor agent:<id>.")})), "QueryService.AgentAvailable", agentAvailableTool),
@@ -34,7 +34,7 @@ func ToolSpecs() []ToolSpec {
 		readTool("atlas.goal.brief", "Read a pasteable goal brief for a ticket or run.", readProfiles, objectSchema([]string{"target"}, map[string]any{"target": stringProp("Ticket ID or run ID.")}), "ActionService.GoalBrief", goalBriefTool),
 		readTool("atlas.search", "Search tickets with Atlas query syntax.", readProfiles, objectSchema([]string{"query"}, mergeProps(commonReadProps(), map[string]any{"query": stringProp("Atlas ticket search query.")})), "QueryService.Search", searchTool),
 		readTool("atlas.context", "Read workspace identity, managed-mode policy, assigned work, and backup health.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"project": stringProp("Optional project key."), "actor": stringProp("Optional Atlas actor for this integration.")})), "QueryService.ManagedModeView", contextTool),
-		readTool("atlas.status", "Read a fresh workspace, project, ticket, agent, or run status with compact Markdown.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"scope": stringProp("Optional scope: workspace, project, ticket, agent, or run."), "project": stringProp("Optional project key."), "ticket_id": stringProp("Optional ticket ID for ticket scope."), "agent_id": stringProp("Optional agent ID for agent scope."), "run_id": stringProp("Optional run ID for run scope."), "actor": stringProp("Optional Atlas actor.")})), "QueryService.Board", statusTool),
+		readTool("atlas.status", "Read a fresh workspace, project, ticket, agent, or run status with compact Markdown.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"scope": stringProp("Optional scope: workspace, project, ticket, agent, or run."), "project": stringProp("Optional project key."), "ticket_id": stringProp("Optional ticket ID for ticket scope."), "agent_id": stringProp("Optional agent ID for agent scope."), "run_id": stringProp("Optional run ID for run scope."), "actor": stringProp("Optional Atlas actor.")})), "QueryService.Board", wrapStatusTool),
 		readTool("atlas.backup.status", "Read automatic backup health without target URLs, credentials, or mutation.", readProfiles, objectSchema(nil, map[string]any{}), "QueryService.AutoBackupStatus", backupStatusTool),
 		readTool("atlas.board", "Read the board grouped by status.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_status", "Optional per-status cursors keyed by Atlas status."), map[string]any{"project": stringProp("Optional project key."), "assignee": stringProp("Optional assignee actor."), "type": stringProp("Optional ticket type.")})), "QueryService.Board", boardTool),
 		readTool("atlas.ticket.view", "Read one ticket detail view.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID.")}), "QueryService.TicketDetail", ticketViewTool),
@@ -115,10 +115,43 @@ func ToolSpecs() []ToolSpec {
 		highImpactTool("atlas.compact", adminProfiles, "Remove compactable local-only runtime files.", objectSchema([]string{"target", "actor", "reason", "operation_approval_id", "confirm_text"}, mergeProps(highImpactProps("workspace"), map[string]any{"target": stringProp("Must be workspace.")})), "ActionService.CompactWorkspace", "target", compactTool),
 		highImpactTool("atlas.worktree.cleanup", adminProfiles, "Remove worktree/runtime artifacts for a finished run.", objectSchema([]string{"run_id", "actor", "reason", "operation_approval_id", "confirm_text"}, mergeProps(highImpactProps("Run ID."), map[string]any{"run_id": stringProp("Run ID."), "force": boolProp("Force cleanup.")})), "ActionService.CleanupRun", "run_id", worktreeCleanupTool),
 	}
+	specs = append(specs, extraWorkspaceSpecs()...)
+	for i := range specs {
+		switch specs[i].Name {
+		case "atlas.board":
+			specs[i].UIResourceURI = BoardAppResourceURI
+		case "atlas.search":
+			specs[i].Scope = ScopeOptional
+		}
+	}
+	return specs
+}
+
+func ToolSpecsFor(opts Options) []ToolSpec {
+	opts = opts.Normalized()
+	specs := ToolSpecs()
+	if !opts.Global {
+		return specs
+	}
+	out := make([]ToolSpec, 0, len(specs)+16)
+	for _, spec := range specs {
+		if spec.Scope != ScopeMachine {
+			spec.InputSchema = withWorkspaceID(spec.InputSchema)
+		}
+		out = append(out, spec)
+	}
+	return append(out, globalMachineSpecs()...)
 }
 
 func ToolSpecByName(name string) (ToolSpec, bool) {
-	for _, spec := range ToolSpecs() {
+	if spec, ok := specByName(Options{}, name); ok {
+		return spec, true
+	}
+	return specByName(Options{Global: true}, name)
+}
+
+func specByName(opts Options, name string) (ToolSpec, bool) {
+	for _, spec := range ToolSpecsFor(opts) {
 		if spec.Name == name {
 			return spec, true
 		}
@@ -256,6 +289,13 @@ func goalBriefTool(tc ToolContext, args map[string]any) (any, error) {
 }
 
 func searchTool(tc ToolContext, args map[string]any) (any, error) {
+	if tc.Server.Workspace == nil {
+		machine, err := requireMachine(tc)
+		if err != nil {
+			return nil, err
+		}
+		return machine.Search(tc.Context, appSearchOptions(args, tc.Server.Options.MaxItems))
+	}
 	query, err := contracts.ParseSearchQuery(stringArg(args, "query"))
 	if err != nil {
 		return nil, err
@@ -278,11 +318,64 @@ func boardTool(tc ToolContext, args map[string]any) (any, error) {
 	}
 	paged := paginateBoard(view, args, tc.Server.Options.MaxItems)
 	cursors, _ := paged["next_cursor_by_status"].(map[string]string)
-	board := render.NewCompactBoard(stringArg(args, "project"), view.Board.Columns, tc.Server.Options.MaxItems, cursors)
+	project := stringArg(args, "project")
+	board := render.NewCompactBoard(project, view.Board.Columns, tc.Server.Options.MaxItems, cursors)
+	if health, err := tc.Server.Workspace.Queries.BackupHealth(tc.Context); err == nil {
+		render.AttachBackup(&board, backupSignalFromHealth(health))
+	}
+	attachMachineBoardURL(tc, &board, project)
+	paged["board"] = board
 	paged["markdown"] = render.CompactBoardMarkdown(board)
 	paged["mcp_app"] = newBoardApp(board)
 	paged["board_url"] = board.BoardURL
 	return paged, nil
+}
+
+func wrapStatusTool(tc ToolContext, args map[string]any) (any, error) {
+	payload, err := statusTool(tc, args)
+	if err != nil {
+		return nil, err
+	}
+	status, ok := payload.(statusPayload)
+	if !ok {
+		return payload, nil
+	}
+	project := status.Project
+	if project == "" {
+		project = stringArg(args, "project")
+	}
+	attachMachineBoardURL(tc, &status.Board, project)
+	status.BoardURL = status.Board.BoardURL
+	if len(status.Board.Columns) > 0 {
+		status.MCPApp = newBoardApp(status.Board)
+	}
+	status.Markdown = statusMarkdown(status)
+	return status, nil
+}
+
+func attachMachineBoardURL(tc ToolContext, board *render.CompactBoard, project string) {
+	if tc.Server == nil || tc.Server.Options.Machine == nil || board == nil {
+		return
+	}
+	id := ""
+	if tc.Server.Workspace != nil {
+		id = strings.TrimSpace(tc.Server.Workspace.ID)
+		if id == "" {
+			id, _ = service.LoadWorkspaceIdentity(tc.Server.Workspace.Root)
+		}
+	}
+	if id == "" {
+		return
+	}
+	url, err := tc.Server.Options.Machine.BoardURL(id, project)
+	if err != nil || strings.TrimSpace(url) == "" {
+		return
+	}
+	lower := strings.ToLower(url)
+	if strings.Contains(lower, "session") || strings.Contains(lower, "claim") || strings.Contains(lower, "token=") {
+		return
+	}
+	board.BoardURL = url
 }
 
 func ticketViewTool(tc ToolContext, args map[string]any) (any, error) {

@@ -49,12 +49,16 @@ type RestorePlanDetailView struct {
 	Kind        string                `json:"kind"`
 	GeneratedAt time.Time             `json:"generated_at"`
 	Plan        contracts.RestorePlan `json:"plan"`
+	PlanID      string                `json:"restore_plan_id"`
+	PlanDigest  string                `json:"plan_digest"`
 }
 
 type RestoreApplyResultView struct {
 	Kind        string                `json:"kind"`
 	GeneratedAt time.Time             `json:"generated_at"`
 	Plan        contracts.RestorePlan `json:"plan"`
+	PlanID      string                `json:"restore_plan_id"`
+	PlanDigest  string                `json:"plan_digest"`
 	Applied     int                   `json:"applied"`
 	Skipped     int                   `json:"skipped"`
 }
@@ -271,9 +275,16 @@ func (s *ActionService) CreateRestorePlan(ctx context.Context, ref string, actor
 	if !actor.IsValid() {
 		return RestorePlanDetailView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
 	}
-	snapshot, manifest, _, _, err := s.resolveBackupArtifact(ctx, ref)
+	snapshot, manifest, _, archivePath, err := s.resolveBackupArtifact(ctx, ref)
 	if err != nil {
 		return RestorePlanDetailView{}, err
+	}
+	_, integrity, err := s.verifyBackupIntegrity(ctx, ref)
+	if err != nil {
+		return RestorePlanDetailView{}, err
+	}
+	if !integrity.Verified {
+		return RestorePlanDetailView{}, apperr.New(apperr.CodeConflict, "backup integrity must verify before restore-plan")
 	}
 	backupID := manifest.BundleID
 	if snapshot != nil {
@@ -283,7 +294,19 @@ func (s *ActionService) CreateRestorePlan(ctx context.Context, ref string, actor
 	if err != nil {
 		return RestorePlanDetailView{}, err
 	}
-	return RestorePlanDetailView{Kind: "backup_restore_plan", GeneratedAt: s.now(), Plan: plan}, nil
+	plan.SourceManifestHash = integrity.ManifestSHA256
+	if sum, hashErr := fileSHA256(archivePath); hashErr == nil {
+		plan.SourceArchiveHash = sum
+	}
+	plan = normalizeRestorePlan(plan)
+	if err := s.RestorePlans.SaveRestorePlan(ctx, plan); err != nil {
+		return RestorePlanDetailView{}, err
+	}
+	digest := RestorePlanBindingDigest(plan)
+	return RestorePlanDetailView{
+		Kind: "backup_restore_plan", GeneratedAt: s.now(), Plan: plan,
+		PlanID: plan.RestorePlanID, PlanDigest: digest,
+	}, nil
 }
 
 func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor contracts.Actor, reason string, yes bool) (RestoreApplyResultView, error) {
@@ -300,23 +323,58 @@ func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor 
 		if strings.TrimSpace(reason) == "" {
 			return RestoreApplyResultView{}, apperr.New(apperr.CodeInvalidInput, "reason is required")
 		}
-		if _, integrity, err := s.verifyBackupIntegrity(ctx, ref); err != nil {
+		artifactRef := ref
+		var stored contracts.RestorePlan
+		if loaded, loadErr := s.RestorePlans.LoadRestorePlan(ctx, ref); loadErr == nil {
+			stored = loaded
+			artifactRef = loaded.BackupID
+		}
+		integritySnapshot, integrity, err := s.verifyBackupIntegrity(ctx, artifactRef)
+		if err != nil {
 			return RestoreApplyResultView{}, err
 		} else if !integrity.Verified {
 			return RestoreApplyResultView{}, apperr.New(apperr.CodeConflict, "backup integrity must verify before restore")
 		}
-		snapshot, manifest, _, archivePath, err := s.resolveBackupArtifact(ctx, ref)
+		snapshot, manifest, _, archivePath, err := s.resolveBackupArtifact(ctx, artifactRef)
 		if err != nil {
 			return RestoreApplyResultView{}, err
+		}
+		if integritySnapshot != nil && snapshot == nil {
+			snapshot = integritySnapshot
 		}
 		backupID := manifest.BundleID
 		if snapshot != nil {
 			backupID = snapshot.BackupID
 		}
+		if stored.RestorePlanID == "" {
+			bound, bindErr := s.latestRestorePlanForBackup(ctx, backupID)
+			if bindErr != nil {
+				return RestoreApplyResultView{}, bindErr
+			}
+			stored = bound
+		} else if stored.BackupID != backupID {
+			return RestoreApplyResultView{}, apperr.New(apperr.CodeConflict, "restore plan is not bound to this backup")
+		}
 		plan, err := s.buildRestorePlan(ctx, backupID, manifest, actor)
 		if err != nil {
 			return RestoreApplyResultView{}, err
 		}
+		plan.SourceManifestHash = integrity.ManifestSHA256
+		if sum, hashErr := fileSHA256(archivePath); hashErr == nil {
+			plan.SourceArchiveHash = sum
+		}
+		if stored.SourceManifestHash != "" && stored.SourceManifestHash != plan.SourceManifestHash {
+			return RestoreApplyResultView{}, apperr.New(apperr.CodeConflict, "restore plan is not bound to this backup content")
+		}
+		if stored.SourceArchiveHash != "" && stored.SourceArchiveHash != plan.SourceArchiveHash {
+			return RestoreApplyResultView{}, apperr.New(apperr.CodeConflict, "restore plan is not bound to this backup archive")
+		}
+		if RestorePlanBindingDigest(stored) != RestorePlanBindingDigest(plan) {
+			return RestoreApplyResultView{}, apperr.New(apperr.CodeConflict, "restore plan is stale; create a new restore-plan")
+		}
+		plan.RestorePlanID = stored.RestorePlanID
+		plan.GeneratedAt = stored.GeneratedAt
+		plan.GeneratedBy = stored.GeneratedBy
 		for _, item := range plan.Items {
 			if item.Action == contracts.RestorePlanBlock {
 				return RestoreApplyResultView{}, apperr.New(apperr.CodeConflict, "restore plan has blocked items")
@@ -368,7 +426,11 @@ func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor 
 		if err := s.recordGovernanceOverrideIfApplied(ctx, governanceInput, governanceExplanation); err != nil {
 			return RestoreApplyResultView{}, err
 		}
-		return RestoreApplyResultView{Kind: "backup_restore_result", GeneratedAt: s.now(), Plan: plan, Applied: applied, Skipped: skipped}, nil
+		return RestoreApplyResultView{
+			Kind: "backup_restore_result", GeneratedAt: s.now(), Plan: plan,
+			PlanID: plan.RestorePlanID, PlanDigest: RestorePlanBindingDigest(plan),
+			Applied: applied, Skipped: skipped,
+		}, nil
 	})
 }
 
@@ -713,6 +775,46 @@ func (s *ActionService) resolveBackupArtifact(ctx context.Context, ref string) (
 		return nil, bundleManifest{}, nil, "", err
 	}
 	return &snapshot, manifest, manifestRaw, backupArchivePath(s.Root, snapshot.BackupID), nil
+}
+
+// RestorePlanBindingDigest is the two-phase apply binding: backup ID, live
+// target root hash, and the ordered restore items. Plan ID and timestamps are
+// excluded so apply can rebuild the same digest from the stored plan.
+func RestorePlanBindingDigest(plan contracts.RestorePlan) string {
+	plan = normalizeRestorePlan(plan)
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n%s\n%s\n%s\n", plan.BackupID, plan.TargetRootHash, plan.SourceManifestHash, plan.SourceArchiveHash)
+	for _, item := range plan.Items {
+		reasons := append([]string(nil), item.ReasonCodes...)
+		sort.Strings(reasons)
+		fmt.Fprintf(&b, "%s\t%s\t%s\n", item.Path, item.Action, strings.Join(reasons, ","))
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(sum[:])
+}
+
+func (s *ActionService) latestRestorePlanForBackup(ctx context.Context, backupID string) (contracts.RestorePlan, error) {
+	backupID = strings.TrimSpace(backupID)
+	if backupID == "" {
+		return contracts.RestorePlan{}, apperr.New(apperr.CodeConflict, "restore apply requires a bound restore plan; run restore-plan first")
+	}
+	plans, err := s.RestorePlans.ListRestorePlans(ctx)
+	if err != nil {
+		return contracts.RestorePlan{}, err
+	}
+	var latest contracts.RestorePlan
+	for _, plan := range plans {
+		if plan.BackupID != backupID {
+			continue
+		}
+		if latest.RestorePlanID == "" || plan.GeneratedAt.After(latest.GeneratedAt) || (plan.GeneratedAt.Equal(latest.GeneratedAt) && plan.RestorePlanID > latest.RestorePlanID) {
+			latest = plan
+		}
+	}
+	if latest.RestorePlanID == "" {
+		return contracts.RestorePlan{}, apperr.New(apperr.CodeConflict, "restore apply requires a bound restore plan; run restore-plan first")
+	}
+	return latest, nil
 }
 
 func (s *ActionService) buildRestorePlan(ctx context.Context, backupID string, manifest bundleManifest, actor contracts.Actor) (contracts.RestorePlan, error) {

@@ -77,12 +77,15 @@ func TestRenderedWelcomeAndBoardUseConfiguredSpanish(t *testing.T) {
 		">Pendiente</span>",
 		">En curso</span>",
 		"No hay tickets",
-		"Notas y actividad",
 		`href="/board?lang=id"`,
 	} {
 		if !strings.Contains(board.body, want) {
 			t.Fatalf("Spanish board missing %q:\n%s", want, board.body)
 		}
+	}
+	drawer := h.doAuthed(t, http.MethodGet, "/board?ticket="+h.ticketID, "", nil)
+	if !strings.Contains(drawer.body, "Notas y comentarios") && !strings.Contains(drawer.body, "Notas y actividad") {
+		t.Fatalf("Spanish drawer missing notes copy:\n%s", excerpt(drawer.body, "detail-drawer"))
 	}
 
 	css := h.doAuthed(t, http.MethodGet, "/static/app.css", "", nil)

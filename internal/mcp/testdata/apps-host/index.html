@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas MCP Apps host harness</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0f14; color: #eef4fa; font: 14px/1.4 ui-sans-serif, system-ui, sans-serif; }
+  iframe { width: 100%; height: 100%; border: 0; background: transparent; }
+</style>
+</head>
+<body>
+<iframe id="app" title="Atlas board app" sandbox="allow-scripts" src="app.html"></iframe>
+<script src="payload.js"></script>
+<script>
+(function () {
+  const iframe = document.getElementById("app");
+  const payload = globalThis.BOARD_PAYLOAD;
+  window.addEventListener("message", function (event) {
+    if (event.source !== iframe.contentWindow) return;
+    const message = event.data;
+    if (!message || typeof message !== "object" || message.jsonrpc !== "2.0") return;
+    if (message.method === "ui/initialize" && message.id != null) {
+      event.source.postMessage({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          protocolVersion: "2026-01-26",
+          hostCapabilities: {},
+          hostContext: { theme: "dark", containerDimensions: { width: 390, height: 720 } }
+        }
+      }, "*");
+      return;
+    }
+    if (message.method === "ui/notifications/initialized") {
+      event.source.postMessage({
+        jsonrpc: "2.0",
+        method: "ui/notifications/tool-result",
+        params: { structuredContent: payload }
+      }, "*");
+    }
+    if (message.method === "ui/resource-teardown" && message.id != null) {
+      event.source.postMessage({ jsonrpc: "2.0", id: message.id, result: {} }, "*");
+    }
+  });
+})();
+</script>
+</body>
+</html>

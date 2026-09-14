@@ -1,0 +1,292 @@
+/* Atlas Home — workspace rail and machine pages.
+   Board/welcome tokens stay in app.css; this only frames the Home process. */
+
+.home-body {
+  min-height: 100vh;
+}
+
+.home-frame {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.home-rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow: auto;
+  padding: 18px 14px 24px;
+  border-right: 1px solid var(--line);
+  background: var(--sunken);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rail-brand img {
+  width: 168px;
+  max-height: 28px;
+}
+
+.rail-nav {
+  display: grid;
+  gap: 2px;
+}
+
+.rail-nav a,
+.rail-list a {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--r-control);
+  color: var(--text-2);
+  min-height: 36px;
+}
+
+.rail-nav a:hover,
+.rail-list a:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.rail-nav a[aria-current="page"],
+.rail-list a[aria-current="page"] {
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.rail-kicker {
+  margin: 8px 10px 0;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+
+.rail-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.rail-meta {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.rail-meta.is-warn {
+  color: var(--warning);
+}
+
+.rail-empty {
+  padding: 8px 10px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.rail-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.home-main {
+  min-width: 0;
+}
+
+.home-topbar {
+  position: sticky;
+  top: 0;
+}
+
+.lede {
+  margin: 8px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
+  max-width: 46rem;
+}
+
+.heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sort-nav {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 18px;
+}
+
+.sort-nav a {
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sort-nav a[aria-current="true"] {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.home-table {
+  min-width: 0;
+}
+
+.home-narrow .welcome-shell,
+.home-narrow {
+  grid-template-columns: 1fr;
+}
+
+.attention-list a {
+  display: grid;
+  gap: 3px;
+}
+
+.attention-list small,
+.recent-list small {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.searchbar-block {
+  margin: 18px 0 24px;
+}
+
+.workspace-links,
+.backup-compact {
+  margin: 0 0 22px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.workspace-links a,
+.backup-compact a {
+  color: var(--accent);
+}
+
+.backup-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+  margin: 24px 0;
+}
+
+.backup-facts h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.backup-facts p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.pointer-box,
+.backup-details {
+  margin-top: 28px;
+}
+
+.pointer-box summary,
+.backup-details summary {
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.pointer-box form {
+  margin-top: 12px;
+}
+
+.pointer-box button,
+.inline-grant button {
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--text-2);
+  border-radius: var(--r-control);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.settings-form select {
+  width: min(280px, 100%);
+  color: var(--text);
+  background: var(--sunken);
+  border: 1px solid var(--control-border);
+  border-radius: var(--r-control);
+  padding: 8px 11px;
+  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+@media (max-width: 900px) {
+  .home-frame {
+    grid-template-columns: 1fr;
+  }
+
+  .home-rail {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 12px 16px 16px;
+  }
+
+  .rail-list {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    flex: none;
+  }
+
+  .rail-list li {
+    flex: none;
+  }
+
+  .rail-list a {
+    min-width: 140px;
+  }
+
+  .rail-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rail-kicker {
+    display: none;
+  }
+}
+
+.home-sign-in { max-width: 40rem; padding: 32px 24px; }

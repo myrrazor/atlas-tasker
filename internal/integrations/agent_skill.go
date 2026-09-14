@@ -244,6 +244,10 @@ Classify the user request before creating or attaching a ticket.
 6. Do not start work that is ` + "`dependency_blocked`" + `, ` + "`policy_blocked`" + `, ` + "`claimed_by_other`" + `, or ` + "`waiting_for_review`" + `.
 7. When a run is needed, dispatch yourself with ` + "`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`" + `.
 
+## Uninstall software
+
+` + "`tracker uninstall`" + ` previews Atlas-owned software only. It keeps workspace boards, config, tickets, events, and backup repositories. Run ` + "`tracker uninstall --yes`" + ` only when the human asked to remove the app, not the work.
+
 ## Work
 
 - Use ` + "`atlas.ticket.inspect`" + ` or ` + "`tracker inspect <ID> --actor agent:<agent-id> --json`" + ` before making workflow decisions.
@@ -378,5 +382,20 @@ tracker ticket approve <ticket-id> --actor agent:<agent-id> --reason "review pas
 ~~~
 
 Self-approval is allowed for autonomous tickets. If the workspace requires separation-of-duties, follow the owner override or third-reviewer path.
+`) + "\n"
+}
+
+func atlasUninstallCommandTemplate() string {
+	return strings.TrimSpace(`# Atlas Uninstall
+
+Preview or apply a software-only uninstall. This does not delete boards, tickets, config, events, or backup repositories.
+
+~~~bash
+tracker uninstall
+tracker uninstall --json
+tracker uninstall --yes
+~~~
+
+Run `+"`--yes`"+` only after the human confirmed they want the Atlas software removed, not the workspace.
 `) + "\n"
 }

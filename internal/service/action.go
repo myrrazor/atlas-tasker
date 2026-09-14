@@ -58,6 +58,8 @@ type ActionService struct {
 	Automation                      *AutomationEngine
 	StateDir                        string
 	Home                            string
+	Getenv                          func(string) string
+	GOOS                            string
 	GitPath                         string
 	CheckpointCrashAt               string
 	QuietPeriod                     time.Duration

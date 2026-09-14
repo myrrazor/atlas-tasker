@@ -245,6 +245,52 @@ func TestHighImpactApprovalTargetBindsSideEffectingInputs(t *testing.T) {
 	}
 }
 
+func TestHighImpactChangedArgumentsRefuseBackupAndFork(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
+	store := NewApprovalStore(root, func() time.Time { return now })
+	server := &Server{
+		Workspace: &Workspace{Root: root},
+		Options:   Options{Profile: ProfileAdmin, AllowHighImpactTools: true, Now: func() time.Time { return now }}.Normalized(),
+		Approvals: store,
+	}
+	backup, ok := ToolSpecByName("atlas.backup.configure")
+	if !ok {
+		t.Fatal("missing backup.configure")
+	}
+	addArgs := map[string]any{
+		"action": "add", "target_id": "t1", "url": "https://example.invalid/a.git",
+		"actor": "human:owner", "reason": "add target",
+	}
+	target := specTarget(backup, addArgs)
+	approval, err := store.Create(context.Background(), "atlas.backup.configure", target, "human:owner", 10*time.Minute, "add t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := map[string]any{
+		"action": "add", "target_id": "t1", "url": "https://example.invalid/other.git",
+		"actor": "human:owner", "reason": "add target",
+		"operation_approval_id": approval.ID,
+		"confirm_text":          "execute atlas.backup.configure " + target,
+	}
+	if _, err := server.authorizeHighImpact(context.Background(), backup, changed, "human:owner", specTarget(backup, changed)); err == nil {
+		t.Fatal("changed backup URL must not reuse the approval")
+	}
+	fork, ok := ToolSpecByName("atlas.workspace.fork_copy")
+	if !ok {
+		t.Fatal("missing fork_copy")
+	}
+	forkTarget := specTarget(fork, map[string]any{"workspace_id": "ws-1", "path": "/tmp/a"})
+	forkApproval, err := store.Create(context.Background(), "atlas.workspace.fork_copy", forkTarget, "human:owner", 10*time.Minute, "fork a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	forkChanged := map[string]any{"workspace_id": "ws-1", "path": "/tmp/b", "operation_approval_id": forkApproval.ID, "confirm_text": "execute atlas.workspace.fork_copy " + forkTarget}
+	if _, err := server.authorizeHighImpact(context.Background(), fork, forkChanged, "human:owner", specTarget(fork, forkChanged)); err == nil {
+		t.Fatal("changed copy path must not reuse the fork approval")
+	}
+}
+
 func TestHighImpactDeniedAttemptWritesSecurityAudit(t *testing.T) {
 	root := t.TempDir()
 	queries := service.NewQueryService(root, nil, nil, nil, nil, func() time.Time { return time.Now().UTC() })

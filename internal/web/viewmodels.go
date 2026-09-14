@@ -19,10 +19,12 @@ import (
 type BoardPage struct {
 	Page         string
 	Workspace    string
+	DisplayName  string
 	Host         string
 	Actor        contracts.Actor
 	ReadOnly     bool
 	Project      string
+	Projects     []contracts.Project `json:"-"`
 	LocationName string
 	// true when the project came from the request, not the server default —
 	// saved views must not be narrowed by an implicit --project
@@ -40,30 +42,42 @@ type BoardPage struct {
 	// submitted values of a rejected form, echoed back so typed content
 	// survives server-side validation errors; FormTarget names the one form
 	// ("create", "edit", "comment") allowed to consume them
-	Form         url.Values `json:"-"`
-	FormTarget   string     `json:"-"`
-	Columns      []BoardColumn
-	Detail       *TicketDetail
-	Flash        string
-	Error        string
-	ShowNew      bool
-	BackupHealth *service.BackupHealthSummary
+	Form          url.Values `json:"-"`
+	FormTarget    string     `json:"-"`
+	Columns       []BoardColumn
+	Detail        *TicketDetail
+	Flash         string
+	Error         string
+	ShowNew       bool
+	BackupHealth  *service.BackupHealthSummary
+	BoardPath     string `json:"-"`
+	ActionPrefix  string `json:"-"`
+	HomePath      string `json:"-"`
+	SchedulePath  string `json:"-"`
+	NewTicketPath string `json:"-"`
+	WorkspaceID   string `json:"-"`
 }
 
 type WelcomePage struct {
-	Page      string
-	Workspace string
-	Host      string
-	Actor     contracts.Actor
-	OwnerName string
-	Projects  []ProjectRow
-	Recent    []RecentChange
-	CSRFToken string
-	ReadOnly  bool
-	Error     string
-	Flash     string
-	ShowNew   bool
-	Form      url.Values
+	Page          string
+	Workspace     string
+	Host          string
+	Actor         contracts.Actor
+	OwnerName     string
+	Projects      []ProjectRow
+	Recent        []RecentChange
+	CSRFToken     string
+	ReadOnly      bool
+	Error         string
+	Flash         string
+	ShowNew       bool
+	Form          url.Values
+	BoardPath     string `json:"-"`
+	ActionPrefix  string `json:"-"`
+	HomePath      string `json:"-"`
+	SchedulePath  string `json:"-"`
+	NewTicketPath string `json:"-"`
+	WorkspaceID   string `json:"-"`
 }
 
 type ProjectRow struct {
@@ -92,17 +106,22 @@ func (c RecentChange) Describe() string {
 }
 
 type SettingsPage struct {
-	Page         string
-	Workspace    string
-	Host         string
-	Actor        contracts.Actor
-	OwnerName    string
-	ActorDefault contracts.Actor
-	Language     string
-	AgentColors  []AgentColorSetting
-	CSRFToken    string
-	ReadOnly     bool
-	Error        string
+	Page          string
+	Workspace     string
+	Host          string
+	Actor         contracts.Actor
+	OwnerName     string
+	ActorDefault  contracts.Actor
+	Language      string
+	AgentColors   []AgentColorSetting
+	CSRFToken     string
+	ReadOnly      bool
+	Error         string
+	BoardPath     string `json:"-"`
+	ActionPrefix  string `json:"-"`
+	HomePath      string `json:"-"`
+	SchedulePath  string `json:"-"`
+	NewTicketPath string `json:"-"`
 }
 
 type AgentColorSetting struct {
@@ -129,6 +148,7 @@ type BoardColumn struct {
 	Count        int
 	Tickets      []TicketCard
 	ActiveMobile bool
+	BoardPath    string `json:"-"`
 }
 
 type TicketCard struct {
@@ -140,6 +160,7 @@ type TicketCard struct {
 	StatusLabel       string           `json:"-"`
 	AgentName         string           `json:"-"`
 	AgentColorClass   string           `json:"-"`
+	BoardPath         string           `json:"-"`
 }
 
 type TicketDetail struct {
@@ -167,12 +188,20 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 	if !activeColumn.IsValid() {
 		activeColumn = contracts.StatusReady
 	}
+	home, boardPath, schedule, newTicket, prefix := s.navPaths()
 	page := BoardPage{
 		Page:            "board",
 		Workspace:       s.cfg.Workspace,
+		DisplayName:     firstNonEmpty(s.cfg.DisplayName, s.cfg.Workspace),
 		Host:            s.cfg.Host,
 		Actor:           s.cfg.Actor,
 		ReadOnly:        s.cfg.ReadOnly,
+		BoardPath:       boardPath,
+		ActionPrefix:    prefix,
+		HomePath:        home,
+		SchedulePath:    schedule,
+		NewTicketPath:   newTicket,
+		WorkspaceID:     s.cfg.Workspace,
 		Project:         firstNonEmpty(query.Get("project"), s.cfg.Project),
 		ProjectExplicit: strings.TrimSpace(query.Get("project")) != "",
 		View:            strings.TrimSpace(query.Get("view")),
@@ -198,10 +227,15 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		return page, err
 	}
 	page.Columns = s.columnsFromBoard(ctx, board, page, cfg.Web.AgentColors)
-	selected := strings.TrimSpace(query.Get("ticket"))
-	if selected == "" && !query.Has("ticket") {
-		selected = firstTicketIDForColumn(page.Columns, page.ActiveColumn)
+	if page.ProjectExplicit && page.Project != "" {
+		page.NewTicketPath = boardPath + "?new=1&project=" + url.QueryEscape(page.Project)
 	}
+	if s.queries != nil {
+		if projects, err := s.queries.Projects.ListProjects(ctx); err == nil {
+			page.Projects = projects
+		}
+	}
+	selected := strings.TrimSpace(query.Get("ticket"))
 	if selected != "" {
 		detail, err := s.ticketDetail(ctx, selected)
 		if err != nil {
@@ -219,15 +253,21 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 }
 
 func (s *Server) buildWelcomePage(ctx context.Context, r *http.Request) (WelcomePage, error) {
+	home, board, schedule, newTicket, prefix := s.navPaths()
 	page := WelcomePage{
-		Page:      "welcome",
-		Workspace: s.cfg.Workspace,
-		Host:      s.cfg.Host,
-		Actor:     s.cfg.Actor,
-		CSRFToken: s.cfg.CSRFToken,
-		ReadOnly:  s.cfg.ReadOnly,
-		Flash:     strings.TrimSpace(r.URL.Query().Get("flash")),
-		ShowNew:   r.URL.Query().Get("new_project") == "1",
+		Page:          "welcome",
+		Workspace:     s.cfg.Workspace,
+		Host:          s.cfg.Host,
+		Actor:         s.cfg.Actor,
+		CSRFToken:     s.cfg.CSRFToken,
+		ReadOnly:      s.cfg.ReadOnly,
+		HomePath:      home,
+		BoardPath:     board,
+		SchedulePath:  schedule,
+		NewTicketPath: newTicket,
+		ActionPrefix:  prefix,
+		Flash:         strings.TrimSpace(r.URL.Query().Get("flash")),
+		ShowNew:       r.URL.Query().Get("new_project") == "1",
 	}
 	cfg, err := config.Load(s.cfg.Root)
 	if err != nil {
@@ -260,13 +300,19 @@ func (s *Server) buildWelcomePage(ctx context.Context, r *http.Request) (Welcome
 }
 
 func (s *Server) buildSettingsPage() (SettingsPage, error) {
+	home, board, schedule, newTicket, prefix := s.navPaths()
 	page := SettingsPage{
-		Page:      "settings",
-		Workspace: s.cfg.Workspace,
-		Host:      s.cfg.Host,
-		Actor:     s.cfg.Actor,
-		CSRFToken: s.cfg.CSRFToken,
-		ReadOnly:  s.cfg.ReadOnly,
+		Page:          "settings",
+		Workspace:     s.cfg.Workspace,
+		Host:          s.cfg.Host,
+		Actor:         s.cfg.Actor,
+		CSRFToken:     s.cfg.CSRFToken,
+		ReadOnly:      s.cfg.ReadOnly,
+		HomePath:      home,
+		BoardPath:     board,
+		SchedulePath:  schedule,
+		NewTicketPath: newTicket,
+		ActionPrefix:  prefix,
 	}
 	cfg, err := config.Load(s.cfg.Root)
 	if err != nil {
@@ -421,6 +467,7 @@ func (s *Server) columnsFromBoard(ctx context.Context, board contracts.BoardView
 				StatusLabel:       statusLabel(status),
 				AgentName:         agentName,
 				AgentColorClass:   colorClass,
+				BoardPath:         page.BoardPath,
 			})
 		}
 		columns = append(columns, BoardColumn{
@@ -429,6 +476,7 @@ func (s *Server) columnsFromBoard(ctx context.Context, board contracts.BoardView
 			Count:        len(cards),
 			Tickets:      cards,
 			ActiveMobile: status == page.ActiveColumn,
+			BoardPath:    page.BoardPath,
 		})
 	}
 	return columns
@@ -570,6 +618,19 @@ func containsString(values []string, wanted string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) navPaths() (home, board, schedule, newTicket, prefix string) {
+	prefix = s.cfg.RoutePrefix
+	home = firstNonEmpty(s.cfg.HomePath, "/")
+	board = firstNonEmpty(s.cfg.BoardPath, "/board")
+	if prefix != "" {
+		schedule = prefix + "/schedule"
+	} else {
+		schedule = "/schedule"
+	}
+	newTicket = board + "?new=1"
+	return
 }
 
 func firstNonEmpty(values ...string) string {

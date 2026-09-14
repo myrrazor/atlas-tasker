@@ -155,6 +155,14 @@ func setupEngineFromCWD() (*setup.Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	engine.LookPath = setupLookPath
+	engine.ClientRunner = setupClientRunner
+	if home := os.Getenv("HOME"); home != "" {
+		engine.Home = home
+	}
+	if dir, err := setup.DefaultStateDir(engine.Home, os.Getenv); err == nil {
+		engine.StateDir = dir
+	}
 	engine.Hooks.BackupFirstCheckpoint = runSetupFirstBackup
 	return engine, nil
 }

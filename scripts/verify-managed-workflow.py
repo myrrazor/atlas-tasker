@@ -19,6 +19,7 @@ import sys
 import tempfile
 import time
 from typing import Any
+from atlas_test_env import isolated_atlas_environment
 
 
 PROVIDERS = ("codex", "claude", "openclaw", "generic", "cursor", "grok")
@@ -274,7 +275,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(main())
+        with isolated_atlas_environment():
+            raise SystemExit(main())
     except Failure as exc:
         print(json.dumps({"status": "failed", "error": str(exc)}), file=sys.stderr)
         raise SystemExit(1)

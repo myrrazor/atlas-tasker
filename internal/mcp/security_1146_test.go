@@ -16,19 +16,25 @@ import (
 
 func TestWorkflowCannotMutateBackupAndStatusHidesURLs(t *testing.T) {
 	for _, spec := range ToolSpecs() {
-		if spec.Name == "atlas.backup.status" {
-			if spec.Class != ClassRead {
-				t.Fatal("atlas.backup.status must be read-only")
+		if spec.Name == "atlas.backup.configure" {
+			if spec.Class != ClassHighImpact {
+				t.Fatal("atlas.backup.configure must stay high-impact")
 			}
 			continue
 		}
-		if strings.HasPrefix(spec.Name, "atlas.backup.") {
-			t.Fatalf("unexpected backup tool %s", spec.Name)
+		if spec.Name == "atlas.backup.run" {
+			if spec.Class != ClassWorkflow {
+				t.Fatal("atlas.backup.run must stay a workflow write")
+			}
+			continue
+		}
+		if strings.HasPrefix(spec.Name, "atlas.backup.") && spec.Class != ClassRead {
+			t.Fatalf("unexpected mutating backup tool %s class=%s", spec.Name, spec.Class)
 		}
 	}
 	workflow := Inventory(Options{Profile: ProfileWorkflow}.Normalized())
-	if toolEnabled(workflow, "atlas.backup.target") || toolEnabled(workflow, "atlas.backup.restore") {
-		t.Fatal("workflow must not expose backup write tools")
+	if toolEnabled(workflow, "atlas.backup.configure") || toolEnabled(workflow, "atlas.restore.apply") {
+		t.Fatal("workflow must not expose high-impact backup tools")
 	}
 
 	root := t.TempDir()

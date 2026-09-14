@@ -60,7 +60,7 @@ func parseCursor(cursor string) int {
 }
 
 func applyResultLimits(kind string, generatedAt time.Time, payload any, opts Options) (map[string]any, bool, error) {
-	result := toolResult(kind, generatedAt, payload)
+	result := toolResult(kind, generatedAt, redactLive(payload, opts.IncludeLocalOnlyPaths))
 	if opts.MaxResultBytes <= 0 {
 		return result, false, nil
 	}

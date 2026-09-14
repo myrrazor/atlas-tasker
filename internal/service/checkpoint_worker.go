@@ -61,10 +61,6 @@ func (s *ActionService) checkpointEngine() (*CheckpointEngine, error) {
 	if s == nil {
 		return nil, nil
 	}
-	stateDir, err := resolveUserStateDir(s.StateDir, s.Home)
-	if err != nil {
-		return nil, err
-	}
 	workspaceID, err := LoadWorkspaceIdentity(s.Root)
 	if err != nil {
 		return nil, err
@@ -74,6 +70,10 @@ func (s *ActionService) checkpointEngine() (*CheckpointEngine, error) {
 	}
 	if !validBackupWorkspaceID(workspaceID) {
 		return nil, fmt.Errorf("workspace identity is not a portable backup id")
+	}
+	stateDir, err := s.resolveBackupStateDir(workspaceID)
+	if err != nil {
+		return nil, err
 	}
 	git, err := validateGitExecutable(s.GitPath)
 	if err != nil {
@@ -246,6 +246,12 @@ func (e *CheckpointEngine) Tick(ctx context.Context, force bool) (AutoBackupResu
 	result.State = contracts.BackupOutboxCheckpointCreated
 	result.CopyDuration = created.CopyDuration
 	result.DiskBytes = created.DiskBytes
+	if box, boxErr := loadOutbox(e.paths.Outbox); boxErr == nil {
+		result.UnbackedEvents = box.PendingEventCount
+		if box.State != "" {
+			result.State = box.State
+		}
+	}
 	return e.finishTickWithPublish(ctx, result, created.Commit)
 }
 
@@ -264,6 +270,7 @@ func (e *CheckpointEngine) finishTickWithPublish(ctx context.Context, result Aut
 	box, err := loadOutbox(e.paths.Outbox)
 	if err == nil && box.State != "" {
 		result.State = box.State
+		result.UnbackedEvents = box.PendingEventCount
 	}
 	return result, nil
 }
@@ -339,9 +346,15 @@ func (e *CheckpointEngine) createLocalCheckpoint(ctx context.Context) (createdCh
 	if err != nil {
 		return createdCheckpoint{}, err
 	}
+	if recovered, ok, err := e.persistUnpersistedLocalRef(ctx, snap, ledger); err != nil {
+		return createdCheckpoint{}, err
+	} else if ok {
+		_ = os.RemoveAll(dest)
+		return recovered, nil
+	}
 	if ledger.LastCanonicalTreeSHA256 != "" && ledger.LastCanonicalTreeSHA256 == snap.TreeHash {
 		_ = os.RemoveAll(dest)
-		if err := e.markCheckpointCreated(ledger.LastCheckpointID, ledger.LastLocalCommit, snap.TreeHash, false); err != nil {
+		if err := e.markCheckpointCreated(ledger.LastCheckpointID, ledger.LastLocalCommit, snap.TreeHash, true); err != nil {
 			return createdCheckpoint{}, err
 		}
 		return createdCheckpoint{SkipReason: "canonical_state_unchanged", CheckpointID: ledger.LastCheckpointID, Commit: ledger.LastLocalCommit, Tree: snap.TreeHash}, nil
@@ -350,7 +363,7 @@ func (e *CheckpointEngine) createLocalCheckpoint(ctx context.Context) (createdCh
 	for _, known := range ledger.KnownCheckpointIDs {
 		if known == id && ledger.LastLocalCommit != "" {
 			_ = os.RemoveAll(dest)
-			if err := e.markCheckpointCreated(id, ledger.LastLocalCommit, snap.TreeHash, false); err != nil {
+			if err := e.markCheckpointCreated(id, ledger.LastLocalCommit, snap.TreeHash, true); err != nil {
 				return createdCheckpoint{}, err
 			}
 			return createdCheckpoint{SkipReason: "duplicate_logical_checkpoint", CheckpointID: id, Commit: ledger.LastLocalCommit, Tree: snap.TreeHash}, nil
@@ -403,6 +416,72 @@ func (e *CheckpointEngine) createLocalCheckpoint(ctx context.Context) (createdCh
 		CopyDuration: snap.CopyDuration,
 		DiskBytes:    disk,
 	}, nil
+}
+
+// persistUnpersistedLocalRef finishes a crash after update-ref and before the
+// ledger write. The isolated replica ref already points at the matching tree,
+// so recovery reuses that commit instead of minting a redundant same-tree one.
+func (e *CheckpointEngine) persistUnpersistedLocalRef(ctx context.Context, snap CanonicalSnapshot, ledger BackupLedger) (createdCheckpoint, bool, error) {
+	commit, err := e.currentRefCommit(ctx)
+	if err != nil || !isGitCommitID(commit) {
+		return createdCheckpoint{}, false, nil
+	}
+	if ledger.LastLocalCommit == commit && ledger.LastCanonicalTreeSHA256 == snap.TreeHash {
+		return createdCheckpoint{}, false, nil
+	}
+	manifest, err := e.readCommitManifest(ctx, commit)
+	if err != nil {
+		return createdCheckpoint{}, false, nil
+	}
+	if err := manifest.Validate(); err != nil {
+		return createdCheckpoint{}, false, nil
+	}
+	if manifest.WorkspaceID != e.workspaceID || manifest.ReplicaID != e.replicaID {
+		return createdCheckpoint{}, false, nil
+	}
+	if manifest.CanonicalTreeSHA256 != snap.TreeHash {
+		return createdCheckpoint{}, false, nil
+	}
+	if err := verifyCheckpointTree(ctx, e.gitRunner(e.paths.Tmp, ""), commit+"^{tree}", manifest); err != nil {
+		return createdCheckpoint{}, false, nil
+	}
+	id := strings.TrimSpace(manifest.CheckpointID)
+	if id == "" {
+		id = contracts.LogicalCheckpointID(e.workspaceID, e.replicaID, snap.TreeHash, localCheckpointTarget, snap.Watermarks)
+	}
+	disk, _ := dirSize(e.paths.Repo)
+	if ledger.Format == "" {
+		ledger = e.newLedger(e.now())
+	}
+	if ledger.LastLocalCommit != commit {
+		ledger.CommitCount++
+		ledger.CommitsSinceMaintenance++
+	}
+	ledger.LastCheckpointID = id
+	ledger.LastLocalCommit = commit
+	ledger.LastCanonicalTreeSHA256 = snap.TreeHash
+	ledger.LastManifestSHA256 = manifest.ManifestSHA256
+	ledger.LastCheckpointAt = e.now()
+	ledger.DiskBytes = disk
+	ledger.LastErrorClass = ""
+	ledger.LastError = ""
+	ledger.HealthWarning = ""
+	ledger.KnownCheckpointIDs = appendUnique(ledger.KnownCheckpointIDs, id)
+	if err := atomicWriteJSON(e.paths.Ledger, ledger); err != nil {
+		return createdCheckpoint{}, false, err
+	}
+	if err := e.markCheckpointCreated(id, commit, snap.TreeHash, true); err != nil {
+		return createdCheckpoint{}, false, err
+	}
+	return createdCheckpoint{
+		Created:      true,
+		SkipReason:   "recovered_unpersisted_local_ref",
+		CheckpointID: id,
+		Commit:       commit,
+		Tree:         snap.TreeHash,
+		CopyDuration: snap.CopyDuration,
+		DiskBytes:    disk,
+	}, true, nil
 }
 
 func (e *CheckpointEngine) markCheckpointCreated(id, commit, tree string, resetPending bool) error {

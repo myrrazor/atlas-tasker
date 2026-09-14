@@ -49,8 +49,11 @@ func (s *QueryService) AutoBackupStatus(ctx context.Context) (AutoBackupStatus, 
 		view.Notes = append(view.Notes, "workspace identity is missing")
 		return view, nil
 	}
-	stateDir, err := resolveUserStateDir(s.StateDir, s.Home)
+	stateDir, err := ResolveBackupStateDir(s.backupStateOpts(workspaceID))
 	if err != nil {
+		if IsBackupStateConflict(err) {
+			return view, err
+		}
 		view.Notes = append(view.Notes, "automatic backup state directory is not configured")
 		return view, nil
 	}
@@ -115,6 +118,8 @@ func (s *ActionService) AutoBackupStatus(ctx context.Context) (AutoBackupStatus,
 	queries := NewQueryService(s.Root, s.Projects, s.Tickets, s.Events, s.Projection, s.Clock)
 	queries.StateDir = s.StateDir
 	queries.Home = s.Home
+	queries.Getenv = s.Getenv
+	queries.GOOS = s.GOOS
 	return queries.AutoBackupStatus(ctx)
 }
 
@@ -170,7 +175,9 @@ func (s *ActionService) MaterializeLatestCheckpoint(ctx context.Context, dest st
 }
 
 // AttachUserState wires the machine-local state directory onto action and query
-// services. Callers that omit home fall back to $HOME / XDG_STATE_HOME.
+// services. Empty stateDir means "use the canonical default, then bind any
+// existing macOS legacy backup lineage for this workspace". Callers that omit
+// home still need XDG or an explicit StateDir. Copy Getenv with AttachUserStateEnv.
 func AttachUserState(actions *ActionService, queries *QueryService, home, stateDir string) {
 	if actions != nil {
 		actions.Home = home

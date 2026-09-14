@@ -64,10 +64,6 @@ type BackupTargetListView struct {
 }
 
 func (s *ActionService) backupPaths() (checkpointPaths, string, error) {
-	stateDir, err := resolveUserStateDir(s.StateDir, s.Home)
-	if err != nil {
-		return checkpointPaths{}, "", err
-	}
 	workspaceID, err := LoadWorkspaceIdentity(s.Root)
 	if err != nil {
 		return checkpointPaths{}, "", err
@@ -77,6 +73,10 @@ func (s *ActionService) backupPaths() (checkpointPaths, string, error) {
 	}
 	if !validBackupWorkspaceID(workspaceID) {
 		return checkpointPaths{}, "", apperr.New(apperr.CodeInvalidInput, "workspace identity is not a portable backup id")
+	}
+	stateDir, err := s.resolveBackupStateDir(workspaceID)
+	if err != nil {
+		return checkpointPaths{}, "", err
 	}
 	paths := backupStatePaths(stateDir, workspaceID)
 	if err := paths.ensure(); err != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -168,6 +169,13 @@ func (e *CheckpointEngine) verifyRemoteObjects(ctx context.Context, url, ref, co
 		return contracts.CheckpointManifest{}, apperr.New(apperr.CodeConflict, "checkpoint workspace does not match")
 	}
 	if err := verifyCheckpointTree(ctx, runner, commit+"^{tree}", manifest); err != nil {
+		return contracts.CheckpointManifest{}, err
+	}
+	treeDest := filepath.Join(dest, "tree")
+	if err := materializeRunnerCommit(ctx, runner, e, commit, treeDest); err != nil {
+		return contracts.CheckpointManifest{}, err
+	}
+	if err := verifyMaterializedHashes(treeDest, manifest); err != nil {
 		return contracts.CheckpointManifest{}, err
 	}
 	return manifest, nil

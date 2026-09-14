@@ -20,11 +20,18 @@ import (
 
 const remainingAdapterDependency = "AT114-201..AT114-208: provider MCP adapters are not registered"
 
+func (e *Engine) clientRunner() adapter.CommandRunner {
+	if e.ClientRunner != nil {
+		return e.ClientRunner
+	}
+	return host.DefaultRunner{}
+}
+
 func (e *Engine) ensureRegistry() error {
 	if e.Registry != nil {
 		return nil
 	}
-	reg, err := all.New(all.Options{StateDir: e.StateDir, Home: e.Home})
+	reg, err := all.New(all.Options{StateDir: e.StateDir, Home: e.Home, Runner: e.ClientRunner})
 	if err != nil {
 		return err
 	}
@@ -45,7 +52,7 @@ func (e *Engine) planTarget(target integrations.Target, found integrations.Detec
 		Home:          e.Home,
 		LookPath:      e.lookPath(),
 		Getenv:        e.getenv(),
-		Runner:        host.DefaultRunner{},
+		Runner:        e.clientRunner(),
 	}
 	detection := item.Detect(context.Background(), detectIn)
 	if detection.Target == "" {

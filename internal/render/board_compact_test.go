@@ -30,20 +30,35 @@ func TestCompactBoardMarkdownIsDeterministicAndStatusTextual(t *testing.T) {
 	}
 	for _, needle := range []string{
 		"# Board APP",
-		"[ready]",
-		"[blocked]",
-		"[in_review]",
-		"APP-1",
-		"APP-9",
+		"## Ready",
+		"## Blocked",
+		"## In Review",
+		"**APP-1**",
+		"**APP-9**",
 		"/board?project=APP",
-		"assignee=agent:builder-1",
+		"agent:builder-1",
 	} {
 		if !strings.Contains(first, needle) {
 			t.Fatalf("markdown missing %q:\n%s", needle, first)
 		}
 	}
+	if strings.Contains(first, "## Backlog") || strings.Contains(first, "(empty)") {
+		t.Fatalf("populated board should omit empty lanes:\n%s", first)
+	}
+	if strings.Contains(first, "[ready]") || strings.Contains(first, "assignee=") || strings.Contains(first, "tracker web serve") {
+		t.Fatalf("chat markdown still uses machine/table phrasing:\n%s", first)
+	}
 	if strings.Contains(first, "%") {
 		t.Fatalf("markdown invented a percentage:\n%s", first)
+	}
+	if strings.ContainsRune(first, 0x1b) {
+		t.Fatal("compact markdown must not include ANSI")
+	}
+	if !strings.Contains(first, "Next:") || !strings.Contains(first, "Attention:") {
+		t.Fatalf("markdown should carry next/attention from the structured board:\n%s", first)
+	}
+	if strings.Index(first, "ready work APP-1") > strings.Index(first, "do not start") && strings.Contains(first, "do not start") {
+		t.Fatalf("ready work should lead next actions:\n%s", first)
 	}
 	if !strings.Contains(first, "APP-1") || strings.Index(first, "APP-1") > strings.Index(first, "APP-2") {
 		t.Fatalf("ready column should list newer APP-1 first:\n%s", first)
@@ -64,8 +79,29 @@ func TestCompactBoardTruncatesAndMarksPagination(t *testing.T) {
 		t.Fatalf("truncation: %#v", board)
 	}
 	md := CompactBoardMarkdown(board)
-	if !strings.Contains(md, "Truncated") {
+	if !strings.Contains(md, "2 of 5 tickets") && !strings.Contains(md, "showing 2") {
 		t.Fatalf("markdown should indicate truncation:\n%s", md)
+	}
+}
+
+func TestCompactBoardMarkdownEscapesUntrustedText(t *testing.T) {
+	board := NewCompactBoard("APP", map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady: {{
+			ID: "APP-1", Title: "See ![x](https://evil.example) **bold** <img>",
+			Status: contracts.StatusReady, Labels: []string{"[hi](http://x)"},
+		}},
+	}, 20, nil)
+	md := CompactBoardMarkdown(board)
+	for _, needle := range []string{"![x]", "](http://", "**bold**"} {
+		if strings.Contains(md, needle) {
+			t.Fatalf("untrusted markdown leaked %q:\n%s", needle, md)
+		}
+	}
+	if strings.Contains(md, "<img") && !strings.Contains(md, "\\<img") {
+		t.Fatalf("untrusted HTML tag leaked:\n%s", md)
+	}
+	if !strings.Contains(md, "\\!\\[x\\]") {
+		t.Fatalf("expected escaped image markup:\n%s", md)
 	}
 }
 
@@ -88,5 +124,20 @@ func TestCompactBoardAppHTMLEnforcesCSPAndNoScripts(t *testing.T) {
 	}
 	if !strings.Contains(htmlDoc, `aria-label="Blocked"`) {
 		t.Fatalf("column should be accessible by name:\n%s", htmlDoc)
+	}
+	if !strings.Contains(htmlDoc, `name="viewport"`) {
+		t.Fatalf("app should include a viewport meta:\n%s", htmlDoc)
+	}
+	article := htmlDoc
+	if i := strings.Index(htmlDoc, "<article>"); i >= 0 {
+		article = htmlDoc[i:]
+	}
+	waitIdx := strings.Index(article, "Wait")
+	idIdx := strings.Index(article, "APP-1")
+	if waitIdx < 0 || idIdx < 0 || waitIdx > idIdx {
+		t.Fatalf("title should lead the card, id secondary:\n%s", htmlDoc)
+	}
+	if strings.Contains(htmlDoc, `class="status`) {
+		t.Fatalf("lane cards should not repeat status chips:\n%s", htmlDoc)
 	}
 }

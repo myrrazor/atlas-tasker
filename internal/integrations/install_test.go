@@ -95,6 +95,31 @@ func TestInstallClaudeReplacesOnlyManagedBlock(t *testing.T) {
 	}
 }
 
+func TestInstallWritesUninstallCommand(t *testing.T) {
+	root := t.TempDir()
+	result, err := Installer{Root: root}.Install(TargetClaude, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, path := range result.CommandFiles {
+		if strings.HasSuffix(path, "atlas-uninstall.md") {
+			found = true
+			body, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(body)
+			if !strings.Contains(text, "tracker uninstall") || !strings.Contains(text, "backup") {
+				t.Fatalf("uninstall command missing preserve copy:\n%s", text)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("claude install missing atlas-uninstall.md: %#v", result.CommandFiles)
+	}
+}
+
 func TestSkillContentTeachesBootstrapAndWakeups(t *testing.T) {
 	skill := atlasWorkerSkill("claude")
 	for _, needle := range []string{"tracker team list", "tracker agent wakeups", "atlas.context", "atlas.status"} {

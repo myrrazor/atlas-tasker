@@ -1,0 +1,24 @@
+{
+  "format_version": "v1",
+  "kind": "atlas.board",
+  "payload": {
+    "board": {
+      "title": "Board APP",
+      "project": "APP",
+      "board_url": "http://127.0.0.1:7432/w/ws-atlas-demo/projects/APP",
+      "total_cards": 8,
+      "shown_cards": 8,
+      "truncated": false,
+      "columns": [
+        {"status": "backlog", "label": "Backlog", "total": 2, "shown": 2, "cards": [{"id": "APP-8", "title": "Later"}, {"id": "APP-9", "title": "Parked"}]},
+        {"status": "ready", "label": "Ready", "total": 2, "shown": 2, "cards": [{"id": "APP-1", "title": "Ship the board"}, {"id": "APP-2", "title": "Write tests"}]},
+        {"status": "in_progress", "label": "In Progress", "total": 1, "shown": 1, "cards": [{"id": "APP-3", "title": "Wiring"}]},
+        {"status": "in_review", "label": "In Review", "total": 1, "shown": 1, "cards": [{"id": "APP-4", "title": "Review pack"}]},
+        {"status": "blocked", "label": "Blocked", "total": 1, "shown": 1, "cards": [{"id": "APP-5", "title": "Waiting on keys"}]},
+        {"status": "done", "label": "Done", "total": 1, "shown": 1, "cards": [{"id": "APP-6", "title": "Shipped"}]}
+      ],
+      "next_actions": ["ready work APP-1"],
+      "backup": {"configured": true, "automatic_enabled": false, "unbacked_event_count": 1}
+    }
+  }
+}

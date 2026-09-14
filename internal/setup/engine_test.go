@@ -142,6 +142,40 @@ func TestPlanIsReadOnlyAndDeterministic(t *testing.T) {
 	}
 }
 
+func TestFingerprintIgnoresLiveClientProbes(t *testing.T) {
+	left := SetupPlan{Format: setupPlanFormat, WorkspaceID: "ws", WorkspaceRoot: "/tmp/ws"}
+	left.Providers = []ProviderPlan{{
+		Target: integrations.TargetGeneric,
+		Plan: adapter.IntegrationPlan{
+			Detection: adapter.Detection{
+				Target: integrations.TargetGeneric,
+				Probes: []adapter.ProbeRecord{{Summary: "first", TimedOut: true}},
+			},
+		},
+	}}
+	right := left
+	right.Providers = []ProviderPlan{{
+		Target: integrations.TargetGeneric,
+		Plan: adapter.IntegrationPlan{
+			Detection: adapter.Detection{
+				Target: integrations.TargetGeneric,
+				Probes: []adapter.ProbeRecord{{Summary: "second", TimedOut: false}},
+			},
+		},
+	}}
+	fa, err := fingerprintSetupPlan(left)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fb, err := fingerprintSetupPlan(right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fa != fb {
+		t.Fatal("probe transcripts must not change the setup fingerprint")
+	}
+}
+
 func TestApplyIdempotentAndPermissions(t *testing.T) {
 	engine := testEngine(t)
 	first := applyGeneric(t, engine)

@@ -59,6 +59,14 @@ const (
 	ApprovalOperation ApprovalMechanism = "operation_approval"
 )
 
+type ToolScope string
+
+const (
+	ScopeWorkspace ToolScope = "workspace"
+	ScopeMachine   ToolScope = "machine"
+	ScopeOptional  ToolScope = "optional"
+)
+
 type Options struct {
 	Profile               ToolProfile
 	ReadOnly              bool
@@ -69,6 +77,11 @@ type Options struct {
 	IncludeLocalOnlyPaths bool
 	ConfiguredActor       contracts.Actor
 	Now                   func() time.Time
+	Global                bool
+	Home                  string
+	StateDir              string
+	CWD                   string
+	Machine               Machine
 }
 
 func (o Options) Normalized() Options {
@@ -111,6 +124,8 @@ type ToolSpec struct {
 	TargetArg          string            `json:"target_arg,omitempty"`
 	Underlying         string            `json:"underlying_atlas_action"`
 	InputSchema        map[string]any    `json:"input_schema"`
+	Scope              ToolScope         `json:"scope,omitempty"`
+	UIResourceURI      string            `json:"ui_resource_uri,omitempty"`
 	Handler            ToolHandler       `json:"-"`
 }
 
@@ -139,6 +154,7 @@ type ToolInfo struct {
 	ProviderSideEffect bool              `json:"provider_live_side_effect"`
 	Underlying         string            `json:"underlying_atlas_action"`
 	SchemaHash         string            `json:"json_schema_hash"`
+	UIResourceURI      string            `json:"ui_resource_uri,omitempty"`
 }
 
 func (s ToolSpec) Enabled(opts Options) (bool, string) {
@@ -171,6 +187,7 @@ func (s ToolSpec) Info(opts Options) ToolInfo {
 		ProviderSideEffect: s.ProviderSideEffect,
 		Underlying:         s.Underlying,
 		SchemaHash:         schemaHash(s.InputSchema),
+		UIResourceURI:      s.UIResourceURI,
 	}
 }
 

@@ -307,9 +307,20 @@ func fingerprintSetupPlan(plan SetupPlan) (string, error) {
 	clone.Fingerprint = ""
 	clone.GeneratedAt = time.Time{}
 	clone.Inspection.Manifest = nil
+	// Live client probes (version, mcp list, timeouts, stdout) are not
+	// workspace state. Including them made ApplyPrepared fail closed as
+	// "stale plan" whenever a host client hung or printed a different banner.
+	// File steps, registration command/args, and selected providers stay.
+	for i := range clone.Inspection.Detections {
+		clone.Inspection.Detections[i].Reasons = nil
+	}
 	for i := range clone.Providers {
 		clone.Providers[i].Plan.GeneratedAt = time.Time{}
 		clone.Providers[i].Plan.PlanID = ""
+		clone.Providers[i].Plan.Detection.Probes = nil
+		clone.Providers[i].Plan.Detection.Reasons = nil
+		clone.Providers[i].Plan.Detection.ExistingServers = nil
+		clone.Providers[i].Plan.Detection.Version.Raw = ""
 	}
 	raw, err := json.Marshal(clone)
 	if err != nil {

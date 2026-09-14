@@ -702,7 +702,7 @@ The initial three-language scope is superseded by DEC-058. Request precedence an
 
 ## DEC-048
 
-**Status:** DEC-062 and DEC-066 clarify actor resolution and reason enforcement in the operating guidance. The operator-first documentation structure remains current.
+**Status:** DEC-062 and DEC-066 clarify actor resolution and reason enforcement in the operating guidance. DEC-099 supersedes the process-only authentication description for Atlas Home with persisted, single-use claims. The operator-first documentation structure remains current.
 
 1. **Decision ID:** DEC-048
 2. **Date:** 2026-07-30
@@ -1014,6 +1014,8 @@ amendments.
 
 ## DEC-072
 
+**Partially superseded by DEC-091:** default registration used by the new v1.15 init flow. Original safety and historical v1.14 decisions remain as recorded below.
+
 1. **Decision ID:** DEC-072
 2. **Date:** 2026-09-10
 3. **Question:** How is one Atlas MCP registration bound to exactly one workspace across clients whose configuration may travel with the repository?
@@ -1087,6 +1089,8 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 
 ## DEC-075
 
+**Partially superseded by DEC-089:** v1.15 delivery path. Original safety and historical v1.14 decisions remain as recorded below.
+
 1. **Decision ID:** DEC-075
 2. **Date:** 2026-09-10
 3. **Question:** From which baseline and under which branch discipline is v1.14 developed and reviewed?
@@ -1134,6 +1138,8 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 9. **Affected PRs/Files:** internal/integrations/adapter/plan.go (`stateRank`, `connectionKindEvidence`, `Verification.Validate`), internal/integrations/adapter/review_round1_test.go, docs/v1.14-provider-adapter-contract.md §3, docs/release/v1.14-s0-review-round1.md.
 
 ## DEC-079
+
+**Partially superseded by DEC-091:** opt-in machine-scope default used by the new v1.15 init flow. Original safety and historical v1.14 decisions remain as recorded below.
 
 1. **Decision ID:** DEC-079
 2. **Date:** 2026-09-10
@@ -1252,3 +1258,196 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 7. **Confidence:** high
 8. **Revisit Trigger:** An owner-authorized private SSH/HTTPS target is used for a live off-device drill; then `file://` remains test-only and the off-device claim is evidenced against that target.
 9. **Affected PRs/Files:** internal/contracts/backup_target.go, internal/service/checkpoint_{target,publish,remote,git}.go, docs/backup-disaster-recovery.md, docs/v1.14-acceptance.md (AT114-501, AT114-507).
+
+
+## DEC-089
+
+1. **Decision ID:** DEC-089
+2. **Date:** 2026-09-14
+3. **Question:** Which source and PR target carry the combined v1.15 work?
+4. **Options Considered:** Continue the older scheduled-ticket branch; start from main alone and reimplement missing work; carry the compatible v1.14 PR stack into an isolated main-based feature branch.
+5. **Chosen Option:** Carry main b95fd64 plus the unmerged stack through d2ad0a4 into v1.15. Submit a feature PR directly to main after local checks. Do not merge, deploy, tag, or publish a release in this task. This supersedes DEC-075 only for the v1.15 delivery path.
+6. **Why We Chose It:** The older scheduled-ticket commit is already in main. The owner explicitly requested the latest compatible planned work and direct-to-main PRs.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner changes the source baseline or authorizes promotion.
+9. **Affected PRs/Files:** docs/v1.15-implementation.md, CHANGELOG.md, docs/release/v1.15-local-evidence.md
+
+
+## DEC-090
+
+1. **Decision ID:** DEC-090
+2. **Date:** 2026-09-14
+3. **Question:** How does Atlas expose multiple workspaces through one local application?
+4. **Options Considered:** One browser server per repository; a centralized canonical ticket database; one user-level Home service backed by pointer registration and the existing workspace services.
+5. **Chosen Option:** One configured loopback port and verified machine instance, a v2 pointer registry, and internal/app bindings to the authoritative ActionService and QueryService. Canonical Markdown/events stay in each workspace. Health and visibility remain separate; moves and copies require explicit repair or fork. Discovery uses approved roots. Browser access uses single-use claims, an opaque HttpOnly session, exact Host/Origin checks, CSRF, and registry-scoped paths.
+6. **Why We Chose It:** This gives users one Home without duplicating canonical data or allowing a browser to choose arbitrary filesystem paths.
+7. **Confidence:** high
+8. **Revisit Trigger:** A measured multi-workspace bottleneck or a new supported transport requires a different cache or binding mechanism.
+9. **Affected PRs/Files:** internal/app, internal/web/home_server.go, internal/web/home_handlers.go, internal/cli/home.go
+
+
+## DEC-091
+
+1. **Decision ID:** DEC-091
+2. **Date:** 2026-09-14
+3. **Question:** What should the shortest first-use flow configure by default?
+4. **Options Considered:** Keep setup, registration, backup, and serving as separate required commands; make init one resumable application operation with meaningful opt-outs.
+5. **Chosen Option:** tracker init scaffolds and registers a workspace, creates a first project when needed, enables local checkpoints, configures supported detected agents, and ensures Home. Bare tracker opens Home. Interactive commands may open a browser; noninteractive commands return a usable URL or JSON. Use one global workflow MCP definition per supported client, preserving unrelated entries and reporting written/pending/unverified separately from observed connection. Existing per-workspace registration and explicit setup remain supported. This supersedes the opt-in machine-scope default in DEC-079 and the single-workspace default in DEC-072 for the new init flow; their ownership, rollback, identity, and verification requirements remain.
+6. **Why We Chose It:** The owner requested very few setup commands and useful behavior by default. Persisted opt-outs and honest partial-step reporting keep retries predictable.
+7. **Confidence:** high
+8. **Revisit Trigger:** A provider changes its documented global registration mechanism or repeated init cannot preserve a supported customization.
+9. **Affected PRs/Files:** internal/app/init.go, internal/app/agents.go, internal/setup, internal/integrations, internal/cli/root.go, docs/getting-started.md
+
+
+## DEC-092
+
+1. **Decision ID:** DEC-092
+2. **Date:** 2026-09-14
+3. **Question:** Which display is the default for terminal boards with large ticket sets?
+4. **Options Considered:** Default side-by-side cards; switch layout automatically when a count threshold is crossed; a polished table by default with explicit optional Kanban.
+5. **Chosen Option:** A polished table is the default for terminal and TUI output. Preserve aligned rows, status colors plus text, readable IDs and titles, restrained separators, width-aware columns, and keyboard access to every row. TUI uses a bounded scroll window; CLI never silently omits rows. Card lanes remain an explicit option. Browser Kanban stays the default. Native Markdown and structured MCP remain distinct from ANSI output.
+6. **Why We Chose It:** The owner explicitly preferred the original table pattern after considering crowded backlogs and confirmed the change applies only to terminal and TUI. [Carbon data-table guidance](https://carbondesignsystem.com/components/data-table/usage/) and [NN/g table-scanning research](https://www.nngroup.com/articles/lawn-mower-pattern/) support consistent alignment, row sizing, clear headings, and deliberate long-list navigation.
+7. **Confidence:** high
+8. **Revisit Trigger:** Rendered evidence shows a common terminal size or ticket distribution cannot be scanned or navigated reliably.
+9. **Affected PRs/Files:** internal/render, internal/tui, internal/cli/board.go, docs/reference/tui.md, docs/reference/cli.md, README.md, site/cli.html
+
+
+## DEC-093
+
+1. **Decision ID:** DEC-093
+2. **Date:** 2026-09-14
+3. **Question:** How do default checkpoints and two-phase recovery preserve the existing backup contract?
+4. **Options Considered:** Reuse source-repository commits; introduce a second snapshot format; keep DEC-074 isolated Git checkpoints and bind recovery to a stored immutable plan.
+5. **Chosen Option:** Retain the canonical allowlist, isolated bare repository, temporary index, per-replica refs, and current coalescing policy. Enable local checkpoints by default without inferring or publishing to origin. A remote is verified only after an independent fetch and matching commit/tree/manifest/file hashes. Restore applies the exact stored plan and digest, including source hashes, to a clean destination under existing governance. DEC-074 remote-target consent and divergence refusal remain unchanged.
+6. **Why We Chose It:** A local checkpoint is useful out of the box; it is not an off-device backup claim. Binding the plan prevents later source changes or a second plan from silently changing the approved restore.
+7. **Confidence:** high
+8. **Revisit Trigger:** The canonical allowlist is deliberately widened, a provider changes ref behavior, or an approved recovery drill exposes a contract gap.
+9. **Affected PRs/Files:** internal/service/checkpoint_*.go, internal/service/backup_goal_actions.go, internal/contracts/backup.go, internal/mcp/global_tools.go, docs/guides/setup-and-backup.md
+
+
+## DEC-094
+
+1. **Decision ID:** DEC-094
+2. **Date:** 2026-09-14
+3. **Question:** What may uninstall remove without losing a board or recovery path?
+4. **Options Considered:** Recursively remove all Atlas directories; delete the current executable by name; remove only receipt-bound software and verified managed entries.
+5. **Chosen Option:** Provide tracker uninstall and slash uninstall through supported command surfaces. Preview verified actions, revalidate ownership/content at apply time, stop owned services before binary removal, and preserve all canonical workspace data, registry pointers, backups, targets, and recovery material. Script-installed binaries require an exact path/hash receipt; package-manager binaries receive truthful manager instructions. Preserve unrelated client configuration and edited or unverified files.
+6. **Why We Chose It:** The owner requested removal of software while keeping tracker files and boards. Exact ownership makes that promise testable across upgrades and partial uninstalls.
+7. **Confidence:** high
+8. **Revisit Trigger:** A new installation method or integration file format needs a documented ownership producer.
+9. **Affected PRs/Files:** internal/uninstall, internal/cli/uninstall.go, internal/slashcmd, internal/integrations, scripts/install.sh, docs/guides/uninstall.md
+
+
+## DEC-095
+
+1. **Decision ID:** DEC-095
+2. **Date:** 2026-09-14
+3. **Question:** Which website essentials belong in the v1.15 product update?
+4. **Options Considered:** Add tracking, forms, cookie prompts, and new marketing infrastructure; update the existing static site and only the useful product essentials.
+5. **Chosen Option:** Keep the existing Atlas identity and static architecture. Update README, software docs, marketing pages, and site docs together. Include a favicon set, robots.txt, sitemap, unique titles/descriptions, Open Graph metadata, accessible responsive images/navigation, copy loading/error feedback, privacy/terms notices describing actual use, and a custom HTTP 404 with root-relative recovery links. Add no nonessential cookies, analytics, or cookie banner.
+6. **Why We Chose It:** These support discovery and reliable first use without inventing services or adding unnecessary consent UI. A missing nested URL must retain working assets and navigation.
+7. **Confidence:** high
+8. **Revisit Trigger:** The product actually introduces accounts, telemetry, forms, or another data-processing feature that changes these notices.
+9. **Affected PRs/Files:** README.md, docs, site, site/_tools/site-contract.test.mjs, site/vercel.json
+
+
+## DEC-096
+
+1. **Decision ID:** DEC-096
+2. **Date:** 2026-09-14
+3. **Question:** What evidence supports a v1.15 implementation PR without overstating release readiness?
+4. **Options Considered:** Rely on prior PR metadata; treat local fixtures as production proof; verify the integrated tree locally and explicitly distinguish host and off-device limits.
+5. **Chosen Option:** Run required local suites on the integrated tree, retain full sanitized output in TEST_STDOUT.log, review actual terminal/TUI/browser rendering, and exercise setup, identity, concurrency, backup, restore, and uninstall with isolated fixtures. Local bare remotes remain protocol/integrity fixtures per DEC-088. Do not claim real-client activation, an off-device drill, a hosted deployment, or a published release from these checks.
+6. **Why We Chose It:** The owner asked for properly tested local work submitted as main-target PRs. Source inspection, fixture tests, real host sessions, and production behavior provide different evidence.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner authorizes a real-client activation matrix, off-device drill, or release/deployment.
+9. **Affected PRs/Files:** TEST_STDOUT.log, docs/release/v1.15.0-release-evidence.md, scripts, internal/*/*_test.go
+
+## DEC-097 — Preserve each workspace's existing backup state directory
+
+- **Decision ID:** DEC-097
+- **Date:** 2026-09-14
+- **Question:** How should Home and older CLI backup state agree on macOS?
+- **Options Considered:** Always use Application Support; always use the legacy path; use the canonical default while preserving an existing per-workspace legacy history and refusing conflicting histories.
+- **Chosen Option:** Fresh macOS backup state uses Application Support. When only the legacy location contains a workspace history or opt-out, use it without moving data. If both contain history, return `backup_state_conflict`. Explicit custom state and absolute XDG state remain authoritative.
+- **Why We Chose It:** The previous CLI default and Home default could otherwise create separate replica histories. One resolver keeps status, checkpoints, targets, and restore connected to the same workspace data.
+- **Confidence:** high
+- **Revisit Trigger:** A supported platform requires a different state layout, or an explicitly designed history reconciliation tool is introduced.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/service/backup_state.go`, checkpoint callers, `internal/app/init.go`, `docs/migration-v1.15.md`.
+
+
+## DEC-098 — Detect stale browser edits under the workspace lock
+
+- **Decision ID:** DEC-098
+- **Date:** 2026-09-14
+- **Question:** How should a browser action react when an agent has changed the same ticket since it was rendered?
+- **Options Considered:** Last writer wins; timestamps alone; a digest of editable canonical ticket state checked under the existing write lock.
+- **Chosen Option:** Render revision digests in ticket forms, drag payloads, and per-ticket bulk selections. Check them under the same workspace lock as the mutation. Reject a stale or malformed precondition with HTTP 409 and retain the current data. Existing callers that omit a precondition retain their prior interface.
+- **Why We Chose It:** Humans and coding agents use the same Markdown files. A displayed form must not silently overwrite newer work; the existing write lock prevents a race between validation and mutation.
+- **Confidence:** high
+- **Revisit Trigger:** A new mutable ticket field changes the digest contract or a new write transport requires shared preconditions.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/web/revision.go`, handlers, board templates, browser interaction tests.
+
+## DEC-099 — Purpose-bound path grants and fragment claims
+
+- **Decision ID:** DEC-099
+- **Date:** 2026-09-14
+- **Question:** How can Home safely reuse terminal-authorized directory access and authenticate a browser without URL credential leakage?
+- **Options Considered:** Browser-entered paths and query tokens; process-only grants; persisted, single-use, identity-bound grants and a fragment-to-POST claim exchange.
+- **Chosen Option:** A terminal command creates a private persisted grant for an existing directory with an init, register, or repair purpose. Consumption checks purpose, expiry, directory identity, and replay. Home clears a one-time fragment before POSTing the session claim; claim consumption is atomic across processes and the page uses the existing restrictive CSP.
+- **Why We Chose It:** The browser and terminal run in separate processes. Persisted authorization makes their interaction usable without granting arbitrary filesystem access, while fragment removal keeps the claim out of normal request URLs. This supersedes the Home authentication portion of DEC-048; the legacy single-workspace server retains its existing mechanism.
+- **Confidence:** high
+- **Revisit Trigger:** A native directory picker or another transport provides equivalent directory ownership and one-time authentication guarantees.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/app`, `internal/cli/workspaces.go`, `internal/web/home_server.go`, `static/claim.js`, Home handlers and MCP adapter.
+
+
+## DEC-100 — Let the Home child load settings during startup
+
+- **Decision ID:** DEC-100
+- **Date:** 2026-09-14
+- **Question:** How can concurrent callers start one Home without blocking the child before it answers health checks?
+- **Options Considered:** One lock for settings and startup; release the startup lock before health verification; separate startup serialization from settings serialization.
+- **Chosen Option:** Hold `home-start.lock` while starting and verifying Home, and keep `setup.lock` for machine settings and registry operations. The child can load settings while the parent still excludes competing starters.
+- **Why We Chose It:** A real fresh-init smoke test reproduced a parent/child lock wait that injected probes did not cover. A real child-process regression now verifies startup and reuse of the same instance.
+- **Confidence:** high
+- **Revisit Trigger:** A supported service manager introduces another startup or settings lock dependency.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/setup/lock.go`, `internal/app/service.go`, `internal/web/home_process_test.go`.
+
+
+## DEC-101 — Isolate the machine state of every executable test
+
+- **Decision ID:** DEC-101
+- **Date:** 2026-09-14
+- **Question:** How should tests exercise the new automatic setup defaults without registering their temporary workspaces on the developer's machine?
+- **Options Considered:** Rely on each test's current-directory fixture; add production test-mode behavior; isolate HOME and XDG state in test process entrypoints and executable smoke harnesses.
+- **Chosen Option:** Use private machine state for test packages that invoke Atlas services and for Python executable smoke harnesses. Disable host auto-start and agent auto-install in that default fixture. Tests of those features explicitly inject their own settings, commands, and state. Preserve existing Go caches outside the temporary HOME.
+- **Why We Chose It:** The integrated suite reproduced old tests inheriting real user state after init gained automatic setup. Isolation belongs in the test harness, while production keeps its documented defaults. The leaked test-only registrations and service were removed, and private rollback evidence was retained outside the repository.
+- **Confidence:** high
+- **Revisit Trigger:** A new executable test or machine-scoped surface is added without the shared environment boundary.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/testutil/testenv`, package `main_test.go` entrypoints, `scripts/atlas_test_env.py`, executable MCP smoke scripts.
+
+
+## DEC-102 — Keep the browser board visible and ticket actions in their project
+
+- **Decision ID:** DEC-102
+- **Date:** 2026-09-14
+- **Question:** How should the browser Kanban use limited screen space and retain context after edits?
+- **Options Considered:** Reserve space for an empty drawer; replace Kanban with the terminal table; show full-width Kanban with an explicit ticket overlay and project-bound actions.
+- **Chosen Option:** Keep six main workflow lanes and a separate Canceled disclosure. Open the overlay drawer only for a selected ticket, use a full-width drawer on phones, and keep filters, bulk controls, and unscheduled details behind disclosures. Resolve action redirects from the authoritative ticket or validated project. Stale forms preserve typed values while refusing the write.
+- **Why We Chose It:** The owner explicitly kept browser Kanban. Rendered desktop and phone checks showed that an empty reserved drawer hid useful board space. A full browser save exposed loss of the project in the redirect; ticket-bound routing now preserves the working context without trusting external return URLs.
+- **Confidence:** high
+- **Revisit Trigger:** A supported viewport or new action cannot retain visible navigation, ticket context, or stale-edit protection.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/web`, `docs/web-board-screen-brief.md`, `docs/web-board.md`, `site/docs/web-board.html`.
+
+
+## DEC-103 — Scope the historical design-metadata scanner exception
+
+- **Decision ID:** DEC-103
+- **Date:** 2026-09-14
+- **Question:** How should the secret scan handle an existing Pen document UUID classified as a generic API key?
+- **Options Considered:** Ignore the scan failure; exclude all design files or generic API keys; allow only the inspected historical fingerprint.
+- **Chosen Option:** Record one `.gitleaksignore` fingerprint for the `fileToken` UUID metadata at commit `4282c81fbf1b2bb1a55fc45207681ad4cf16129b`, `docs/design/pen/atlas-tasker.pen`, line 28174. Continue scanning the complete submitted history and all new changes.
+- **Why We Chose It:** The flagged value is design-document UUID metadata, not an API credential. A commit/file/rule/line fingerprint preserves detection for other values and future changes without rewriting historical design evidence.
+- **Confidence:** high
+- **Revisit Trigger:** The document metadata acquires authentication meaning or the scanner reports a different finding.
+- **Affected PRs/Files:** v1.15 main-target PR; `.gitleaksignore`, `TEST_STDOUT.log`, release evidence.

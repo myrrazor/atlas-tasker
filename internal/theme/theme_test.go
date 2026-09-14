@@ -48,6 +48,27 @@ func TestStatusColorBucketsMatchLegacy(t *testing.T) {
 	}
 }
 
+func TestLaneColorDistinguishesWorkflow(t *testing.T) {
+	if LaneColor("ready") != Success {
+		t.Fatal("ready lane should be success green")
+	}
+	if LaneColor("in_progress") != Primary {
+		t.Fatal("in_progress lane should use brand primary, not the warning badge bucket")
+	}
+	if LaneColor("in_review") != Review {
+		t.Fatal("in_review lane should use the review hue")
+	}
+	if LaneColor("blocked") != Danger {
+		t.Fatal("blocked lane should be danger")
+	}
+	if LaneColor("done") != Info {
+		t.Fatal("done lane should stay brand-blue")
+	}
+	if LaneColor("backlog") != Muted || LaneColor("canceled") != Muted {
+		t.Fatal("quiet columns stay muted")
+	}
+}
+
 func TestPriorityColorScale(t *testing.T) {
 	if c, ok := PriorityColor("critical"); !ok || c != Danger {
 		t.Fatalf("critical should map to Danger, got %v ok=%v", c, ok)

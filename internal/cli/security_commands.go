@@ -235,10 +235,28 @@ func newBackupCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "backup", Short: "Create and restore Atlas-owned backups"}
 	create := &cobra.Command{Use: "create", Short: "Create a backup snapshot", Args: cobra.NoArgs, RunE: runBackupCreate}
 	create.Flags().String("scope", "workspace", "Backup scope: workspace|project:<KEY>")
-	restorePlan := &cobra.Command{Use: "restore-plan <BACKUP-ID|PATH>", Short: "Preview a backup restore", Args: cobra.ExactArgs(1), RunE: runBackupRestorePlan}
+	restorePlan := &cobra.Command{
+		Use:   "restore-plan <BACKUP-ID|PATH>",
+		Short: "Preview a backup restore and store a bound plan ID",
+		Long: `Preview a backup restore and persist a bound plan under .tracker/backups/restore-plans/.
+
+Preview does not write canonical workspace files (projects, tickets, events, config).
+Apply later with tracker backup restore-apply <PLAN-ID|BACKUP-ID> --yes using the
+stored restore plan ID.`,
+		Args: cobra.ExactArgs(1),
+		RunE: runBackupRestorePlan,
+	}
 	restorePlan.Flags().String("actor", "human:owner", "Optional actor context accepted for copy-paste parity; restore-plan is read-only")
 	restorePlan.Flags().String("reason", "", "Optional reason accepted for copy-paste parity; restore-plan is read-only")
-	restoreApply := &cobra.Command{Use: "restore-apply <BACKUP-ID|PATH>", Short: "Apply a backup restore plan", Args: cobra.ExactArgs(1), RunE: runBackupRestoreApply}
+	restoreApply := &cobra.Command{
+		Use:   "restore-apply <PLAN-ID|BACKUP-ID|PATH>",
+		Short: "Apply a stored backup restore plan",
+		Long: `Apply a previously stored restore plan by plan ID or backup ID.
+
+Requires tracker backup restore-plan first. Canonical workspace writes happen only on apply.`,
+		Args: cobra.ExactArgs(1),
+		RunE: runBackupRestoreApply,
+	}
 	restoreApply.Flags().Bool("yes", false, "Apply restore without prompting")
 	drill := &cobra.Command{Use: "drill", Short: "Run a read-only recovery drill", Args: cobra.NoArgs, RunE: runBackupDrill}
 	for _, sub := range []*cobra.Command{create, restoreApply} {
@@ -297,11 +315,26 @@ func newBackupCommand() *cobra.Command {
 	remoteVerify := &cobra.Command{Use: "verify", Short: "Verify one remote checkpoint", Args: cobra.ExactArgs(1), RunE: runBackupRemoteVerify}
 	remoteVerify.Flags().String("target", "", "Backup target ID")
 	addReadOutputFlags(remoteVerify, &outputFlags{})
-	remotePlan := &cobra.Command{Use: "restore-plan", Short: "Preview a remote checkpoint restore", Args: cobra.ExactArgs(1), RunE: runBackupRemoteRestorePlan}
+	remotePlan := &cobra.Command{
+		Use:   "restore-plan",
+		Short: "Preview a remote checkpoint restore and store a bound plan ID",
+		Long: `Preview a remote restore and persist a bound plan ID.
+
+Preview does not write canonical workspace files. Apply later with
+tracker backup remote restore-apply <PLAN-ID|CHECKPOINT> --yes.`,
+		Args: cobra.ExactArgs(1),
+		RunE: runBackupRemoteRestorePlan,
+	}
 	remotePlan.Flags().String("target", "", "Backup target ID")
 	remotePlan.Flags().Bool("allow-workspace-mismatch", false, "Allow restoring into a different workspace")
 	addReadOutputFlags(remotePlan, &outputFlags{})
-	remoteApply := &cobra.Command{Use: "restore-apply", Short: "Apply a remote checkpoint restore", Args: cobra.ExactArgs(1), RunE: runBackupRemoteRestoreApply}
+	remoteApply := &cobra.Command{
+		Use:   "restore-apply",
+		Short: "Apply a stored remote checkpoint restore plan",
+		Long:  `Apply a previously stored remote restore plan by plan ID or checkpoint ID. Canonical writes happen only on apply.`,
+		Args:  cobra.ExactArgs(1),
+		RunE:  runBackupRemoteRestoreApply,
+	}
 	remoteApply.Flags().String("target", "", "Backup target ID")
 	remoteApply.Flags().Bool("yes", false, "Apply restore without prompting")
 	remoteApply.Flags().Bool("allow-workspace-mismatch", false, "Allow restoring into a different workspace")

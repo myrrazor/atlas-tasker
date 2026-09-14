@@ -107,6 +107,89 @@ func TestBackupCreateVerifySignPlanAndApply(t *testing.T) {
 	}
 }
 
+func TestRestoreApplyRequiresBoundPlanAndRefusesStaleDigest(t *testing.T) {
+	ctx, actions, _ := newGovernanceHarness(t)
+	view, err := actions.CreateBackup(ctx, "workspace", contracts.Actor("human:owner"), "bind restore")
+	if err != nil {
+		t.Fatalf("create backup: %v", err)
+	}
+	if _, err := actions.ApplyRestorePlan(ctx, view.Snapshot.BackupID, contracts.Actor("human:owner"), "no plan", true); err == nil || !strings.Contains(err.Error(), "bound restore plan") {
+		t.Fatalf("apply without plan must fail, got %v", err)
+	}
+	planned, err := actions.CreateRestorePlan(ctx, view.Snapshot.BackupID, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatalf("restore plan: %v", err)
+	}
+	if planned.PlanID == "" || planned.PlanDigest == "" || planned.PlanDigest != RestorePlanBindingDigest(planned.Plan) {
+		t.Fatalf("plan digest missing: %#v", planned)
+	}
+	projectPath := storage.ProjectFile(actions.Root, "APP")
+	if err := os.WriteFile(projectPath, []byte("changed after plan\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := actions.ApplyRestorePlan(ctx, view.Snapshot.BackupID, contracts.Actor("human:owner"), "stale", true); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale plan must fail, got %v", err)
+	}
+	if _, err := actions.CreateRestorePlan(ctx, view.Snapshot.BackupID, contracts.Actor("human:owner")); err != nil {
+		t.Fatal(err)
+	}
+	applied, err := actions.ApplyRestorePlan(ctx, planned.PlanID, contracts.Actor("human:owner"), "fresh bind", true)
+	if err == nil {
+		t.Fatal("apply by old plan id must still fail after the live tree moved")
+	}
+	_ = applied
+	fresh, err := actions.CreateRestorePlan(ctx, view.Snapshot.BackupID, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := actions.ApplyRestorePlan(ctx, fresh.PlanID, contracts.Actor("human:owner"), "apply bound plan", true); err != nil {
+		t.Fatalf("apply by plan id: %v", err)
+	}
+}
+
+func TestRestoreApplyRefusesSwappedBackupContent(t *testing.T) {
+	ctx, actions, _ := newGovernanceHarness(t)
+	first, err := actions.CreateBackup(ctx, "workspace", contracts.Actor("human:owner"), "source a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	planned, err := actions.CreateRestorePlan(ctx, first.Snapshot.BackupID, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if planned.Plan.SourceManifestHash == "" || planned.Plan.SourceArchiveHash == "" {
+		t.Fatalf("plan must bind source content hashes: %#v", planned.Plan)
+	}
+	if err := os.WriteFile(storage.ProjectFile(actions.Root, "APP"), []byte("mutated source\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	second, err := actions.CreateBackup(ctx, "workspace", contracts.Actor("human:owner"), "source b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyFile := func(src, dst string) {
+		t.Helper()
+		raw, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dst, raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	copyFile(backupArchivePath(actions.Root, second.Snapshot.BackupID), backupArchivePath(actions.Root, first.Snapshot.BackupID))
+	copyFile(backupManifestPath(actions.Root, second.Snapshot.BackupID), backupManifestPath(actions.Root, first.Snapshot.BackupID))
+	replaced := first.Snapshot
+	replaced.ManifestHash = second.Snapshot.ManifestHash
+	if err := actions.Backups.SaveBackupSnapshot(ctx, replaced); err != nil {
+		t.Fatal(err)
+	}
+	_, err = actions.ApplyRestorePlan(ctx, first.Snapshot.BackupID, contracts.Actor("human:owner"), "swapped", true)
+	if err == nil || (!strings.Contains(err.Error(), "content") && !strings.Contains(err.Error(), "archive") && !strings.Contains(err.Error(), "stale")) {
+		t.Fatalf("swapped backup content must fail binding, got %v", err)
+	}
+}
+
 func TestGoalManifestSignVerifyAndAdminStatus(t *testing.T) {
 	ctx, actions, ticket := newGovernanceHarness(t)
 	key, err := actions.GenerateKey(ctx, KeyGenerateOptions{Scope: contracts.KeyScopeCollaborator, OwnerID: "owner"}, contracts.Actor("human:owner"), "goal signer")

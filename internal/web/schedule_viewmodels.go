@@ -40,6 +40,11 @@ type SchedulePage struct {
 	Flash           string
 	Error           string
 	Data            service.ScheduleView
+	BoardPath       string `json:"-"`
+	ActionPrefix    string `json:"-"`
+	HomePath        string `json:"-"`
+	SchedulePath    string `json:"-"`
+	NewTicketPath   string `json:"-"`
 }
 
 func (p SchedulePage) FormValue(key string, fallback string) string {
@@ -94,12 +99,18 @@ func (s *Server) buildSchedulePage(ctx context.Context, r *http.Request) (Schedu
 	query := r.URL.Query()
 	project := firstNonEmpty(query.Get("project"), s.cfg.Project)
 	selected, err := s.selectedScheduleDate(query.Get("date"))
+	home, board, schedulePath, newTicket, prefix := s.navPaths()
 	page := SchedulePage{
 		Page:            "schedule",
 		Workspace:       s.cfg.Workspace,
 		Host:            s.cfg.Host,
 		Actor:           s.cfg.Actor,
 		ReadOnly:        s.cfg.ReadOnly,
+		HomePath:        home,
+		BoardPath:       board,
+		SchedulePath:    schedulePath,
+		NewTicketPath:   newTicket,
+		ActionPrefix:    prefix,
 		Project:         project,
 		ProjectExplicit: strings.TrimSpace(query.Get("project")) != "",
 		Query:           strings.TrimSpace(query.Get("q")),
@@ -125,9 +136,9 @@ func (s *Server) buildSchedulePage(ctx context.Context, r *http.Request) (Schedu
 	page.Data = view
 	page.SelectedDate = selected.Format("2006-01-02")
 	page.DateHeading = selected.Format("Monday, January 2")
-	page.PrevURL = scheduleURL(selected.AddDate(0, 0, -7), project, page.ProjectExplicit)
-	page.NextURL = scheduleURL(selected.AddDate(0, 0, 7), project, page.ProjectExplicit)
-	page.TodayURL = scheduleURL(scheduleDate(s.cfg.Clock(), s.cfg.Location), project, page.ProjectExplicit)
+	page.PrevURL = s.scheduleURL(selected.AddDate(0, 0, -7), project, page.ProjectExplicit)
+	page.NextURL = s.scheduleURL(selected.AddDate(0, 0, 7), project, page.ProjectExplicit)
+	page.TodayURL = s.scheduleURL(scheduleDate(s.cfg.Clock(), s.cfg.Location), project, page.ProjectExplicit)
 	page.Week = s.scheduleWeek(weekStart, selected, view.Entries, project, page.ProjectExplicit)
 	page.Hours, page.Entries = s.scheduleHours(selected, view.Entries, project, page.ProjectExplicit)
 	page.History = s.scheduleHistory(view.History, project, page.ProjectExplicit)
@@ -172,7 +183,7 @@ func (s *Server) scheduleWeek(start time.Time, selected time.Time, entries []ser
 		days = append(days, ScheduleDay{
 			Label:  day.Format("Mon"),
 			Number: day.Format("2"),
-			URL:    scheduleURL(day, project, explicit),
+			URL:    s.scheduleURL(day, project, explicit),
 			Active: sameScheduleDate(day, selected),
 			Today:  sameScheduleDate(day, today),
 			Count:  counts[key],
@@ -243,7 +254,7 @@ func (s *Server) scheduleCard(entry service.ScheduleEntry, project string, expli
 		RunnerMeta:  runnerMeta,
 		StateLabel:  scheduleStateLabel(entry.State),
 		StateClass:  scheduleStateClass(entry.State),
-		TicketURL:   boardTicketURL(entry.Ticket.ID, project, explicit),
+		TicketURL:   s.boardTicketURL(entry.Ticket.ID, project, explicit),
 	}
 }
 
@@ -255,7 +266,7 @@ func (s *Server) scheduleHistory(entries []service.CompletionEntry, project stri
 			Entry:     entry,
 			Time:      local.Format("15:04"),
 			Day:       local.Format("Mon, Jan 2"),
-			TicketURL: boardTicketURL(entry.Ticket.ID, project, explicit),
+			TicketURL: s.boardTicketURL(entry.Ticket.ID, project, explicit),
 		})
 	}
 	return items
@@ -341,20 +352,22 @@ func sameScheduleDate(left time.Time, right time.Time) bool {
 	return left.Year() == right.Year() && left.Month() == right.Month() && left.Day() == right.Day()
 }
 
-func scheduleURL(day time.Time, project string, explicit bool) string {
+func (s *Server) scheduleURL(day time.Time, project string, explicit bool) string {
+	_, _, schedule, _, _ := s.navPaths()
 	query := url.Values{"date": {day.Format("2006-01-02")}}
 	if explicit && project != "" {
 		query.Set("project", project)
 	}
-	return "/schedule?" + query.Encode()
+	return schedule + "?" + query.Encode()
 }
 
-func boardTicketURL(ticketID string, project string, explicit bool) string {
+func (s *Server) boardTicketURL(ticketID string, project string, explicit bool) string {
+	_, board, _, _, _ := s.navPaths()
 	query := url.Values{"ticket": {ticketID}}
 	if explicit && project != "" {
 		query.Set("project", project)
 	}
-	return "/board?" + query.Encode()
+	return board + "?" + query.Encode()
 }
 
 func locationName(location *time.Location, at time.Time) string {

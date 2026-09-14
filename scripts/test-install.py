@@ -11,6 +11,7 @@ import errno
 import functools
 import hashlib
 import http.server
+import json
 import os
 from pathlib import Path
 import platform
@@ -68,7 +69,7 @@ class InstallerTests(unittest.TestCase):
         (self.agent_home / ".codex").mkdir(parents=True)
         self.bin_dir = self.case / "bin"
         self.env = dict(os.environ)
-        for key in ("CODEX_HOME", "CLAUDE_CONFIG_DIR", "TRACKER_ACTOR", "SKIP_INTEGRATIONS"):
+        for key in ("CODEX_HOME", "CLAUDE_CONFIG_DIR", "TRACKER_ACTOR", "SKIP_INTEGRATIONS", "XDG_STATE_HOME"):
             self.env.pop(key, None)
         self.env.update({
             "HOME": str(self.agent_home),
@@ -81,11 +82,29 @@ class InstallerTests(unittest.TestCase):
             "TMPDIR": str(self.case),
         })
 
+    def receipt_path(self):
+        xdg = self.env.get("XDG_STATE_HOME")
+        if xdg:
+            return Path(xdg) / "atlas-tasker" / "install-receipt.json"
+        home = Path(self.env["HOME"])
+        if platform.system() == "Darwin":
+            return home / "Library" / "Application Support" / "Atlas Tasker" / "install-receipt.json"
+        return home / ".local" / "state" / "atlas-tasker" / "install-receipt.json"
+
     def assert_installed(self):
         installed = self.bin_dir / "tracker"
         self.assertTrue(os.access(installed, os.X_OK))
         self.assertEqual(hashlib.sha256(installed.read_bytes()).digest(),
                          hashlib.sha256(self.tracker.read_bytes()).digest())
+        receipt = self.receipt_path()
+        self.assertTrue(receipt.is_file(), f"missing install receipt at {receipt}")
+        data = json.loads(receipt.read_text())
+        self.assertEqual(data["format"], "atlas_install_receipt_v1")
+        self.assertEqual(data["install_method"], "script")
+        self.assertEqual(data["binary_path"], str(installed))
+        self.assertEqual(data["binary_sha256"], hashlib.sha256(installed.read_bytes()).hexdigest())
+        payload = f"{data['binary_path']}\n{data['binary_sha256']}\nscript\n{self.env['VERSION']}\n"
+        self.assertEqual(data["digest"], hashlib.sha256(payload.encode()).hexdigest())
 
     def terminal_install(self, answers):
         """Run the same pipe-to-shell shape as curl | sh, with a real TTY."""
@@ -167,6 +186,19 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("Skipped setup", output)
         self.assertFalse((self.workspace / ".tracker").exists())
         self.assert_installed()
+
+    def test_xdg_state_home_overrides_platform_layout(self):
+        xdg = self.case / "xdg-state"
+        xdg.mkdir()
+        self.env["XDG_STATE_HOME"] = str(xdg)
+        result = subprocess.run(["sh"], input=self.script.read_text(), cwd=self.workspace,
+                                env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed()
+        self.assertTrue((xdg / "atlas-tasker" / "install-receipt.json").is_file())
+        if platform.system() == "Darwin":
+            mac = Path(self.env["HOME"]) / "Library" / "Application Support" / "Atlas Tasker" / "install-receipt.json"
+            self.assertFalse(mac.exists())
 
     def test_custom_bin_dir(self):
         self.assertNotEqual(str(self.bin_dir), str(Path.home() / ".local" / "bin"))

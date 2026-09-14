@@ -126,6 +126,137 @@ func TestCheckpointCrashRecoveryIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestCrashAfterLocalRefReusesCommit(t *testing.T) {
+	ctx, actions := newCheckpointHarness(t)
+	first, err := actions.BackupTick(ctx, true)
+	if err != nil || !first.Created {
+		t.Fatalf("first checkpoint: %#v %v", first, err)
+	}
+	if err := mutateTicketTitle(ctx, actions, "after first"); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := actions.checkpointEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := backupRefCommitCount(t, ctx, engine)
+	actions.CheckpointCrashAt = string(CrashAfterLocalRef)
+	if _, err := actions.BackupTick(ctx, true); err == nil {
+		t.Fatal("expected injected crash after local ref")
+	}
+	mid := backupRefCommitCount(t, ctx, engine)
+	if mid != before+1 {
+		t.Fatalf("crash after update-ref should leave one new commit, %d -> %d", before, mid)
+	}
+	actions.CheckpointCrashAt = ""
+	recovered, err := actions.BackupTick(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := backupRefCommitCount(t, ctx, engine)
+	if after != mid {
+		t.Fatalf("recovery minted a redundant same-tree commit: %d -> %d", mid, after)
+	}
+	if recovered.Commit == "" {
+		t.Fatalf("recovery should reuse the isolated ref: %#v", recovered)
+	}
+	status, err := actions.AutoBackupStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.UnbackedEventCount != 0 {
+		t.Fatalf("recovered checkpoint still reports pending=%d", status.UnbackedEventCount)
+	}
+}
+
+func TestUnchangedTreeSkipResetsPendingCount(t *testing.T) {
+	ctx, actions := newCheckpointHarness(t)
+	if _, err := actions.BackupTick(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := actions.checkpointEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := loadOutbox(engine.paths.Outbox)
+	if err != nil {
+		t.Fatal(err)
+	}
+	box.PendingEventCount = 7
+	box.State = contracts.BackupOutboxCheckpointCreated
+	box.PendingSince = actions.Clock()
+	if err := atomicWriteJSON(engine.paths.Outbox, box); err != nil {
+		t.Fatal(err)
+	}
+	skipped, err := actions.BackupTick(ctx, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped.Created {
+		t.Fatal("unchanged tree must not create another commit")
+	}
+	if skipped.UnbackedEvents != 0 {
+		t.Fatalf("unchanged-tree skip left pending=%d", skipped.UnbackedEvents)
+	}
+	status, err := actions.AutoBackupStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.UnbackedEventCount != 0 {
+		t.Fatalf("status unbacked=%d", status.UnbackedEventCount)
+	}
+}
+
+func TestAutomaticCheckpointGitMatrix(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(*testing.T, string)
+	}{
+		{name: "clean", setup: setupCleanUserGit},
+		{name: "dirty", setup: setupDirtyUserGit},
+		{name: "staged", setup: setupStagedUserGit},
+		{name: "detached", setup: setupDetachedUserGit},
+		{name: "no_git"},
+		{name: "ignored_canonical", setup: setupIgnoredCanonicalGit},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, actions := newCheckpointHarness(t)
+			if tc.setup != nil {
+				tc.setup(t, actions.Root)
+			}
+			before := captureUserGit(t, actions.Root)
+			result, err := actions.BackupTick(ctx, true)
+			if err != nil || !result.Created {
+				t.Fatalf("tick: %#v %v", result, err)
+			}
+			after := captureUserGit(t, actions.Root)
+			if before != after {
+				t.Fatalf("user git changed\n before %s\n after %s", before, after)
+			}
+			engine, err := actions.checkpointEngine()
+			if err != nil {
+				t.Fatal(err)
+			}
+			listing, err := engine.gitRunner(engine.paths.Tmp, "").run(ctx, "ls-tree", "-r", "--name-only", backupRefName(engine.workspaceID, engine.replicaID))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(listing, "README.md") || strings.Contains(listing, ".git/") || strings.Contains(listing, "staged.txt") {
+				t.Fatalf("application source leaked into backup tree:\n%s", listing)
+			}
+			if !strings.Contains(listing, "projects/APP/") || !strings.Contains(listing, ".atlas-checkpoint.json") {
+				t.Fatalf("expected atlas files in backup tree:\n%s", listing)
+			}
+			if tc.name == "no_git" {
+				if _, err := os.Stat(filepath.Join(actions.Root, ".git")); !os.IsNotExist(err) {
+					t.Fatal("checkpoint must not create a workspace git repo")
+				}
+			}
+		})
+	}
+}
+
 func TestLocalCheckpointSurvivesWorkspaceDeletion(t *testing.T) {
 	ctx, actions := newCheckpointHarness(t)
 	created, err := actions.BackupTick(ctx, true)
@@ -338,23 +469,101 @@ func initUserRepo(t *testing.T, root string) string {
 
 func captureUserGit(t *testing.T, root string) string {
 	t.Helper()
+	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
+		return "NO_GIT"
+	}
 	cmd := func(args ...string) string {
 		out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput()
 		if err != nil {
-			return string(out) + err.Error()
+			return strings.TrimSpace(string(out)) + "|" + err.Error()
 		}
 		return string(out)
 	}
 	index, _ := os.ReadFile(filepath.Join(root, ".git", "index"))
-	sum := sha256.Sum256(index)
+	config, _ := os.ReadFile(filepath.Join(root, ".git", "config"))
+	head, _ := os.ReadFile(filepath.Join(root, ".git", "HEAD"))
+	indexSum := sha256.Sum256(index)
+	configSum := sha256.Sum256(config)
 	rebase, _ := os.ReadFile(filepath.Join(root, ".git", "rebase-merge", "head-name"))
 	return strings.Join([]string{
 		cmd("rev-parse", "HEAD"),
-		cmd("symbolic-ref", "HEAD"),
-		hex.EncodeToString(sum[:]),
+		strings.TrimSpace(string(head)),
+		hex.EncodeToString(indexSum[:]),
+		hex.EncodeToString(configSum[:]),
+		cmd("show-ref", "--head"),
+		cmd("remote", "-v"),
 		cmd("diff", "--cached"),
 		cmd("diff"),
 		cmd("ls-files", "--others", "--exclude-standard"),
 		string(rebase),
 	}, "|")
+}
+
+func backupRefCommitCount(t *testing.T, ctx context.Context, engine *CheckpointEngine) int {
+	t.Helper()
+	out, err := engine.gitRunner(engine.paths.Tmp, "").run(ctx, "rev-list", "--count", backupRefName(engine.workspaceID, engine.replicaID))
+	if err != nil {
+		t.Fatalf("rev-list: %v", err)
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		t.Fatalf("parse rev-list %q: %v", out, err)
+	}
+	return n
+}
+
+func runUserGit(t *testing.T, root string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=user", "GIT_AUTHOR_EMAIL=user@example.com",
+		"GIT_COMMITTER_NAME=user", "GIT_COMMITTER_EMAIL=user@example.com",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func setupCleanUserGit(t *testing.T, root string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("source\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runUserGit(t, root, "init")
+	runUserGit(t, root, "add", "README.md")
+	runUserGit(t, root, "commit", "-m", "init")
+}
+
+func setupDirtyUserGit(t *testing.T, root string) {
+	t.Helper()
+	setupCleanUserGit(t, root)
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("dirty\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setupStagedUserGit(t *testing.T, root string) {
+	t.Helper()
+	setupCleanUserGit(t, root)
+	if err := os.WriteFile(filepath.Join(root, "staged.txt"), []byte("staged\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runUserGit(t, root, "add", "staged.txt")
+}
+
+func setupDetachedUserGit(t *testing.T, root string) {
+	t.Helper()
+	setupCleanUserGit(t, root)
+	runUserGit(t, root, "checkout", "--detach", "HEAD")
+}
+
+func setupIgnoredCanonicalGit(t *testing.T, root string) {
+	t.Helper()
+	setupCleanUserGit(t, root)
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("projects/\n.tracker/events/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runUserGit(t, root, "add", ".gitignore")
+	runUserGit(t, root, "commit", "-m", "ignore atlas paths")
 }

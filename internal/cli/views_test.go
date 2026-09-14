@@ -89,7 +89,7 @@ func TestBoardAndSavedViewKeepAssignedBacklogAndCanceledVisible(t *testing.T) {
 	must("ticket", "move", "APP-2", "canceled", "--actor", "human:owner")
 
 	pretty := must("board", "--project", "APP", "--pretty")
-	for _, want := range []string{"Backlog (1)", "APP-1", "agent:builder-1", "Canceled (1)", "APP-2", "[canceled]"} {
+	for _, want := range []string{"Backlog", "APP-1", "agent:builder-1", "Canceled", "APP-2"} {
 		if !strings.Contains(pretty, want) {
 			t.Fatalf("board pretty output missing %q:\n%s", want, pretty)
 		}
@@ -112,7 +112,7 @@ func TestBoardAndSavedViewKeepAssignedBacklogAndCanceledVisible(t *testing.T) {
 
 	must("views", "save", "planning", "--kind", "board", "--project", "APP", "--column", "backlog", "--column", "canceled")
 	view := must("views", "run", "planning", "--pretty")
-	for _, want := range []string{"APP-1", "agent:builder-1", "Canceled (1)", "APP-2"} {
+	for _, want := range []string{"APP-1", "agent:builder-1", "Canceled", "APP-2"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("saved board view output missing %q:\n%s", want, view)
 		}

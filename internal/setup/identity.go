@@ -72,6 +72,11 @@ func identitiesEqual(a, b adapter.FileIdentity) bool {
 	return a.Owner.UID == b.Owner.UID && a.Owner.GID == b.Owner.GID
 }
 
+// FileDevIno returns the device/inode pair used to detect replaced directories.
+func FileDevIno(path string) (uint64, uint64, bool) {
+	return fileDevIno(path)
+}
+
 func fileDevIno(path string) (uint64, uint64, bool) {
 	info, err := os.Lstat(path)
 	if err != nil {

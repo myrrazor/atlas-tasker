@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 from typing import Any
+from atlas_test_env import isolated_atlas_environment
 
 
 PROTOCOL_VERSION = "2025-11-25"
@@ -25,6 +26,8 @@ READ_TOOLS = set(
     atlas.agent.list atlas.agent.view atlas.agent.wakeup.list atlas.agent.wakeup.view
     atlas.team.list atlas.team.show atlas.goal.brief atlas.search atlas.context
     atlas.status atlas.board atlas.backup.status
+    atlas.attention atlas.activity atlas.project.list atlas.views.list atlas.views.get atlas.views.run
+    atlas.backup.list atlas.backup.history atlas.backup.verify atlas.backup.targets atlas.settings.get
     atlas.ticket.view atlas.ticket.history atlas.ticket.inspect
     atlas.schedule.list atlas.schedule.history atlas.dashboard atlas.timeline
     atlas.run.view atlas.evidence.list atlas.evidence.view atlas.handoff.view
@@ -48,6 +51,8 @@ WORKFLOW_TOOLS = set(
     atlas.agent.wakeup.ack atlas.team.apply atlas.schedule.set atlas.schedule.clear
     atlas.ticket.request_review atlas.gate.approve atlas.gate.reject
     atlas.run.checkpoint atlas.evidence.add atlas.handoff.create atlas.import.preview
+    atlas.project.update atlas.views.save atlas.views.delete atlas.ticket.bulk
+    atlas.backup.run atlas.restore.plan atlas.settings.update
     """.split()
 )
 
@@ -64,6 +69,8 @@ DELIVERY_HIGH_IMPACT = {
 }
 
 ADMIN_HIGH_IMPACT = {
+    "atlas.backup.configure",
+    "atlas.restore.apply",
     "atlas.gate.waive",
     "atlas.sync.pull",
     "atlas.sync.push",
@@ -1023,4 +1030,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    with isolated_atlas_environment():
+        raise SystemExit(main())

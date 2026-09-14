@@ -1,12 +1,41 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 )
+
+func cloneSchema(schema map[string]any) map[string]any {
+	if schema == nil {
+		return objectSchema(nil, nil)
+	}
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		return objectSchema(nil, nil)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil || out == nil {
+		return objectSchema(nil, nil)
+	}
+	return out
+}
+
+func withWorkspaceID(schema map[string]any) map[string]any {
+	cloned := cloneSchema(schema)
+	props, _ := cloned["properties"].(map[string]any)
+	if props == nil {
+		props = map[string]any{}
+		cloned["properties"] = props
+	}
+	if _, exists := props["workspace_id"]; !exists {
+		props["workspace_id"] = stringProp("Workspace ID. Optional when the current directory is a unique Atlas workspace; required for cross-workspace writes.")
+	}
+	return cloned
+}
 
 func objectSchema(required []string, props map[string]any) map[string]any {
 	if props == nil {
@@ -84,7 +113,7 @@ func agentProfileProps(create bool) map[string]any {
 func highImpactProps(_ string) map[string]any {
 	props := actorReasonProps()
 	props["operation_approval_id"] = stringProp("One-time operation approval created outside MCP.")
-	props["confirm_text"] = stringProp("Typed acknowledgement. Expected format: execute <tool-name> <target>.")
+	props["confirm_text"] = stringProp("Typed acknowledgement. Must equal execute <tool-name> <target> where target is the exact CLI approval binding, including JSON objects for compound operations.")
 	return props
 }
 

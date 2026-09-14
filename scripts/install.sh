@@ -16,6 +16,75 @@ need_cmd() {
   fi
 }
 
+# Mirrors setup.DefaultStateDir: XDG_STATE_HOME/atlas-tasker, else
+# macOS ~/Library/Application Support/Atlas Tasker, else
+# Linux ~/.local/state/atlas-tasker.
+resolve_state_dir() {
+  if [ -n "${XDG_STATE_HOME:-}" ]; then
+    case "$XDG_STATE_HOME" in
+      /*) printf '%s/atlas-tasker' "$XDG_STATE_HOME"; return ;;
+      *) echo "XDG_STATE_HOME must be an absolute path; skipping install receipt" >&2; return 1 ;;
+    esac
+  fi
+  if [ -z "${HOME:-}" ] || [ "${HOME#/}" = "$HOME" ]; then
+    echo "HOME must be an absolute path to write an install receipt" >&2
+    return 1
+  fi
+  case "$(uname -s)" in
+    Darwin) printf '%s/Library/Application Support/Atlas Tasker' "$HOME" ;;
+    *) printf '%s/.local/state/atlas-tasker' "$HOME" ;;
+  esac
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+write_install_receipt() {
+  binary_path="$BIN_DIR/$BIN_NAME"
+  if [ ! -f "$binary_path" ]; then
+    echo "warning: installed binary missing; tracker uninstall will refuse without a receipt" >&2
+    return 0
+  fi
+  state_dir="$(resolve_state_dir)" || return 0
+  mkdir -p "$state_dir" || {
+    echo "warning: could not write install receipt; tracker uninstall will preview only" >&2
+    return 0
+  }
+  chmod 700 "$state_dir" 2>/dev/null || true
+  sum="$(checksum_file "$binary_path")"
+  created="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo 1970-01-01T00:00:00Z)"
+  digest="$( {
+    printf '%s\n' "$binary_path" "$sum" "script" "$TAG"
+  } | {
+    if command -v shasum >/dev/null 2>&1; then
+      shasum -a 256
+    else
+      sha256sum
+    fi
+  } | awk '{print $1}')"
+  receipt="$state_dir/install-receipt.json"
+  cat > "$receipt" <<EOF
+{
+  "format": "atlas_install_receipt_v1",
+  "created_at": "$created",
+  "version": "$(json_escape "$TAG")",
+  "install_method": "script",
+  "binary_path": "$(json_escape "$binary_path")",
+  "binary_sha256": "$sum",
+  "owned_paths": [
+    {
+      "path": "$(json_escape "$binary_path")",
+      "kind": "executable",
+      "sha256": "$sum"
+    }
+  ],
+  "digest": "$digest"
+}
+EOF
+  chmod 600 "$receipt" 2>/dev/null || true
+}
+
 resolve_version() {
   if [ "$VERSION" != "latest" ]; then
     printf '%s' "$VERSION"
@@ -182,4 +251,5 @@ install -d "$BIN_DIR"
 install "$TMP_DIR/$BIN_NAME" "$BIN_DIR/$BIN_NAME"
 
 echo "installed ${BIN_NAME} ${TAG} to ${BIN_DIR}/${BIN_NAME}"
+write_install_receipt
 offer_integrations

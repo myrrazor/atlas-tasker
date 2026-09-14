@@ -7,7 +7,7 @@
         <h1 id="welcome-title">{{t "welcome.title"}}{{if .OwnerName}}, {{.OwnerName}}{{end}}</h1>
       </div>
       {{if not .ReadOnly}}
-        <a class="new-button" href="/?new_project=1" data-dialog-open="new-project-dialog">{{template "iconPlus"}} {{t "welcome.new_project"}}</a>
+        <a class="new-button" href="{{.HomePath}}?new_project=1" data-dialog-open="new-project-dialog">{{template "iconPlus"}} {{t "welcome.new_project"}}</a>
       {{end}}
     </div>
 
@@ -27,22 +27,22 @@
           {{range .Projects}}
             <tr>
               <th scope="row">
-                <a class="project-link" href="/board?project={{.Project.Key}}">
+                <a class="project-link" href="{{$.BoardPath}}?project={{.Project.Key}}">
                   <span>{{.Project.Name}}</span>
                   <small>{{.Project.Key}}</small>
                 </a>
               </th>
               <td>
                 <div class="rollup-links">
-                  <a href="/board?project={{.Project.Key}}"><strong>{{.Active}}</strong> {{t "welcome.rollup.active"}}</a>
+                  <a href="{{$.BoardPath}}?project={{.Project.Key}}"><strong>{{.Active}}</strong> {{t "welcome.rollup.active"}}</a>
                   <span aria-hidden="true">·</span>
-                  <a href="/board?project={{.Project.Key}}"><strong>{{.Backlog}}</strong> {{t "welcome.rollup.backlog"}}</a>
+                  <a href="{{$.BoardPath}}?project={{.Project.Key}}"><strong>{{.Backlog}}</strong> {{t "welcome.rollup.backlog"}}</a>
                   <span aria-hidden="true">·</span>
-                  <a href="/board?project={{.Project.Key}}"><strong>{{.Done}}</strong> {{t "welcome.rollup.done"}}</a>
+                  <a href="{{$.BoardPath}}?project={{.Project.Key}}"><strong>{{.Done}}</strong> {{t "welcome.rollup.done"}}</a>
                 </div>
               </td>
               <td class="blocker-cell {{if .Blocked}}has-blockers{{end}}">
-                <a href="/board?project={{.Project.Key}}"><strong>{{.Blocked}}</strong> {{t "welcome.rollup.blocked"}}</a>
+                <a href="{{$.BoardPath}}?project={{.Project.Key}}"><strong>{{.Blocked}}</strong> {{t "welcome.rollup.blocked"}}</a>
               </td>
             </tr>
           {{else}}
@@ -63,7 +63,7 @@
     <ol class="recent-list">
       {{range .Recent}}
         <li>
-          <a href="/board?project={{.Project}}&ticket={{.TicketID}}">{{recentDescription .}}</a>
+          <a href="{{$.BoardPath}}?project={{.Project}}&ticket={{.TicketID}}">{{recentDescription .}}</a>
           <time datetime="{{.At.Format "2006-01-02T15:04:05Z07:00"}}">{{formatTime .At}}</time>
         </li>
       {{else}}
@@ -84,16 +84,16 @@
       <p class="section-kicker">{{t "welcome.project.kicker"}}</p>
       <h2 id="new-project-title">{{t "welcome.project.title"}}</h2>
     </div>
-    <a class="close-button" href="/" data-dialog-close aria-label="{{t "common.close"}}">×</a>
+    <a class="close-button" href="{{.HomePath}}" data-dialog-close aria-label="{{t "common.close"}}">×</a>
   </div>
-  <form class="project-form" method="post" action="/actions/projects/create" data-confirm="{{t "welcome.project.confirm"}}">
+  <form class="project-form" method="post" action="{{.ActionPrefix}}/actions/projects/create" data-confirm="{{t "welcome.project.confirm"}}">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input type="hidden" name="actor" value="{{.Actor}}">
     <label>{{t "welcome.project.key"}} <input name="key" value="{{formValue .Form "key" ""}}" placeholder="APP" autocomplete="off" required></label>
     <label>{{t "welcome.project.name"}} <input name="name" value="{{formValue .Form "name" ""}}" placeholder="{{t "welcome.project.name_placeholder"}}" autocomplete="off" required></label>
     <p class="form-help">{{t "welcome.project.key_help"}}</p>
     <div class="dialog-actions">
-      <a class="secondary-action" href="/" data-dialog-close>{{t "common.cancel"}}</a>
+      <a class="secondary-action" href="{{.HomePath}}" data-dialog-close>{{t "common.cancel"}}</a>
       <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>{{t "welcome.project.create"}}</button>
     </div>
   </form>
@@ -107,7 +107,7 @@
       <p class="section-kicker">{{t "settings.kicker"}}</p>
       <h1>{{t "settings.title"}}</h1>
     </div>
-    <a class="secondary-action" href="/">{{t "settings.back"}}</a>
+    <a class="secondary-action" href="{{.HomePath}}">{{t "settings.back"}}</a>
   </div>
   {{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
   <section class="settings-section" aria-labelledby="identity-settings">

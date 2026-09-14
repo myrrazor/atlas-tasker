@@ -60,6 +60,19 @@ func TestMCPSchemaAndToolsReflectProfiles(t *testing.T) {
 	t.Fatalf("expected inventory to include atlas.change.merge")
 }
 
+func TestMCPApproveOperationTargetContractIsDocumented(t *testing.T) {
+	cmd, _, err := NewRootCommand().Find([]string{"mcp", "approve-operation"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	long := cmd.Long
+	for _, needle := range []string{"plan_id", "digest", "workspace_id", "path", "target_id", "url", "execute <tool-name> <target>"} {
+		if !strings.Contains(long, needle) {
+			t.Fatalf("approve-operation long help missing %q:\n%s", needle, long)
+		}
+	}
+}
+
 func TestMCPApproveOperationCreatesBoundApproval(t *testing.T) {
 	withTempWorkspace(t)
 	if _, err := runCLI(t, "init"); err != nil {
@@ -176,6 +189,43 @@ func TestMCPDiscoveryDoesNotRequireWorkspace(t *testing.T) {
 	}
 }
 
+func TestMCPGlobalSchemaIncludesWorkspaceIDAndWorkflowDefault(t *testing.T) {
+	withTempWorkspace(t)
+	out, err := runCLI(t, "mcp", "schema", "--json", "--global")
+	if err != nil {
+		t.Fatalf("mcp schema --global: %v\n%s", err, out)
+	}
+	var payload struct {
+		Profile string `json:"profile"`
+		Tools   []struct {
+			Name        string         `json:"name"`
+			InputSchema map[string]any `json:"inputSchema"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("parse: %v\n%s", err, out)
+	}
+	if payload.Profile != "workflow" {
+		t.Fatalf("global schema default profile=%s", payload.Profile)
+	}
+	names := map[string]bool{}
+	for _, tool := range payload.Tools {
+		names[tool.Name] = true
+		if tool.Name == "atlas.ticket.create" {
+			props, _ := tool.InputSchema["properties"].(map[string]any)
+			if _, ok := props["workspace_id"]; !ok {
+				t.Fatal("global ticket.create missing workspace_id")
+			}
+		}
+	}
+	if !names["atlas.workspace.list"] || !names["atlas.ticket.create"] {
+		t.Fatalf("global schema missing tools: %#v", names)
+	}
+	if names["atlas.workspace.fork_copy"] {
+		t.Fatal("default global schema must not include high-impact tools")
+	}
+}
+
 func TestMCPOperationApprovalRequiresInitializedWorkspace(t *testing.T) {
 	withTempWorkspace(t)
 	_, err := runCLI(t, "mcp", "approve-operation", "--operation", "atlas.change.merge", "--target", "CHG-1", "--actor", "human:owner", "--reason", "approve merge", "--json")
@@ -188,7 +238,7 @@ func TestMCPOperationApprovalRequiresInitializedWorkspace(t *testing.T) {
 }
 
 func TestMCPToolsDocsMatchJSONInventory(t *testing.T) {
-	out, err := runCLI(t, "mcp", "tools", "--json", "--tool-profile", "admin", "--dangerously-allow-high-impact-tools")
+	out, err := runCLI(t, "mcp", "tools", "--global", "--json", "--tool-profile", "admin", "--dangerously-allow-high-impact-tools")
 	if err != nil {
 		t.Fatalf("mcp tools failed: %v\n%s", err, out)
 	}

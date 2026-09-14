@@ -51,6 +51,8 @@ type QueryService struct {
 	Clock              func() time.Time
 	StateDir           string
 	Home               string
+	Getenv             func(string) string
+	GOOS               string
 }
 
 func NewQueryService(root string, projects contracts.ProjectStore, tickets contracts.TicketStore, events contracts.EventLog, projection contracts.ProjectionStore, clock func() time.Time) *QueryService {
