@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/integrations"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 )
 
@@ -441,6 +442,80 @@ func TestClaudeUserScopeCLIRegistration(t *testing.T) {
 	}
 	if strings.Contains(joined, "--workspace") {
 		t.Fatalf("global registration must not pass --workspace: %v", runner.Commands[0].Args)
+	}
+	if strings.Contains(joined, GlobalMCPToolNameStyleFlag) {
+		t.Fatalf("claude global registration must keep canonical names: %v", runner.Commands[0].Args)
+	}
+}
+
+func TestGrokUserScopeCLIRegistrationUsesPortableToolNames(t *testing.T) {
+	home := t.TempDir()
+	runner := &RecordingRunner{}
+	grok := filepath.Join(home, "bin", "grok")
+	if err := os.MkdirAll(filepath.Dir(grok), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(grok, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a, err := Open(Options{
+		Home:     home,
+		StateDir: filepath.Join(home, "state"),
+		LookPath: func(name string) (string, error) {
+			if name == "grok" {
+				return grok, nil
+			}
+			return "", os.ErrNotExist
+		},
+		CommandRunner:   runner,
+		SkipHostInstall: true,
+		WriteClientCfg:  true,
+		Executable:      filepath.Join(home, "bin", "tracker"),
+		Now:             func() time.Time { return time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var running atomic.Bool
+	a.opts.Process = &RecordingSpawner{OnStart: func() { running.Store(true) }}
+	a.opts.Probe = LatchProber{Instance: a.Settings().InstanceID, Running: running.Load}
+	t.Cleanup(func() { _ = a.Close() })
+	root := filepath.Join(home, "repo")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Init(context.Background(), InitOptions{Root: root, Agents: true, WriteClientCfg: true, Register: true}); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.Commands) == 0 {
+		t.Fatal("expected grok mcp add")
+	}
+	joined := strings.Join(runner.Commands[0].Args, " ")
+	if !strings.Contains(joined, "mcp add") || !strings.Contains(joined, "--scope user") {
+		t.Fatalf("grok args: %v", runner.Commands[0].Args)
+	}
+	if !strings.Contains(joined, GlobalMCPToolNameStyleFlag) || !strings.Contains(joined, GlobalMCPToolNameStylePortable) {
+		t.Fatalf("grok global registration missing portable tool names: %v", runner.Commands[0].Args)
+	}
+	if strings.Contains(joined, "--workspace") || strings.Contains(joined, "dangerously") {
+		t.Fatalf("grok global registration leaked extra flags: %v", runner.Commands[0].Args)
+	}
+}
+
+func TestGlobalMCPArgsForOnlyChangesGrok(t *testing.T) {
+	canonical := strings.Join(GlobalMCPArgs(), " ")
+	if strings.Contains(canonical, GlobalMCPToolNameStyleFlag) {
+		t.Fatalf("default global argv leaked portable flag: %s", canonical)
+	}
+	grok := strings.Join(GlobalMCPArgsFor(integrations.TargetGrok), " ")
+	if !strings.Contains(grok, GlobalMCPToolNameStyleFlag) || !strings.Contains(grok, GlobalMCPToolNameStylePortable) {
+		t.Fatalf("grok argv: %s", grok)
+	}
+	for _, target := range []integrations.Target{integrations.TargetClaude, integrations.TargetCodex, integrations.TargetCursor, integrations.TargetOpenClaw, integrations.TargetGeneric} {
+		got := strings.Join(GlobalMCPArgsFor(target), " ")
+		if got != canonical {
+			t.Fatalf("%s argv %s want %s", target, got, canonical)
+		}
 	}
 }
 

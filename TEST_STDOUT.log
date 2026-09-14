@@ -1,6 +1,10 @@
-Atlas Tasker v1.15 local candidate checks
-2026-09-14T08:48:52.779322+00:00
-Go 1.26.6; darwin/arm64; serialized local fixtures. No release/deployment.
+Atlas Tasker v1.15 Grok integration, workflow fixes, and dark onboarding checks
+2026-09-14T18:44:38.058143+00:00
+Go 1.26.6; darwin/arm64; isolated local fixtures. No release.
+
+$ git diff --check
+
+EXIT 0
 
 $ go vet ./...
 
@@ -8,29 +12,29 @@ EXIT 0
 
 $ go test ./...
 ?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/app	3.785s
+ok  	github.com/myrrazor/atlas-tasker/internal/app	2.605s
 ok  	github.com/myrrazor/atlas-tasker/internal/apperr	(cached)
 ?   	github.com/myrrazor/atlas-tasker/internal/buildinfo	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/cli	87.528s
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	79.310s
 ok  	github.com/myrrazor/atlas-tasker/internal/config	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/contracts	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/domain	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/integrations	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/all	4.619s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/all	(cached)
 ?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/claude	[no test files]
 ?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/codex	[no test files]
 ?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/cursor	[no test files]
 ?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/generic	[no test files]
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/grok	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/grok	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/host	(cached)
 ?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/openclaw	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp	4.676s
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp/selfprobe	13.426s
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp/testhost	13.413s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp	2.257s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/selfprobe	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/testhost	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/render	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/service	41.853s
-ok  	github.com/myrrazor/atlas-tasker/internal/setup	7.436s
+ok  	github.com/myrrazor/atlas-tasker/internal/service	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/setup	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/storage	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
@@ -39,18 +43,26 @@ ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/testutil	(cached)
 ?   	github.com/myrrazor/atlas-tasker/internal/testutil/testenv	[no test files]
 ok  	github.com/myrrazor/atlas-tasker/internal/theme	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	4.742s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/uninstall	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/update	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/web	13.815s
+ok  	github.com/myrrazor/atlas-tasker/internal/web	8.780s
 
 EXIT 0
 
-$ go build -o <TASK>/evidence/v1.15-tracker ./cmd/tracker
+$ go build -o '$CANDIDATE_TRACKER' ./cmd/tracker
 
 EXIT 0
 
-$ python3 scripts/test-install.py --tracker <TASK>/evidence/v1.15-tracker
+$ sh -n scripts/install.sh
+
+EXIT 0
+
+$ sh -n scripts/verify-release.sh
+
+EXIT 0
+
+$ python3 scripts/test-install.py --tracker '$CANDIDATE_TRACKER'
 test_bad_checksum_stops_before_install_or_setup (__main__.InstallerTests) ... ok
 test_custom_bin_dir (__main__.InstallerTests) ... ok
 test_old_version_falls_back_safely (__main__.InstallerTests) ... ok
@@ -63,18 +75,18 @@ test_unattended_install_never_prompts_or_initializes (__main__.InstallerTests) .
 test_xdg_state_home_overrides_platform_layout (__main__.InstallerTests) ... ok
 
 ----------------------------------------------------------------------
-Ran 10 tests in 8.046s
+Ran 10 tests in 8.108s
 
 OK
 
 EXIT 0
 
-$ python3 scripts/verify-mcp-workflow.py --tracker <TASK>/evidence/v1.15-tracker
+$ python3 scripts/verify-mcp-workflow.py --tracker '$CANDIDATE_TRACKER'
 {"bootstrap": {"fresh_explicit_workspace": "passed", "init_if_missing": "passed", "project_create_over_mcp": "passed"}, "cleanup": {"synthetic_directories_removed": true}, "client_cwd": "distinct_synthetic_temporary", "format_version": "v1", "kind": "atlas_mcp_workflow_smoke", "profiles": {"admin": {"count": 98, "sha256": "8b31629e0efd0fb78a64ea54066ecf7863eade78b01254657bf4d5aca2286986"}, "admin_high_impact_enabled": {"count": 111, "sha256": "8e0aeae0293cf0d3f0690912c5ab68f5209c791d7124ca652a8953e4ab869e1b"}, "delivery": {"count": 98, "sha256": "8b31629e0efd0fb78a64ea54066ecf7863eade78b01254657bf4d5aca2286986"}, "delivery_high_impact_enabled": {"count": 100, "sha256": "e198da81ac4c14e97cf9ea883e146f7febdb1f69b84e1a29b0ff9b2fc9eaa0ca"}, "read": {"count": 55, "sha256": "8d6aaab1b6cc14a5e67a43b5ac533515ea9eaf2c437ec5338f0ae9e5a05b0d78"}, "workflow": {"count": 94, "sha256": "cd14718d07283b3192e045a08efc4e56d6787e8da25591cc2855145a6be81eed"}}, "safety": {"admin_flag_exposes_all_high_impact": "passed", "delivery_flag_exposes_only_delivery_high_impact": "passed", "high_impact_hidden_without_flag": "passed", "high_impact_operations_executed": false, "read_profile_write_denied": "passed"}, "status": "passed", "tracker": {"build_date": "unknown", "commit": "unknown", "go_version": "go1.26.6", "platform": "darwin/arm64", "version": "dev"}, "transport": {"content_length": {"initialize": "passed", "tools_call": "passed", "tools_list": "passed"}, "ndjson": {"initialize": "passed", "read_write_denial": "passed", "tools_call": "passed", "tools_list": "passed"}}, "workflow": {"actor_sequence": ["agent:builder-1", "agent:reviewer-1", "human:owner"], "agent_create_list_view": "passed", "available_pending_queue": "passed", "dependency_wakeup": "passed", "goal_brief": "passed", "request_review_approve_complete": "passed", "synthetic_ticket_ids": ["APP-1", "APP-2"], "synthetic_wakeup_state": "acked", "team_visibility": "passed", "ticket_create_assign_link": "passed", "ticket_edit_priority_labels": "passed", "ticket_heartbeat": "passed", "wakeup_ack": "passed"}, "workspace": "synthetic_temporary", "workspace_argument": "explicit"}
 
 EXIT 0
 
-$ python3 scripts/verify-managed-workflow.py --tracker <TASK>/evidence/v1.15-tracker
+$ python3 scripts/verify-managed-workflow.py --tracker '$CANDIDATE_TRACKER'
 {
   "generic_mcp_client": {
     "atlas.context": "passed",
@@ -156,27 +168,27 @@ $ python3 scripts/verify-managed-workflow.py --tracker <TASK>/evidence/v1.15-tra
     "duplicate_skill_introduced": false,
     "providers": {
       "claude": {
-        "lifecycle_bytes": 4316,
+        "lifecycle_bytes": 4819,
         "skill": ".claude/skills/atlas-worker/SKILL.md"
       },
       "codex": {
-        "lifecycle_bytes": 4316,
+        "lifecycle_bytes": 4819,
         "skill": ".codex/skills/atlas-worker/SKILL.md"
       },
       "cursor": {
-        "lifecycle_bytes": 4316,
+        "lifecycle_bytes": 4819,
         "skill": ".cursor/skills/atlas-worker/SKILL.md"
       },
       "generic": {
-        "lifecycle_bytes": 4316,
+        "lifecycle_bytes": 4819,
         "skill": ".tracker/integrations/generic-agent-skill/SKILL.md"
       },
       "grok": {
-        "lifecycle_bytes": 4316,
+        "lifecycle_bytes": 4819,
         "skill": ".tracker/integrations/grok-agent-skill/SKILL.md"
       },
       "openclaw": {
-        "lifecycle_bytes": 4316,
+        "lifecycle_bytes": 4819,
         "skill": ".agents/skills/atlas-worker/SKILL.md"
       }
     },
@@ -187,166 +199,66 @@ $ python3 scripts/verify-managed-workflow.py --tracker <TASK>/evidence/v1.15-tra
 
 EXIT 0
 
-$ node --test internal/web/testdata/refresh_board.test.mjs internal/web/testdata/home_ui.test.mjs site/_tools/site-contract.test.mjs site/_tools/sync-site-origin.test.mjs
-✔ ticketHref keeps the explicit project filter (2.016416ms)
-✔ ticketHref uses a Home-prefixed board path (0.37725ms)
-✔ Home clears a new-tab claim before sending it in a POST body (1.317625ms)
-✔ Home consumes a claim added to an already-open sign-in tab only once (0.305958ms)
-✔ a successful refresh preserves the move confirmation without retrying (2.560417ms)
-✔ an expired session shows recovery guidance without replacing the board (0.426208ms)
-✔ a transient failure retries and keeps the move confirmation after recovery (0.805667ms)
-✔ custom 404 assets and recovery links work at nested missing routes (6.02625ms)
-✔ index.html satisfies the public-page SEO contract (1.605208ms)
-✔ cli.html satisfies the public-page SEO contract (0.591042ms)
-✔ mcp.html satisfies the public-page SEO contract (0.348208ms)
-✔ docs/index.html satisfies the public-page SEO contract (0.276833ms)
-✔ docs/getting-started.html satisfies the public-page SEO contract (0.340375ms)
-✔ docs/home.html satisfies the public-page SEO contract (0.245959ms)
-✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.284125ms)
-✔ docs/views-and-search.html satisfies the public-page SEO contract (0.354125ms)
-✔ docs/web-board.html satisfies the public-page SEO contract (0.258459ms)
-✔ docs/backup.html satisfies the public-page SEO contract (0.185ms)
-✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.246083ms)
-✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.202ms)
-✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.75125ms)
-✔ docs/mcp-security.html satisfies the public-page SEO contract (0.461666ms)
-✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.333792ms)
-✔ docs/uninstall.html satisfies the public-page SEO contract (0.167584ms)
-✔ docs/faq.html satisfies the public-page SEO contract (0.216167ms)
-✔ changelog.html satisfies the public-page SEO contract (0.267833ms)
-✔ guide.html satisfies the public-page SEO contract (0.167209ms)
-✔ privacy.html satisfies the public-page SEO contract (0.151792ms)
-✔ terms.html satisfies the public-page SEO contract (0.130208ms)
-✔ page titles are unique (0.39175ms)
-✔ internal page links and fragments resolve (6.336292ms)
-✔ agent integration tabs expose all six targets with valid relationships (0.8005ms)
-✔ MCP tool page covers every source workflow tool (0.797542ms)
-✖ public workflow guidance matches the v1.13 contracts (2.143959ms)
-✔ README and site wordmarks match the canonical application wordmark (0.046959ms)
-✔ self-hosted fonts use font-display swap (0.133875ms)
-✔ OG image is a 1200 by 630 PNG (3.678208ms)
-✔ sitemap, robots, and llms cover every public page (0.214167ms)
-✔ hidden security contact uses private GitHub vulnerability reporting (0.09875ms)
-✔ social card names the configured production domain (0.076375ms)
-✔ visible FAQ questions match FAQPage JSON-LD (5.76775ms)
-✔ custom 404 is a real page with hosting 404 status (0.0835ms)
-✔ first-board copyables use an app directory so APP is the init key (0.57125ms)
-✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.632041ms)
-✔ favicon set includes SVG, PNG, and apple-touch icon (0.658209ms)
-✔ copy controls expose loading, success, and error states (0.082084ms)
-✔ mobile navigation stays keyboard reachable (0.071125ms)
-✔ website notices explain actual use without unresolved legal templates (0.185041ms)
-✔ public site omits personal author and direct contact metadata (1.395417ms)
-✔ publishes the configured Atlas production domain (0.692958ms)
-✔ keeps every public SEO output on the same origin (0.629791ms)
-✔ normalizes a canonical origin (0.226ms)
-✔ reads the current origin from the canonical link (0.089833ms)
-✔ replaces every rendered origin reference (0.053083ms)
-ℹ tests 54
+$ node --test internal/web/testdata/refresh_board.test.mjs site/_tools/site-contract.test.mjs site/_tools/sync-site-origin.test.mjs
+✔ a successful refresh preserves the move confirmation without retrying (2.917042ms)
+✔ an expired session shows recovery guidance without replacing the board (0.407875ms)
+✔ a transient failure retries and keeps the move confirmation after recovery (1.188ms)
+✔ custom 404 assets and recovery links work at nested missing routes (6.299667ms)
+✔ index.html satisfies the public-page SEO contract (2.192417ms)
+✔ cli.html satisfies the public-page SEO contract (0.360833ms)
+✔ mcp.html satisfies the public-page SEO contract (0.429125ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.324042ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.383125ms)
+✔ docs/home.html satisfies the public-page SEO contract (0.2395ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.382625ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.233625ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.273292ms)
+✔ docs/backup.html satisfies the public-page SEO contract (0.196458ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.302917ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.269375ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.47975ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.390792ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.243583ms)
+✔ docs/uninstall.html satisfies the public-page SEO contract (0.181583ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.251791ms)
+✔ changelog.html satisfies the public-page SEO contract (0.269459ms)
+✔ guide.html satisfies the public-page SEO contract (0.163084ms)
+✔ privacy.html satisfies the public-page SEO contract (0.156917ms)
+✔ terms.html satisfies the public-page SEO contract (0.140583ms)
+✔ page titles are unique (0.546333ms)
+✔ internal page links and fragments resolve (7.720417ms)
+✔ agent integration tabs expose all six targets with valid relationships (0.966458ms)
+✔ MCP tool page covers every source workflow tool (0.910167ms)
+✔ public workflow guidance matches the v1.15 candidate contracts (1.934458ms)
+✔ README and site wordmarks match the canonical application wordmark (0.055625ms)
+✔ self-hosted fonts use font-display swap (0.142958ms)
+✔ OG image is a 1200 by 630 PNG (2.888041ms)
+✔ sitemap, robots, and llms cover every public page (0.251417ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.100583ms)
+✔ social card names the configured production domain (0.081458ms)
+✔ visible FAQ questions match FAQPage JSON-LD (6.539917ms)
+✔ custom 404 is a real page with hosting 404 status (0.164875ms)
+✔ first-board copyables use an app directory so APP is the init key (0.730709ms)
+✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.738042ms)
+✔ all local page images exist and declare dimensions (4.577958ms)
+✔ favicon set includes SVG, PNG, and apple-touch icon (0.295833ms)
+✔ copy controls expose loading, success, and error states (0.087125ms)
+✔ mobile navigation stays keyboard reachable (0.08125ms)
+✔ website notices explain actual use without unresolved legal templates (0.19725ms)
+✔ public site omits personal author and direct contact metadata (2.343375ms)
+✔ publishes the configured Atlas production domain (0.713ms)
+✔ keeps every public SEO output on the same origin (0.645167ms)
+✔ normalizes a canonical origin (0.227792ms)
+✔ reads the current origin from the canonical link (0.092958ms)
+✔ replaces every rendered origin reference (0.052833ms)
+ℹ tests 51
 ℹ suites 0
-ℹ pass 53
-ℹ fail 1
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 114.136458
-
-✖ failing tests:
-
-test at site/_tools/site-contract.test.mjs:336:1
-✖ public workflow guidance matches the v1.13 contracts (2.143959ms)
-  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /all seven canonical workflow columns/i. Input:
-
-  `The local web board: Atlas Tasker Docs { "@context": "https://schema.org", "@type": "TechArticle", "name": "The local web board: Atlas Tasker Docs", "description": "Run the Atlas Tasker kanban board in your browser: loopback-only serving, session tokens, drag and drop, the ticket drawer, and read-only wallboard mode.", "url": "https://atlastasker.com/docs/web-board.html", "isPartOf": { "@type": "WebSite", "name": "Atlas Tasker", "url": "https://atlastasker.com/" } } Skip to content CLI For agents Docs Install GitHub ↗ Docs menu Start Overview Getting started Home and workspaces Core Tickets and workflow Views and search The web board Checkpoints and backup Agents Agents and dispatch MCP setup MCP tools MCP security JSON and exit codes Help Uninstall FAQ Full command reference ↗ AGENTS.md ↗ All source docs ↗ Core The local web board tracker opens Atlas Home on 127.0.0.1:7432. The single-workspace board below is still supported. No hosted server, no second database, no login system. It is a local view over the Markdown snapshots, the event log, and the query index. tracker web serve 127.0.0.1 · local only The board with a ticket drawer open: Overview, Notes & activity, Policy/Gates, and Evidence in one place. Serving start it Copy tracker # Atlas Home on 127.0.0.1:7432 tracker web serve --open # single-workspace board tracker web serve --project APP --actor human:owner --open tracker web serve --read-only --no-browser # wallboard mode tracker web status # where is it running tracker web open # reopen the last server Home binds 127.0.0.1:7432 and fails if another app owns that port. Legacy web serve picks a random free port. There is no non-loopback option. Home clears a one-time URL fragment and exchanges it at POST /session/claim for an HttpOnly cookie. Legacy serve still prints?token=. Home keeps pending claims in private local state until consumed or expired. That cookie is essential to the local app; this marketing site sets none. --read-only serves the board without any mutation controls: handy for a shared screen. Runtime status lands, without secrets, under.tracker/runtime/web/server.json, which is how web open and web status find the running server. What you can do on it The board shows Backlog, Ready, In Progress, In Review, Blocked, and Done; a disclosure opens Canceled. Done and Canceled stay separate because canceled work neither satisfies dependencies nor counts as completed. Drag cards between legal states: dropping a card on its own column is a no-op, and every move runs the same status-edge rules as the CLI. On a phone the board shows one column at a time and a strip above it switches between them. The ticket drawer is open as soon as the board loads, on the first ticket in the Ready column (or whichever column?column= names; if that column is empty, the first ticket anywhere on the board). It sits beside the board on wide screens and below it on narrow ones. Click any card to switch, and use the close control in the drawer head to clear the selection; the drawer then shows its empty state with a New ticket button. Four tabs: Overview (description, acceptance criteria, schedule, edit), Notes & activity (comments and history), Policy/Gates, and Evidence. Each card shows its assignee on its face. Hover for a couple of seconds and a preview adds reviewer, priority, labels, and the blocker, gate, and comment counts without changing the drawer. Create and edit tickets, comment, move through workflow states, and run request-review, approve, or complete where policy allows. For review_gate, reviewer approval is the transition to Done; it is not followed by a separate completion. Filter by project, assignee, reviewer, label, priority, and type; search; and load saved views. The state lives in the URL, so a filtered board is a shareable local link. Keyboard: n for a new ticket, / for search. Every drag action also exists as a button for non-drag users. If a dependency, reviewer gate, owner gate, or read-only mode blocks an action, the page shows the service error instead of bypassing policy. The board mirrors the tracker; it never gets its own rules. The other pages The board lives at /board; the same server renders three more pages: / is a welcome dashboard: per-project status rollups, blockers, a recent-activity feed, links into each project's board, and project creation when the server is not read-only. /schedule is a week-view workspace for one-time scheduled tickets. New or replacement times must be strictly in the future; an existing schedule can become overdue normally. Pick a runner and a time, browse the week, and "Run due now" triggers everything that is due: human runners get a reminder, agent runners get an Atlas wakeup. Same data as tracker schedule on the CLI. /settings is read-only. It shows the workspace, host, actor, owner name, language, and agent colors the server is running with; changing them still happens through tracker config. Languages The UI ships in six languages: English, Spanish, Indonesian, Chinese, Japanese, and Korean. A switcher in the page footer changes it per request; without it the server falls back to the web.lang config key, then the browser's Accept-Language. Two honest gaps for now: tracker config set web.lang only accepts en, es, and id, so reach the other three through the switcher or browser preference, and the schedule page is English-only. The board is for humans There is no API key and no headless mode, on purpose. Agents should not scrape or drive the board; they get the JSON CLI and MCP, which are faster and structured. Browser mutations record surface: "web" in the event log, so you can always tell how a change arrived. Under the hood The board uses the same canonical services as the CLI and TUI. Descriptions and comments render as escaped text; raw Markdown HTML is not injected into the page. It is a viewer over your repository state, not a separate application with its own storage. Previous Views and search Next Checkpoints and backup Atlas Tasker · MIT Home CLI For agents Changelog GitHub Privacy Terms document.querySelector(".docs-menu-button").addEventListener("click", (event) => { const open = document.body.classList.toggle("docs-open"); event.currentTarget.setAttribute("aria-expanded", String(open)); }); const status = document.querySelector(".copy-status"); async function copyText(text) { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return; } const field = document.createElement("textarea"); field.value = text; field.setAttribute("readonly", ""); field.style.position = "fixed"; field.style.opacity = "0"; document.body.appendChild(field); field.select(); const copied = document.execCommand("copy"); field.remove(); if (!copied) throw new Error("copy failed"); } document.querySelectorAll("[data-copy]").forEach((button) => { button.addEventListener("click", async () => { const command = document.getElementById(button.dataset.copy); const label = button.textContent; button.disabled = true; button.setAttribute("aria-busy", "true"); button.textContent = "Copying…"; status.textContent = "Copying command…"; try { await copyText(command.textContent.trim()); button.textContent = "Copied"; status.textContent = "Command copied to clipboard."; } catch { button.textContent = "Select + copy"; status.textContent = "Automatic copy failed. Select the command and copy it manually."; } finally { button.disabled = false; button.removeAttribute("aria-busy"); } window.setTimeout(() => { button.textContent = label; status.textContent = ""; }, 1800); }); });`
-
-      at TestContext.<anonymous> (file://<TASK>/integration/site/_tools/site-contract.test.mjs:353:10)
-      at Test.runInAsyncScope (node:async_hooks:226:14)
-      at Test.run (node:internal/test_runner/test:1382:25)
-      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
-      at Test.postRun (node:internal/test_runner/test:1522:19)
-      at Test.run (node:internal/test_runner/test:1447:12)
-      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
-    generatedMessage: true,
-    code: 'ERR_ASSERTION',
-    actual: `The local web board: Atlas Tasker Docs { "@context": "https://schema.org", "@type": "TechArticle", "name": "The local web board: Atlas Tasker Docs", "description": "Run the Atlas Tasker kanban board in your browser: loopback-only serving, session tokens, drag and drop, the ticket drawer, and read-only wallboard mode.", "url": "https://atlastasker.com/docs/web-board.html", "isPartOf": { "@type": "WebSite", "name": "Atlas Tasker", "url": "https://atlastasker.com/" } } Skip to content CLI For agents Docs Install GitHub ↗ Docs menu Start Overview Getting started Home and workspaces Core Tickets and workflow Views and search The web board Checkpoints and backup Agents Agents and dispatch MCP setup MCP tools MCP security JSON and exit codes Help Uninstall FAQ Full command reference ↗ AGENTS.md ↗ All source docs ↗ Core The local web board tracker opens Atlas Home on 127.0.0.1:7432. The single-workspace board below is still supported. No hosted server, no second database, no login system. It is a local view over the Markdown snapshots, the event log, and the query index. tracker web serve 127.0.0.1 · local only The board with a ticket drawer open: Overview, Notes & activity, Policy/Gates, and Evidence in one place. Serving start it Copy tracker # Atlas Home on 127.0.0.1:7432 tracker web serve --open # single-workspace board tracker web serve --project APP --actor human:owner --open tracker web serve --read-only --no-browser # wallboard mode tracker web status # where is it running tracker web open # reopen the last server Home binds 127.0.0.1:7432 and fails if another app owns that port. Legacy web serve picks a random free port. There is no non-loopback option. Home clears a one-time URL fragment and exchanges it at POST /session/claim for an HttpOnly cookie. Legacy serve still prints?token=. Home keeps pending claims in private local state until consumed or expired. That cookie is essential to the local app; this marketing site sets none. --read-only serves the board without any mutation controls: handy for a shared screen. Runtime status lands, without secrets, under.tracker/runtime/web/server.json, which is how web open and web status find the running server. What you can do on it The board shows Backlog, Ready, In Progress, In Review, Blocked, and Done; a disclosure opens Canceled. Done and Canceled stay separate because canceled work neither satisfies dependencies nor counts as completed. Drag cards between legal states: dropping a card on its own column is a no-op, and every move runs the same status-edge rules as the CLI. On a phone the board shows one column at a time and a strip above it switches between them. The ticket drawer is open as soon as the board loads, on the first ticket in the Ready column (or whichever column?column= names; if that column is empty, the first ticket anywhere on the board). It sits beside the board on wide screens and below it on narrow ones. Click any card to switch, and use the close control in the drawer head to clear the selection; the drawer then shows its empty state with a New ticket button. Four tabs: Overview (description, acceptance criteria, schedule, edit), Notes & activity (comments and history), Policy/Gates, and Evidence. Each card shows its assignee on its face. Hover for a couple of seconds and a preview adds reviewer, priority, labels, and the blocker, gate, and comment counts without changing the drawer. Create and edit tickets, comment, move through workflow states, and run request-review, approve, or complete where policy allows. For review_gate, reviewer approval is the transition to Done; it is not followed by a separate completion. Filter by project, assignee, reviewer, label, priority, and type; search; and load saved views. The state lives in the URL, so a filtered board is a shareable local link. Keyboard: n for a new ticket, / for search. Every drag action also exists as a button for non-drag users. If a dependency, reviewer gate, owner gate, or read-only mode blocks an action, the page shows the service error instead of bypassing policy. The board mirrors the tracker; it never gets its own rules. The other pages The board lives at /board; the same server renders three more pages: / is a welcome dashboard: per-project status rollups, blockers, a recent-activity feed, links into each project's board, and project creation when the server is not read-only. /schedule is a week-view workspace for one-time scheduled tickets. New or replacement times must be strictly in the future; an existing schedule can become overdue normally. Pick a runner and a time, browse the week, and "Run due now" triggers everything that is due: human runners get a reminder, agent runners get an Atlas wakeup. Same data as tracker schedule on the CLI. /settings is read-only. It shows the workspace, host, actor, owner name, language, and agent colors the server is running with; changing them still happens through tracker config. Languages The UI ships in six languages: English, Spanish, Indonesian, Chinese, Japanese, and Korean. A switcher in the page footer changes it per request; without it the server falls back to the web.lang config key, then the browser's Accept-Language. Two honest gaps for now: tracker config set web.lang only accepts en, es, and id, so reach the other three through the switcher or browser preference, and the schedule page is English-only. The board is for humans There is no API key and no headless mode, on purpose. Agents should not scrape or drive the board; they get the JSON CLI and MCP, which are faster and structured. Browser mutations record surface: "web" in the event log, so you can always tell how a change arrived. Under the hood The board uses the same canonical services as the CLI and TUI. Descriptions and comments render as escaped text; raw Markdown HTML is not injected into the page. It is a viewer over your repository state, not a separate application with its own storage. Previous Views and search Next Checkpoints and backup Atlas Tasker · MIT Home CLI For agents Changelog GitHub Privacy Terms document.querySelector(".docs-menu-button").addEventListener("click", (event) => { const open = document.body.classList.toggle("docs-open"); event.currentTarget.setAttribute("aria-expanded", String(open)); }); const status = document.querySelector(".copy-status"); async function copyText(text) { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return; } const field = document.createElement("textarea"); field.value = text; field.setAttribute("readonly", ""); field.style.position = "fixed"; field.style.opacity = "0"; document.body.appendChild(field); field.select(); const copied = document.execCommand("copy"); field.remove(); if (!copied) throw new Error("copy failed"); } document.querySelectorAll("[data-copy]").forEach((button) => { button.addEventListener("click", async () => { const command = document.getElementById(button.dataset.copy); const label = button.textContent; button.disabled = true; button.setAttribute("aria-busy", "true"); button.textContent = "Copying…"; status.textContent = "Copying command…"; try { await copyText(command.textContent.trim()); button.textContent = "Copied"; status.textContent = "Command copied to clipboard."; } catch { button.textContent = "Select + copy"; status.textContent = "Automatic copy failed. Select the command and copy it manually."; } finally { button.disabled = false; button.removeAttribute("aria-busy"); } window.setTimeout(() => { button.textContent = label; status.textContent = ""; }, 1800); }); });`,
-    expected: /all seven canonical workflow columns/i,
-    operator: 'match',
-    diff: 'simple'
-  }
-
-EXIT 1
-
-Resume after correcting the failed check; earlier output retained.
-2026-09-14T08:53:21.824987+00:00
-Go 1.26.6; darwin/arm64; serialized local fixtures. No release/deployment.
-
-$ node --test internal/web/testdata/refresh_board.test.mjs internal/web/testdata/home_ui.test.mjs site/_tools/site-contract.test.mjs site/_tools/sync-site-origin.test.mjs
-✔ ticketHref keeps the explicit project filter (1.864541ms)
-✔ ticketHref uses a Home-prefixed board path (0.354ms)
-✔ Home clears a new-tab claim before sending it in a POST body (1.312875ms)
-✔ Home consumes a claim added to an already-open sign-in tab only once (0.363208ms)
-✔ a successful refresh preserves the move confirmation without retrying (2.615958ms)
-✔ an expired session shows recovery guidance without replacing the board (0.395791ms)
-✔ a transient failure retries and keeps the move confirmation after recovery (1.213792ms)
-✔ custom 404 assets and recovery links work at nested missing routes (6.502417ms)
-✔ index.html satisfies the public-page SEO contract (1.5815ms)
-✔ cli.html satisfies the public-page SEO contract (0.6795ms)
-✔ mcp.html satisfies the public-page SEO contract (0.340791ms)
-✔ docs/index.html satisfies the public-page SEO contract (0.289208ms)
-✔ docs/getting-started.html satisfies the public-page SEO contract (1.209625ms)
-✔ docs/home.html satisfies the public-page SEO contract (0.277709ms)
-✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.304375ms)
-✔ docs/views-and-search.html satisfies the public-page SEO contract (0.387292ms)
-✔ docs/web-board.html satisfies the public-page SEO contract (0.268458ms)
-✔ docs/backup.html satisfies the public-page SEO contract (0.182125ms)
-✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.239542ms)
-✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.197083ms)
-✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.233416ms)
-✔ docs/mcp-security.html satisfies the public-page SEO contract (0.175541ms)
-✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.329417ms)
-✔ docs/uninstall.html satisfies the public-page SEO contract (0.192209ms)
-✔ docs/faq.html satisfies the public-page SEO contract (0.2115ms)
-✔ changelog.html satisfies the public-page SEO contract (0.241875ms)
-✔ guide.html satisfies the public-page SEO contract (0.169708ms)
-✔ privacy.html satisfies the public-page SEO contract (0.150709ms)
-✔ terms.html satisfies the public-page SEO contract (0.129791ms)
-✔ page titles are unique (0.3825ms)
-✔ internal page links and fragments resolve (6.241875ms)
-✔ agent integration tabs expose all six targets with valid relationships (0.756959ms)
-✔ MCP tool page covers every source workflow tool (0.778583ms)
-✔ public workflow guidance matches the v1.15 candidate contracts (1.969458ms)
-✔ README and site wordmarks match the canonical application wordmark (0.210291ms)
-✔ self-hosted fonts use font-display swap (0.197708ms)
-✔ OG image is a 1200 by 630 PNG (2.435542ms)
-✔ sitemap, robots, and llms cover every public page (0.221ms)
-✔ hidden security contact uses private GitHub vulnerability reporting (0.099583ms)
-✔ social card names the configured production domain (0.082125ms)
-✔ visible FAQ questions match FAQPage JSON-LD (5.748125ms)
-✔ custom 404 is a real page with hosting 404 status (0.093375ms)
-✔ first-board copyables use an app directory so APP is the init key (0.369875ms)
-✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.570459ms)
-✔ favicon set includes SVG, PNG, and apple-touch icon (0.605959ms)
-✔ copy controls expose loading, success, and error states (0.098375ms)
-✔ mobile navigation stays keyboard reachable (0.072583ms)
-✔ website notices explain actual use without unresolved legal templates (0.198167ms)
-✔ public site omits personal author and direct contact metadata (1.520542ms)
-✔ publishes the configured Atlas production domain (0.678708ms)
-✔ keeps every public SEO output on the same origin (0.624792ms)
-✔ normalizes a canonical origin (0.222ms)
-✔ reads the current origin from the canonical link (0.087834ms)
-✔ replaces every rendered origin reference (0.052458ms)
-ℹ tests 54
-ℹ suites 0
-ℹ pass 54
+ℹ pass 51
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 112.511834
-
-EXIT 0
-
-$ sh -n scripts/install.sh scripts/verify-release.sh
+ℹ duration_ms 122.166667
 
 EXIT 0
 
@@ -356,44 +268,41 @@ workflow security policy passed
 EXIT 0
 
 $ sh scripts/stability-smoke.sh
-ok  	github.com/myrrazor/atlas-tasker/internal/service	61.490s
-ok  	github.com/myrrazor/atlas-tasker/internal/cli	143.546s
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	5.317s
-fuzz: elapsed: 0s, gathering baseline coverage: 0/134 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 134/134 completed, now fuzzing with 10 workers
-fuzz: elapsed: 3s, execs: 1182001 (394095/sec), new interesting: 9 (total: 143)
+ok  	github.com/myrrazor/atlas-tasker/internal/service	64.857s
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	145.441s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	5.752s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/146 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 146/146 completed, now fuzzing with 10 workers
+fuzz: elapsed: 1s, execs: 300008 (498651/sec), new interesting: 1 (total: 147)
 PASS
-ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	3.279s
-fuzz: elapsed: 0s, gathering baseline coverage: 0/103 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 103/103 completed, now fuzzing with 10 workers
-fuzz: elapsed: 2s, execs: 573492 (259123/sec), new interesting: 20 (total: 123)
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	0.819s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/130 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 130/130 completed, now fuzzing with 10 workers
+fuzz: elapsed: 1s, execs: 150000 (250076/sec), new interesting: 2 (total: 132)
 PASS
-ok  	github.com/myrrazor/atlas-tasker/internal/contracts	2.433s
-fuzz: elapsed: 0s, gathering baseline coverage: 0/65 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 65/65 completed, now fuzzing with 10 workers
-fuzz: elapsed: 3s, execs: 367507 (122490/sec), new interesting: 9 (total: 74)
-fuzz: elapsed: 3s, execs: 367507 (0/sec), new interesting: 9 (total: 74)
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.793s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/83 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 83/83 completed, now fuzzing with 10 workers
+fuzz: elapsed: 1s, execs: 80000 (161792/sec), new interesting: 0 (total: 83)
 PASS
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	3.251s
-fuzz: elapsed: 0s, gathering baseline coverage: 0/28 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 28/28 completed, now fuzzing with 10 workers
-fuzz: elapsed: 3s, execs: 2109 (703/sec), new interesting: 15 (total: 43)
-fuzz: elapsed: 3s, execs: 2109 (0/sec), new interesting: 15 (total: 43)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	0.725s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/64 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 64/64 completed, now fuzzing with 10 workers
+fuzz: elapsed: 3s, execs: 5042 (1928/sec), new interesting: 15 (total: 79)
 PASS
-ok  	github.com/myrrazor/atlas-tasker/internal/service	3.364s
-fuzz: elapsed: 0s, gathering baseline coverage: 0/89 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 89/89 completed, now fuzzing with 10 workers
-fuzz: elapsed: 3s, execs: 3957 (1319/sec), new interesting: 8 (total: 97)
-fuzz: elapsed: 3s, execs: 3957 (0/sec), new interesting: 8 (total: 97)
+ok  	github.com/myrrazor/atlas-tasker/internal/service	2.962s
+fuzz: elapsed: 0s, gathering baseline coverage: 0/117 completed
+fuzz: elapsed: 0s, gathering baseline coverage: 117/117 completed, now fuzzing with 10 workers
+fuzz: elapsed: 3s, execs: 8000 (2941/sec), new interesting: 19 (total: 136)
 PASS
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	3.214s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	2.918s
 
 EXIT 0
 
 $ go test -race ./internal/app ./internal/mcp ./internal/web
-ok  	github.com/myrrazor/atlas-tasker/internal/app	5.340s
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp	7.385s
-ok  	github.com/myrrazor/atlas-tasker/internal/web	53.633s
+ok  	github.com/myrrazor/atlas-tasker/internal/app	6.143s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp	7.076s
+ok  	github.com/myrrazor/atlas-tasker/internal/web	53.910s
 
 EXIT 0
 
@@ -411,267 +320,255 @@ Use '-show verbose' for more details.
 EXIT 0
 
 $ go run github.com/zricethezav/gitleaks/v8@v8.28.0 git . --redact --no-banner
-4:57AM INF 281 commits scanned.
-4:57AM INF scanned ~10290936 bytes (10.29 MB) in 1.19s
-4:57AM WRN leaks found: 1
-exit status 1
-
-EXIT 1
-
-Resume after correcting the failed check; earlier output retained.
-2026-09-14T09:00:41.249926+00:00
-Go 1.26.6; darwin/arm64; serialized local fixtures. No release/deployment.
-
-$ go run github.com/zricethezav/gitleaks/v8@v8.28.0 git . --redact --no-banner
-5:00AM INF 281 commits scanned.
-5:00AM INF scanned ~10290936 bytes (10.29 MB) in 608ms
-5:00AM INF no leaks found
+2:50PM INF 287 commits scanned.
+2:50PM INF scanned ~11311363 bytes (11.31 MB) in 1.33s
+2:50PM INF no leaks found
 
 EXIT 0
 
-$ go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0 app -json -output <TASK>/evidence/atlas-tasker.cdx.json -main cmd/tracker .
+$ go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0 app -json -output $SBOM_PATH -main cmd/tracker .
 
 EXIT 0
 
-$ go vet ./...
 
+Final Agents presentation follow-up: compact scope labels, disclosure, and workspace rail.
+$ go test ./internal/app ./internal/web
+ok  github.com/myrrazor/atlas-tasker/internal/app 2.285s
+ok  github.com/myrrazor/atlas-tasker/internal/web 8.132s
+EXIT 0
+$ go build -o $CANDIDATE_TRACKER ./cmd/tracker
 EXIT 0
 
-$ go test ./...
-?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/app	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/apperr	(cached)
-?   	github.com/myrrazor/atlas-tasker/internal/buildinfo	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/cli	79.188s
-ok  	github.com/myrrazor/atlas-tasker/internal/config	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/contracts	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/domain	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/all	(cached)
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/claude	[no test files]
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/codex	[no test files]
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/cursor	[no test files]
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/generic	[no test files]
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/grok	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/host	(cached)
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/openclaw	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp/selfprobe	1.868s
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp/testhost	2.213s
-ok  	github.com/myrrazor/atlas-tasker/internal/render	0.575s
-ok  	github.com/myrrazor/atlas-tasker/internal/service	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/setup	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/testutil	(cached)
-?   	github.com/myrrazor/atlas-tasker/internal/testutil/testenv	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/theme	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/uninstall	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/update	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/web	(cached)
-
+Final targeted rendering and test portability checks:
+$ go test ./internal/web -run TestAgentsSettingsShowsProjectScopeAndActualArgv -count=1
+ok  github.com/myrrazor/atlas-tasker/internal/web 0.312s
+EXIT 0
+$ go test ./internal/app -count=1
+ok  github.com/myrrazor/atlas-tasker/internal/app 2.171s
+EXIT 0
+$ go build -o $CANDIDATE_TRACKER ./cmd/tracker
 EXIT 0
 
-$ node --test internal/web/testdata/refresh_board.test.mjs internal/web/testdata/home_ui.test.mjs site/_tools/site-contract.test.mjs site/_tools/sync-site-origin.test.mjs
-✔ ticketHref keeps the explicit project filter (1.802958ms)
-✔ ticketHref uses a Home-prefixed board path (0.35375ms)
-✔ Home clears a new-tab claim before sending it in a POST body (2.033833ms)
-✔ Home consumes a claim added to an already-open sign-in tab only once (0.328792ms)
-✔ a successful refresh preserves the move confirmation without retrying (2.410625ms)
-✔ an expired session shows recovery guidance without replacing the board (0.389292ms)
-✔ a transient failure retries and keeps the move confirmation after recovery (1.015125ms)
-✔ custom 404 assets and recovery links work at nested missing routes (6.119709ms)
-✔ index.html satisfies the public-page SEO contract (2.717208ms)
-✔ cli.html satisfies the public-page SEO contract (0.713542ms)
-✔ mcp.html satisfies the public-page SEO contract (0.35675ms)
-✔ docs/index.html satisfies the public-page SEO contract (0.2835ms)
-✔ docs/getting-started.html satisfies the public-page SEO contract (0.345042ms)
-✔ docs/home.html satisfies the public-page SEO contract (0.234459ms)
-✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.279084ms)
-✔ docs/views-and-search.html satisfies the public-page SEO contract (0.363584ms)
-✔ docs/web-board.html satisfies the public-page SEO contract (0.264334ms)
-✔ docs/backup.html satisfies the public-page SEO contract (0.162583ms)
-✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.256583ms)
-✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.208209ms)
-✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.262542ms)
-✔ docs/mcp-security.html satisfies the public-page SEO contract (0.188ms)
-✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.266042ms)
-✔ docs/uninstall.html satisfies the public-page SEO contract (0.14125ms)
-✔ docs/faq.html satisfies the public-page SEO contract (0.216875ms)
-✔ changelog.html satisfies the public-page SEO contract (0.251916ms)
-✔ guide.html satisfies the public-page SEO contract (0.163958ms)
-✔ privacy.html satisfies the public-page SEO contract (0.148667ms)
-✔ terms.html satisfies the public-page SEO contract (0.133292ms)
-✔ page titles are unique (0.380625ms)
-✔ internal page links and fragments resolve (6.453292ms)
-✔ agent integration tabs expose all six targets with valid relationships (0.770666ms)
-✔ MCP tool page covers every source workflow tool (0.813542ms)
-✔ public workflow guidance matches the v1.15 candidate contracts (2.417208ms)
-✔ README and site wordmarks match the canonical application wordmark (0.076833ms)
-✔ self-hosted fonts use font-display swap (0.158916ms)
-✔ OG image is a 1200 by 630 PNG (2.050416ms)
-✔ sitemap, robots, and llms cover every public page (0.172291ms)
-✔ hidden security contact uses private GitHub vulnerability reporting (0.083417ms)
-✔ social card names the configured production domain (0.062791ms)
-✔ visible FAQ questions match FAQPage JSON-LD (8.149167ms)
-✔ custom 404 is a real page with hosting 404 status (0.136208ms)
-✔ first-board copyables use an app directory so APP is the init key (0.650042ms)
-✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.592166ms)
-✔ favicon set includes SVG, PNG, and apple-touch icon (0.769792ms)
-✔ copy controls expose loading, success, and error states (0.102916ms)
-✔ mobile navigation stays keyboard reachable (0.07925ms)
-✔ website notices explain actual use without unresolved legal templates (0.194916ms)
-✔ public site omits personal author and direct contact metadata (1.503292ms)
-✔ publishes the configured Atlas production domain (0.626833ms)
-✔ keeps every public SEO output on the same origin (0.596792ms)
-✔ normalizes a canonical origin (0.217ms)
-✔ reads the current origin from the canonical link (0.089084ms)
-✔ replaces every rendered origin reference (0.0525ms)
-ℹ tests 54
+Real final-binary RC smoke (isolated HOME, registry, projects and removable binary copy):
+nested_help_outside_workspace: passed
+outside_workspace_does_not_scaffold: passed
+workflow_default: passed
+high_impact_stays_disabled: passed
+explicit_read_profiles: passed
+readable_default_project: passed
+assigned_backlog_visible_after_ready: passed
+queue_read_preserves_backlog_status: passed
+mcp_bootstrap_default_project: passed
+hollow_bootstrap_upgrade_preserves_identity_and_config: passed
+bootstrap_registered_with_home: passed
+real_source_binary_receipt: passed
+source_uninstall_preview_exact_binary: passed
+modified_binary_uninstall_refused: passed
+source_uninstall_removes_only_copy: passed
+uninstall_preserves_boards_registry_and_backup: passed
+EXIT 0
+
+Video walkthrough follow-up — 2026-09-14
+
+$ git diff --check
+Exit code: 0
+
+$ node --test site/_tools/site-contract.test.mjs site/_tools/sync-site-origin.test.mjs
+✔ custom 404 assets and recovery links work at nested missing routes (5.410875ms)
+✔ index.html satisfies the public-page SEO contract (2.260208ms)
+✔ cli.html satisfies the public-page SEO contract (0.917666ms)
+✔ mcp.html satisfies the public-page SEO contract (0.477708ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.306375ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.403459ms)
+✔ docs/home.html satisfies the public-page SEO contract (0.241708ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.440709ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.242958ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.278417ms)
+✔ docs/backup.html satisfies the public-page SEO contract (0.204959ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.275542ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.245041ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.275667ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.284916ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.216833ms)
+✔ docs/uninstall.html satisfies the public-page SEO contract (0.1685ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.23725ms)
+✔ changelog.html satisfies the public-page SEO contract (0.263792ms)
+✔ guide.html satisfies the public-page SEO contract (0.164542ms)
+✔ privacy.html satisfies the public-page SEO contract (0.154792ms)
+✔ terms.html satisfies the public-page SEO contract (0.143084ms)
+✔ page titles are unique (0.466334ms)
+✔ internal page links, video downloads, and fragments resolve (11.789292ms)
+✔ agent integration tabs expose all six targets with valid relationships (0.995042ms)
+✔ MCP tool page covers every source workflow tool (0.89375ms)
+✔ public workflow guidance matches the v1.15 candidate contracts (1.786375ms)
+✔ README and site wordmarks match the canonical application wordmark (0.049167ms)
+✔ self-hosted fonts use font-display swap (0.134833ms)
+✔ OG image is a 1200 by 630 PNG (0.788417ms)
+✔ sitemap, robots, and llms cover every public page (0.153458ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.095125ms)
+✔ social card names the configured production domain (0.080583ms)
+✔ visible FAQ questions match FAQPage JSON-LD (6.405916ms)
+✔ custom 404 is a real page with hosting 404 status (0.102833ms)
+✔ first-board copyables use an app directory so APP is the init key (0.444292ms)
+✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.657834ms)
+✔ all local page images exist and declare dimensions (2.78075ms)
+✔ favicon set includes SVG, PNG, and apple-touch icon (0.228792ms)
+✔ copy controls expose loading, success, and error states (0.100916ms)
+✔ mobile navigation stays keyboard reachable (0.080083ms)
+✔ website notices explain actual use without unresolved legal templates (0.200541ms)
+✔ public site omits personal author and direct contact metadata (1.685792ms)
+✔ publishes the configured Atlas production domain (0.663833ms)
+✔ keeps every public SEO output on the same origin (0.615208ms)
+✔ normalizes a canonical origin (0.219792ms)
+✔ reads the current origin from the canonical link (0.091459ms)
+✔ replaces every rendered origin reference (0.057625ms)
+ℹ tests 48
 ℹ suites 0
-ℹ pass 54
+ℹ pass 48
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 118.110416
+ℹ duration_ms 120.380709
+Exit code: 0
 
-EXIT 0
+$ ffmpeg -hide_banner -loglevel error -i site/assets/grok-flow.mp4 -f null -
+Exit code: 0
+✔ custom 404 assets and recovery links work at nested missing routes (5.693375ms)
+✔ index.html satisfies the public-page SEO contract (2.7825ms)
+✔ cli.html satisfies the public-page SEO contract (0.409542ms)
+✔ mcp.html satisfies the public-page SEO contract (0.439208ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.299542ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.437417ms)
+✔ docs/home.html satisfies the public-page SEO contract (0.245583ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.487916ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.27875ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.299125ms)
+✔ docs/backup.html satisfies the public-page SEO contract (0.211875ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.279208ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.244833ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.279875ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.353625ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.252459ms)
+✔ docs/uninstall.html satisfies the public-page SEO contract (0.183333ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.244125ms)
+✔ changelog.html satisfies the public-page SEO contract (0.26575ms)
+✔ guide.html satisfies the public-page SEO contract (0.166459ms)
+✔ privacy.html satisfies the public-page SEO contract (0.157333ms)
+✔ terms.html satisfies the public-page SEO contract (0.14925ms)
+✔ page titles are unique (0.426709ms)
+✔ internal page links, video downloads, and fragments resolve (10.6355ms)
+✔ agent integration tabs expose all six targets with valid relationships (1.005542ms)
+✔ MCP tool page covers every source workflow tool (0.895875ms)
+✔ public workflow guidance matches the v1.15 candidate contracts (1.907709ms)
+✔ README and site wordmarks match the canonical application wordmark (0.050208ms)
+✔ self-hosted fonts use font-display swap (0.134584ms)
+✔ OG image is a 1200 by 630 PNG (0.76525ms)
+✔ sitemap, robots, and llms cover every public page (0.153666ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.090833ms)
+✔ social card names the configured production domain (0.070916ms)
+✔ visible FAQ questions match FAQPage JSON-LD (6.556959ms)
+✔ custom 404 is a real page with hosting 404 status (0.099875ms)
+✔ first-board copyables use an app directory so APP is the init key (0.580084ms)
+✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.651166ms)
+✔ all local page images exist and declare dimensions (3.233042ms)
+✔ favicon set includes SVG, PNG, and apple-touch icon (0.284625ms)
+✔ copy controls expose loading, success, and error states (0.097042ms)
+✔ mobile navigation stays keyboard reachable (0.091958ms)
+✔ website notices explain actual use without unresolved legal templates (0.218833ms)
+✔ public site omits personal author and direct contact metadata (1.67725ms)
+✔ publishes the configured Atlas production domain (0.629667ms)
+✔ keeps every public SEO output on the same origin (0.602709ms)
+✔ normalizes a canonical origin (0.213208ms)
+✔ reads the current origin from the canonical link (0.085416ms)
+✔ replaces every rendered origin reference (0.052375ms)
+ℹ tests 48
+ℹ suites 0
+ℹ pass 48
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 119.087125
 
-Supplemental final staged-source checks
-$ go run github.com/zricethezav/gitleaks/v8@v8.28.0 git . --staged --redact --no-banner --report-format json --report-path <TASK>/evidence/gitleaks-staged-redacted.json
-INF 0 commits scanned.
-INF scanned ~999247 bytes (999.25 KB) in 76.9ms
-INF no leaks found
-EXIT 0
+Browser video verification
+{
+  "playing": {
+    "paused": false,
+    "time": 1.046452,
+    "duration": 50.416667,
+    "width": 1260,
+    "height": 720,
+    "error": null
+  },
+  "keyboard_pause": {
+    "paused": true,
+    "time": 1.119246
+  },
+  "seek": {
+    "time": 45,
+    "seeking": false,
+    "error": null
+  },
+  "viewports": [
+    {
+      "width": 320,
+      "scroll": 320,
+      "videoWidth": 286,
+      "videoHeight": 163.421875,
+      "videoTop": 177.890625
+    },
+    {
+      "width": 390,
+      "scroll": 390,
+      "videoWidth": 356,
+      "videoHeight": 203.421875,
+      "videoTop": 163.03125
+    },
+    {
+      "width": 768,
+      "scroll": 768,
+      "videoWidth": 718,
+      "videoHeight": 410.28125,
+      "videoTop": 163.109375
+    },
+    {
+      "width": 1440,
+      "scroll": 1440,
+      "videoWidth": 1178,
+      "videoHeight": 673.140625,
+      "videoTop": 119.125
+    }
+  ]
+}
+Full playback through end
+[
+  {
+    "time": 8.058691,
+    "ended": false,
+    "error": null
+  },
+  {
+    "time": 18.060552,
+    "ended": false,
+    "error": null
+  },
+  {
+    "time": 30.051758,
+    "ended": false,
+    "error": null
+  },
+  {
+    "time": 40.059657,
+    "ended": false,
+    "error": null
+  },
+  {
+    "time": 50.416667,
+    "ended": true,
+    "error": null
+  }
+]
 
-$ gofmt -l <all changed Go files>
-No unformatted files.
-EXIT 0
-
-$ sh -n scripts/verify-release.sh
-EXIT 0
-
-PR #155 macOS restore correction
-Hosted failure: TestRemoteRecoveryDrill rejected an archive rebuilt with changed timestamps.
-
-Expected failure before tar metadata correction:
-command: python3 <TASK>/run_check.py --cwd <TASK>/integration go test -count=1 -timeout 120s ./internal/service/ -run TestRematerializedRemoteArchiveHashIgnoresMtime
-exit: 1
---- FAIL: TestRematerializedRemoteArchiveHashIgnoresMtime (1.04s)
-    checkpoint_1145_test.go:712: identical rematerialized checkpoint must hash the same across file mtimes
-         early 57a2e230c42dd580efda9fbe462f46eaa2943267d460dbee145269c45d335da1
-         late  95dfc05ba773fe163e888a11140939fc0c0ab6bbfaeb5fdf0ef9060f18a36446
-         first c22c5a7a2311706cfdf1867bb56be6d4d9fe6f04dd29ab8dbd48d383a208073b
-FAIL
-FAIL	github.com/myrrazor/atlas-tasker/internal/service	1.409s
-FAIL
-
-Expected failure exposing the additional manifest clock dependency:
---- FAIL: TestRematerializedRemoteArchiveHashIgnoresMtime (1.12s)
-    checkpoint_1145_test.go:730: clock advance changed checkpoint archive: plan bound 9db2902e2d5849f74ce15d6d6401365fc41438c6226b1ab9fab09eff0ed46c73, rebuilt 955e885cad5350316ad0c4966e16ca6d85e8b29f1b1ad9b8c31eb33dbd1f32f4
-FAIL
-FAIL	github.com/myrrazor/atlas-tasker/internal/service	1.450s
-FAIL
-
-EXIT 1
-
-Final clock/mtime, recovery, tamper, and normal-export regressions:
-$ go test -count=1 ./internal/service -run Test(RematerializedRemoteArchiveHashIgnoresMtime|RemoteRestoreApplyRefusesTamperedRematerializedArchive|RemoteRecoveryDrill|RestoreApplyRefusesSwappedBackupContent|BundleArchiveKeepsSourceFileTimestamp)$
-ok  	github.com/myrrazor/atlas-tasker/internal/service	4.576s
-
-EXIT 0
-
-PR155 macOS recovery archive follow-up
-2026-09-14T15:47:44.932002+00:00
-
-$ go vet ./...
-EXIT 0
-
-$ go test ./...
-?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/app	2.468s
-ok  	github.com/myrrazor/atlas-tasker/internal/apperr	(cached)
-?   	github.com/myrrazor/atlas-tasker/internal/buildinfo	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/cli	80.360s
-ok  	github.com/myrrazor/atlas-tasker/internal/config	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/contracts	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/domain	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/all	(cached)
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/claude	[no test files]
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/codex	[no test files]
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/cursor	[no test files]
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/generic	[no test files]
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/grok	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/host	(cached)
-?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/openclaw	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp	2.398s
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp/selfprobe	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/mcp/testhost	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/render	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/service	40.643s
-ok  	github.com/myrrazor/atlas-tasker/internal/setup	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/testutil	(cached)
-?   	github.com/myrrazor/atlas-tasker/internal/testutil/testenv	[no test files]
-ok  	github.com/myrrazor/atlas-tasker/internal/theme	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	3.293s
-ok  	github.com/myrrazor/atlas-tasker/internal/uninstall	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/update	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/web	9.631s
-EXIT 0
-
-$ go test -race ./internal/service
-ok  	github.com/myrrazor/atlas-tasker/internal/service	59.291s
-EXIT 0
-
-$ go build -o <TASK>/evidence/v1.15-tracker ./cmd/tracker
-EXIT 0
-
-=== PR #155 stability correction: local verification ===
-Hosted run 34865271389 at 9a74612 passed macOS, Ubuntu, security, workflow policy and all three race packages. FuzzReadEventFile reported only context deadline exceeded after 7595 executions. The corrected script uses documented, measured execution counts for all targets; it preserves the 60s package guard and propagates test failures. Product Go code is unchanged from the full-suite/vet/build and remote regression validation recorded above.
-
-$ sh -n scripts/stability-smoke.sh
-
-$ sh scripts/stability-smoke.sh
-ok  	github.com/myrrazor/atlas-tasker/internal/service	(cached)
-ok  	github.com/myrrazor/atlas-tasker/internal/cli	134.562s
-ok  	github.com/myrrazor/atlas-tasker/internal/tui	5.547s
-fuzz: elapsed: 0s, gathering baseline coverage: 0/143 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 143/143 completed, now fuzzing with 10 workers
-fuzz: elapsed: 1s, execs: 300000 (565742/sec), new interesting: 3 (total: 146)
-PASS
-ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	0.884s
-fuzz: elapsed: 0s, gathering baseline coverage: 0/123 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 123/123 completed, now fuzzing with 10 workers
-fuzz: elapsed: 1s, execs: 150000 (244807/sec), new interesting: 7 (total: 130)
-PASS
-ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.831s
-fuzz: elapsed: 0s, gathering baseline coverage: 0/74 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 74/74 completed, now fuzzing with 10 workers
-fuzz: elapsed: 0s, execs: 80000 (187594/sec), new interesting: 9 (total: 83)
-PASS
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	0.659s
-fuzz: elapsed: 0s, gathering baseline coverage: 0/43 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 43/43 completed, now fuzzing with 10 workers
-fuzz: elapsed: 3s, execs: 5027 (1784/sec), new interesting: 21 (total: 64)
-PASS
-ok  	github.com/myrrazor/atlas-tasker/internal/service	3.181s
-fuzz: elapsed: 0s, gathering baseline coverage: 0/97 completed
-fuzz: elapsed: 0s, gathering baseline coverage: 97/97 completed, now fuzzing with 10 workers
-fuzz: elapsed: 3s, execs: 8025 (2716/sec), new interesting: 20 (total: 117)
-PASS
-ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	3.167s
-
-$ git diff --check
+Final video-link affordance check
+Exit code: 0

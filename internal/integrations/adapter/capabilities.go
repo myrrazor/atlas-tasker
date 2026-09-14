@@ -521,12 +521,12 @@ func grokCapabilities() Capabilities {
 			{
 				Scope: ScopeProjectShared, Path: ".grok/config.toml", Format: ConfigFormatTOML, WriteMethod: WriteMethodClientCLI,
 				Binding: WorkspaceBindingVerifiedCwd, Approval: ApprovalNone, Restart: RestartNewSession,
-				Notes: "grok mcp add --scope project <name> -- <command...> writes .grok/config.toml in the current directory; Grok walks from cwd up to the git root and a project server replaces a same-name user server entirely. ${VAR} expands in command/args/env at load time.",
+				Notes: "grok mcp add --scope project <name> -- <command...> writes .grok/config.toml in the current directory; Grok walks from cwd up to the git root and a project server replaces a same-name user server entirely. ${VAR} expands in command/args/env at load time. Atlas registers this client with --tool-name-style portable (atlas.status advertised as atlas_status) because Grok skips dotted MCP tool names.",
 			},
 			{
 				Scope: ScopeUser, Path: "~/.grok/config.toml", Format: ConfigFormatTOML, WriteMethod: WriteMethodClientCLI,
 				Binding: WorkspaceBindingAbsolutePath, Approval: ApprovalNone, Restart: RestartNewSession,
-				Notes: "Default scope of grok mcp add. Not selected by default.",
+				Notes: "Default scope of grok mcp add. Not selected by default. Global Atlas init also passes --tool-name-style portable for this client.",
 			},
 		},
 		PreferredScope:  ScopeProjectShared,

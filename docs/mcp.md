@@ -37,22 +37,23 @@ Restart the coding agent after init. File presence is not “connected”: statu
 `missing`, `installed` (command+args match **and** initialize succeeded),
 `pending_restart`, or `unverified`.
 
-Pinned `serve` without `--global` still defaults to `--tool-profile read` and still reads
-the current directory unless `--workspace` names one. Registrations that live outside a
+Pinned `serve` without `--global` now defaults to `--tool-profile workflow` as well, and still reads
+the current directory unless `--workspace` names one. Pass `--tool-profile read` or `--read-only` for
+the read catalog. The MCP library still treats empty `Options.Profile` as `read`. Registrations that live outside a
 repo — user-scoped `claude mcp add`, a global Codex `mcp_servers` entry — need the pin,
 because the client picks the working directory, not you. By default, the workspace must
 already contain Atlas state from `tracker init`. Pinned serve is still supported.
 
 `--workspace-from-cwd` plus `--expected-workspace-id` is the portable binding for clients that cannot safely store an absolute machine path (DEC-072, DEC-076). Atlas canonicalizes the current directory, walks only to the nearest real Atlas root, verifies the ID, and refuses nested workspaces, symlink substitution, a replaced directory, and a copied workspace with a stale local registration. It never initializes and never opens a different registered workspace. `--workspace-from-cwd` cannot be combined with `--workspace` or `--init-if-missing`. When `--workspace` is used with `--expected-workspace-id`, the ID is verified on that root.
 
-`--init-if-missing` is an explicit, noninteractive bootstrap. It requires `--workspace` to name an absolute path to an existing directory and requires a write-capable `workflow`, `delivery`, or `admin` profile. It refuses nested Atlas workspaces, `--read-only`, and existing output paths that redirect initialization outside the selected directory. It creates only normal Atlas workspace files: it does not open an integration picker, register an MCP client, or use the client's working directory as a fallback. If the workspace is already initialized, Atlas opens it without rerunning initialization. `schema` and `tools` only describe the adapter and never initialize a workspace.
+`--init-if-missing` is an explicit, noninteractive bootstrap. It requires `--workspace` to name an absolute path to an existing directory and requires a write-capable `workflow`, `delivery`, or `admin` profile. It refuses nested Atlas workspaces, `--read-only`, and existing output paths that redirect initialization outside the selected directory. `--expected-workspace-id` is verified before any write; a fresh directory cannot match an expected ID, so that combination creates nothing. It uses the same default-project naming and Home registry path as `tracker init`. It does not open a browser, re-register coding-agent MCP clients, rewrite git mode, or use the client's working directory as a fallback. If `.tracker` already exists, Atlas does not scaffold again: it registers the workspace and creates the first default project only when none exist, leaving config, identity, and existing projects untouched. `schema` and `tools` only describe the adapter and never initialize a workspace.
 
 Stdio framing: Atlas speaks newline-delimited JSON-RPC and also accepts LSP-style `Content-Length` headers on the same stdio pair. Prefer NDJSON when you control the client; header-framed clients no longer crash the session.
 
 ## Profiles
 
-- `read` is the default: 44 read and plan/dry-run tools, including `atlas.context`, `atlas.status`, `atlas.backup.status`, goal brief, agent/team reads, and wake-up inspection.
-- `workflow` exposes 76 tools. It adds project creation and the real agent loop: ticket create/edit/assign/link, priority and label changes, claim/heartbeat/move/comment, request review, approve/reject/complete, agent create/edit, team apply, schedule writes, evidence, handoffs, and wake-up ack.
+- `read`: read and plan/dry-run tools, including `atlas.context`, `atlas.status`, `atlas.backup.status`, goal brief, agent/team reads, and wake-up inspection. Select it with `--tool-profile read` or `--read-only`.
+- `workflow` is the CLI default for `mcp serve`, `mcp tools`, and `mcp schema`. It adds project creation and the real agent loop: ticket create/edit/assign/link, priority and label changes, claim/heartbeat/move/comment, request review, approve/reject/complete, agent create/edit, team apply, schedule writes, evidence, handoffs, and wake-up ack.
 - `delivery` exposes 80 tools normally and 82 with `--dangerously-allow-high-impact-tools`. It adds run dispatch, change creation, change/check sync, and provider review/merge tools.
 - `admin` exposes 80 tools normally and the complete 91-tool inventory with `--dangerously-allow-high-impact-tools`. Its high-impact sync, import, archive, compact, worktree-cleanup, and gate-waiver tools remain hidden without that flag.
 

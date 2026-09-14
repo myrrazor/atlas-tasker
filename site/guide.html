@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Atlas Tasker Guide: the short version</title>
-  <meta name="description" content="The one-page Atlas Tasker guide: install the binary, seed an audited board, hand tickets to coding agents, and follow the deeper docs for each step." />
+  <meta name="description" content="The one-page Atlas Tasker guide: install the binary, initialize a project, restart your coding agent, ask for ticket status, and follow the deeper docs." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
@@ -20,7 +20,7 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://atlastasker.com/guide.html" />
   <meta property="og:title" content="Atlas Tasker Guide: the short version" />
-  <meta property="og:description" content="Install, seed a board, hand work to coding agents, and keep it honest. The full manual now lives in the docs section." />
+  <meta property="og:description" content="The one-page Atlas Tasker guide: install the binary, initialize a project, restart your coding agent, ask for ticket status, and follow the deeper docs." />
   <meta property="og:image" content="https://atlastasker.com/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -28,7 +28,7 @@
 
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Atlas Tasker Guide: the short version" />
-  <meta name="twitter:description" content="Install, seed a board, hand work to coding agents, and keep it honest. The full manual now lives in the docs section." />
+  <meta name="twitter:description" content="The one-page Atlas Tasker guide: install the binary, initialize a project, restart your coding agent, ask for ticket status, and follow the deeper docs." />
   <meta name="twitter:image" content="https://atlastasker.com/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
@@ -37,7 +37,7 @@
   "@context": "https://schema.org",
   "@type": "TechArticle",
   "name": "Atlas Tasker Guide",
-  "description": "The one-page Atlas Tasker guide: install the binary, seed an audited board, hand tickets to coding agents, and follow the deeper docs for each step.",
+  "description": "The one-page Atlas Tasker guide: install the binary, initialize a project, restart your coding agent, ask for ticket status, and follow the deeper docs.",
   "url": "https://atlastasker.com/guide.html",
   "isPartOf": {
     "@type": "WebSite",
@@ -69,18 +69,19 @@
     <header class="legal-hero shell">
       <p class="eyebrow">Guide</p>
       <h1>From empty repo to agent-run board.</h1>
-      <p class="legal-summary">The whole workflow in one page. Each step links into the full documentation, which now lives on this site under <a href="docs/">Docs</a>.</p>
+      <p class="legal-summary">Install the binary, initialize Atlas in a project, restart the coding agent, then ask for ticket status. Each step links into the full documentation under <a href="docs/">Docs</a>.</p>
       <p class="legal-updated">Current release line · The deep manual starts at <a href="docs/">the docs overview</a></p>
     </header>
     <div class="legal-content">
       <section class="shell">
         <h2>1 · Install</h2>
         <p><code>curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code></p>
-        <p>The installer fetches the latest release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. In an interactive terminal it may then offer coding-agent guidance for the current directory; the offer defaults to No, and unattended installs never prompt. Building from source works too: <code>go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>. Details: <a href="docs/getting-started.html">getting started</a>.</p>
+        <p>The installer fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. It does not initialize a repository or register coding agents. If stdout is a terminal and the current directory is already an Atlas workspace, it may offer <code>tracker setup</code> and defaults to No; unattended installs never prompt. To try the v1.15 source preview: <code>go install github.com/myrrazor/atlas-tasker/cmd/tracker@main</code>. Details: <a href="docs/getting-started.html">getting started</a>.</p>
       </section>
       <section class="shell">
-        <h2>2 · Minutes to a working board</h2>
-        <p>In a directory named <code>app</code>, <code>tracker init</code> then <code>tracker</code> is the v1.15 path: workspace, default project <code>APP</code>, local checkpoints, Atlas-managed MCP for detected agents, and Home on <code>127.0.0.1:7432</code>. Restart the client. Extra projects are <code>tracker project create AUTH "Auth"</code>.</p>
+        <h2>2 · Initialize, restart, ask</h2>
+        <p>In the project you want tracked, ask your coding agent <code>Initialize Atlas Tasker in this project.</code> On this v1.15 source that is <code>tracker init</code> in the current directory. Then <code>tracker</code> opens Home on <code>127.0.0.1:7432</code>. Restart the coding agent so it loads Atlas MCP; a written config is <code>pending_client_restart</code> until the client connects. Then ask: <code>What's the current status of this project?</code> The Grok demonstration reads Atlas through MCP and shows the result in Grok’s terminal interface.</p>
+        <p>In a directory named <code>app</code>, init's default project key is <code>APP</code>. Extra projects are <code>tracker project create AUTH "Auth"</code>.</p>
         <p><code>tracker ticket create --project APP --title "Ship first feature" --type task --actor human:owner --reason "first ticket"</code> creates the first ticket. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code> and fail before writing if none is set. Include a reason so agents and reviewers can understand why the change happened.</p>
         <p><code>tracker ticket move APP-1 ready --actor human:owner --reason "groomed"</code>, then <code>tracker board</code> for a polished table, <code>tracker tui</code> for the full-screen one, or <code>tracker</code> for <a href="docs/home.html">Atlas Home</a>.</p>
       </section>

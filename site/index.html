@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Atlas Tasker: ticketing for you and your AI agents</title>
-  <meta name="description" content="Atlas Tasker is a local-first tracker: init a repo, open Home, and let coding agents use the same Markdown board through CLI, TUI, and MCP tools." />
+  <meta name="description" content="Atlas Tasker is a local-first tracker: install the binary, initialize a repo, restart the coding agent, and ask for ticket status on the same Markdown board." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
@@ -20,7 +20,7 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://atlastasker.com/" />
   <meta property="og:title" content="Atlas Tasker: ticketing for you and your AI agents" />
-  <meta property="og:description" content="Atlas Tasker is a local-first tracker: init a repo, open Home, and let coding agents use the same Markdown board through CLI, TUI, and MCP tools." />
+  <meta property="og:description" content="Atlas Tasker is a local-first tracker: install the binary, initialize a repo, restart the coding agent, and ask for ticket status on the same Markdown board." />
   <meta property="og:image" content="https://atlastasker.com/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -28,7 +28,7 @@
 
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Atlas Tasker: ticketing for you and your AI agents" />
-  <meta name="twitter:description" content="Atlas Tasker is a local-first tracker: init a repo, open Home, and let coding agents use the same Markdown board through CLI, TUI, and MCP tools." />
+  <meta name="twitter:description" content="Atlas Tasker is a local-first tracker: install the binary, initialize a repo, restart the coding agent, and ask for ticket status on the same Markdown board." />
   <meta name="twitter:image" content="https://atlastasker.com/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
@@ -101,7 +101,7 @@
         "name": "Do I wire each coding agent by hand?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "No. After install, tracker init detects Claude Code, Codex, Cursor, OpenClaw, and Grok on this machine and writes Atlas-managed MCP entries plus the worker skill unless you pass --no-agents. Restart the client. Open the repo in the agent and ask for the board. There is no second Atlas install inside Claude, Codex, Cursor, or Grok."
+          "text": "No. The installer only places the binary; it does not initialize a repo or register agents. After install, tracker init detects Claude Code, Codex, Cursor, OpenClaw, and Grok on this machine and writes Atlas-managed MCP entries plus the worker skill unless you pass --no-agents. Restart the client. Open the repo in the agent and ask for the board. There is no second Atlas install inside Claude, Codex, Cursor, or Grok."
         }
       },
       {
@@ -173,9 +173,9 @@
       <div class="hero-copy">
         <p class="kicker">Terminal ticketing · Atlas Home · Built for AI agents</p>
         <h1>Keep the work <span>in the repo.</span></h1>
-        <p class="hero-lead">Atlas Tasker is a local-first tracker that lives in your repository. <code>tracker init</code> then <code>tracker</code> opens Home. Scan an aligned table in the terminal or a Kanban in the browser, and hand the same tickets to coding agents through CLI JSON and MCP.</p>
+        <p class="hero-lead">Ask your coding agent for a project update. Atlas keeps tickets, blockers, and review history in your repository, with a table in the terminal and Kanban in the browser.</p>
         <div class="hero-actions">
-          <a class="button button-primary" href="#install">Install Atlas Tasker</a>
+          <a class="button button-primary" href="#get-started">Get started</a>
           <a class="button button-secondary" href="mcp.html#connect">Connect your agent</a>
         </div>
       </div>
@@ -193,6 +193,80 @@
         <p class="command-note">macOS or Linux · arm64 or amd64 · MIT</p>
       </aside>
     </header>
+
+    <section id="get-started" class="get-started-section" aria-labelledby="get-started-title">
+      <div class="shell">
+        <div class="section-heading get-started-heading">
+          <p class="section-label">Get started</p>
+          <h2 id="get-started-title">Install. Then ask.</h2>
+          <p>Install Atlas once. Let your coding agent set up the project, then ask about the work in your own words.</p>
+        </div>
+
+        <ol class="get-started-steps" aria-label="Install, initialize, restart, then ask">
+          <li>
+            <span>01</span>
+            <div>
+              <h3>Install once</h3>
+              <div class="install-command">
+                <span class="prompt" aria-hidden="true">$</span>
+                <code id="gs-curl" tabindex="0">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
+                <button class="copy-button" type="button" data-copy="gs-curl" aria-label="Copy curl install command">Copy</button>
+              </div>
+              <p>One small CLI, with a verified checksum and build attestation.</p>
+            </div>
+          </li>
+          <li>
+            <span>02</span>
+            <div>
+              <h3>Ask your agent to set it up</h3>
+              <p>In the project you want tracked, ask your coding agent:</p>
+              <div class="install-command">
+                <span class="prompt" aria-hidden="true">ask</span>
+                <code id="gs-init-ask" tabindex="0">Initialize Atlas Tasker in this project.</code>
+                <button class="copy-button" type="button" data-copy="gs-init-ask" aria-label="Copy initialize prompt">Copy</button>
+              </div>
+              <p>Atlas creates your board, local checkpoints, and integrations for supported agents installed on your machine. Restart your agent to load the integration.</p>
+            </div>
+          </li>
+          <li>
+            <span>03</span>
+            <div>
+              <h3>Ask for status</h3>
+              <div class="install-command">
+                <span class="prompt" aria-hidden="true">ask</span>
+                <code id="gs-status-ask" tabindex="0">What's the current status of this project?</code>
+                <button class="copy-button" type="button" data-copy="gs-status-ask" aria-label="Copy status prompt">Copy</button>
+              </div>
+              <p>Get current tickets, the work in progress, and anything that needs your attention. Your agent reads the same board you do.</p>
+            </div>
+          </li>
+        </ol>
+
+        <p class="requirements"><strong>v1.15 preview.</strong> This walkthrough uses the current source. The installer downloads the latest published release; the new setup arrives with v1.15. <a href="#install">Build from source to try it now.</a></p>
+
+        <figure class="terminal-shot get-started-shot" id="agent-demo">
+          <div class="terminal-bar">
+            <span class="terminal-title">Grok Build</span>
+            <span class="terminal-state">actual session · v1.15 source</span>
+          </div>
+          <video
+            width="1260"
+            height="720"
+            controls
+            playsinline
+            preload="none"
+            poster="assets/grok-flow-poster.webp"
+            aria-label="Grok Build 4.6 xhigh walkthrough: ask Atlas for ticket status, create a ticket, then confirm it on the board"
+            aria-describedby="agent-demo-summary"
+          >
+            <source src="assets/grok-flow.mp4" type="video/mp4" />
+            <a href="assets/grok-flow.mp4">Download the Grok Build walkthrough</a>.
+          </video>
+          <figcaption>50 seconds in Grok Build 4.6 (xhigh). Real session, synthetic tickets, v1.15 source build. Silent; pauses shortened.</figcaption>
+        </figure>
+        <p id="agent-demo-summary" class="agent-demo-summary">Ask for status, add a high-priority task, and see it on the refreshed board. Grok reads eight tickets through Atlas MCP, creates APP-9, then confirms all nine. <a href="assets/grok-flow.mp4" download>Download video</a> · <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/examples/grok-video-transcript.md">Read the transcript</a>.</p>
+      </div>
+    </section>
 
     <section id="surfaces" class="surfaces-section shell" aria-labelledby="surfaces-title">
       <div class="section-heading surfaces-heading">
@@ -215,7 +289,7 @@
               <span class="terminal-title">tracker tui</span>
               <span class="terminal-state">local · synced</span>
             </div>
-            <img src="assets/tui-board.webp" width="1200" height="520" loading="lazy" decoding="async" alt="Synthetic local review capture of the Atlas Tasker TUI board showing aligned ticket IDs, statuses, priorities, and titles" />
+            <img src="assets/tui-board.webp" width="1200" height="530" loading="lazy" decoding="async" alt="Synthetic local review capture of the Atlas Tasker TUI board showing aligned ticket IDs, statuses, priorities, and titles" />
             <figcaption>Terminal TUI board from a synthetic local review workspace. The default is a polished table; <code>--style kanban</code> selects optional cards.</figcaption>
           </figure>
           <figure class="terminal-shot">
@@ -223,7 +297,7 @@
               <span class="terminal-title">tracker agent available builder-1</span>
               <span class="terminal-state">agent queue</span>
             </div>
-            <img src="assets/agent-queue.webp" width="1200" height="530" loading="lazy" decoding="async" alt="Atlas Tasker terminal agent queue showing ready and blocked tickets with reasons" />
+            <img src="assets/agent-queue.webp" width="1152" height="462" loading="lazy" decoding="async" alt="Atlas Tasker terminal agent queue showing ready and blocked tickets with reasons" />
             <figcaption>Each agent gets a queue that explains what is ready and what is blocked, with the exact next commands.</figcaption>
           </figure>
         </div>
@@ -279,7 +353,7 @@
           <a class="text-link" href="mcp.html">Meet the agent surface <span aria-hidden="true">→</span></a>
         </div>
         <figure class="feature-shot">
-          <img src="assets/agent-queue.webp" width="1200" height="530" loading="lazy" decoding="async" alt="Atlas Tasker agent queue output listing ready work and blocked tickets with reason codes" />
+          <img src="assets/agent-queue.webp" width="1152" height="462" loading="lazy" decoding="async" alt="Atlas Tasker agent queue output listing ready work and blocked tickets with reason codes" />
           <figcaption>tracker agent available answers with tickets, reasons, and suggested next commands.</figcaption>
         </figure>
       </article>
@@ -317,8 +391,8 @@
       <div class="shell install-layout">
         <div class="section-heading install-heading">
           <p class="section-label">Install</p>
-          <h2>One binary. Start in a minute.</h2>
-          <p>The installer fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. Atlas Home, global MCP, and software-only uninstall are in this v1.15 source; build from this tree until a v1.15 tag exists.</p>
+          <h2>One binary. Then initialize here.</h2>
+          <p>The installer fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. It does not initialize a repository or register coding agents. Atlas Home, global MCP, and software-only uninstall are in this v1.15 source; build from this tree until a v1.15 tag exists.</p>
           <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification. Unstamped source builds report <code>version: "dev"</code>.</p>
         </div>
 
@@ -333,19 +407,20 @@
               <code id="curl-install" tabindex="0">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
               <button class="copy-button" type="button" data-copy="curl-install" aria-label="Copy release installer command">Copy</button>
             </div>
-            <p class="requirements">With an interactive terminal, the installer offers optional coding-agent guidance for the current directory after the verified binary is installed. It shows the directory and defaults to No. Set <code>SKIP_INTEGRATIONS=1</code> to suppress the offer; unattended installs never prompt.</p>
+            <p class="requirements">The installer only places the binary. If stdout is a terminal and the current directory is already an Atlas workspace, it may offer <code>tracker setup</code> and defaults to No. Set <code>SKIP_INTEGRATIONS=1</code> to suppress the offer; unattended installs never prompt.</p>
           </div>
 
           <div class="install-option">
             <div class="install-meta">
-              <strong>Build from source</strong>
+              <strong>Build the v1.15 preview</strong>
               <span>Go 1.26.6+</span>
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
-              <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>
+              <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@main</code>
               <button class="copy-button" type="button" data-copy="go-install" aria-label="Copy Go install command">Copy</button>
             </div>
+            <p class="requirements">Add <code>$(go env GOPATH)/bin</code> to your <code>PATH</code> if needed. This builds current main; it is not a published release.</p>
           </div>
 
           <a class="release-row" href="https://github.com/myrrazor/atlas-tasker/releases/latest">
@@ -359,7 +434,7 @@
           <div class="install-option">
             <div class="install-meta">
               <strong>Your first board</strong>
-              <span>Directory named app, so the default project key is APP</span>
+              <span>tracker init then tracker; directory named app yields project APP</span>
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
@@ -386,7 +461,7 @@
               <code id="first-board" tabindex="0">tracker board</code>
               <button class="copy-button" type="button" data-copy="first-board" aria-label="Copy board command">Copy</button>
             </div>
-            <p class="requirements"><code>tracker init</code> then <code>tracker</code> is the whole hookup: workspace, default project, local checkpoints, Atlas-managed MCP for detected agents, and Home on <code>127.0.0.1:7432</code>. Restart the coding agent after init. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
+            <p class="requirements"><code>tracker init</code> then <code>tracker</code> is the v1.15 workspace path: default project, local checkpoints, Atlas-managed MCP for detected agents, and Home on <code>127.0.0.1:7432</code>. Restart the coding agent after init so it loads Atlas MCP. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
           </div>
         </div>
       </div>
@@ -420,7 +495,7 @@
         </details>
         <details>
           <summary>Do I wire each coding agent by hand?</summary>
-          <p>No. After install, tracker init detects Claude Code, Codex, Cursor, OpenClaw, and Grok on this machine and writes Atlas-managed MCP entries plus the worker skill unless you pass --no-agents. Restart the client. Open the repo in the agent and ask for the board. There is no second Atlas install inside Claude, Codex, Cursor, or Grok.</p>
+          <p>No. The installer only places the binary; it does not initialize a repo or register agents. After install, tracker init detects Claude Code, Codex, Cursor, OpenClaw, and Grok on this machine and writes Atlas-managed MCP entries plus the worker skill unless you pass --no-agents. Restart the client. Open the repo in the agent and ask for the board. There is no second Atlas install inside Claude, Codex, Cursor, or Grok.</p>
         </details>
         <details>
           <summary>How do I get support?</summary>

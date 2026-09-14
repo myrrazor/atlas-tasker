@@ -1,6 +1,8 @@
 package app
 
 import (
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -138,6 +140,8 @@ type InitOptions struct {
 	OpenHome       bool
 	WriteClientCfg bool
 	Actor          contracts.Actor
+	// SkipHomeService is for MCP stdio bootstrap, which must not spawn Home.
+	SkipHomeService bool
 }
 
 func (o *InitOptions) applyDefaults() {
@@ -187,12 +191,72 @@ const (
 )
 
 type AgentClientReport struct {
-	Target     integrations.Target `json:"target"`
-	Status     AgentClientStatus   `json:"status"`
-	Command    string              `json:"command,omitempty"`
-	Args       []string            `json:"args,omitempty"`
-	ConfigPath string              `json:"config_path,omitempty"`
-	Detail     string              `json:"detail,omitempty"`
+	Target        integrations.Target `json:"target"`
+	Status        AgentClientStatus   `json:"status"`
+	Command       string              `json:"command,omitempty"`
+	Args          []string            `json:"args,omitempty"`
+	ConfigPath    string              `json:"config_path,omitempty"`
+	Detail        string              `json:"detail,omitempty"`
+	Scope         string              `json:"scope,omitempty"`
+	WorkspaceID   string              `json:"workspace_id,omitempty"`
+	WorkspaceRoot string              `json:"workspace_root,omitempty"`
+	Binding       string              `json:"binding,omitempty"`
+	Provenance    string              `json:"provenance,omitempty"`
+	ServerName    string              `json:"server_name,omitempty"`
+}
+
+const (
+	AgentScopeUser          = "user"
+	AgentScopeProject       = "project"
+	AgentBindingGlobal      = "global"
+	AgentProvenanceNative   = "native_config"
+	AgentProvenancePortable = "portable_descriptor"
+)
+
+func (c AgentClientReport) ArgvLine() string {
+	parts := make([]string, 0, 1+len(c.Args))
+	if strings.TrimSpace(c.Command) != "" {
+		parts = append(parts, c.Command)
+	}
+	parts = append(parts, c.Args...)
+	return strings.Join(parts, " ")
+}
+
+func (c AgentClientReport) ScopeLabel() string {
+	switch c.Scope {
+	case AgentScopeProject:
+		if c.WorkspaceRoot != "" {
+			return "project · " + filepath.Base(c.WorkspaceRoot)
+		}
+		if c.WorkspaceID != "" {
+			return "project · " + c.WorkspaceID
+		}
+		return "project"
+	case AgentScopeUser:
+		return "user"
+	default:
+		if c.Provenance == AgentProvenancePortable {
+			return "portable"
+		}
+		return "user"
+	}
+}
+
+func (c AgentClientReport) StatusLabel() string {
+	switch c.Status {
+	case AgentWritten:
+		return "configured"
+	case AgentPendingClientRestart:
+		return "configured · pending client restart"
+	case AgentUnverified:
+		return "unverified"
+	case AgentNotDetected:
+		return "not detected"
+	case AgentSkipped:
+		return "skipped"
+	default:
+		return string(c.Status)
+	}
 }
 
 type AgentSetupReport struct {
@@ -377,20 +441,22 @@ func (w *Workspace) Close() error {
 }
 
 const (
-	DefaultHomePort      = 7432
-	DefaultHomeBind      = "127.0.0.1"
-	settingsFormat       = "atlas_machine_settings_v1"
-	registryFormatV2     = "atlas_workspace_registry_v2"
-	GlobalMCPSubcommand  = "mcp"
-	GlobalMCPServe       = "serve"
-	GlobalMCPFlag        = "--global"
-	GlobalMCPProfileFlag = "--tool-profile"
-	GlobalMCPProfile     = "workflow"
-	GlobalMCPServerName  = "atlas-tasker"
-	PathGrantInit        = "init"
-	PathGrantRegister    = "register"
-	PathGrantRepair      = "repair"
-	HomeLaunchdLabel     = "com.atlas-tasker.home"
-	HomeSystemdService   = "atlas-home.service"
-	HomeServiceMarker    = "Atlas-owned Home service. Do not edit by hand."
+	DefaultHomePort                = 7432
+	DefaultHomeBind                = "127.0.0.1"
+	settingsFormat                 = "atlas_machine_settings_v1"
+	registryFormatV2               = "atlas_workspace_registry_v2"
+	GlobalMCPSubcommand            = "mcp"
+	GlobalMCPServe                 = "serve"
+	GlobalMCPFlag                  = "--global"
+	GlobalMCPProfileFlag           = "--tool-profile"
+	GlobalMCPProfile               = "workflow"
+	GlobalMCPToolNameStyleFlag     = "--tool-name-style"
+	GlobalMCPToolNameStylePortable = "portable"
+	GlobalMCPServerName            = "atlas-tasker"
+	PathGrantInit                  = "init"
+	PathGrantRegister              = "register"
+	PathGrantRepair                = "repair"
+	HomeLaunchdLabel               = "com.atlas-tasker.home"
+	HomeSystemdService             = "atlas-home.service"
+	HomeServiceMarker              = "Atlas-owned Home service. Do not edit by hand."
 )

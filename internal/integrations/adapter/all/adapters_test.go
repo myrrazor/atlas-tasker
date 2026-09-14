@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -167,6 +168,196 @@ func TestClaudeAndOpenClawRequireNamedClientForMCP(t *testing.T) {
 			if step.Kind == adapter.StepRunClientCommand {
 				t.Fatalf("%s planned a CLI command without a client", target)
 			}
+		}
+	}
+}
+
+func TestGrokProjectRegistrationUsesPortableToolNames(t *testing.T) {
+	reg, err := New(Options{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := reg.Lookup(integrations.TargetGrok)
+	exe := filepath.Join(t.TempDir(), "grok")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input, _ := testPlanInput(t, integrations.TargetGrok, adapter.Detection{
+		Installed: true, ExecutablePath: exe, VersionSupport: adapter.VersionSupported,
+		Version: adapter.ClientVersion{Raw: "1.0.30", Major: 1, Minor: 0, Patch: 30, Known: true},
+	})
+	plan, err := item.Plan(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Registration == nil {
+		t.Fatal("missing grok registration")
+	}
+	if plan.Registration.ToolNameStyle != adapter.ToolNameStylePortable {
+		t.Fatalf("grok style %q", plan.Registration.ToolNameStyle)
+	}
+	regArgs := strings.Join(plan.Registration.Args, " ")
+	if !strings.Contains(regArgs, adapter.FlagToolNameStyle) || !strings.Contains(regArgs, string(adapter.ToolNameStylePortable)) {
+		t.Fatalf("grok registration args %v", plan.Registration.Args)
+	}
+	found := false
+	for _, step := range plan.Steps {
+		if step.Kind == adapter.StepRunClientCommand && step.Command != nil {
+			joined := strings.Join(step.Command.Args, " ")
+			if !strings.Contains(joined, "mcp add") {
+				continue
+			}
+			found = true
+			if !strings.Contains(joined, adapter.FlagToolNameStyle) || !strings.Contains(joined, "portable") {
+				t.Fatalf("grok mcp add missing portable flag: %v", step.Command.Args)
+			}
+			if strings.Contains(joined, "dangerously") {
+				t.Fatalf("grok mcp add leaked danger flag: %v", step.Command.Args)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected grok mcp add")
+	}
+}
+
+func TestGrokNativeSkipRequiresExactAtlasArgv(t *testing.T) {
+	reg, err := New(Options{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := reg.Lookup(integrations.TargetGrok)
+
+	planGrok := func(t *testing.T, write func(root string, input adapter.PlanInput, expected adapter.MCPRegistration)) (adapter.IntegrationPlan, error) {
+		t.Helper()
+		exe := filepath.Join(t.TempDir(), "grok")
+		if err := os.WriteFile(exe, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		input, root := testPlanInput(t, integrations.TargetGrok, adapter.Detection{
+			Installed: true, ExecutablePath: exe, VersionSupport: adapter.VersionSupported,
+			Version: adapter.ClientVersion{Raw: "1.0.30", Major: 1, Minor: 0, Patch: 30, Known: true},
+		})
+		base, err := adapter.NewRegistration(input.TrackerPath, input.WorkspaceID, adapter.WorkspaceBinding{Kind: adapter.WorkspaceBindingVerifiedCwd}, input.ActorHint, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected, err := base.WithToolNameStyle(adapter.ToolNameStylePortable)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if write != nil {
+			if err := os.MkdirAll(filepath.Join(root, ".grok"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			write(root, input, expected)
+		}
+		return item.Plan(context.Background(), input)
+	}
+	hasAdd := func(plan adapter.IntegrationPlan) bool {
+		for _, step := range plan.Steps {
+			if step.Kind == adapter.StepRunClientCommand && step.Command != nil && strings.Contains(strings.Join(step.Command.Args, " "), "mcp add") {
+				return true
+			}
+		}
+		return false
+	}
+
+	t.Run("mixed entry and comment do not skip canonical Atlas", func(t *testing.T) {
+		plan, err := planGrok(t, func(root string, input adapter.PlanInput, expected adapter.MCPRegistration) {
+			canonical := expected.Args[:len(expected.Args)-2] // drop --tool-name-style portable
+			body := "# leftover: --tool-name-style portable\n" +
+				tomlMCPServer(expected.ServerName, expected.Command, canonical, "") +
+				tomlMCPServer("notes", "/usr/bin/echo", []string{"--tool-name-style", "portable"}, "")
+			if err := os.WriteFile(filepath.Join(root, ".grok", "config.toml"), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasAdd(plan) {
+			t.Fatal("canonical Atlas argv must still be re-registered when another entry mentions portable")
+		}
+	})
+
+	t.Run("wrong derived argv still registers", func(t *testing.T) {
+		plan, err := planGrok(t, func(root string, input adapter.PlanInput, expected adapter.MCPRegistration) {
+			wrong := append([]string(nil), expected.Args...)
+			for i, arg := range wrong {
+				if arg == "--max-items" && i+1 < len(wrong) {
+					wrong[i+1] = "99"
+				}
+			}
+			body := tomlMCPServer(expected.ServerName, expected.Command, wrong, "")
+			if err := os.WriteFile(filepath.Join(root, ".grok", "config.toml"), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasAdd(plan) {
+			t.Fatal("portable style with the wrong bounds must not skip grok mcp add")
+		}
+	})
+
+	t.Run("exact command and argv skip", func(t *testing.T) {
+		plan, err := planGrok(t, func(root string, input adapter.PlanInput, expected adapter.MCPRegistration) {
+			body := tomlMCPServer(expected.ServerName, expected.Command, expected.Args, "required = false\n")
+			if err := os.WriteFile(filepath.Join(root, ".grok", "config.toml"), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hasAdd(plan) {
+			t.Fatal("exact matching Atlas argv should skip grok mcp add")
+		}
+	})
+
+	t.Run("unmanaged same name still refused", func(t *testing.T) {
+		_, err := planGrok(t, func(root string, input adapter.PlanInput, expected adapter.MCPRegistration) {
+			body := tomlMCPServer(expected.ServerName, "/usr/bin/other", []string{"serve", "--tool-name-style", "portable"}, "")
+			if err := os.WriteFile(filepath.Join(root, ".grok", "config.toml"), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if err == nil {
+			t.Fatal("unmanaged same-name Grok server must still be refused")
+		}
+	})
+}
+
+func tomlMCPServer(name, command string, args []string, extra string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = strconv.Quote(arg)
+	}
+	return fmt.Sprintf("[mcp_servers.%s]\ncommand = %s\nargs = [%s]\n%s", name, strconv.Quote(command), strings.Join(quoted, ", "), extra)
+}
+
+func TestCodexProjectRegistrationKeepsCanonicalToolNames(t *testing.T) {
+	reg, err := New(Options{StateDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _ := reg.Lookup(integrations.TargetCodex)
+	input, _ := testPlanInput(t, integrations.TargetCodex, adapter.Detection{VersionSupport: adapter.VersionUnknown})
+	plan, err := item.Plan(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Registration == nil {
+		t.Fatal("missing codex registration")
+	}
+	if plan.Registration.ToolNameStyle != "" && plan.Registration.ToolNameStyle != adapter.ToolNameStyleCanonical {
+		t.Fatalf("codex style %q", plan.Registration.ToolNameStyle)
+	}
+	for _, arg := range plan.Registration.Args {
+		if arg == adapter.FlagToolNameStyle || arg == string(adapter.ToolNameStylePortable) {
+			t.Fatalf("codex argv leaked portable flag: %v", plan.Registration.Args)
 		}
 	}
 }

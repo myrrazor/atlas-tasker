@@ -51,6 +51,7 @@ func (a *App) Attention(ctx context.Context, opts AttentionOptions) (AttentionRe
 			service.QueueAwaitingOwner,
 			service.QueueReadyForMe,
 			service.QueueUnblockedForMe,
+			service.QueueAssignedBacklog,
 		}
 		for _, cat := range order {
 			for _, entry := range queue.Categories[cat] {

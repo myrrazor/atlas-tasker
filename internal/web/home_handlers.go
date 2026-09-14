@@ -204,6 +204,12 @@ func (s *HomeServer) handleSettingsAgents(w http.ResponseWriter, r *http.Request
 	page.Flash = r.URL.Query().Get("flash")
 	report := s.application.ListAgentClients(r.Context())
 	page.Agents = report.Clients
+	workspaces, err := s.application.ListWorkspaces(r.Context(), app.ListOptions{})
+	if err != nil {
+		page.Error = err.Error()
+	} else {
+		page.Workspaces = workspaces
+	}
 	s.renderHome(w, r, page, http.StatusOK)
 }
 
@@ -982,8 +988,4 @@ func (p HomePage) ProjectHref(key string) string {
 		return "/board?project=" + url.QueryEscape(key)
 	}
 	return "/w/" + url.PathEscape(p.WorkspaceID) + "/projects/" + url.PathEscape(key)
-}
-
-func (p HomePage) MCPArgv() string {
-	return "mcp serve --global --tool-profile workflow"
 }

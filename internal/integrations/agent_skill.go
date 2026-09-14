@@ -154,6 +154,7 @@ func grokBlock(guidePath string) string {
 - Pass `+"`--actor`"+` and `+"`--reason`"+` on every write.
 - Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
 - Prefer JSON reads; treat exit 4 as a forbidden workflow edge, not a crash.
+- Grok MCP tools use underscore names (`+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`). Call those; they map to the canonical Atlas tools.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
 }
@@ -162,6 +163,10 @@ func grokGuide() string {
 	return strings.TrimSpace(`# Atlas Tasker Grok Guide
 
 Grok-style agents that load root `+"`AGENTS.md`"+` get the managed Atlas block from `+"`tracker integrations install grok`"+`.
+
+## MCP tool names
+
+Grok skips dotted MCP names. Atlas registers this client with `+"`--tool-name-style portable`"+`, so the live tools are `+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`, and the rest of the catalog with dots turned into one underscore. Call those names. JSON/Markdown still talk about `+"`atlas.status`"+` and friends.
 
 ## Recommended loop
 
@@ -189,6 +194,19 @@ description: Use inside an Atlas Tasker workspace -- "what should I work on", "p
 		// keeps the skill out of the prompt in workspaces with no tracker binary
 		frontmatter += "\nmetadata: { \"openclaw\": { \"requires\": { \"bins\": [\"tracker\"] } } }"
 	}
+	more := `
+## More Detail
+
+Read ` + "`references/workflow.md`" + ` when you need the full loop, blocker handling, reviewer behavior, or handoff patterns.
+`
+	if provider == "grok" {
+		more = `
+
+## Grok MCP tool names
+
+Grok skips dotted MCP tool names. This session advertises Atlas tools with a single underscore: call ` + "`atlas_status`" + `, ` + "`atlas_board`" + `, and ` + "`atlas_context`" + ` (and the rest of the catalog the same way). They dispatch to the canonical Atlas tools ` + "`atlas.status`" + `, ` + "`atlas.board`" + `, and ` + "`atlas.context`" + `. JSON and Markdown still use the canonical names.
+` + more
+	}
 	return strings.TrimSpace(fmt.Sprintf(`%s
 ---
 
@@ -201,11 +219,7 @@ Moving a ticket to its current status is a successful no-op. Inspect the ticket 
 <!-- atlas-managed-lifecycle -->
 %s
 <!-- /atlas-managed-lifecycle -->
-
-## More Detail
-
-Read `+"`references/workflow.md`"+` when you need the full loop, blocker handling, reviewer behavior, or handoff patterns.
-`, frontmatter, label, atlasManagedLifecycle())) + "\n"
+%s`, frontmatter, label, atlasManagedLifecycle(), more)) + "\n"
 }
 
 func atlasManagedLifecycle() string {
@@ -220,8 +234,9 @@ If the workspace has no agent profiles yet (` + "`tracker agent list --json`" + 
 
 ## MCP first
 
-- Prefer Atlas MCP tools when this session has them. Call ` + "`atlas.context`" + ` when starting material work. Call ` + "`atlas.status`" + ` before every status report. Use ` + "`atlas.board`" + ` or ` + "`atlas.status`" + ` with a named project to show a board.
-- If MCP is unavailable (guidance mode, the server is not registered, or a tool call failed), fall back to the CLI commands in this skill. Do not invent Atlas state from conversational memory. Report a failed read instead of guessing.
+- Prefer Atlas MCP tools when this session has them. Call ` + "`atlas.context`" + ` when starting material work. Call ` + "`atlas.status`" + ` or ` + "`atlas.board`" + ` before every status or board question.
+- For a status or board question, query Atlas and present a compact Markdown ticket TABLE (ID, title, status, assignee) from that payload, then blockers and next steps. Do not dump an unbounded catalog. If the board is large, use the tool's filters or pagination and disclose shown/total.
+- If MCP is unavailable (guidance mode, the server is not registered, or a tool call failed), fall back to the CLI commands in this skill and format the same compact table from JSON. Do not invent Atlas state from conversational memory. Report a failed read instead of guessing.
 - Do not invoke high-impact Atlas operations. Do not tell the user to run low-level tracker internals as a required step.
 
 ## Capture
@@ -258,6 +273,7 @@ Classify the user request before creating or attaching a ticket.
 ## Status and completion
 
 - Query Atlas before every status report. Never answer "what is the status" from memory.
+- Default display for a status or board question is a compact Markdown ticket table, then blockers and next steps. Disclose shown/total when the payload is truncated. Never invent tickets, statuses, or a screenshot.
 - Reconcile Atlas state before final completion messaging. The board and ticket view must already show the new status.
 `)
 }

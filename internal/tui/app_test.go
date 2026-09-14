@@ -905,16 +905,17 @@ func TestQueueItemsKeepUnblockedBetweenReadyAndClaimed(t *testing.T) {
 	// silently vanishes from the TUI
 	queue := service.QueueView{
 		Categories: map[service.QueueCategory][]service.QueueEntry{
-			service.QueueClaimedByMe:    {{Ticket: contracts.TicketSnapshot{ID: "APP-3"}}},
-			service.QueueUnblockedForMe: {{Ticket: contracts.TicketSnapshot{ID: "APP-2"}}},
-			service.QueueReadyForMe:     {{Ticket: contracts.TicketSnapshot{ID: "APP-1"}}},
+			service.QueueClaimedByMe:     {{Ticket: contracts.TicketSnapshot{ID: "APP-4"}}},
+			service.QueueAssignedBacklog: {{Ticket: contracts.TicketSnapshot{ID: "APP-3"}}},
+			service.QueueUnblockedForMe:  {{Ticket: contracts.TicketSnapshot{ID: "APP-2"}}},
+			service.QueueReadyForMe:      {{Ticket: contracts.TicketSnapshot{ID: "APP-1"}}},
 		},
 	}
-	ids := make([]string, 0, 3)
+	ids := make([]string, 0, 4)
 	for _, item := range queueItems(queue) {
 		ids = append(ids, item.ID)
 	}
-	if strings.Join(ids, ",") != "APP-1,APP-2,APP-3" {
-		t.Fatalf("expected ready, unblocked, claimed in that order, got %v", ids)
+	if strings.Join(ids, ",") != "APP-1,APP-2,APP-3,APP-4" {
+		t.Fatalf("expected ready, unblocked, assigned backlog, claimed, got %v", ids)
 	}
 }

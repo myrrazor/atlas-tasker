@@ -226,7 +226,7 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
       <p class="section-note">Re-running is idempotent: Atlas updates only its managed blocks and generated files. Whole-file replacement remains opt-in behind <code>--force</code>.</p>
 
       <h3 class="connect-subtitle">Register the MCP server</h3>
-      <p class="section-note"><code>tracker init</code> writes <code>tracker mcp serve --global --tool-profile workflow</code> for detected clients. Restart the client; a written file is not a live connection. Pinned <code>--workspace</code> serve is still supported and still defaults to <code>--tool-profile read</code>. The snippets below set <code>workflow</code> explicitly when you want ticket writes.</p>
+      <p class="section-note"><code>tracker init</code> writes <code>tracker mcp serve --global --tool-profile workflow</code> for detected clients. Restart the client; a written file is not a live connection. Global and pinned serve default to <code>workflow</code>. Choose <code>--tool-profile read</code> or <code>--read-only</code> for inspection only. Grok setup adds <code>--tool-name-style portable</code> so it can load names such as <code>atlas_status</code>.</p>
       <div class="code-block">
         <div class="snippet-title"><span>v1.15 global serve</span><button class="copy-button" type="button" data-copy="snippet-global" aria-label="Copy global MCP serve command">Copy</button></div>
         <pre id="snippet-global">/absolute/path/to/tracker mcp serve --global --tool-profile workflow</pre>

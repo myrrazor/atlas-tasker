@@ -151,8 +151,12 @@ func ToolSpecByName(name string) (ToolSpec, bool) {
 }
 
 func specByName(opts Options, name string) (ToolSpec, bool) {
+	portable := opts.toolNameStyle() == ToolNameStylePortable
 	for _, spec := range ToolSpecsFor(opts) {
 		if spec.Name == name {
+			return spec, true
+		}
+		if portable && PortableToolName(spec.Name) == name {
 			return spec, true
 		}
 	}

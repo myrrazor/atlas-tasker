@@ -67,7 +67,8 @@ body {
 }
 
 img,
-svg {
+svg,
+video {
   display: block;
   max-width: 100%;
 }
@@ -91,7 +92,8 @@ code {
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible,
-code[tabindex]:focus-visible {
+code[tabindex]:focus-visible,
+video:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 4px;
 }
@@ -459,9 +461,16 @@ code[tabindex]:focus-visible {
 }
 
 .terminal-shot img,
+.terminal-shot video,
 .feature-shot img {
   width: 100%;
   height: auto;
+}
+
+.terminal-shot video {
+  background: #111114;
+  object-fit: contain;
+  aspect-ratio: auto 1260 / 720;
 }
 
 figcaption {
@@ -1018,6 +1027,86 @@ figcaption {
   color: var(--text);
 }
 
+.get-started-section {
+  padding-block: 88px 96px;
+  border-top: 1px solid var(--line);
+}
+
+.get-started-heading {
+  max-width: var(--prose);
+  padding-bottom: 12px;
+}
+
+.get-started-heading h2 {
+  max-width: 14ch;
+}
+
+.get-started-steps {
+  display: grid;
+  margin: 28px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line-strong);
+  list-style: none;
+}
+
+.get-started-steps li {
+  display: grid;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--line-strong);
+  align-items: start;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.get-started-steps li > span {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.get-started-steps h3 {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.get-started-steps p {
+  margin: 10px 0 0;
+  color: var(--text-2);
+  font-size: 0.95rem;
+}
+
+.get-started-steps .install-command {
+  margin-top: 14px;
+}
+
+.get-started-steps .install-command code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.get-started-shot {
+  margin: 36px 0 0;
+}
+
+#agent-demo {
+  scroll-margin-top: 76px;
+}
+
+.agent-demo-summary {
+  max-width: var(--prose);
+  margin: 14px 0 0;
+  color: var(--text-2);
+  font-size: 0.95rem;
+}
+
+.agent-demo-summary a {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 /* --- subpage hero (cli, mcp, docs landing) --- */
 
 .page-hero {
@@ -1540,6 +1629,14 @@ figcaption {
 }
 
 @media (max-width: 940px) {
+  .get-started-section {
+    scroll-margin-top: 64px;
+  }
+
+  #agent-demo {
+    scroll-margin-top: 120px;
+  }
+
   .nav-inner {
     padding-top: 8px;
     flex-wrap: wrap;
@@ -1709,6 +1806,7 @@ figcaption {
   .workflow-section,
   .features-section,
   .install-section,
+  .get-started-section,
   .faq-section {
     padding-block: 78px;
   }
@@ -1786,6 +1884,11 @@ figcaption {
     align-items: flex-start;
     flex-direction: column;
     gap: 5px;
+  }
+
+  .get-started-steps li {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 10px;
   }
 
   .install-command {

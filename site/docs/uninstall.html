@@ -120,6 +120,7 @@
 tracker uninstall --yes</pre>
         </div>
         <p><code>--apply</code> is an alias for <code>--yes</code>. Default is a digest-bound preview. Without a verifiable install receipt, uninstall refuses to delete files. Package-manager installs print the manager command instead of unlinking a Cellar path. <code>/uninstall</code> in the tracker shell is the same command.</p>
+        <p>For a source build or <code>go install</code>, a successful <code>tracker init</code> or <code>tracker setup</code> records the running Atlas binary and its hash when ownership can be verified. An existing receipt for another installation is preserved. If the binary changes after the receipt was written, uninstall refuses removal until a verified setup refreshes the source receipt. There is no force-delete option.</p>
         <h2>What stays</h2>
         <ul>
           <li>Workspaces, <code>projects/</code>, <code>.tracker/</code>, tickets, events</li>

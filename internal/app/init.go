@@ -12,6 +12,7 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/service"
+	"github.com/myrrazor/atlas-tasker/internal/uninstall"
 )
 
 type PartialError struct {
@@ -142,10 +143,80 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 	if hasFailedStep(result.Steps) {
 		return result, &PartialError{Summary: result.Summary}
 	}
+	got, recErr := writeInstallReceipt(a.stateDir, a.now())
+	if step := installReceiptStep(got, recErr); step != nil {
+		result.Steps = append(result.Steps, *step)
+		result.Summary = summarizeInit(result)
+	}
 	return result, nil
 }
 
+var writeInstallReceipt = uninstall.MaybeWriteRunningReceipt
+
+func installReceiptStep(got uninstall.EnsureReceiptResult, err error) *InitStep {
+	if err != nil {
+		return &InitStep{
+			Name:   "install_receipt",
+			Status: InitStepUnverified,
+			Detail: "install receipt not written: " + err.Error() + "; uninstall will refuse until a verifiable receipt exists",
+		}
+	}
+	if got.Wrote {
+		return &InitStep{Name: "install_receipt", Status: InitStepDone, Detail: got.Receipt.InstallMethod}
+	}
+	return nil
+}
+
+// EnsureDefaultProjectAndRegister fills a hollow initialized workspace: it
+// creates the default project only when none exist, then registers the tree
+// with Home. It does not scaffold, rewrite git mode, start Home, or install
+// agents.
+func (a *App) EnsureDefaultProjectAndRegister(ctx context.Context, root string) (string, WorkspaceRecord, error) {
+	root, err := service.InitializedWorkspaceRoot(root)
+	if err != nil {
+		return "", WorkspaceRecord{}, err
+	}
+	release, err := a.lockMachine("tracker workspace bootstrap")
+	if err != nil {
+		return "", WorkspaceRecord{}, err
+	}
+	defer func() { _ = release() }()
+	ws, err := OpenWorkspace(root, OpenOptions{
+		Home:     a.home,
+		StateDir: a.stateDir,
+		Now:      a.opts.Now,
+		Notice:   a.opts.Notice,
+		Getenv:   a.getenv(),
+		GOOS:     a.opts.GOOS,
+	})
+	if err != nil {
+		return "", WorkspaceRecord{}, err
+	}
+	defer func() { _ = ws.Close() }()
+	settings := a.snapshotSettings()
+	var key string
+	if settings.DefaultProject {
+		key, err = ensureDefaultProject(ctx, ws, root)
+		if err != nil {
+			return "", WorkspaceRecord{}, err
+		}
+	}
+	if !settings.AutoRegister {
+		return key, WorkspaceRecord{}, nil
+	}
+	rec, err := a.register(ctx, RegisterOptions{Root: root, DisplayName: filepath.Base(root)}, true)
+	if err != nil {
+		return key, WorkspaceRecord{}, err
+	}
+	return key, rec, nil
+}
+
 func (a *App) initHomeService(ctx context.Context, opts InitOptions, steps []InitStep) (*ServiceStatus, []InitStep) {
+	if opts.SkipHomeService {
+		status, _ := a.ServiceStatus(ctx)
+		status.Detail = "Home service skipped during non-interactive workspace bootstrap"
+		return &status, append(steps, InitStep{Name: "service", Status: InitStepSkipped, Detail: status.Detail})
+	}
 	settings := a.snapshotSettings()
 	if !settings.Service.Enabled {
 		status, _ := a.ServiceStatus(ctx)

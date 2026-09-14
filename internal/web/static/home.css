@@ -290,3 +290,73 @@
 }
 
 .home-sign-in { max-width: 40rem; padding: 32px 24px; }
+
+/* Agent commands can include long workspace IDs and local paths. Keep the
+   comparison compact and expose the full command in an accessible disclosure. */
+.agent-settings p {
+  line-height: 1.6;
+}
+
+.agent-settings .form-help {
+  margin: 8px 0 16px;
+}
+
+.agent-clients {
+  table-layout: fixed;
+  margin-top: 24px;
+}
+
+.agent-clients th,
+.agent-clients td {
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.agent-clients tbody tr:has(+ .agent-config-row) {
+  border-bottom: 0;
+}
+
+.agent-clients .mode-chip {
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+.agent-clients tbody tr.agent-config-row td:last-child {
+  padding-top: 0;
+  text-align: left;
+}
+
+.agent-config summary {
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 12px;
+  padding: 6px 0;
+}
+
+.agent-config > code {
+  display: block;
+  margin: 8px 0;
+  padding: 12px;
+  border-radius: var(--r-control);
+  background: var(--sunken);
+  font-size: 11px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.agent-config .form-help code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .agent-clients thead th:nth-child(1) { width: 22%; }
+  .agent-clients thead th:nth-child(2) { width: 40%; }
+  .agent-clients thead th:nth-child(3) { width: 38%; }
+
+  .agent-clients th,
+  .agent-clients td {
+    padding-right: 6px;
+    padding-left: 6px;
+    font-size: 12px;
+  }
+}

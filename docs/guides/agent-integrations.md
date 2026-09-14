@@ -13,8 +13,12 @@ Atlas can install project-level instructions and an `atlas-worker` skill for six
 integration pack teaches an agent how to read Atlas work, claim a ticket, record evidence, and request
 review. It does not install an agent, launch one, or grant it permissions. A written MCP entry is
 `written` or `pending_client_restart`, never “connected” just because a config file exists.
-Advanced `tracker setup` can still register a workspace-bound Atlas MCP server for selected
-providers.
+Home → Settings → Agents labels that as configured (and pending a client restart when the
+file merely matches). User-scoped `atlas-tasker` rows are distinct from project-scoped
+workspace servers; a repo `.grok/config.toml` entry is not reported as a broken user
+registration. Each row shows the actual written command, including Grok’s
+`--tool-name-style portable`. Advanced `tracker setup` can still register a workspace-bound
+Atlas MCP server for selected providers.
 
 ## Unified setup (advanced / v1.14)
 
@@ -146,6 +150,30 @@ existing `atlas-worker` skill, and the provider's MCP registration in one transa
 name is derived from the workspace ID (`atlas-` plus twelve hex characters), the profile is always
 `workflow`, and high-impact tools stay absent. Atlas never grants workspace trust or MCP approval
 on the user's behalf; those stay `pending_workspace_trust` or `pending_mcp_approval`.
+
+Grok cannot load dotted MCP tool names (`atlas.status` becomes an invalid `server__tool`
+qualifier). Both `tracker init` (user-scope `grok mcp add`) and `tracker setup --agents grok`
+register Atlas with `--tool-name-style portable`, so Grok sees `atlas_status`, `atlas_board`,
+and the rest of the catalog with dots turned into one underscore. Claude, Codex, Cursor,
+OpenClaw, and generic keep canonical dotted names. JSON and Markdown still use the public
+`atlas.status` names.
+
+Project-scoped Grok config (`grok mcp add --scope project`) keeps `--workspace-from-cwd`
+and the expected workspace id. The command is the bare `tracker` name only when `PATH`
+resolves to the same Atlas executable that is running. A source build that is not on
+`PATH` may keep its absolute command only when that path is not under the home
+directory — repository-carried config cannot embed a personal path. If this binary
+lives under home and is not on `PATH`, setup refreshes the skill, skips project MCP,
+and tells you to put this `tracker` on `PATH` and rerun setup. User-scoped Home
+registration can still use the absolute command; setup does not invent a user config
+path. Home Agents treats a written `tracker` name as configured only while `PATH`
+still resolves to that same executable.
+
+Ask for status or the board after restart. The generated `atlas-worker` skill tells the
+session to query Atlas and answer with a compact Markdown ticket table, then blockers
+and next steps. Large boards stay bounded: use filters or pagination and disclose
+shown/total instead of dumping the whole catalog. Browser Kanban and the terminal/TUI
+table are unchanged.
 
 Generic setup writes a portable descriptor at `.tracker/integrations/atlas-mcp.json` and reports
 `portable_ready` until a conformance host or a real client probes it. It does not claim a universal

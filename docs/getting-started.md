@@ -1,9 +1,39 @@
 # Getting Started
 
-This path gets you from a clean checkout to a usable local Atlas workspace. The
-[latest published release](https://github.com/myrrazor/atlas-tasker/releases/latest)
+Install the binary, initialize Atlas in the project you care about, restart
+the coding agent so it loads Atlas MCP, then ask for ticket status.
+
+The [latest published release](https://github.com/myrrazor/atlas-tasker/releases/latest)
 is what the installer installs. Home, global MCP, and software-only uninstall are
 the v1.15 source candidate; unstamped builds report `"version": "dev"`.
+
+## The short path
+
+Install Atlas once:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
+```
+
+In the project you want tracked, ask your coding agent:
+
+```text
+Initialize Atlas Tasker in this project.
+```
+
+With v1.15, Atlas sets up the board, local checkpoints, and integrations for
+supported agents installed on your machine. Restart your coding agent to load
+the integration.
+
+Then ask normally:
+
+```text
+What's the current status of this project?
+```
+
+A real Grok Build status capture is in the README. It uses synthetic sample
+tickets and a v1.15 source build. Grok reads Atlas through MCP and renders a
+ticket table in its own terminal interface.
 
 ## 1. Install The CLI
 
@@ -27,7 +57,8 @@ Go version from `go.mod`. See [installation.md](installation.md).
 ## 2. Initialize, Then Open Home
 
 Use a directory named `app` so the default project key is `APP`. In any other
-directory, use the generated key (or `MAIN` when the basename is too short).
+directory, use the generated key. Long multiword names use a readable word; names
+without a valid short key fall back to `MAIN`.
 
 ```bash
 mkdir app && cd app

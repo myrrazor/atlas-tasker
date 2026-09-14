@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Getting started with Atlas Tasker</title>
-  <meta name="description" content="Install tracker, run init in a repo, then tracker to open Home. Create a ticket, read the board, and let detected coding agents pick up the same workspace." />
+  <meta name="description" content="Install the tracker binary, initialize Atlas in your project, restart the coding agent so it loads MCP, then ask for ticket status on the same local board." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
@@ -21,7 +21,7 @@
   <meta property="og:type" content="article" />
   <meta property="og:url" content="https://atlastasker.com/docs/getting-started.html" />
   <meta property="og:title" content="Getting started with Atlas Tasker" />
-  <meta property="og:description" content="Install tracker, run init in a repo, then tracker to open Home. Create a ticket, read the board, and let detected coding agents pick up the same workspace." />
+  <meta property="og:description" content="Install the tracker binary, initialize Atlas in your project, restart the coding agent so it loads MCP, then ask for ticket status on the same local board." />
   <meta property="og:image" content="https://atlastasker.com/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -29,7 +29,7 @@
 
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Getting started with Atlas Tasker" />
-  <meta name="twitter:description" content="Install tracker, run init in a repo, then tracker to open Home. Create a ticket, read the board, and let detected coding agents pick up the same workspace." />
+  <meta name="twitter:description" content="Install the tracker binary, initialize Atlas in your project, restart the coding agent so it loads MCP, then ask for ticket status on the same local board." />
   <meta name="twitter:image" content="https://atlastasker.com/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
@@ -38,7 +38,7 @@
     "@context": "https://schema.org",
     "@type": "TechArticle",
     "name": "Getting started with Atlas Tasker",
-    "description": "Install tracker, run init in a repo, then tracker to open Home. Create a ticket, read the board, and let detected coding agents pick up the same workspace.",
+    "description": "Install the tracker binary, initialize Atlas in your project, restart the coding agent so it loads MCP, then ask for ticket status on the same local board.",
     "url": "https://atlastasker.com/docs/getting-started.html",
     "isPartOf": {
       "@type": "WebSite",
@@ -108,18 +108,39 @@
       <article>
         <p class="docs-kicker">Start</p>
         <h1>Getting started</h1>
-        <p class="docs-lead">From nothing to a groomed board in two commands: <code>tracker init</code> then <code>tracker</code>. Everything here runs offline, creates no accounts, and leaves plain files in your repository.</p>
+        <p class="docs-lead">Install Atlas once, then let your coding agent set up the project and read the board. Your tickets stay in plain files in your repository. Atlas needs no account or hosted service.</p>
+
+        <h2>The short path</h2>
+        <p>Install Atlas once:</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>release installer · macOS or Linux</span><button class="copy-button" type="button" data-copy="gs-short-install" aria-label="Copy install command">Copy</button></div>
+          <pre id="gs-short-install">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</pre>
+        </div>
+        <p>In the project you want tracked, ask your coding agent:</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>what you type to the agent</span><button class="copy-button" type="button" data-copy="gs-init-ask" aria-label="Copy initialize prompt">Copy</button></div>
+          <pre id="gs-init-ask">Initialize Atlas Tasker in this project.</pre>
+        </div>
+        <p>Atlas sets up the board, local checkpoints, and integrations for supported agents installed on your machine. Restart the agent to load the integration, then ask normally:</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>then ask for status</span><button class="copy-button" type="button" data-copy="gs-status-ask" aria-label="Copy status prompt">Copy</button></div>
+          <pre id="gs-status-ask">What's the current status of this project?</pre>
+        </div>
+        <p>The Grok demonstration reads Atlas through MCP and shows the result in Grok’s terminal interface. A real Grok Build capture lives on the <a href="../#get-started">homepage Get started section</a>.</p>
+
+        <p><strong>v1.15 preview.</strong> This walkthrough uses the current source. The installer downloads the latest published release; the new setup arrives with v1.15. Use the source command below to try it now.</p>
 
         <h2>Install</h2>
-        <p>The release installer fetches the latest <strong>published</strong> build, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs the <code>tracker</code> binary. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>) for attestation checks. Atlas Home, global MCP, and <code>tracker uninstall</code> are in this v1.15 source; build from this tree until a v1.15 tag exists.</p>
+        <p>The release installer fetches the latest <strong>published</strong> build, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs the <code>tracker</code> binary. It does not initialize a repository or register coding agents. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>) for attestation checks. Atlas Home, global MCP, and <code>tracker uninstall</code> are in this v1.15 source; build from this tree until a v1.15 tag exists.</p>
         <div class="code-block">
           <div class="snippet-title"><span>release installer · macOS or Linux</span><button class="copy-button" type="button" data-copy="gs-install" aria-label="Copy install command">Copy</button></div>
           <pre id="gs-install">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</pre>
         </div>
         <div class="code-block">
-          <div class="snippet-title"><span>or build from source · Go 1.26.6+</span><button class="copy-button" type="button" data-copy="gs-go" aria-label="Copy go install command">Copy</button></div>
-          <pre id="gs-go">go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</pre>
+          <div class="snippet-title"><span>v1.15 source preview · Go 1.26.6+</span><button class="copy-button" type="button" data-copy="gs-go" aria-label="Copy go install command">Copy</button></div>
+          <pre id="gs-go">go install github.com/myrrazor/atlas-tasker/cmd/tracker@main</pre>
         </div>
+        <p>Go installs <code>tracker</code> into <code>$(go env GOPATH)/bin</code> unless <code>GOBIN</code> is set. Add that directory to your <code>PATH</code>.</p>
         <p>Pin a specific release by exporting <code>VERSION</code> before running the installer. Unstamped source builds report <code>version: "dev"</code> in <code>tracker version --json</code>, which is expected.</p>
 
         <h2>Keep the binary current</h2>
@@ -183,12 +204,12 @@ tracker web serve --open <span class="c"># single-workspace kanban</span></pre>
         </div>
 
         <h2>Ask the agent for the board</h2>
-        <p>After init, you do not paste another installer into the coding agent. In Cursor, Claude Code, Codex, or Grok, open the project and ask:</p>
+        <p>After init and the agent restart, you do not paste another installer into the coding agent. In Cursor, Claude Code, Codex, or Grok, open the project and ask:</p>
         <div class="code-block">
           <div class="snippet-title"><span>what you type to the agent</span><button class="copy-button" type="button" data-copy="gs-ask" aria-label="Copy agent prompt">Copy</button></div>
           <pre id="gs-ask">What's the current status of this project?</pre>
         </div>
-        <p>A hooked-up agent runs <code>tracker board</code> or the MCP <code>atlas.board</code> tool and answers from the same tickets you just created. That is the point of the init picker.</p>
+        <p>A hooked-up agent runs <code>tracker board</code> or the MCP <code>atlas.board</code> tool and answers from the same tickets you just created. Atlas’s generated guidance explains how to read the board.</p>
 
         <h2>Connect agents in one pass</h2>
         <div class="docs-note">

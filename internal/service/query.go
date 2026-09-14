@@ -558,6 +558,8 @@ func (s *QueryService) Queue(ctx context.Context, actor contracts.Actor) (QueueV
 			// every blocker landed but nobody groomed it; for persisted backlog
 			// a non-blocked board status already means zero open blockers
 			view.Categories[QueueUnblockedForMe] = append(view.Categories[QueueUnblockedForMe], QueueEntry{Ticket: ticket, Reason: "blockers resolved; promote to ready", GitHint: entryHint})
+		case ticket.Status == contracts.StatusBacklog && ticket.Assignee == actor:
+			view.Categories[QueueAssignedBacklog] = append(view.Categories[QueueAssignedBacklog], QueueEntry{Ticket: ticket, Reason: AgentWorkReasonNotReadyStatus, GitHint: entryHint})
 		}
 		if ticket.Status == contracts.StatusInReview && (effectiveReviewer(ticket, policy) == actor || actor == contracts.Actor("human:owner")) {
 			view.Categories[QueueNeedsReview] = append(view.Categories[QueueNeedsReview], QueueEntry{Ticket: ticket, Reason: "waiting for review", GitHint: entryHint})
@@ -656,6 +658,7 @@ func (s *QueryService) Next(ctx context.Context, actor contracts.Actor) (NextVie
 	order := []QueueCategory{
 		QueueReadyForMe,
 		QueueUnblockedForMe,
+		QueueAssignedBacklog,
 		QueueClaimedByMe,
 		QueueNeedsReview,
 		QueueAwaitingOwner,

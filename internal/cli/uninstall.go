@@ -19,7 +19,8 @@ func newUninstallCommand() *cobra.Command {
 Default is a digest-bound preview of exact Atlas-owned paths. Pass --yes or
 --apply to execute. Workspaces, backups, registry pointers, and unrelated
 client config are kept. Without a verifiable install receipt, uninstall
-refuses to delete files.
+refuses to delete files. Source and go-install builds write a receipt on
+successful init/setup for the running tracker only.
 
 Examples:
   tracker uninstall

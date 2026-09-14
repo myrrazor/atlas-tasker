@@ -548,28 +548,39 @@
     </section>
   {{end}}
   {{if eq .Page "settings-agents"}}
-    <section class="settings-section">
+    <section class="settings-section agent-settings">
       <h2>Agents</h2>
-      <p>Atlas writes an <code>atlas-tasker</code> MCP entry with <code>{{.MCPArgv}}</code> when agent install is on. This page reports that intended registration. A config file is not a live connection.</p>
-      <dl class="settings-list">
-        <div><dt>Auto-install</dt><dd>{{if .Settings.Agents.AutoInstall}}on{{else}}off{{end}}</dd></div>
-        <div><dt>Canonical argv</dt><dd><code>{{.MCPArgv}}</code></dd></div>
-      </dl>
+      <p>Atlas registrations for your coding agents. Restart the client after setup, then ask for project status to confirm the connection.</p>
+      <p class="form-help">Automatic setup is {{if .Settings.Agents.AutoInstall}}on{{else}}off{{end}}. Project-scoped setup serves one workspace; user-scoped setup can use Home’s registered workspaces.</p>
       {{if .Agents}}
-      <table class="project-table home-table">
-        <thead><tr><th>Client</th><th>Status</th><th>Detail</th></tr></thead>
+      <table class="project-table home-table agent-clients">
+        <thead><tr><th scope="col">Client</th><th scope="col">Scope</th><th scope="col">Status</th></tr></thead>
         <tbody>
           {{range .Agents}}
             <tr>
               <th scope="row">{{.Target}}</th>
-              <td><span class="mode-chip">{{.Status}}</span></td>
-              <td>{{if .Detail}}{{.Detail}}{{else}}{{.Command}}{{end}}</td>
+              <td>{{.ScopeLabel}}</td>
+              <td><span class="mode-chip" title="{{.StatusLabel}}">{{if eq .Status "pending_client_restart"}}configured{{else}}{{.StatusLabel}}{{end}}</span></td>
+            </tr>
+            <tr class="agent-config-row">
+              <td colspan="3">
+                {{if .Detail}}<p class="form-help">{{.Detail}}</p>{{end}}
+                <details class="agent-config">
+                  <summary>Command and configuration</summary>
+                  {{if .ArgvLine}}<code>{{.ArgvLine}}</code>{{end}}
+                  {{if .ConfigPath}}<p class="form-help">Config: <code>{{.ConfigPath}}</code></p>{{end}}
+                  {{if .WorkspaceRoot}}<p class="form-help">Workspace: <code>{{.WorkspaceRoot}}</code></p>{{end}}
+                  {{if .WorkspaceID}}<p class="form-help">Workspace ID: <code>{{.WorkspaceID}}</code></p>{{end}}
+                </details>
+              </td>
             </tr>
           {{end}}
         </tbody>
       </table>
+      {{else}}
+      <p class="settings-note">No Atlas registrations found. Run <code>tracker init</code> in your project to set up detected coding agents.</p>
       {{end}}
-      <p class="settings-note">Status is read from the written executable and args. It is never reported as connected just because a config file exists. Opt out with <code>tracker init --no-agents</code> or the General toggle.</p>
+      <p class="settings-note">Configured means the saved command matches Atlas. A successful tool call confirms the live connection. Change automatic setup in General settings or use <code>tracker init --no-agents</code>.</p>
     </section>
   {{end}}
   {{if eq .Page "settings-workspaces"}}

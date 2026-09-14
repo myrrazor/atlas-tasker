@@ -626,12 +626,12 @@ func TestQueueListsUnblockedBacklogTicketsAndNextOrdersThemAfterReady(t *testing
 	if entries[0].Reason != "blockers resolved; promote to ready" {
 		t.Fatalf("unexpected unblocked_for_me reason %q", entries[0].Reason)
 	}
-	for category, items := range queue.Categories {
-		for _, entry := range items {
-			if entry.Ticket.ID == plainBacklog.ID {
-				t.Fatalf("backlog ticket without blockers must not be queued, found under %s", category)
-			}
-		}
+	assigned := queue.Categories[QueueAssignedBacklog]
+	if len(assigned) != 1 || assigned[0].Ticket.ID != plainBacklog.ID {
+		t.Fatalf("assigned backlog should be queued as assigned_backlog, got %#v", assigned)
+	}
+	if assigned[0].Reason != AgentWorkReasonNotReadyStatus {
+		t.Fatalf("assigned backlog reason %q", assigned[0].Reason)
 	}
 	if blocked := queue.Categories[QueueBlockedForMe]; len(blocked) != 1 || blocked[0].Ticket.ID != stillBlocked.ID {
 		t.Fatalf("ticket with an open blocker should stay blocked_for_me, got %#v", blocked)
@@ -641,13 +641,48 @@ func TestQueueListsUnblockedBacklogTicketsAndNextOrdersThemAfterReady(t *testing
 	if err != nil {
 		t.Fatalf("next: %v", err)
 	}
-	if len(next.Entries) < 2 {
-		t.Fatalf("expected ready and unblocked entries, got %#v", next.Entries)
+	if len(next.Entries) < 3 {
+		t.Fatalf("expected ready, unblocked, then assigned backlog, got %#v", next.Entries)
 	}
 	if next.Entries[0].Category != QueueReadyForMe || next.Entries[0].Entry.Ticket.ID != ready.ID {
 		t.Fatalf("ready work should come first, got %#v", next.Entries[0])
 	}
 	if next.Entries[1].Category != QueueUnblockedForMe || next.Entries[1].Entry.Ticket.ID != unblocked.ID {
 		t.Fatalf("unblocked work should follow ready work, got %#v", next.Entries[1])
+	}
+	if next.Entries[2].Category != QueueAssignedBacklog || next.Entries[2].Entry.Ticket.ID != plainBacklog.ID {
+		t.Fatalf("assigned backlog should follow unblocked work, got %#v", next.Entries[2])
+	}
+}
+
+func TestQueueOmitsUnassignedBacklog(t *testing.T) {
+	ctx, queries, tickets, _, _, now, cleanup := setupAgentWorkTest(t)
+	defer cleanup()
+
+	actor := contracts.Actor("agent:builder-1")
+	other := testAgentWorkTicket("APP-1", "Someone else", contracts.StatusBacklog, now)
+	other.Assignee = contracts.Actor("agent:reviewer-1")
+	open := testAgentWorkTicket("APP-2", "Unassigned", contracts.StatusBacklog, now)
+	mine := testAgentWorkTicket("APP-3", "Mine", contracts.StatusBacklog, now)
+	mine.Assignee = actor
+	for _, ticket := range []contracts.TicketSnapshot{other, open, mine} {
+		if err := tickets.CreateTicket(ctx, ticket); err != nil {
+			t.Fatalf("create ticket %s: %v", ticket.ID, err)
+		}
+	}
+	queue, err := queries.Queue(ctx, actor)
+	if err != nil {
+		t.Fatalf("queue: %v", err)
+	}
+	assigned := queue.Categories[QueueAssignedBacklog]
+	if len(assigned) != 1 || assigned[0].Ticket.ID != mine.ID {
+		t.Fatalf("only the actor's assigned backlog belongs in assigned_backlog, got %#v", assigned)
+	}
+	for category, items := range queue.Categories {
+		for _, entry := range items {
+			if entry.Ticket.ID == open.ID || entry.Ticket.ID == other.ID {
+				t.Fatalf("unassigned or foreign backlog leaked into %s", category)
+			}
+		}
 	}
 }

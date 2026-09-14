@@ -82,7 +82,8 @@ Approving one concrete operation does not authorize another tool, plan, path, UR
 }
 
 func addMCPRuntimeFlags(cmd *cobra.Command) {
-	cmd.Flags().String("tool-profile", string(atlasmcp.ProfileRead), "MCP tool profile: read|workflow|delivery|admin")
+	cmd.Flags().String("tool-profile", string(atlasmcp.ProfileWorkflow), "MCP tool profile: read|workflow|delivery|admin")
+	cmd.Flags().String("tool-name-style", string(atlasmcp.ToolNameStyleCanonical), "MCP tool names: canonical (atlas.status) or portable (atlas_status)")
 	cmd.Flags().Bool("read-only", false, "Force read-only MCP mode")
 	cmd.Flags().Bool("dangerously-allow-high-impact-tools", false, "Expose high-impact MCP tools; execution still requires operation approvals")
 	cmd.Flags().Int("max-result-bytes", 128*1024, "Maximum structured result size before truncation")
@@ -93,6 +94,11 @@ func addMCPRuntimeFlags(cmd *cobra.Command) {
 func mcpOptionsFromFlags(cmd *cobra.Command) (atlasmcp.Options, error) {
 	profileRaw, _ := cmd.Flags().GetString("tool-profile")
 	profile, err := atlasmcp.ParseToolProfile(profileRaw)
+	if err != nil {
+		return atlasmcp.Options{}, err
+	}
+	styleRaw, _ := cmd.Flags().GetString("tool-name-style")
+	style, err := atlasmcp.ParseToolNameStyle(styleRaw)
 	if err != nil {
 		return atlasmcp.Options{}, err
 	}
@@ -113,6 +119,7 @@ func mcpOptionsFromFlags(cmd *cobra.Command) (atlasmcp.Options, error) {
 		MaxItems:              maxItems,
 		MaxTextTokensEstimate: maxTokens,
 		Global:                global,
+		ToolNameStyle:         style,
 		Now:                   defaultNow,
 	}.Normalized(), nil
 }

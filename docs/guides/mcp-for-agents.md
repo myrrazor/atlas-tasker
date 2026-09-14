@@ -5,7 +5,9 @@ Atlas MCP is a local stdio adapter for agents that need structured tools instead
 ## Start Read-Only
 
 On the v1.15 candidate, `tracker init` already registered detected clients with
-`tracker mcp serve --global --tool-profile workflow`. Restart the client, then inspect:
+`tracker mcp serve --global --tool-profile workflow`. Grok's entry also gets
+`--tool-name-style portable` so tools/list names are `atlas_status` rather than
+`atlas.status`; other clients keep the dotted names. Restart the client, then inspect:
 
 ```bash
 tracker mcp serve --global --tool-profile workflow
@@ -24,6 +26,11 @@ tracker mcp schema --json --tool-profile read
 The read profile is inspection, queues, plans, context, status, backup health, and
 dry runs. It does not expose workflow writes or high-impact tools. Run
 `tracker mcp tools --json` for the live count; do not copy a stale number.
+
+`--tool-name-style` defaults to `canonical` (dotted `atlas.status`). `portable` advertises
+the same tools as `atlas_status` for Grok Build and still dispatches to the canonical
+handlers. Discovery descriptions mention the canonical name. Tool payloads keep public
+`atlas.status` terminology.
 
 Stdio speaks newline-delimited JSON-RPC and also accepts LSP-style `Content-Length` frames.
 
@@ -116,9 +123,19 @@ The approval is a transport safety gate, not an authorization override. Atlas st
 
 ## Keep Config Boring
 
-Pin MCP config to an absolute `tracker` binary path. Do not use `sh -c`, `npx`, curl pipes, or snippets from untrusted workspace files.
+User-scoped Home registration keeps an absolute `tracker` path. Project-scoped Grok
+config uses the bare `tracker` name only when `PATH` resolves to that same executable.
+An absolute project command is kept only when scope validation allows it (not a
+home-directory path). A source build under `$HOME` that is missing from `PATH` is not
+written into `.grok/config.toml`; put that binary on `PATH` as `tracker` and rerun
+setup. Do not use `sh -c`, `npx`, curl pipes, or snippets from untrusted workspace files.
 
 `tracker integrations install` does not perform this registration. It writes project instructions and
 skills. Configure MCP in the client separately; see [coding-agent integrations](agent-integrations.md).
+
+For a status or board question, agents should call `atlas.status` / `atlas.board` (Grok:
+`atlas_status` / `atlas_board`) and present a compact Markdown ticket table, then
+blockers and next steps. If the payload is truncated, disclose shown/total. Do not
+invent tickets or paste a fake screenshot.
 
 Use [MCP tools](../mcp-tools.md), [MCP JSON contracts](../mcp-json-contracts.md), and [MCP security](../mcp-security.md) as the canonical references.

@@ -13,9 +13,16 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/setup"
 )
 
-// GlobalServeArgs is the exact argv Core/installer must register.
+// GlobalServeArgs is the exact argv Core/installer must register for clients
+// that accept canonical dotted tool names.
 func GlobalServeArgs() []string {
 	return []string{"mcp", "serve", "--global", "--tool-profile", "workflow"}
+}
+
+// GlobalServeArgsPortable is the Grok registration argv. It keeps the same
+// profile and bounds and only changes advertised tool names.
+func GlobalServeArgsPortable() []string {
+	return append(GlobalServeArgs(), FlagToolNameStyle, string(ToolNameStylePortable))
 }
 
 func GlobalServeArgv(tracker string) []string {

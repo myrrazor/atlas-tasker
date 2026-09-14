@@ -25,28 +25,28 @@ func (a *App) setupAgents(ctx context.Context, ws *Workspace) AgentSetupReport {
 	if command == "" {
 		command = "tracker"
 	}
-	args := GlobalMCPArgs()
 	wrote := false
 	for _, d := range detections {
 		if !d.Found || d.Target == integrations.TargetGeneric {
 			continue
 		}
-		client := a.registerDetectedClient(ctx, d.Target, command, args)
+		client := a.registerDetectedClient(ctx, d.Target, command, GlobalMCPArgsFor(d.Target))
 		report.Clients = append(report.Clients, client)
 		if client.Status == AgentWritten || client.Status == AgentPendingClientRestart {
 			wrote = true
 		}
 	}
 	genericPath := filepath.Join(a.stateDir, "integrations", "atlas-mcp.json")
-	if err := writePortableDescriptor(genericPath, command, args); err != nil {
+	genericArgs := GlobalMCPArgs()
+	if err := writePortableDescriptor(genericPath, command, genericArgs); err != nil {
 		report.Notes = append(report.Notes, "generic portable descriptor: "+err.Error())
 	} else {
-		status := verifyGlobalMCPJSON(genericPath, command, args)
+		status := verifyGlobalMCPJSON(genericPath, command, genericArgs)
 		report.Clients = append(report.Clients, AgentClientReport{
 			Target:     integrations.TargetGeneric,
 			Status:     status,
 			Command:    command,
-			Args:       args,
+			Args:       genericArgs,
 			ConfigPath: genericPath,
 			Detail:     "portable descriptor only; not a live client config",
 		})
@@ -59,7 +59,7 @@ func (a *App) setupAgents(ctx context.Context, ws *Workspace) AgentSetupReport {
 		report.Notes = append(report.Notes, "workspace skills: "+err.Error())
 	}
 	if wrote {
-		_ = a.recordUninstallClientActions(command, args, report.Clients)
+		_ = a.recordUninstallClientActions(command, GlobalMCPArgs(), report.Clients)
 	}
 	return report
 }
@@ -113,6 +113,14 @@ func (a *App) registerDetectedClient(ctx context.Context, target integrations.Ta
 		client.Status = AgentNotDetected
 		return client
 	}
+}
+
+func GlobalMCPArgsFor(target integrations.Target) []string {
+	args := GlobalMCPArgs()
+	if target == integrations.TargetGrok {
+		return append(args, GlobalMCPToolNameStyleFlag, GlobalMCPToolNameStylePortable)
+	}
+	return args
 }
 
 func clientExecutableName(target integrations.Target) string {
@@ -389,23 +397,11 @@ func (a *App) installWorkspaceSkills(ws *Workspace, detections []integrations.De
 }
 
 func (a *App) ListAgentClients(ctx context.Context) AgentSetupReport {
-	_ = ctx
 	command := a.opts.Executable
 	if command == "" {
 		command = "tracker"
 	}
-	args := GlobalMCPArgs()
 	report := AgentSetupReport{Attempted: true}
-	look := a.lookPath()
-	detected := map[integrations.Target]bool{}
-	for _, d := range integrations.Detect(integrations.DetectOptions{
-		Workspace: a.home,
-		Home:      a.home,
-		LookPath:  look,
-		Getenv:    a.getenv(),
-	}) {
-		detected[d.Target] = d.Found
-	}
 	specs := []struct {
 		target integrations.Target
 		path   string
@@ -418,33 +414,277 @@ func (a *App) ListAgentClients(ctx context.Context) AgentSetupReport {
 		{integrations.TargetGeneric, filepath.Join(a.stateDir, "integrations", "atlas-mcp.json"), false},
 	}
 	for _, spec := range specs {
-		client := AgentClientReport{Target: spec.target, Command: command, Args: args, ConfigPath: spec.path}
-		_, err := os.Lstat(spec.path)
-		switch {
-		case os.IsNotExist(err) && !detected[spec.target] && spec.target != integrations.TargetGeneric:
-			continue
-		case os.IsNotExist(err):
-			if detected[spec.target] {
-				client.Status = AgentUnverified
-				client.Detail = "client is present but the Atlas MCP entry is missing"
-			} else {
-				client.Status = AgentNotDetected
-			}
-		case spec.toml:
-			if verifyTOMLRegistration(spec.path, command, args) {
-				client.Status = AgentWritten
-			} else {
-				client.Status = AgentUnverified
-				client.Detail = "config does not match Atlas-managed argv"
-			}
-		default:
-			client.Status = verifyGlobalMCPJSON(spec.path, command, args)
-			if client.Status == AgentWritten {
-				client.Status = AgentPendingClientRestart
-				client.Detail = "file matches; client restart may be required"
-			}
+		if client, ok := a.inspectUserClient(spec.target, spec.path, spec.toml, command, GlobalMCPArgsFor(spec.target)); ok {
+			report.Clients = append(report.Clients, client)
 		}
-		report.Clients = append(report.Clients, client)
+	}
+	for _, ref := range a.knownWorkspaceRoots(ctx) {
+		if client := a.inspectProjectGrok(ref.root, ref.workspaceID, command); client != nil {
+			report.Clients = append(report.Clients, *client)
+		}
 	}
 	return report
+}
+
+type workspaceRef struct {
+	root        string
+	workspaceID string
+}
+
+func (a *App) knownWorkspaceRoots(ctx context.Context) []workspaceRef {
+	seen := map[string]struct{}{}
+	var out []workspaceRef
+	add := func(root, id string) {
+		root = filepath.Clean(strings.TrimSpace(root))
+		if root == "" || !filepath.IsAbs(root) {
+			return
+		}
+		info, err := os.Lstat(root)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return
+		}
+		if _, ok := seen[root]; ok {
+			return
+		}
+		if id == "" {
+			id = readWorkspaceID(root)
+		}
+		if id == "" {
+			return
+		}
+		seen[root] = struct{}{}
+		out = append(out, workspaceRef{root: root, workspaceID: id})
+	}
+	listed, err := a.ListWorkspaces(ctx, ListOptions{IncludeHidden: true})
+	if err == nil {
+		for _, rec := range listed {
+			add(rec.Path, rec.WorkspaceID)
+		}
+	}
+	for _, grant := range a.ListPendingGrants() {
+		add(grant.Path, "")
+	}
+	return out
+}
+
+func (a *App) inspectUserClient(target integrations.Target, path string, toml bool, command string, args []string) (AgentClientReport, bool) {
+	client := AgentClientReport{
+		Target:     target,
+		Command:    command,
+		Args:       append([]string(nil), args...),
+		ConfigPath: path,
+		Scope:      AgentScopeUser,
+		Binding:    AgentBindingGlobal,
+		Provenance: AgentProvenanceNative,
+		ServerName: GlobalMCPServerName,
+	}
+	if target == integrations.TargetGeneric {
+		client.Provenance = AgentProvenancePortable
+		client.Binding = ""
+	}
+	_, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return client, false
+	}
+	if err != nil {
+		client.Status = AgentUnverified
+		client.Detail = err.Error()
+		return client, true
+	}
+	if toml {
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil {
+			client.Status = AgentUnverified
+			client.Detail = readErr.Error()
+			return client, true
+		}
+		entry, parsed, present, usable := host.InspectTOMLServer(raw, GlobalMCPServerName)
+		if !parsed {
+			client.Status = AgentUnverified
+			client.Detail = "user-scoped config is malformed"
+			return client, true
+		}
+		if !present {
+			return client, false
+		}
+		client.Command = entry.Command
+		client.Args = append([]string(nil), entry.Args...)
+		if !usable {
+			client.Status = AgentUnverified
+			client.Detail = "user-scoped Atlas entry is invalid"
+			return client, true
+		}
+		if commandMatchesAtlas(entry.Command, command, a.lookPath()) && slicesEqual(entry.Args, args) {
+			client.Status = AgentPendingClientRestart
+			client.Detail = "user-scoped file matches; client restart may be required"
+			return client, true
+		}
+		client.Status = AgentUnverified
+		client.Detail = "user-scoped config does not match Atlas-managed argv"
+		return client, true
+	}
+	gotCmd, gotArgs, parsed, present, usable := inspectJSONNamed(path, GlobalMCPServerName)
+	if !parsed {
+		client.Status = AgentUnverified
+		client.Detail = "user-scoped config is malformed"
+		return client, true
+	}
+	if !present {
+		return client, false
+	}
+	client.Command = gotCmd
+	client.Args = append([]string(nil), gotArgs...)
+	if !usable {
+		client.Status = AgentUnverified
+		client.Detail = "user-scoped Atlas entry is invalid"
+		return client, true
+	}
+	if commandMatchesAtlas(gotCmd, command, a.lookPath()) && slicesEqual(gotArgs, args) {
+		if target == integrations.TargetGeneric {
+			client.Status = AgentWritten
+			client.Detail = "portable descriptor only; not a live client config"
+			return client, true
+		}
+		client.Status = AgentPendingClientRestart
+		client.Detail = "user-scoped file matches; client restart may be required"
+		return client, true
+	}
+	client.Status = AgentUnverified
+	client.Detail = "user-scoped config does not match Atlas-managed argv"
+	return client, true
+}
+
+func (a *App) inspectProjectGrok(root, workspaceID, executable string) *AgentClientReport {
+	path := filepath.Join(root, ".grok", "config.toml")
+	if _, err := os.Lstat(path); err != nil {
+		return nil
+	}
+	name, err := adapter.ServerNameFor(workspaceID)
+	if err != nil {
+		return nil
+	}
+	expectedArgs, err := expectedGrokProjectArgs(workspaceID)
+	if err != nil {
+		return nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return &AgentClientReport{
+			Target:        integrations.TargetGrok,
+			Status:        AgentUnverified,
+			ConfigPath:    path,
+			Scope:         AgentScopeProject,
+			WorkspaceID:   workspaceID,
+			WorkspaceRoot: root,
+			Binding:       string(adapter.WorkspaceBindingVerifiedCwd),
+			Provenance:    AgentProvenanceNative,
+			ServerName:    name,
+			Detail:        err.Error(),
+		}
+	}
+	entry, ok := host.TOMLServerEntry(raw, name)
+	if !ok {
+		return nil
+	}
+	client := AgentClientReport{
+		Target:        integrations.TargetGrok,
+		Command:       entry.Command,
+		Args:          append([]string(nil), entry.Args...),
+		ConfigPath:    path,
+		Scope:         AgentScopeProject,
+		WorkspaceID:   workspaceID,
+		WorkspaceRoot: root,
+		Binding:       string(adapter.WorkspaceBindingVerifiedCwd),
+		Provenance:    AgentProvenanceNative,
+		ServerName:    name,
+	}
+	if commandMatchesAtlas(entry.Command, executable, a.lookPath()) && slicesEqual(entry.Args, expectedArgs) {
+		client.Status = AgentPendingClientRestart
+		client.Detail = "project-scoped Grok entry matches this workspace; client restart may be required"
+		return &client
+	}
+	client.Status = AgentUnverified
+	client.Detail = "project-scoped Grok entry does not match this workspace binding, profile, bounds, or command"
+	return &client
+}
+
+func expectedGrokProjectArgs(workspaceID string) ([]string, error) {
+	reg, err := adapter.NewRegistration(adapter.PortableExecutableName, workspaceID, adapter.WorkspaceBinding{Kind: adapter.WorkspaceBindingVerifiedCwd}, "", true)
+	if err != nil {
+		return nil, err
+	}
+	styled, err := reg.WithToolNameStyle(adapter.ToolNameStylePortable)
+	if err != nil {
+		return nil, err
+	}
+	return append([]string(nil), styled.Args...), nil
+}
+
+func commandMatchesAtlas(got, intended string, look func(string) (string, error)) bool {
+	got = strings.TrimSpace(got)
+	intended = strings.TrimSpace(intended)
+	if got == "" || intended == "" {
+		return false
+	}
+	if got != adapter.PortableExecutableName {
+		return sameCommandPath(got, intended)
+	}
+	if look == nil {
+		return false
+	}
+	found, err := look(adapter.PortableExecutableName)
+	if err != nil || strings.TrimSpace(found) == "" {
+		return false
+	}
+	return sameCommandPath(found, intended)
+}
+
+func sameCommandPath(got, intended string) bool {
+	if got == intended || filepath.Clean(got) == filepath.Clean(intended) {
+		return true
+	}
+	return host.SameExecutable(got, intended)
+}
+
+func inspectJSONNamed(path, name string) (command string, args []string, parsed, present, usable bool) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", nil, false, false, false
+	}
+	var doc map[string]any
+	if json.Unmarshal(raw, &doc) != nil {
+		return "", nil, false, false, false
+	}
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if servers == nil {
+		return "", nil, true, false, false
+	}
+	value, exists := servers[name]
+	if !exists {
+		return "", nil, true, false, false
+	}
+	entry, _ := value.(map[string]any)
+	if entry == nil {
+		return "", nil, true, true, false
+	}
+	command, _ = entry["command"].(string)
+	args, ok := jsonStringSlice(entry["args"])
+	if strings.TrimSpace(command) == "" || !ok {
+		return command, args, true, true, false
+	}
+	return command, args, true, true, true
+}
+
+func readWorkspaceID(root string) string {
+	raw, err := os.ReadFile(filepath.Join(root, ".tracker", "workspace.json"))
+	if err != nil {
+		return ""
+	}
+	var meta struct {
+		WorkspaceID string `json:"workspace_id"`
+	}
+	if json.Unmarshal(raw, &meta) != nil {
+		return ""
+	}
+	return strings.TrimSpace(meta.WorkspaceID)
 }

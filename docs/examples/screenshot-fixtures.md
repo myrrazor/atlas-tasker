@@ -35,3 +35,44 @@ Use actual rendered UI and inspect every capture for private names, paths, and t
 The README and website wordmark copies come from
 `internal/web/static/brand/atlas-tasker-ascii.svg`. Render
 `assets/brand/social-card.html` at 1200 × 630 to reproduce `site/og.png`.
+
+## Current dark mode
+
+Every product screenshot in README and the marketing site must be a genuine
+capture of the current dark-mode UI. Recapture rather than restyle an old
+light-mode or stale-chrome frame. Do not author simulated chat or board pixels
+and present them as output.
+
+## Grok Build status
+
+Capture a real Grok Build session after `tracker init` on a v1.15 source build,
+with the Atlas MCP entry loaded, asking a normal ticket-status question.
+Use synthetic sample tickets only (the web demo fixture is fine). Save:
+
+1. `docs/assets/grok-status.png` for README
+2. `site/assets/grok-status.webp` encoded from that capture for the website
+
+Use the capture’s actual dimensions in HTML image attributes. Crop session IDs,
+credentials, personal identity, and local filesystem paths before commit. Public files may identify `myrrazor` and the product; they must not
+identify a person or a private path.
+
+Caption both uses as a real Grok Build session, synthetic sample tickets, and a
+v1.15 source build. Grok has its own native Markdown display. Do not caption it
+as Atlas's terminal TUI or a rich browser board.
+
+Source/build evidence for the capture stays outside the repository.
+
+## Grok Build walkthrough video
+
+`site/assets/grok-flow.mp4` records the actual terminal canvas while Grok reads
+the Example App board through Atlas MCP, creates the requested high-priority task,
+and reads the board again. The original eight synthetic tickets become nine;
+APP-9 is the new backlog task. The [transcript](grok-video-transcript.md) contains
+the actual prompts, responses, and tool names.
+
+The 1260×720 H.264 clip is silent, has no generated UI pixels, and keeps events
+in their original order. Local paths and client chrome are cropped out; pauses
+are shortened and disclosed beside the player. The poster is an actual video
+frame. Preserve the private original capture and editing evidence outside the
+repository. Verify media decoding, responsive sizing, keyboard playback, seeking,
+and the transcript link before replacing the public assets.

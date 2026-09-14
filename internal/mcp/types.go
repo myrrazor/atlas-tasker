@@ -42,6 +42,30 @@ func ParseToolProfile(raw string) (ToolProfile, error) {
 	return profile, nil
 }
 
+// ToolNameStyle selects how Atlas advertises MCP tool names.
+// Canonical keeps dotted names (atlas.status). Portable replaces dots with a
+// single underscore (atlas_status) for clients that reject dotted names.
+type ToolNameStyle string
+
+const (
+	ToolNameStyleCanonical ToolNameStyle = "canonical"
+	ToolNameStylePortable  ToolNameStyle = "portable"
+	FlagToolNameStyle                    = "--tool-name-style"
+)
+
+func ParseToolNameStyle(raw string) (ToolNameStyle, error) {
+	style := ToolNameStyle(strings.ToLower(strings.TrimSpace(raw)))
+	if style == "" {
+		return ToolNameStyleCanonical, nil
+	}
+	switch style {
+	case ToolNameStyleCanonical, ToolNameStylePortable:
+		return style, nil
+	default:
+		return "", fmt.Errorf("invalid MCP tool-name-style %q (canonical or portable)", raw)
+	}
+}
+
 type ToolClass string
 
 const (
@@ -82,6 +106,7 @@ type Options struct {
 	StateDir              string
 	CWD                   string
 	Machine               Machine
+	ToolNameStyle         ToolNameStyle
 }
 
 func (o Options) Normalized() Options {
@@ -104,8 +129,18 @@ func (o Options) Normalized() Options {
 	if o.Now == nil {
 		o.Now = func() time.Time { return time.Now().UTC() }
 	}
+	if o.ToolNameStyle == "" {
+		o.ToolNameStyle = ToolNameStyleCanonical
+	}
 	o.Profile = profile
 	return o
+}
+
+func (o Options) toolNameStyle() ToolNameStyle {
+	if o.ToolNameStyle == ToolNameStylePortable {
+		return ToolNameStylePortable
+	}
+	return ToolNameStyleCanonical
 }
 
 type ToolSpec struct {
@@ -174,7 +209,7 @@ func (s ToolSpec) Enabled(opts Options) (bool, string) {
 func (s ToolSpec) Info(opts Options) ToolInfo {
 	enabled, reason := s.Enabled(opts)
 	return ToolInfo{
-		Name:               s.Name,
+		Name:               advertisedName(s.Name, opts),
 		Class:              s.Class,
 		Enabled:            enabled,
 		DisabledReason:     reason,
