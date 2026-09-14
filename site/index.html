@@ -244,14 +244,27 @@
 
         <p class="requirements"><strong>v1.15 preview.</strong> This walkthrough uses the current source. The installer downloads the latest published release; the new setup arrives with v1.15. <a href="#install">Build from source to try it now.</a></p>
 
-        <figure class="terminal-shot get-started-shot">
+        <figure class="terminal-shot get-started-shot" id="agent-demo">
           <div class="terminal-bar">
             <span class="terminal-title">Grok Build</span>
             <span class="terminal-state">actual session · v1.15 source</span>
           </div>
-          <img src="assets/grok-status.webp" width="1375" height="994" loading="lazy" decoding="async" alt="Grok Build reads Atlas MCP tools and renders a ticket status table in dark mode, using synthetic example tickets" />
-          <figcaption>Actual Grok Build 4.6 (xhigh) session: a normal status question, Atlas MCP reads, and a ticket table. Synthetic example tickets on a v1.15 source build.</figcaption>
+          <video
+            width="1260"
+            height="720"
+            controls
+            playsinline
+            preload="none"
+            poster="assets/grok-flow-poster.webp"
+            aria-label="Grok Build 4.6 xhigh walkthrough: ask Atlas for ticket status, create a ticket, then confirm it on the board"
+            aria-describedby="agent-demo-summary"
+          >
+            <source src="assets/grok-flow.mp4" type="video/mp4" />
+            <a href="assets/grok-flow.mp4">Download the Grok Build walkthrough</a>.
+          </video>
+          <figcaption>50 seconds in Grok Build 4.6 (xhigh). Real session, synthetic tickets, v1.15 source build. Silent; pauses shortened.</figcaption>
         </figure>
+        <p id="agent-demo-summary" class="agent-demo-summary">Ask for status, add a high-priority task, and see it on the refreshed board. Grok reads eight tickets through Atlas MCP, creates APP-9, then confirms all nine. <a href="assets/grok-flow.mp4" download>Download video</a> · <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/examples/grok-video-transcript.md">Read the transcript</a>.</p>
       </div>
     </section>
 

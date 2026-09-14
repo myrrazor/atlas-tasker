@@ -367,3 +367,208 @@ modified_binary_uninstall_refused: passed
 source_uninstall_removes_only_copy: passed
 uninstall_preserves_boards_registry_and_backup: passed
 EXIT 0
+
+Video walkthrough follow-up — 2026-09-14
+
+$ git diff --check
+Exit code: 0
+
+$ node --test site/_tools/site-contract.test.mjs site/_tools/sync-site-origin.test.mjs
+✔ custom 404 assets and recovery links work at nested missing routes (5.410875ms)
+✔ index.html satisfies the public-page SEO contract (2.260208ms)
+✔ cli.html satisfies the public-page SEO contract (0.917666ms)
+✔ mcp.html satisfies the public-page SEO contract (0.477708ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.306375ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.403459ms)
+✔ docs/home.html satisfies the public-page SEO contract (0.241708ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.440709ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.242958ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.278417ms)
+✔ docs/backup.html satisfies the public-page SEO contract (0.204959ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.275542ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.245041ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.275667ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.284916ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.216833ms)
+✔ docs/uninstall.html satisfies the public-page SEO contract (0.1685ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.23725ms)
+✔ changelog.html satisfies the public-page SEO contract (0.263792ms)
+✔ guide.html satisfies the public-page SEO contract (0.164542ms)
+✔ privacy.html satisfies the public-page SEO contract (0.154792ms)
+✔ terms.html satisfies the public-page SEO contract (0.143084ms)
+✔ page titles are unique (0.466334ms)
+✔ internal page links, video downloads, and fragments resolve (11.789292ms)
+✔ agent integration tabs expose all six targets with valid relationships (0.995042ms)
+✔ MCP tool page covers every source workflow tool (0.89375ms)
+✔ public workflow guidance matches the v1.15 candidate contracts (1.786375ms)
+✔ README and site wordmarks match the canonical application wordmark (0.049167ms)
+✔ self-hosted fonts use font-display swap (0.134833ms)
+✔ OG image is a 1200 by 630 PNG (0.788417ms)
+✔ sitemap, robots, and llms cover every public page (0.153458ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.095125ms)
+✔ social card names the configured production domain (0.080583ms)
+✔ visible FAQ questions match FAQPage JSON-LD (6.405916ms)
+✔ custom 404 is a real page with hosting 404 status (0.102833ms)
+✔ first-board copyables use an app directory so APP is the init key (0.444292ms)
+✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.657834ms)
+✔ all local page images exist and declare dimensions (2.78075ms)
+✔ favicon set includes SVG, PNG, and apple-touch icon (0.228792ms)
+✔ copy controls expose loading, success, and error states (0.100916ms)
+✔ mobile navigation stays keyboard reachable (0.080083ms)
+✔ website notices explain actual use without unresolved legal templates (0.200541ms)
+✔ public site omits personal author and direct contact metadata (1.685792ms)
+✔ publishes the configured Atlas production domain (0.663833ms)
+✔ keeps every public SEO output on the same origin (0.615208ms)
+✔ normalizes a canonical origin (0.219792ms)
+✔ reads the current origin from the canonical link (0.091459ms)
+✔ replaces every rendered origin reference (0.057625ms)
+ℹ tests 48
+ℹ suites 0
+ℹ pass 48
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 120.380709
+Exit code: 0
+
+$ ffmpeg -hide_banner -loglevel error -i site/assets/grok-flow.mp4 -f null -
+Exit code: 0
+✔ custom 404 assets and recovery links work at nested missing routes (5.693375ms)
+✔ index.html satisfies the public-page SEO contract (2.7825ms)
+✔ cli.html satisfies the public-page SEO contract (0.409542ms)
+✔ mcp.html satisfies the public-page SEO contract (0.439208ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.299542ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.437417ms)
+✔ docs/home.html satisfies the public-page SEO contract (0.245583ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.487916ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.27875ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.299125ms)
+✔ docs/backup.html satisfies the public-page SEO contract (0.211875ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.279208ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.244833ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.279875ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.353625ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.252459ms)
+✔ docs/uninstall.html satisfies the public-page SEO contract (0.183333ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.244125ms)
+✔ changelog.html satisfies the public-page SEO contract (0.26575ms)
+✔ guide.html satisfies the public-page SEO contract (0.166459ms)
+✔ privacy.html satisfies the public-page SEO contract (0.157333ms)
+✔ terms.html satisfies the public-page SEO contract (0.14925ms)
+✔ page titles are unique (0.426709ms)
+✔ internal page links, video downloads, and fragments resolve (10.6355ms)
+✔ agent integration tabs expose all six targets with valid relationships (1.005542ms)
+✔ MCP tool page covers every source workflow tool (0.895875ms)
+✔ public workflow guidance matches the v1.15 candidate contracts (1.907709ms)
+✔ README and site wordmarks match the canonical application wordmark (0.050208ms)
+✔ self-hosted fonts use font-display swap (0.134584ms)
+✔ OG image is a 1200 by 630 PNG (0.76525ms)
+✔ sitemap, robots, and llms cover every public page (0.153666ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.090833ms)
+✔ social card names the configured production domain (0.070916ms)
+✔ visible FAQ questions match FAQPage JSON-LD (6.556959ms)
+✔ custom 404 is a real page with hosting 404 status (0.099875ms)
+✔ first-board copyables use an app directory so APP is the init key (0.580084ms)
+✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.651166ms)
+✔ all local page images exist and declare dimensions (3.233042ms)
+✔ favicon set includes SVG, PNG, and apple-touch icon (0.284625ms)
+✔ copy controls expose loading, success, and error states (0.097042ms)
+✔ mobile navigation stays keyboard reachable (0.091958ms)
+✔ website notices explain actual use without unresolved legal templates (0.218833ms)
+✔ public site omits personal author and direct contact metadata (1.67725ms)
+✔ publishes the configured Atlas production domain (0.629667ms)
+✔ keeps every public SEO output on the same origin (0.602709ms)
+✔ normalizes a canonical origin (0.213208ms)
+✔ reads the current origin from the canonical link (0.085416ms)
+✔ replaces every rendered origin reference (0.052375ms)
+ℹ tests 48
+ℹ suites 0
+ℹ pass 48
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 119.087125
+
+Browser video verification
+{
+  "playing": {
+    "paused": false,
+    "time": 1.046452,
+    "duration": 50.416667,
+    "width": 1260,
+    "height": 720,
+    "error": null
+  },
+  "keyboard_pause": {
+    "paused": true,
+    "time": 1.119246
+  },
+  "seek": {
+    "time": 45,
+    "seeking": false,
+    "error": null
+  },
+  "viewports": [
+    {
+      "width": 320,
+      "scroll": 320,
+      "videoWidth": 286,
+      "videoHeight": 163.421875,
+      "videoTop": 177.890625
+    },
+    {
+      "width": 390,
+      "scroll": 390,
+      "videoWidth": 356,
+      "videoHeight": 203.421875,
+      "videoTop": 163.03125
+    },
+    {
+      "width": 768,
+      "scroll": 768,
+      "videoWidth": 718,
+      "videoHeight": 410.28125,
+      "videoTop": 163.109375
+    },
+    {
+      "width": 1440,
+      "scroll": 1440,
+      "videoWidth": 1178,
+      "videoHeight": 673.140625,
+      "videoTop": 119.125
+    }
+  ]
+}
+Full playback through end
+[
+  {
+    "time": 8.058691,
+    "ended": false,
+    "error": null
+  },
+  {
+    "time": 18.060552,
+    "ended": false,
+    "error": null
+  },
+  {
+    "time": 30.051758,
+    "ended": false,
+    "error": null
+  },
+  {
+    "time": 40.059657,
+    "ended": false,
+    "error": null
+  },
+  {
+    "time": 50.416667,
+    "ended": true,
+    "error": null
+  }
+]
+
+Final video-link affordance check
+Exit code: 0

@@ -263,7 +263,7 @@ test("page titles are unique", () => {
   assert.equal(new Set(titles).size, titles.length);
 });
 
-test("internal page links and fragments resolve", () => {
+test("internal page links, video downloads, and fragments resolve", async () => {
   const canonicalToFile = new Map(
     [...pageCanonicals].map(([file, canonical]) => [canonical, file]),
   );
@@ -277,6 +277,12 @@ test("internal page links and fragments resolve", () => {
 
       const targetCanonical = `${target.origin}${target.pathname}`;
       const targetFile = canonicalToFile.get(targetCanonical);
+      if (!targetFile && /^\/assets\/[^/]+\.(mp4|webm)$/.test(target.pathname)) {
+        assert.equal(target.hash, "", `${file}: video download has a page fragment`);
+        const asset = await readFile(new URL(target.pathname.slice(1), siteRoot));
+        assert.ok(asset.length > 0, `${file}: video download is empty: ${anchor.href}`);
+        continue;
+      }
       assert.ok(targetFile, `${file}: internal link does not resolve: ${anchor.href}`);
 
       if (target.hash) {

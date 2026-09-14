@@ -67,7 +67,8 @@ body {
 }
 
 img,
-svg {
+svg,
+video {
   display: block;
   max-width: 100%;
 }
@@ -91,7 +92,8 @@ code {
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible,
-code[tabindex]:focus-visible {
+code[tabindex]:focus-visible,
+video:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 4px;
 }
@@ -459,9 +461,16 @@ code[tabindex]:focus-visible {
 }
 
 .terminal-shot img,
+.terminal-shot video,
 .feature-shot img {
   width: 100%;
   height: auto;
+}
+
+.terminal-shot video {
+  background: #111114;
+  object-fit: contain;
+  aspect-ratio: auto 1260 / 720;
 }
 
 figcaption {
@@ -1082,6 +1091,22 @@ figcaption {
   margin: 36px 0 0;
 }
 
+#agent-demo {
+  scroll-margin-top: 76px;
+}
+
+.agent-demo-summary {
+  max-width: var(--prose);
+  margin: 14px 0 0;
+  color: var(--text-2);
+  font-size: 0.95rem;
+}
+
+.agent-demo-summary a {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 /* --- subpage hero (cli, mcp, docs landing) --- */
 
 .page-hero {
@@ -1606,6 +1631,10 @@ figcaption {
 @media (max-width: 940px) {
   .get-started-section {
     scroll-margin-top: 64px;
+  }
+
+  #agent-demo {
+    scroll-margin-top: 120px;
   }
 
   .nav-inner {

@@ -1542,3 +1542,15 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 7. **Confidence:** high
 8. **Revisit Trigger:** A client that cannot load workflow tools by default; operators needing unassigned backlog in personal queues; a package-manager receipt format that collides with source receipts; project-key collisions on `ATLAS`/`MAIN` in dense monorepos.
 9. **Affected PRs/Files:** `internal/cli/mcp.go`, `internal/cli/mcp_bootstrap.go`, `internal/cli/root.go`, `internal/cli/setup.go`, `internal/cli/uninstall.go`, `internal/cli/rc_workflow_test.go`; `internal/app/init.go`, `internal/app/init_bootstrap_test.go`, `internal/app/gitmode.go`, `internal/app/gitmode_test.go`, `internal/app/attention.go`; `internal/service/query.go`, `internal/service/types.go`, `internal/service/workspace.go`, `internal/service/query_test.go`; `internal/tui/app.go`, `internal/tui/app_test.go`; `internal/uninstall/types.go`, `internal/uninstall/source_receipt.go`, `internal/uninstall/source_receipt_test.go`; `docs/command-reference.md`, `docs/mcp.md`, `docs/guides/uninstall.md`.
+
+## DEC-111 — Record real agent reads and ticket creation
+
+- **Decision ID:** DEC-111
+- **Date:** 2026-09-14
+- **Question:** How should the README and marketing site demonstrate the status-and-ticket-creation flow requested for PR #156?
+- **Options Considered:** Generate a simulated clip; keep only the still image; record the actual Grok Build terminal using synthetic Atlas tickets.
+- **Chosen Option:** Add a real 50-second recording of Grok Build 4.6 at xhigh effort reading the eight-ticket board through MCP, creating APP-9, and reading the resulting nine-ticket board. Crop local paths and client chrome, shorten pauses in chronological order, and disclose that editing. Publish a compressed H.264 MP4, actual-frame poster, and text transcript. Use a native, responsive website player with controls, inline playback, no autoplay, and no eager media download. The README links its poster to that player and offers repository-relative MP4 and transcript links. This extends DEC-106 and DEC-108; the existing still remains available.
+- **Why We Chose It:** The owner wants to see actual product behavior. A generated animation cannot prove MCP reads or a persisted ticket. Native controls and a transcript make the recording usable without new dependencies or scripts. The source-preview notice remains accurate until the release exists.
+- **Confidence:** high
+- **Revisit Trigger:** The recorded client or Atlas workflow changes, the source preview is released, or playback compatibility changes.
+- **Affected PRs/Files:** PR #156; `README.md`, `site/index.html`, `site/styles.css`, `site/_tools/site-contract.test.mjs`, `site/assets/grok-flow.mp4`, `site/assets/grok-flow-poster.webp`, `docs/assets/grok-flow-poster.png`, `docs/examples/grok-video-transcript.md`, `docs/examples/screenshot-fixtures.md`, and release evidence.

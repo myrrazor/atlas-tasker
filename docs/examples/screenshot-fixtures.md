@@ -61,3 +61,18 @@ v1.15 source build. Grok has its own native Markdown display. Do not caption it
 as Atlas's terminal TUI or a rich browser board.
 
 Source/build evidence for the capture stays outside the repository.
+
+## Grok Build walkthrough video
+
+`site/assets/grok-flow.mp4` records the actual terminal canvas while Grok reads
+the Example App board through Atlas MCP, creates the requested high-priority task,
+and reads the board again. The original eight synthetic tickets become nine;
+APP-9 is the new backlog task. The [transcript](grok-video-transcript.md) contains
+the actual prompts, responses, and tool names.
+
+The 1260×720 H.264 clip is silent, has no generated UI pixels, and keeps events
+in their original order. Local paths and client chrome are cropped out; pauses
+are shortened and disclosed beside the player. The poster is an actual video
+frame. Preserve the private original capture and editing evidence outside the
+repository. Verify media decoding, responsive sizing, keyboard playback, seeking,
+and the transcript link before replacing the public assets.

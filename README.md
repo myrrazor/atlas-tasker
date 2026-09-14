@@ -36,9 +36,11 @@ What's the current status of this project?
 
 ### A real Grok Build session
 
-![Grok Build answering a project-status question from current Atlas tickets](docs/assets/grok-status.png)
+[![Poster for a recorded Grok Build walkthrough. Click to watch: ask Atlas for status, create a ticket, then see it on the board.](docs/assets/grok-flow-poster.png)](https://atlastasker.com/#agent-demo)
 
-Actual Grok Build 4.6 (xhigh) session: a normal status question, Atlas MCP reads, and a ticket table. Synthetic example tickets on a v1.15 source build.
+**[Watch the 50-second walkthrough](https://atlastasker.com/#agent-demo)**: ask for status, add a high-priority ticket, and see it on the refreshed board. [Download the MP4](site/assets/grok-flow.mp4) · [Read the transcript](docs/examples/grok-video-transcript.md).
+
+Recorded in Grok Build 4.6 (xhigh), using synthetic example tickets on a v1.15 source build. Silent video; pauses shortened. A [status-table screenshot](docs/assets/grok-status.png) is also available.
 
 ## Install
 
