@@ -262,9 +262,58 @@
             <source src="assets/grok-flow.mp4" type="video/mp4" />
             <a href="assets/grok-flow.mp4">Download the Grok Build walkthrough</a>.
           </video>
-          <figcaption>50 seconds in Grok Build 4.6 (xhigh). Real session, synthetic tickets, v1.15 source build. Silent; pauses shortened.</figcaption>
+          <figcaption>Recorded in Grok Build 4.6 (xhigh). Real session, synthetic tickets, v1.15 source build. Silent; pauses shortened.</figcaption>
         </figure>
         <p id="agent-demo-summary" class="agent-demo-summary">Ask for status, add a high-priority task, and see it on the refreshed board. Grok reads eight tickets through Atlas MCP, creates APP-9, then confirms all nine. <a href="assets/grok-flow.mp4" download>Download video</a> · <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/examples/grok-video-transcript.md">Read the transcript</a>.</p>
+      </div>
+    </section>
+
+    <section id="shared-board" class="shared-board-section" aria-labelledby="shared-board-title">
+      <div class="shell">
+        <div class="section-heading get-started-heading">
+          <p class="section-label">Same board, many agents</p>
+          <h2 id="shared-board-title">Grok Build, Cursor, and Grok Bot on one board.</h2>
+          <p>Assign each coding agent its own tickets. They read the same Markdown board, claim with leases, and hand work to a reviewer without a second tracker.</p>
+        </div>
+        <figure class="terminal-shot get-started-shot" id="shared-board-demo">
+          <div class="terminal-bar">
+            <span class="terminal-title">Shared board</span>
+            <span class="terminal-state">Grok Build · Cursor · Grok Bot</span>
+          </div>
+          <video
+            width="1440"
+            height="900"
+            controls
+            playsinline
+            preload="none"
+            poster="assets/multi-agent-board-poster.webp"
+            aria-label="Atlas Tasker shared board walkthrough: tickets assigned to Grok Build, Cursor, and Grok Bot"
+            aria-describedby="shared-board-summary"
+          >
+            <source src="assets/multi-agent-board.mp4" type="video/mp4" />
+            <a href="assets/multi-agent-board.mp4">Download the shared-board walkthrough</a>.
+          </video>
+          <figcaption>Synthetic Example App board. Three agents, one project, local v1.15.0. Silent.</figcaption>
+        </figure>
+        <p id="shared-board-summary" class="agent-demo-summary">Grok Build owns the upgrade test, Cursor drafts the MCP guide, and Grok Bot reviews the retry fix on the same board. <a href="assets/multi-agent-board.mp4" download>Download video</a> · <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/examples/multi-agent-board.md">Read the transcript</a>.</p>
+        <div class="shared-board-stills">
+          <figure class="terminal-shot">
+            <div class="terminal-bar">
+              <span class="terminal-title">tracker web serve</span>
+              <span class="terminal-state">assignees visible</span>
+            </div>
+            <img src="assets/multi-agent-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Synthetic Atlas Tasker web board with tickets assigned to agent:grok-build, agent:cursor, and agent:grok-bot" />
+            <figcaption>Each card names its assignee. Grok Build, Cursor, and Grok Bot share the columns.</figcaption>
+          </figure>
+          <figure class="terminal-shot">
+            <div class="terminal-bar">
+              <span class="terminal-title">tracker board</span>
+              <span class="terminal-state">terminal table</span>
+            </div>
+            <img src="assets/multi-agent-terminal.webp" width="1152" height="330" loading="lazy" decoding="async" alt="Terminal board table showing assignee column for Grok Build, Cursor, and Grok Bot" />
+            <figcaption>The terminal table shows the same assignees and statuses as the browser board.</figcaption>
+          </figure>
+        </div>
       </div>
     </section>
 

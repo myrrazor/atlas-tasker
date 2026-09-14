@@ -1,6 +1,6 @@
 # Grok Build walkthrough transcript
 
-Recorded on September 14, 2026 in Grok Build 4.6 at xhigh effort, using synthetic Example App tickets and the v1.15 source. The [50-second video](../../site/assets/grok-flow.mp4) keeps the original chronological output and shortens pauses. There is no audio.
+Recorded on September 14, 2026 in Grok Build 4.6 at xhigh effort, using synthetic Example App tickets and the v1.15 source. The [walkthrough video](../../site/assets/grok-flow.mp4) keeps the original chronological output and shortens pauses. There is no audio.
 
 The session uses Atlas MCP to read the eight-ticket board, create the requested high-priority task, and confirm APP-9 on the nine-ticket board. Below are the actual prompts and answers; tool entries identify the Atlas operations between them.
 

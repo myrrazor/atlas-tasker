@@ -179,6 +179,8 @@ Use `--check` in review to prove the checked-in assets are fresh.
 - [Terminal transcript](transcripts/demo-workspace.md)
 - [Screenshot fixtures](screenshot-fixtures.md)
 - [Workspace fixture notes](fixtures/demo-workspace.md)
+- [Grok Build walkthrough transcript](grok-video-transcript.md)
+- [Multi-agent shared board](multi-agent-board.md)
 EOF
 
 cat > "$generated/prompt-packs/codex.md" <<'EOF'
@@ -276,6 +278,61 @@ Use actual rendered UI and inspect every capture for private names, paths, and t
 The README and website wordmark copies come from
 `internal/web/static/brand/atlas-tasker-ascii.svg`. Render
 `assets/brand/social-card.html` at 1200 × 630 to reproduce `site/og.png`.
+
+## Current dark mode
+
+Every product screenshot in README and the marketing site must be a genuine
+capture of the current dark-mode UI. Recapture rather than restyle an old
+light-mode or stale-chrome frame. Do not author simulated chat or board pixels
+and present them as output.
+
+## Multi-agent shared board
+
+Seed a board where Grok Build, Cursor, and Grok Bot each own tickets:
+
+```bash
+TRACKER_BIN=/absolute/path/to/tracker sh examples/create-multi-agent-demo.sh /tmp/atlas-multi-agent
+cd /tmp/atlas-multi-agent
+/absolute/path/to/tracker web serve --no-browser
+```
+
+Capture `/board` at 1440 × 900 as `docs/assets/multi-agent-board-desktop.png` and encode
+`site/assets/multi-agent-board.webp`. Capture `tracker board` as
+`docs/assets/multi-agent-board.png`. Keep session URLs and tokens out of public files.
+
+## Grok Build status
+
+Capture a real Grok Build session after `tracker init` on a v1.15 source build,
+with the Atlas MCP entry loaded, asking a normal ticket-status question.
+Use synthetic sample tickets only (the web demo fixture is fine). Save:
+
+1. `docs/assets/grok-status.png` for README
+2. `site/assets/grok-status.webp` encoded from that capture for the website
+
+Use the capture’s actual dimensions in HTML image attributes. Crop session IDs,
+credentials, personal identity, and local filesystem paths before commit. Public files may identify `myrrazor` and the product; they must not
+identify a person or a private path.
+
+Caption both uses as a real Grok Build session, synthetic sample tickets, and a
+v1.15 source build. Grok has its own native Markdown display. Do not caption it
+as Atlas's terminal TUI or a rich browser board.
+
+Source/build evidence for the capture stays outside the repository.
+
+## Grok Build walkthrough video
+
+`site/assets/grok-flow.mp4` records the actual terminal canvas while Grok reads
+the Example App board through Atlas MCP, creates the requested high-priority task,
+and reads the board again. The original eight synthetic tickets become nine;
+APP-9 is the new backlog task. The [transcript](grok-video-transcript.md) contains
+the actual prompts, responses, and tool names.
+
+The 1260×720 H.264 clip is silent, has no generated UI pixels, and keeps events
+in their original order. Local paths and client chrome are cropped out; pauses
+are shortened and disclosed beside the player. The poster is an actual video
+frame. Preserve the private original capture and editing evidence outside the
+repository. Verify media decoding, responsive sizing, keyboard playback, seeking,
+and the transcript link before replacing the public assets.
 EOF
 
 cat > "$generated/fixtures/demo-workspace.md" <<'EOF'
@@ -294,6 +351,12 @@ The generator creates a temporary git repository with:
 
 The temp workspace is deleted after generation. The checked-in examples contain only normalized output.
 EOF
+
+for extra in grok-video-transcript.md multi-agent-board.md; do
+  if [ -f "$repo_root/docs/examples/$extra" ]; then
+    cp "$repo_root/docs/examples/$extra" "$generated/$extra"
+  fi
+done
 
 leak_pattern='(/Users/|/private/var/|/var/folders/|BEGIN ((RSA|EC|OPENSSH) )?PRIVATE KEY|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|mcp_approval_[A-Za-z0-9_]+)'
 if command -v rg >/dev/null 2>&1; then

@@ -38,9 +38,35 @@ What's the current status of this project?
 
 [![Poster for a recorded Grok Build walkthrough. Click to watch: ask Atlas for status, create a ticket, then see it on the board.](docs/assets/grok-flow-poster.png)](https://atlastasker.com/#agent-demo)
 
-**[Watch the 50-second walkthrough](https://atlastasker.com/#agent-demo)**: ask for status, add a high-priority ticket, and see it on the refreshed board. [Download the MP4](site/assets/grok-flow.mp4) · [Read the transcript](docs/examples/grok-video-transcript.md).
+**[Watch the walkthrough](https://atlastasker.com/#agent-demo)**: ask for status, add a high-priority ticket, and see it on the refreshed board. [Download the MP4](site/assets/grok-flow.mp4) · [Read the transcript](docs/examples/grok-video-transcript.md).
 
 Recorded in Grok Build 4.6 (xhigh), using synthetic example tickets on a v1.15 source build. Silent video; pauses shortened. A [status-table screenshot](docs/assets/grok-status.png) is also available.
+
+### Same board, many agents
+
+Grok Build, Cursor, and Grok Bot can share one Atlas board. Assign each agent its own tickets; leases keep them from grabbing the same work. Recreate the synthetic board used in these captures:
+
+```bash
+TRACKER_BIN=/absolute/path/to/tracker sh examples/create-multi-agent-demo.sh /tmp/atlas-multi-agent
+cd /tmp/atlas-multi-agent
+tracker board
+tracker agent available grok-build
+tracker web serve --no-browser
+```
+
+![Shared web board with Grok Build, Cursor, and Grok Bot assigned to different tickets](docs/assets/multi-agent-board-desktop.png)
+
+![APP-3 drawer assigned to Grok Build](docs/assets/multi-agent-board-grok-build.png)
+
+![APP-2 drawer assigned to Cursor](docs/assets/multi-agent-board-cursor.png)
+
+![APP-4 drawer assigned to Grok Bot as reviewer](docs/assets/multi-agent-board-drawer.png)
+
+![Terminal board showing assignee column for agent:grok-build, agent:cursor, and agent:grok-bot](docs/assets/multi-agent-board.png)
+
+![Each agent queue: Grok Build ready/continue, Cursor continue, Grok Bot review](docs/assets/multi-agent-queues.png)
+
+[Watch the shared-board walkthrough](https://atlastasker.com/#shared-board) · [Download the MP4](site/assets/multi-agent-board.mp4) · [Read the transcript](docs/examples/multi-agent-board.md).
 
 ## Install
 
