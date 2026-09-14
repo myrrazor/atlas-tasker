@@ -59,6 +59,8 @@ High-impact execution requires:
 - unexpired, unused approval
 - final policy recheck immediately before execution
 
+`--target` on `tracker mcp approve-operation` is that exact binding. Simple tools use the target id. Compound tools bind every material field as JSON (sorted keys), for example restore `{"digest":"...","plan_id":"..."}`, fork_copy `{"path":"...","workspace_id":"..."}`, backup.configure `{"action":"add","target_id":"...","url":"..."}`. `confirm_text` must equal `execute <tool-name> <target>`. Changing an argument requires a new approval.
+
 Denied high-impact attempts are written to `.tracker/runtime/mcp/security-audit.jsonl`. The MCP runtime directory is created with mode `0700`; audit and approval files use mode `0600`. Denial records do not include raw approval IDs; they only record whether an approval ID was supplied. Successful high-impact execution records keep the approval ID so an executed mutation can be tied back to the human approval. If a handler fails after consuming an approval, Atlas records an `execution_failed` row with the approval ID because the approval is already single-use at that point.
 
 ## Governance Alignment

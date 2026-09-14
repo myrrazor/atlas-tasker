@@ -11,6 +11,8 @@
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/docs/agents-and-dispatch.html" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="../styles.css" />
@@ -72,12 +74,14 @@
           <p class="docs-group-label">Start</p>
           <a href="./">Overview</a>
           <a href="getting-started.html">Getting started</a>
+          <a href="home.html">Home and workspaces</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Core</p>
           <a href="tickets-and-workflow.html">Tickets and workflow</a>
           <a href="views-and-search.html">Views and search</a>
           <a href="web-board.html">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Agents</p>
@@ -89,6 +93,7 @@
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Help</p>
+          <a href="uninstall.html">Uninstall</a>
           <a href="faq.html">FAQ</a>
         </div>
         <div class="docs-side-foot">
@@ -205,7 +210,7 @@ tracker agent auto set builder-1 --mode notify --actor human:owner --reason "wir
         <p><code>agent auto</code> defaults to <code>notify</code>. Command mode stores an argv list with the ticket id substituted in, and it refuses shell interpreters outright.</p>
 
         <h2>Teach your runtime the loop</h2>
-        <p>An interactive <code>tracker init</code> offers detected agent integrations after it creates the workspace. The release installer may offer that same current-directory setup when it has an interactive terminal; it defaults to No, and unattended installs never prompt. You can always install guidance later:</p>
+        <p>An interactive <code>tracker init</code> is the Herder-style hookup: it detects coding agents on this machine, checks the ones it found, and writes the worker skill when you press Enter. The release installer only places the binary. If stdout is a terminal and the current directory is already an Atlas workspace, it may offer <code>tracker setup</code> and defaults to no. Unattended <code>curl | sh</code> never initializes the directory it ran in. You can always install guidance later:</p>
         <div class="code-block">
           <div class="snippet-title"><span>six repository guidance targets</span><button class="copy-button" type="button" data-copy="ad-skill" aria-label="Copy integrations commands">Copy</button></div>
           <pre id="ad-skill">tracker integrations detect
@@ -214,10 +219,10 @@ tracker integrations install
 <span class="c"># explicit and non-interactive</span>
 tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic</pre>
         </div>
-        <p>The six targets are Claude Code, Codex, Cursor, OpenClaw, Grok, and a portable generic integration. They write a generated guide plus runtime-specific skills, commands, or managed instruction blocks inside the workspace. OpenClaw follows that repository-local default too; writing its shared home-directory skill requires the explicit OpenClaw-only <code>--global</code> option. Re-running updates Atlas-managed content; <code>--force</code> whole-file replacement is opt-in. This teaches the workflow but does not register an MCP server. Follow <a href="mcp-setup.html">MCP setup</a> separately when the client should receive typed tools.</p>
+        <p>The six targets are Claude Code, Codex, Cursor, OpenClaw, Grok, and a portable generic integration. They write a generated guide plus runtime-specific skills, commands, or managed instruction blocks inside the workspace. OpenClaw follows that repository-local default too; writing its shared home-directory skill requires the explicit OpenClaw-only <code>--global</code> option. Re-running updates Atlas-managed content; <code>--force</code> whole-file replacement is opt-in. On the v1.15 candidate, <code>tracker init</code> also writes Atlas-managed MCP entries unless you pass <code>--no-agents</code>. Restart the client. Follow <a href="mcp-setup.html">MCP setup</a> for pinned <code>--workspace</code> serve.</p>
       </article>
       <nav class="docs-pager" aria-label="Docs pages">
-        <a class="pager-prev" href="web-board.html"><span class="pager-label">Previous</span><span class="pager-title">The web board</span></a>
+        <a class="pager-prev" href="backup.html"><span class="pager-label">Previous</span><span class="pager-title">Checkpoints and backup</span></a>
         <a class="pager-next" href="mcp-setup.html"><span class="pager-label">Next</span><span class="pager-title">MCP setup</span></a>
       </nav>
     </main>
@@ -271,6 +276,11 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -278,6 +288,9 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

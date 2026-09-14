@@ -11,6 +11,8 @@
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/docs/json-and-exit-codes.html" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="../styles.css" />
@@ -72,12 +74,14 @@
           <p class="docs-group-label">Start</p>
           <a href="./">Overview</a>
           <a href="getting-started.html">Getting started</a>
+          <a href="home.html">Home and workspaces</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Core</p>
           <a href="tickets-and-workflow.html">Tickets and workflow</a>
           <a href="views-and-search.html">Views and search</a>
           <a href="web-board.html">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Agents</p>
@@ -89,6 +93,7 @@
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Help</p>
+          <a href="uninstall.html">Uninstall</a>
           <a href="faq.html">FAQ</a>
         </div>
         <div class="docs-side-foot">
@@ -186,7 +191,7 @@
       </article>
       <nav class="docs-pager" aria-label="Docs pages">
         <a class="pager-prev" href="mcp-security.html"><span class="pager-label">Previous</span><span class="pager-title">MCP security</span></a>
-        <a class="pager-next" href="faq.html"><span class="pager-label">Next</span><span class="pager-title">FAQ</span></a>
+        <a class="pager-next" href="uninstall.html"><span class="pager-label">Next</span><span class="pager-title">Uninstall</span></a>
       </nav>
     </main>
   </div>
@@ -239,6 +244,11 @@
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -246,6 +256,9 @@
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

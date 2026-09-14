@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/render"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 	eventstore "github.com/myrrazor/atlas-tasker/internal/storage/events"
@@ -133,6 +136,184 @@ func TestBoardScreenIncludesCanceledTickets(t *testing.T) {
 	}
 	if got := firstBoardTicketID(board); got != canceled.ID {
 		t.Fatalf("canceled-only board must select %s, got %q", canceled.ID, got)
+	}
+}
+
+func TestBoardViewTableSelectionAndWidths(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	board := service.BoardViewModel{Board: contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady: {{
+			ID: "APP-1", Title: "Ready work", Status: contracts.StatusReady,
+			Priority: contracts.PriorityHigh, Assignee: "agent:builder-1",
+		}},
+		contracts.StatusBlocked: {{
+			ID: "APP-2", Title: "Stuck", Status: contracts.StatusBlocked, Priority: contracts.PriorityCritical,
+		}},
+	}}}
+	m := model{
+		screen:     screenBoard,
+		board:      board,
+		selectedID: "APP-1",
+		width:      100,
+		height:     32,
+		boardStyle: render.BoardStyleTable,
+		keys:       testBoardKeys(),
+	}
+	view := m.boardView()
+	for _, needle := range []string{"APP-1", "APP-2", "Ready", "Blocked"} {
+		if !strings.Contains(view, needle) {
+			t.Fatalf("board view missing %q:\n%s", needle, view)
+		}
+	}
+	if strings.Contains(view, "Detail APP-1") {
+		t.Fatalf("board tab should not auto-open a detail panel:\n%s", view)
+	}
+	if strings.Contains(view, "+---") {
+		t.Fatalf("tui board should not be a grid table:\n%s", view)
+	}
+
+	for _, width := range []int{40, 80, 120, 180} {
+		m.width = width
+		m.height = 24
+		got := m.boardView()
+		if !strings.Contains(got, "APP-1") || !strings.Contains(got, "APP-2") {
+			t.Fatalf("width %d dropped an id:\n%s", width, got)
+		}
+		for _, line := range strings.Split(got, "\n") {
+			if lipgloss.Width(line) > width {
+				t.Fatalf("width %d overflow width=%d line=%q", width, lipgloss.Width(line), line)
+			}
+		}
+	}
+
+	m.width = 100
+	m.height = 14
+	m.selectedID = "APP-1"
+	short := m.boardView()
+	if !strings.Contains(short, "APP-1") {
+		t.Fatalf("short tui height hid the selected card:\n%s", short)
+	}
+	if strings.Contains(short, "Detail APP-1") {
+		t.Fatalf("short board should not grow a detail panel:\n%s", short)
+	}
+
+	m.boardStyle = render.BoardStyleKanban
+	m.width = 100
+	m.height = 32
+	kanban := m.boardView()
+	if !strings.Contains(kanban, "APP-1") || strings.Contains(kanban, "+---") {
+		t.Fatalf("kanban option should keep lanes:\n%s", kanban)
+	}
+
+	m.boardStyle = render.BoardStyleTable
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	m = updated.(model)
+	if m.boardStyle != render.BoardStyleKanban {
+		t.Fatalf("t should toggle to kanban, got %q", m.boardStyle)
+	}
+	m.detail = service.TicketDetailView{Ticket: contracts.TicketSnapshot{ID: "OLD-1", Title: "Stale ticket"}}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if m.screen != screenDetail {
+		t.Fatalf("enter should open the Detail tab, screen=%v", m.screen)
+	}
+	if m.detail.Ticket.ID != "" || strings.Contains(m.bodyView(), "Stale ticket") || !strings.Contains(m.bodyView(), "Loading APP-1") {
+		t.Fatalf("pending detail must identify the selected ticket without showing stale content: %s", m.bodyView())
+	}
+}
+
+func TestBoardViewShortHeightKeepsSelectedID(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	tickets := make([]contracts.TicketSnapshot, 0, 17)
+	for i := 1; i <= 16; i++ {
+		tickets = append(tickets, contracts.TicketSnapshot{
+			ID: "APP-" + fmt.Sprintf("%d", i), Title: "Card", Status: contracts.StatusReady, Project: "APP",
+		})
+	}
+	long := contracts.TicketSnapshot{
+		ID: "VERYLONGPROJECT-99", Title: "Long key", Status: contracts.StatusReady, Project: "APP",
+	}
+	tickets = append(tickets, long)
+	board := service.BoardViewModel{Board: contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady: tickets,
+	}}}
+	m := model{
+		screen:     screenBoard,
+		board:      board,
+		selectedID: "APP-12",
+		width:      80,
+		height:     12,
+		boardStyle: render.BoardStyleTable,
+		keys:       testBoardKeys(),
+	}
+	short := m.boardView()
+	if !strings.Contains(short, "APP-12") {
+		t.Fatalf("short height hid selected APP-12:\n%s", short)
+	}
+	if strings.Contains(short, "Detail APP-12") {
+		t.Fatalf("short board should not auto-open detail:\n%s", short)
+	}
+	if strings.Contains(short, "APP-1...") || strings.Contains(short, "APP-12...") {
+		t.Fatalf("selected id ellipsized:\n%s", short)
+	}
+	if !strings.Contains(short, " of 17") {
+		t.Fatalf("short table should report position/count:\n%s", short)
+	}
+	for _, line := range strings.Split(short, "\n") {
+		if lipgloss.Width(line) > 80 {
+			t.Fatalf("short height overflow width=%d line=%q", lipgloss.Width(line), line)
+		}
+	}
+
+	for _, id := range []string{"APP-1", "APP-8", "VERYLONGPROJECT-99"} {
+		m.selectedID = id
+		got := m.boardView()
+		compact := strings.Map(func(r rune) rune {
+			if r == '\n' || r == ' ' || r == '\t' {
+				return -1
+			}
+			return r
+		}, got)
+		if !strings.Contains(compact, strings.ReplaceAll(id, " ", "")) {
+			t.Fatalf("short height hid %s:\n%s", id, got)
+		}
+	}
+
+	m.selectedID = long.ID
+	m.width = 22
+	m.height = 12
+	narrow := m.boardView()
+	compact := strings.Map(func(r rune) rune {
+		if r == '\n' || r == ' ' || r == '\t' {
+			return -1
+		}
+		return r
+	}, narrow)
+	if !strings.Contains(compact, "VERYLONGPROJECT-99") {
+		t.Fatalf("narrow short tui dropped or ellipsized long id:\n%s", narrow)
+	}
+
+	m.width = 120
+	m.height = 28
+	tall := m.boardView()
+	if !strings.Contains(tall, "VERYLONGPROJECT-99") {
+		t.Fatalf("resize lost selected long id:\n%s", tall)
+	}
+	if strings.Contains(tall, "Detail VERYLONGPROJECT-99") {
+		t.Fatalf("tall board should not grow a detail panel:\n%s", tall)
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if m.screen != screenDetail {
+		t.Fatalf("enter should open Detail, screen=%v", m.screen)
+	}
+}
+
+func testBoardKeys() keyMap {
+	return keyMap{
+		Select: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
+		Style:  key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "table/kanban")),
 	}
 }
 

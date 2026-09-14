@@ -34,7 +34,7 @@
     document.addEventListener('keydown', (event) => {
       const onBoard = document.body.dataset.page === 'board';
       if (onBoard && event.key === 'n' && !event.metaKey && !event.ctrlKey && event.target === document.body) {
-        window.location.href = '/board?new=1';
+        window.location.href = boardPath() + '?new=1';
       }
       if (onBoard && event.key === '/' && event.target === document.body) {
         event.preventDefault();
@@ -59,8 +59,12 @@
         if (!dialog) return;
         event.preventDefault();
         dialog.close();
-        if (window.location.search.includes('new_project=')) {
-          window.history.replaceState({}, '', '/');
+        if (window.location.search.includes('new_project=') || window.location.search.includes('find=') || window.location.search.includes('init=')) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('new_project');
+          url.searchParams.delete('find');
+          url.searchParams.delete('init');
+          window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
         }
       });
     });
@@ -89,13 +93,35 @@
     }
   }
 
+  function boardPath() {
+    return document.body?.dataset?.boardPath || '/board';
+  }
+
+  function actionPrefix() {
+    return document.body?.dataset?.actionPrefix || '';
+  }
+
+  function ticketHref(ticketID) {
+    const url = boardURL();
+    url.searchParams.delete('new');
+    url.searchParams.set('ticket', ticketID);
+    const query = url.searchParams.toString();
+    return url.pathname + (query ? '?' + query : '');
+  }
+
+  function rewriteCardHrefs() {
+    document.querySelectorAll('.ticket-card[data-ticket-id]').forEach((card) => {
+      card.setAttribute('href', ticketHref(card.dataset.ticketId));
+    });
+  }
+
   function boardURL() {
     // after a rejected form post the address bar can sit on a POST-only
     // /actions/... URL — reloading that would land on a 405 text page
-    if (window.location.pathname === '/board') {
+    if (window.location.pathname === boardPath()) {
       return new URL(window.location.href);
     }
-    return new URL('/board', window.location.origin);
+    return new URL(boardPath(), window.location.origin);
   }
 
   // Refresh concurrency model: a generation counter makes every new refresh
@@ -379,6 +405,8 @@
           playBoardSwapMotion(boardMotion, document.querySelector('.board-grid'));
           setupSortable();
           setupCardPreviews();
+          rewriteCardHrefs();
+          rememberTicketFocus();
         }
         if (sweptDrawer) {
           setupTabs();
@@ -433,8 +461,9 @@
           body.set('csrf_token', csrf);
           body.set('status', status);
           body.set('reason', 'web drag move');
+          if (card.dataset.revision) body.set('expected_revision', card.dataset.revision);
           try {
-            const response = await fetch(`/actions/tickets/${encodeURIComponent(ticketID)}/move`, {
+            const response = await fetch(`${actionPrefix()}/actions/tickets/${encodeURIComponent(ticketID)}/move`, {
               method: 'POST',
               headers: {
                 'Accept': 'application/json',
@@ -448,7 +477,13 @@
             if (!response.ok) {
               // feedback first — the resync may take a while or fail
               revertCard(event);
-              showFlash(data.error?.message || message('moveFailedStatus', 'Move failed with {status}', { status: response.status }), true);
+              const conflict = response.status === 409;
+              showFlash(
+                data.error?.message || (conflict
+                  ? message('conflict', 'Someone else changed this ticket. Reload and retry with the current revision.')
+                  : message('moveFailedStatus', 'Move failed with {status}', { status: response.status })),
+                true
+              );
               refreshBoard();
               return;
             }
@@ -465,23 +500,84 @@
   }
 
   function collapseFiltersOnMobile() {
-    // filters ship expanded (no-JS fallback); on phones they eat the first
-    // screen, so start them collapsed behind the summary pill
-    const shell = document.querySelector('.filters-shell');
-    if (shell && window.matchMedia('(max-width: 760px)').matches) {
+    if (window.location.search.includes('filters=1')) return;
+    document.querySelectorAll('.filters-shell').forEach((shell) => {
       shell.open = false;
-    }
+    });
   }
 
-  function revealDetailOnMobile() {
-    // on narrow screens the drawer renders below the board; scroll it into
-    // view when a ticket was explicitly selected, otherwise taps look dead
+  function setupNetworkBanner() {
+    const banner = document.querySelector('[data-net-banner]');
+    if (!banner) return;
+    const set = (online) => {
+      if (online) {
+        banner.hidden = true;
+        banner.classList.remove('is-online');
+        banner.textContent = '';
+        return;
+      }
+      banner.hidden = false;
+      banner.classList.remove('is-online');
+      banner.textContent = message('offline', 'The local server is unreachable. Work stays on disk; retry when Atlas Home is running.');
+    };
+    set(window.navigator.onLine);
+    window.addEventListener('offline', () => set(false));
+    window.addEventListener('online', () => {
+      banner.hidden = false;
+      banner.classList.add('is-online');
+      banner.textContent = message('online', 'Back online.');
+      window.setTimeout(() => set(true), 1600);
+    });
+  }
+
+  function setupDrawerEscape() {
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      const closer = document.querySelector('.detail-drawer .close-button');
+      if (!closer || event.target.closest('dialog')) return;
+      if (document.body.dataset.page !== 'board') return;
+      event.preventDefault();
+      closer.click();
+    });
+  }
+
+  function rememberTicketFocus() {
+    document.querySelectorAll('.ticket-card[data-ticket-id]').forEach((card) => {
+      card.addEventListener('click', () => {
+        try { window.sessionStorage.setItem('atlas-last-ticket', card.dataset.ticketId); } catch (err) {}
+      });
+    });
+  }
+
+  function restoreTicketFocus() {
     const params = new URLSearchParams(window.location.search);
-    if (!params.has('ticket') && !params.has('new')) return;
-    // 1180px = the app-shell breakpoint where the drawer stacks below the board
-    if (window.matchMedia('(max-width: 1180px)').matches) {
-      document.querySelector('.detail-drawer')?.scrollIntoView({ behavior: 'instant', block: 'start' });
-    }
+    if (params.get('ticket') || params.get('new')) return;
+    let id = '';
+    try { id = window.sessionStorage.getItem('atlas-last-ticket') || ''; } catch (err) {}
+    if (!id) return;
+    const card = document.querySelector(`.ticket-card[data-ticket-id="${id.replace(/"/g, '')}"]`);
+    card?.focus({ preventScroll: false });
+  }
+
+  function prepareOpenDrawer() {
+    const drawer = document.querySelector('.detail-drawer[data-open]');
+    if (!drawer) return;
+    drawer.scrollTop = 0;
+    const heading = drawer.querySelector('.drawer-head h1');
+    const closer = drawer.querySelector('.close-button');
+    heading?.setAttribute('tabindex', '-1');
+    (closer || heading)?.focus({ preventScroll: true });
+  }
+
+  function setupFormBusy() {
+    document.querySelectorAll('form[method="post"]').forEach((form) => {
+      form.addEventListener('submit', () => {
+        form.classList.add('is-saving');
+        form.querySelectorAll('button[type="submit"], button:not([type])').forEach((button) => {
+          button.disabled = true;
+        });
+      });
+    });
   }
 
   function revealSelectedScheduleDay() {
@@ -495,10 +591,16 @@
   setupDialogs();
   setupSortable();
   setupCardPreviews();
+  rewriteCardHrefs();
+  setupNetworkBanner();
+  setupDrawerEscape();
   const drawerParams = new URLSearchParams(window.location.search);
   setupDrawerMotion(drawerParams.has('ticket') || drawerParams.has('new'));
   collapseFiltersOnMobile();
-  revealDetailOnMobile();
+  rememberTicketFocus();
+  restoreTicketFocus();
+  prepareOpenDrawer();
+  setupFormBusy();
   revealSelectedScheduleDay();
 
   document.addEventListener('dragstart', dismissCardPreview, true);
@@ -509,5 +611,11 @@
   });
 
   // programmatic refresh for QA tooling and agent-driven browsers
-  window.atlasBoard = { refresh: refreshBoard, dismissPreview: dismissCardPreview };
+  window.atlasBoard = {
+    refresh: refreshBoard,
+    dismissPreview: dismissCardPreview,
+    ticketHref,
+    boardPath,
+    actionPrefix
+  };
 })();

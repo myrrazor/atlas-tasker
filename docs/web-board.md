@@ -1,16 +1,25 @@
 # Web Board
 
-Atlas Tasker includes an optional local browser board:
+On the v1.15 candidate, open **Atlas Home** from anywhere:
+
+```bash
+tracker
+```
+
+Home is the machine-wide loopback UI (`127.0.0.1:7432`): workspaces, projects, attention,
+search, backup health, and settings. See [Home and workspaces](guides/home-and-workspaces.md).
+
+`tracker web serve --open` is still supported:
 
 ```bash
 tracker web serve --open
 ```
 
-The web UI runs from the current workspace and uses the same canonical services as the CLI and TUI. It is a browser view over local Markdown snapshots, append-only JSONL events, and the SQLite projection; it is not a hosted server or separate database.
+The web UI uses the same canonical services as the CLI and TUI. It is a browser view over local Markdown snapshots, append-only JSONL events, and the SQLite projection; it is not a hosted server or separate database.
 
-The root page is a workspace welcome view with per-project active, backlog, done, and blocked counts plus the latest ticket changes. Project links open `/board?project=KEY`; `/board` remains the canonical Kanban route. The settings link shows `web.owner_name`, `web.lang`, `actor.default`, and agent color preferences read-only.
+Home routes live under `/w/<workspace-id>/...`. The single-workspace root is a welcome view with per-project active, backlog, done, and blocked counts plus the latest ticket changes. Project links open `/board?project=KEY`; `/board` remains the canonical Kanban route on that server. The settings link shows `web.owner_name`, `web.lang`, `actor.default`, and agent color preferences read-only.
 
-Canceled tickets have their own board column and keep `canceled` in JSON and web card status data. They do not count as Done or satisfy dependencies. Cards and terminal board/ticket views show assignees directly. Assigned backlog tickets remain visible on the board; they become actionable through `agent available` after promotion to `ready` (with the existing special handling for newly unblocked dependencies).
+Canceled tickets have their own disclosure below the six main board columns and keep `canceled` in JSON and web card status data. They do not count as Done or satisfy dependencies. Cards and terminal board/ticket views show assignees directly. Assigned backlog tickets remain visible on the board; they become actionable through `agent available` after promotion to `ready` (with the existing special handling for newly unblocked dependencies).
 
 The welcome page, settings, and board chrome ship in English, Spanish, Indonesian, Chinese, Japanese, and Korean. Choose a page language with the footer links or set a workspace default with `tracker config set web.lang ja`. All six codes (`en`, `es`, `id`, `zh`, `ja`, `ko`) are accepted. A `?lang=` query takes precedence over workspace config, then Atlas checks `Accept-Language` and falls back to English. The `/schedule` page remains English-only. Ticket content is never translated.
 
@@ -33,7 +42,11 @@ Schedule times are entered and displayed in the web server's named local timezon
 
 The “Run due now” action is the browser equivalent of `tracker schedule tick`. Atlas still does not run a hidden daemon, so use cron, launchd, or another trusted scheduler when due work must be processed without a person opening the page.
 
-Default serve behavior binds to `127.0.0.1` on a random port and opens a session URL when `--open` is used. The session token stays valid for the lifetime of that server process and is printed only by `tracker web serve`; it is never written to disk.
+Home binds `127.0.0.1:7432` and exchanges a one-time URL fragment at `POST /session/claim` (HttpOnly
+cookie, no token in the query string). `tracker web serve` still binds
+`127.0.0.1` on a random port, opens a session URL when `--open` is used, and keeps
+`?token=`. Session tokens are never written to disk. That cookie is
+essential to the local app; the marketing site sets none. See [privacy on the site](https://atlastasker.com/privacy.html).
 
 ## Screenshots
 

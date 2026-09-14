@@ -91,15 +91,16 @@ type keyMap struct {
 	Help          key.Binding
 	Cancel        key.Binding
 	Quit          key.Binding
+	Style         key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Palette, k.Help, k.Filter, k.BulkPreview, k.Refresh, k.Quit}
+	return []key.Binding{k.Left, k.Right, k.Up, k.Down, k.Select, k.Style, k.Palette, k.Help, k.Filter, k.BulkPreview, k.Refresh, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.Left, k.Right, k.Up, k.Down, k.Select, k.Refresh, k.Help, k.Quit, k.Cancel},
+		{k.Left, k.Right, k.Up, k.Down, k.Select, k.Style, k.Refresh, k.Help, k.Quit, k.Cancel},
 		{k.Palette, k.New, k.Edit, k.Move, k.Assign, k.Link, k.Unlink, k.Filter},
 		{k.Claim, k.Comment, k.RequestReview, k.Approve, k.Reject, k.Complete, k.BulkPreview, k.BulkApply},
 	}
@@ -174,6 +175,7 @@ type model struct {
 	dialog             dialogState
 	lastBulk           *service.BulkOperationResult
 	pendingBulk        *service.BulkOperation
+	boardStyle         render.BoardStyle
 }
 
 type loadedMsg struct {
@@ -223,12 +225,15 @@ type bulkMsg struct {
 
 type helpMsg struct{}
 
-func Run(root string, explicitActor contracts.Actor) error {
+func Run(root string, explicitActor contracts.Actor, boardStyle render.BoardStyle) error {
 	m, err := newModel(root, explicitActor)
 	if err != nil {
 		return err
 	}
 	defer m.close()
+	if boardStyle != "" {
+		m.boardStyle = boardStyle
+	}
 	m.splash = splashState{active: true}
 	program := tea.NewProgram(m, tea.WithAltScreen())
 	_, err = program.Run()
@@ -298,12 +303,21 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		Help:          key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Cancel:        key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel dialog")),
 		Quit:          key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Style:         key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "table/kanban")),
 	}
 	searchInput := textinput.New()
 	searchInput.Prompt = "search> "
 	searchInput.Placeholder = "status=ready, text~auth, label=bug"
 	searchInput.CharLimit = 120
 	searchInput.Width = 48
+	helpModel := help.New()
+	helpModel.Styles.ShortKey = lipgloss.NewStyle().Foreground(theme.Text)
+	helpModel.Styles.FullKey = lipgloss.NewStyle().Foreground(theme.Text)
+	helpModel.Styles.ShortDesc = lipgloss.NewStyle().Foreground(theme.Subtle)
+	helpModel.Styles.FullDesc = lipgloss.NewStyle().Foreground(theme.Subtle)
+	helpModel.Styles.ShortSeparator = lipgloss.NewStyle().Foreground(theme.Subtle)
+	helpModel.Styles.FullSeparator = lipgloss.NewStyle().Foreground(theme.Subtle)
+	helpModel.Styles.Ellipsis = lipgloss.NewStyle().Foreground(theme.Subtle)
 	return model{
 		root:       root,
 		actions:    actions,
@@ -311,9 +325,10 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		projection: projection,
 		actor:      explicitActor,
 		keys:       km,
-		help:       help.New(),
+		help:       helpModel,
 		search:     searchInput,
 		status:     "loading…",
+		boardStyle: render.BoardStyleTable,
 	}, nil
 }
 
@@ -530,7 +545,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if selected == "" {
 				return m, nil
 			}
+			m.screen = screenDetail
+			if m.detail.Ticket.ID != selected {
+				m.detail = service.TicketDetailView{}
+				m.status = "loading " + selected
+			}
 			return m, m.loadDetail(selected)
+		case key.Matches(msg, m.keys.Style):
+			if m.screen != screenBoard {
+				return m, nil
+			}
+			m.boardStyle = cycleBoardStyle(m.boardStyle)
+			if m.boardStyle == render.BoardStyleKanban {
+				m.status = "board style kanban"
+			} else {
+				m.status = "board style table"
+			}
+			return m, nil
 		case key.Matches(msg, m.keys.Refresh):
 			m.status = "refreshing…"
 			return m, m.refresh()
@@ -608,7 +639,7 @@ func (m model) View() string {
 	activeStyle := tabStyle.Bold(true)
 	if renderEnabled() {
 		activeStyle = activeStyle.Foreground(theme.Primary)
-		tabStyle = tabStyle.Foreground(theme.Muted)
+		tabStyle = tabStyle.Foreground(theme.Subtle)
 	}
 	tabs := make([]string, 0, len(screenNames))
 	for idx, label := range screenNames {
@@ -632,7 +663,7 @@ func (m model) View() string {
 	}
 	if renderEnabled() {
 		// style after truncation -- the trimmer measures glyphs, not escapes
-		footer = lipgloss.NewStyle().Foreground(theme.Muted).Render(footer)
+		footer = lipgloss.NewStyle().Foreground(theme.Subtle).Render(footer)
 	}
 	if width := m.width; width > 0 && width < lipgloss.Width(body) {
 		body = lipgloss.NewStyle().Width(width).Render(body)
@@ -655,11 +686,12 @@ func (m model) helpGuideView() string {
 		"",
 		"Navigation",
 		"  left/shift+tab and right/tab move between tabs. up/k and down/j move the cursor.",
-		"  enter opens the selected ticket, runs a saved view, submits search, or submits the active dialog field.",
+		"  enter opens Detail for the selected ticket, runs a saved view, submits search, or submits the active dialog field.",
+		"  t toggles the Board tab between the default table and kanban lanes.",
 		"  r refreshes all panels. q or ctrl+c quits.",
 		"",
 		"Tabs",
-		"  Board: status columns for the workspace.",
+		"  Board: aligned ticket table for the workspace. Kanban lanes are opt-in via t or --style kanban.",
 		"  Queues: available and pending work for the active actor.",
 		"  Detail: selected ticket, links, policy, git, runs, evidence, handoffs, and timeline.",
 		"  Search: query tickets, for example status=ready text~auth label=bug.",
@@ -717,7 +749,7 @@ func (m model) helpGuideView() string {
 func (m model) bodyView() string {
 	switch m.screen {
 	case screenBoard:
-		return ticketsListView("Board", m.itemsForScreen(), m.cursor, m.width)
+		return m.boardView()
 	case screenQueues:
 		if m.actor == "" {
 			return render.EmptyState("Queues", "Set --actor, TRACKER_ACTOR, or actor.default to populate queues.")
@@ -725,6 +757,9 @@ func (m model) bodyView() string {
 		return agentWorkView(m.agentWork, m.cursor, m.width)
 	case screenDetail:
 		if m.detail.Ticket.ID == "" {
+			if strings.HasPrefix(m.status, "loading ") {
+				return render.EmptyState("Detail", "Loading "+m.selectedTicketID()+"…")
+			}
 			return render.EmptyState("Detail", "No ticket selected yet.")
 		}
 		return detailWithOrchestration(m.detail, m.runs, m.runDetail, m.runLaunch, m.timeline, m.collaboratorFilter)
@@ -1005,7 +1040,15 @@ func (m model) itemsForScreen() []contracts.TicketSnapshot {
 	switch m.screen {
 	case screenBoard:
 		items := make([]contracts.TicketSnapshot, 0)
-		for _, status := range []contracts.Status{contracts.StatusReady, contracts.StatusInProgress, contracts.StatusInReview, contracts.StatusBlocked, contracts.StatusBacklog, contracts.StatusDone, contracts.StatusCanceled} {
+		for _, status := range []contracts.Status{
+			contracts.StatusBacklog,
+			contracts.StatusReady,
+			contracts.StatusInProgress,
+			contracts.StatusInReview,
+			contracts.StatusBlocked,
+			contracts.StatusDone,
+			contracts.StatusCanceled,
+		} {
 			items = append(items, m.board.Board.Columns[status]...)
 		}
 		return items
@@ -1833,13 +1876,30 @@ func cursorPrefix(active bool) string {
 }
 
 func firstBoardTicketID(board service.BoardViewModel) string {
-	for _, status := range []contracts.Status{contracts.StatusReady, contracts.StatusInProgress, contracts.StatusInReview, contracts.StatusBlocked, contracts.StatusBacklog, contracts.StatusDone, contracts.StatusCanceled} {
+	for _, status := range []contracts.Status{
+		contracts.StatusBacklog,
+		contracts.StatusReady,
+		contracts.StatusInProgress,
+		contracts.StatusInReview,
+		contracts.StatusBlocked,
+		contracts.StatusDone,
+		contracts.StatusCanceled,
+	} {
 		tickets := board.Board.Columns[status]
 		if len(tickets) > 0 {
 			return tickets[0].ID
 		}
 	}
 	return ""
+}
+
+func cycleBoardStyle(style render.BoardStyle) render.BoardStyle {
+	switch style {
+	case render.BoardStyleKanban, render.BoardStyleModern:
+		return render.BoardStyleTable
+	default:
+		return render.BoardStyleKanban
+	}
 }
 
 func focusRunIDForTicket(ticket contracts.TicketSnapshot, runs []contracts.RunSnapshot) string {

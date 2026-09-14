@@ -30,6 +30,7 @@ they do not modify your installed tracker or agent configuration:
 go build -o tracker ./cmd/tracker
 python3 scripts/test-install.py --tracker ./tracker
 python3 scripts/verify-mcp-workflow.py --tracker ./tracker
+python3 scripts/verify-managed-workflow.py --tracker ./tracker
 ```
 
 The MCP harness checks both stdio formats, profile boundaries, and an actor-separated

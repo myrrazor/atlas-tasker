@@ -1,12 +1,41 @@
 package mcp
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 )
+
+func cloneSchema(schema map[string]any) map[string]any {
+	if schema == nil {
+		return objectSchema(nil, nil)
+	}
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		return objectSchema(nil, nil)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil || out == nil {
+		return objectSchema(nil, nil)
+	}
+	return out
+}
+
+func withWorkspaceID(schema map[string]any) map[string]any {
+	cloned := cloneSchema(schema)
+	props, _ := cloned["properties"].(map[string]any)
+	if props == nil {
+		props = map[string]any{}
+		cloned["properties"] = props
+	}
+	if _, exists := props["workspace_id"]; !exists {
+		props["workspace_id"] = stringProp("Workspace ID. Optional when the current directory is a unique Atlas workspace; required for cross-workspace writes.")
+	}
+	return cloned
+}
 
 func objectSchema(required []string, props map[string]any) map[string]any {
 	if props == nil {
@@ -59,20 +88,20 @@ func actorReasonProps() map[string]any {
 
 func agentProfileProps(create bool) map[string]any {
 	props := map[string]any{
-		"agent_id":              stringProp("Agent ID."),
-		"name":                  stringProp("Display name."),
-		"provider":              stringProp("Provider: codex, claude, human, or custom."),
-		"capability":            stringArrayProp("Capability tags."),
-		"ticket_type":           stringArrayProp("Allowed ticket types."),
-		"role":                  stringArrayProp("Preferred roles."),
-		"default_runbook":       stringProp("Default runbook."),
-		"max_active_runs":       intProp("Maximum concurrent active runs.", 0),
-		"routing_weight":        intProp("Routing weight.", 0),
-		"instruction_profile":   stringProp("Instruction profile."),
-		"launch_target":         stringProp("Default launch target."),
-		"integration_template":  stringProp("Integration template."),
-		"notes":                 stringProp("Operator notes."),
-		"enabled":               boolProp("Whether the agent starts enabled."),
+		"agent_id":             stringProp("Agent ID."),
+		"name":                 stringProp("Display name."),
+		"provider":             stringProp("Provider: codex, claude, human, or custom."),
+		"capability":           stringArrayProp("Capability tags."),
+		"ticket_type":          stringArrayProp("Allowed ticket types."),
+		"role":                 stringArrayProp("Preferred roles."),
+		"default_runbook":      stringProp("Default runbook."),
+		"max_active_runs":      intProp("Maximum concurrent active runs.", 0),
+		"routing_weight":       intProp("Routing weight.", 0),
+		"instruction_profile":  stringProp("Instruction profile."),
+		"launch_target":        stringProp("Default launch target."),
+		"integration_template": stringProp("Integration template."),
+		"notes":                stringProp("Operator notes."),
+		"enabled":              boolProp("Whether the agent starts enabled."),
 	}
 	if !create {
 		props["name"] = stringProp("Optional display name.")
@@ -84,7 +113,7 @@ func agentProfileProps(create bool) map[string]any {
 func highImpactProps(_ string) map[string]any {
 	props := actorReasonProps()
 	props["operation_approval_id"] = stringProp("One-time operation approval created outside MCP.")
-	props["confirm_text"] = stringProp("Typed acknowledgement. Expected format: execute <tool-name> <target>.")
+	props["confirm_text"] = stringProp("Typed acknowledgement. Must equal execute <tool-name> <target> where target is the exact CLI approval binding, including JSON objects for compound operations.")
 	return props
 }
 

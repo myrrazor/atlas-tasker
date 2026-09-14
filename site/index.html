@@ -4,13 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Atlas Tasker: ticketing for you and your AI agents</title>
-  <meta name="description" content="Atlas Tasker is a lightweight local-first ticketing system: terminal tickets, a web kanban board, and MCP tools your AI coding agents can safely operate." />
+  <meta name="description" content="Atlas Tasker is a local-first tracker: init a repo, open Home, and let coding agents use the same Markdown board through CLI, TUI, and MCP tools." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="styles.css" />
@@ -18,7 +20,7 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://atlastasker.com/" />
   <meta property="og:title" content="Atlas Tasker: ticketing for you and your AI agents" />
-  <meta property="og:description" content="Local-first tickets in your terminal and browser, with MCP tools for AI agents. One binary. No account." />
+  <meta property="og:description" content="Atlas Tasker is a local-first tracker: init a repo, open Home, and let coding agents use the same Markdown board through CLI, TUI, and MCP tools." />
   <meta property="og:image" content="https://atlastasker.com/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -26,7 +28,7 @@
 
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Atlas Tasker: ticketing for you and your AI agents" />
-  <meta name="twitter:description" content="Local-first tickets in your terminal and browser, with MCP tools for AI agents. One binary. No account." />
+  <meta name="twitter:description" content="Atlas Tasker is a local-first tracker: init a repo, open Home, and let coding agents use the same Markdown board through CLI, TUI, and MCP tools." />
   <meta name="twitter:image" content="https://atlastasker.com/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
@@ -91,7 +93,15 @@
         "name": "How do coding agents use it?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Run tracker mcp serve to expose typed local tools, or let agents drive the CLI with JSON output and stable exit codes. Agents can read queues, work tickets, attach evidence, request review, and hand off context. The For agents page separates six repository-guidance targets from MCP client registration."
+          "text": "On the v1.15 candidate, tracker init writes Atlas-managed MCP entries pointing at tracker mcp serve --global --tool-profile workflow. Restart the client. Agents can also drive the CLI with JSON output and stable exit codes. The For agents page covers global serve, pinned --workspace, and the six skill targets."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I wire each coding agent by hand?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. After install, tracker init detects Claude Code, Codex, Cursor, OpenClaw, and Grok on this machine and writes Atlas-managed MCP entries plus the worker skill unless you pass --no-agents. Restart the client. Open the repo in the agent and ask for the board. There is no second Atlas install inside Claude, Codex, Cursor, or Grok."
         }
       },
       {
@@ -123,7 +133,7 @@
         "name": "How do I uninstall it?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Remove the tracker binary from your installation directory. Your project data stays in the repository until you choose to remove it."
+          "text": "On the v1.15 candidate, run tracker uninstall to preview Atlas-owned software, then tracker uninstall --yes to apply. Boards, history, backups, and registry pointers stay. Removing the binary by hand also leaves repository data in place."
         }
       },
       {
@@ -161,9 +171,9 @@
   <main id="main">
     <header class="hero shell">
       <div class="hero-copy">
-        <p class="kicker">Terminal ticketing · Web dashboard · Built for AI agents</p>
+        <p class="kicker">Terminal ticketing · Atlas Home · Built for AI agents</p>
         <h1>Keep the work <span>in the repo.</span></h1>
-        <p class="hero-lead">Atlas Tasker is a lightweight ticketing system that lives in your repository. Plan on a real kanban board in your browser, ship from the terminal, and hand tickets to AI agents that operate the same tracker through safe, typed tools.</p>
+        <p class="hero-lead">Atlas Tasker is a local-first tracker that lives in your repository. <code>tracker init</code> then <code>tracker</code> opens Home. Scan an aligned table in the terminal or a Kanban in the browser, and hand the same tickets to coding agents through CLI JSON and MCP.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="#install">Install Atlas Tasker</a>
           <a class="button button-secondary" href="mcp.html#connect">Connect your agent</a>
@@ -196,8 +206,8 @@
             <span class="terminal-title">tracker web serve</span>
             <span class="terminal-state">127.0.0.1 · local only</span>
           </div>
-          <img src="assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Atlas Tasker web board with seven workflow columns including separate Done and Canceled columns, visible card assignees, and an open ticket drawer" />
-          <figcaption>The local web board: see assignees on cards, keep Done separate from Canceled, drag between legal states, and open the drawer for activity, gates, and evidence.</figcaption>
+          <img src="assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Synthetic local review capture of the Atlas Tasker web board with six workflow columns and a separate Canceled disclosure" />
+          <figcaption>A local Kanban board with six workflow columns and a separate Canceled disclosure. Synthetic review data.</figcaption>
         </figure>
         <div class="surface-stack">
           <figure class="terminal-shot">
@@ -205,8 +215,8 @@
               <span class="terminal-title">tracker tui</span>
               <span class="terminal-state">local · synced</span>
             </div>
-            <img src="assets/tui-board.webp" width="1200" height="330" loading="lazy" decoding="async" alt="Atlas Tasker TUI board showing ticket IDs, types, statuses, priorities, and titles" />
-            <figcaption>The terminal side: a scriptable CLI, a full-screen TUI, and a REPL-style shell for rapid ticket work.</figcaption>
+            <img src="assets/tui-board.webp" width="1200" height="520" loading="lazy" decoding="async" alt="Synthetic local review capture of the Atlas Tasker TUI board showing aligned ticket IDs, statuses, priorities, and titles" />
+            <figcaption>Terminal TUI board from a synthetic local review workspace. The default is a polished table; <code>--style kanban</code> selects optional cards.</figcaption>
           </figure>
           <figure class="terminal-shot">
             <div class="terminal-bar">
@@ -291,14 +301,14 @@
         <div class="feature-copy">
           <p class="feature-index">CLI + TUI + web board + MCP</p>
           <h3>Pick the view. Keep the same tracker.</h3>
-          <p>Script with the CLI, work keyboard-first in the TUI, or drag cards on the local kanban board bound to <code>127.0.0.1</code>. There is no hosted mode, login system, or background service. One binary does all of it.</p>
+          <p>Script with the CLI, work keyboard-first in the TUI, or open Atlas Home with <code>tracker</code>. Home is one loopback service on <code>127.0.0.1:7432</code>. There is no hosted mode and no login system. One binary does all of it.</p>
           <a class="text-link" href="cli.html">Tour the CLI <span aria-hidden="true">→</span></a>
         </div>
         <div class="surface-list" aria-label="Atlas Tasker interfaces">
           <div><span>CLI</span><code>tracker board --project APP</code></div>
           <div><span>TUI</span><code>tracker tui</code></div>
-          <div><span>WEB</span><code>tracker web serve --open</code></div>
-          <div><span>MCP</span><code>tracker mcp serve --tool-profile read</code></div>
+          <div><span>HOME</span><code>tracker</code></div>
+          <div><span>MCP</span><code>tracker mcp serve --global --tool-profile workflow</code></div>
         </div>
       </article>
     </section>
@@ -308,8 +318,8 @@
         <div class="section-heading install-heading">
           <p class="section-label">Install</p>
           <h2>One binary. Start in a minute.</h2>
-          <p>The installer fetches the latest release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>.</p>
-          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification.</p>
+          <p>The installer fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. Atlas Home, global MCP, and software-only uninstall are in this v1.15 source; build from this tree until a v1.15 tag exists.</p>
+          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification. Unstamped source builds report <code>version: "dev"</code>.</p>
         </div>
 
         <div class="install-options">
@@ -349,7 +359,12 @@
           <div class="install-option">
             <div class="install-meta">
               <strong>Your first board</strong>
-              <span>From an empty repo to a groomed ticket</span>
+              <span>Directory named app, so the default project key is APP</span>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="first-dir" tabindex="0">mkdir app &amp;&amp; cd app</code>
+              <button class="copy-button" type="button" data-copy="first-dir" aria-label="Copy example directory commands">Copy</button>
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
@@ -358,8 +373,8 @@
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
-              <code id="first-project" tabindex="0">tracker project create APP "My App"</code>
-              <button class="copy-button" type="button" data-copy="first-project" aria-label="Copy project create command">Copy</button>
+              <code id="first-home" tabindex="0">tracker</code>
+              <button class="copy-button" type="button" data-copy="first-home" aria-label="Copy tracker Home command">Copy</button>
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
@@ -371,7 +386,7 @@
               <code id="first-board" tabindex="0">tracker board</code>
               <button class="copy-button" type="button" data-copy="first-board" aria-label="Copy board command">Copy</button>
             </div>
-            <p class="requirements">Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. Prefer a browser? <code>tracker web serve --open</code> puts the same board on a local kanban. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
+            <p class="requirements"><code>tracker init</code> then <code>tracker</code> is the whole hookup: workspace, default project, local checkpoints, Atlas-managed MCP for detected agents, and Home on <code>127.0.0.1:7432</code>. Restart the coding agent after init. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
           </div>
         </div>
       </div>
@@ -401,7 +416,11 @@
         </details>
         <details>
           <summary>How do coding agents use it?</summary>
-          <p>Run tracker mcp serve to expose typed local tools, or let agents drive the CLI with JSON output and stable exit codes. Agents can read queues, work tickets, attach evidence, request review, and hand off context. The <a href="mcp.html">For agents</a> page separates six repository-guidance targets from MCP client registration.</p>
+          <p>On the v1.15 candidate, tracker init writes Atlas-managed MCP entries pointing at tracker mcp serve --global --tool-profile workflow. Restart the client. Agents can also drive the CLI with JSON output and stable exit codes. The <a href="mcp.html">For agents</a> page covers global serve, pinned --workspace, and the six skill targets.</p>
+        </details>
+        <details>
+          <summary>Do I wire each coding agent by hand?</summary>
+          <p>No. After install, tracker init detects Claude Code, Codex, Cursor, OpenClaw, and Grok on this machine and writes Atlas-managed MCP entries plus the worker skill unless you pass --no-agents. Restart the client. Open the repo in the agent and ask for the board. There is no second Atlas install inside Claude, Codex, Cursor, or Grok.</p>
         </details>
         <details>
           <summary>How do I get support?</summary>
@@ -417,7 +436,7 @@
         </details>
         <details>
           <summary>How do I uninstall it?</summary>
-          <p>Remove the tracker binary from your installation directory. Your project data stays in the repository until you choose to remove it.</p>
+          <p>On the v1.15 candidate, run tracker uninstall to preview Atlas-owned software, then tracker uninstall --yes to apply. Boards, history, backups, and registry pointers stay. Removing the binary by hand also leaves repository data in place.</p>
         </details>
         <details>
           <summary>How do I delete my data?</summary>
@@ -484,6 +503,11 @@
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -491,6 +515,9 @@
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

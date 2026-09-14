@@ -3,8 +3,9 @@
 Atlas ships one `tracker` binary for macOS and Linux on Intel/AMD and ARM64. The
 [release page](https://github.com/myrrazor/atlas-tasker/releases/latest) lists the
 current stable archives and their verification. This guide describes the current
-source and the setup flow introduced in v1.12; [v1.12 release evidence](release/v1.12.0-release-evidence.md)
-records its preparation and publication gates.
+source, including the v1.15 candidate (`tracker init` then `tracker`). Unstamped
+builds report `"version": "dev"`. Hosted verification is recorded only on a
+published release page.
 
 ## Install a release
 
@@ -36,20 +37,47 @@ VERSION=v1.12.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 Inspect installer scripts before running them. Use repository or release URLs,
 and do not run commands copied from untrusted issues or comments.
 
+## Uninstall
+
+On the v1.15 candidate, preview then apply a software-only removal:
+
+```bash
+tracker uninstall
+tracker uninstall --yes
+```
+
+Boards, history, backups, and registry pointers stay. See [uninstall](guides/uninstall.md).
+Removing the binary by hand still leaves repository data in place.
+
 ## Set up your agents
 
-After a terminal install, the v1.12 installer asks whether to initialize an Atlas
-workspace and set up coding-agent guidance **in the displayed current directory**.
-Press Enter or answer `n` to skip. Answering `yes` initializes that directory and
-opens the agent picker. Run the installer from your intended project if you want
-to accept that offer.
+The verified installer only places the `tracker` binary. It does not initialize
+the directory `curl | sh` happened to run in. If stdout is a terminal and the
+current directory is already an Atlas workspace, it may offer `tracker setup`
+and defaults to **no**. `SKIP_INTEGRATIONS=1` skips that offer.
 
-The picker lists Claude Code, Codex, Cursor, OpenClaw, Grok, and a generic agent.
-Detected agents are checked; detection only looks for commands and configuration
-paths and does not prove an authenticated provider account. Enter accepts the
+On the v1.15 candidate the short path is `tracker init` inside your project, which
+writes Atlas-managed MCP entries for detected agents unless you pass `--no-agents`.
+Restart the client afterward.
+
+The older Herder-style picker is still `--integrations`:
+
+```text
+Set up coding-agent integrations now? [Y/n]
+Coding agents on this machine:
+  1. [x] cursor    found cursor in PATH
+  2. [ ] claude    not detected
+  3. [ ] grok      not detected
+  ...
+Press Enter to install the checked agents
+```
+
+Detected agents are checked. Detection looks at commands and configuration
+paths; it does not prove an authenticated provider account. Enter accepts the
 checked agents. Names or numbers replace the selection; `none` or `q` skips it.
-Only selected guidance files are written. See [integration destinations and
-behavior](guides/agent-integrations.md).
+Only selected guidance files are written. Open that repo in the agent and ask
+for the board — there is no second product install. See [integration
+destinations and behavior](guides/agent-integrations.md).
 
 You can always set up later from your project:
 

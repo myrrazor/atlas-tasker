@@ -23,6 +23,44 @@ import (
 	sqlitestore "github.com/myrrazor/atlas-tasker/internal/storage/sqlite"
 )
 
+func TestBundleArchiveKeepsSourceFileTimestamp(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "payload.txt")
+	if err := os.WriteFile(source, []byte("exported data\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+	if err := os.Chtimes(source, want, want); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "export.tar.gz")
+	if err := writeBundleArchive(root, archive, []byte(`{}`), []string{"payload.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gz.Close()
+	reader := tar.NewReader(gz)
+	for {
+		header, err := reader.Next()
+		if err != nil {
+			t.Fatalf("exported payload missing: %v", err)
+		}
+		if header.Name == "payload.txt" {
+			if !header.ModTime.Equal(want) {
+				t.Fatalf("normal export timestamp = %v, want %v", header.ModTime, want)
+			}
+			return
+		}
+	}
+}
+
 func TestCreateAndVerifyExportBundleRoundTrip(t *testing.T) {
 	root, actions, queries, projectStore, _, eventsLog := newImportExportHarness(t)
 	ctx := context.Background()

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	atlasmcp "github.com/myrrazor/atlas-tasker/internal/mcp"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/spf13/cobra"
@@ -22,20 +23,44 @@ func newMCPCommand() *cobra.Command {
 		RunE:  runMCPServe,
 	}
 	serve.Flags().String("workspace", "", "Atlas workspace root to serve; defaults to the current directory")
+	serve.Flags().Bool("global", false, "Serve all registered workspaces from this machine; does not require an initialized CWD")
 	serve.Flags().Bool("init-if-missing", false, "Initialize the explicit absolute workspace if missing; requires a write-capable tool profile")
+	serve.Flags().Bool("workspace-from-cwd", false, "Resolve the workspace from the current directory; requires --expected-workspace-id and never initializes")
+	serve.Flags().String("expected-workspace-id", "", "Workspace ID the server must bind to; required with --workspace-from-cwd")
 	addMCPRuntimeFlags(serve)
 
 	schema := &cobra.Command{Use: "schema", Short: "Print enabled MCP tool schemas", RunE: runMCPSchema}
+	schema.Flags().Bool("global", false, "Print the global MCP tool schemas")
 	addMCPRuntimeFlags(schema)
 	addReadOutputFlags(schema, &outputFlags{})
 
 	tools := &cobra.Command{Use: "tools", Short: "Print MCP tool inventory and safety classification", RunE: runMCPTools}
+	tools.Flags().Bool("global", false, "Print the global MCP tool inventory")
 	addMCPRuntimeFlags(tools)
 	addReadOutputFlags(tools, &outputFlags{})
 
-	approve := &cobra.Command{Use: "approve-operation", Short: "Create a one-time approval for a high-impact MCP operation", RunE: runMCPApproveOperation}
+	approve := &cobra.Command{
+		Use:   "approve-operation",
+		Short: "Create a one-time approval for a high-impact MCP operation",
+		Long: `Create a one-time approval for a high-impact MCP operation.
+
+--target is the exact operation binding MCP will check, not a loose identifier.
+Simple tools use the target argument value (change_id, remote_id, archive_id, …).
+Compound tools bind every material input as a JSON object (keys sorted):
+
+  atlas.restore.apply          {"digest":"<plan_digest>","plan_id":"<plan_id>"}
+  atlas.workspace.fork_copy    {"path":"<copy-path>","workspace_id":"<id>"}
+  atlas.backup.configure       {"action":"add","target_id":"<id>","url":"<url>"}
+  atlas.sync.pull              {"remote_id":"<id>","source_workspace_id":"<id>"}
+  atlas.archive.apply          {"project":"<key>","target":"<retention>"}
+  atlas.worktree.cleanup       {"force":false,"run_id":"<run>"}
+
+confirm_text must equal: execute <tool-name> <target>
+Approving one concrete operation does not authorize another tool, plan, path, URL, or later argument change.`,
+		RunE: runMCPApproveOperation,
+	}
 	approve.Flags().String("operation", "", "MCP operation/tool name, for example atlas.change.merge")
-	approve.Flags().String("target", "", "Exact operation target ID")
+	approve.Flags().String("target", "", "Exact operation target binding (id or JSON object of material fields)")
 	approve.Flags().Duration("ttl", 10*time.Minute, "Approval time to live")
 	approve.Flags().String("actor", "", "Actor approved for the operation")
 	approve.Flags().String("reason", "", "Reason for the approval")
@@ -76,6 +101,10 @@ func mcpOptionsFromFlags(cmd *cobra.Command) (atlasmcp.Options, error) {
 	maxBytes, _ := cmd.Flags().GetInt("max-result-bytes")
 	maxItems, _ := cmd.Flags().GetInt("max-items")
 	maxTokens, _ := cmd.Flags().GetInt("max-text-tokens-estimate")
+	global, _ := cmd.Flags().GetBool("global")
+	if global && !cmd.Flags().Changed("tool-profile") && !readOnly {
+		profile = atlasmcp.ProfileWorkflow
+	}
 	return atlasmcp.Options{
 		Profile:               profile,
 		ReadOnly:              readOnly,
@@ -83,6 +112,7 @@ func mcpOptionsFromFlags(cmd *cobra.Command) (atlasmcp.Options, error) {
 		MaxResultBytes:        maxBytes,
 		MaxItems:              maxItems,
 		MaxTextTokensEstimate: maxTokens,
+		Global:                global,
 		Now:                   defaultNow,
 	}.Normalized(), nil
 }
@@ -91,6 +121,9 @@ func runMCPServe(cmd *cobra.Command, _ []string) error {
 	options, err := mcpOptionsFromFlags(cmd)
 	if err != nil {
 		return err
+	}
+	if options.Global {
+		return runMCPServeGlobal(cmd, options)
 	}
 	root, err := prepareMCPWorkspace(cmd, options)
 	if err != nil {
@@ -102,6 +135,44 @@ func runMCPServe(cmd *cobra.Command, _ []string) error {
 	}
 	defer workspace.Close()
 	server := atlasmcp.NewServer(workspace, options)
+	ctx := commandContext(cmd)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return server.Serve(ctx)
+}
+
+func runMCPServeGlobal(cmd *cobra.Command, options atlasmcp.Options) error {
+	workspaceFlag, _ := cmd.Flags().GetString("workspace")
+	initIfMissing, _ := cmd.Flags().GetBool("init-if-missing")
+	fromCWD, _ := cmd.Flags().GetBool("workspace-from-cwd")
+	if initIfMissing || fromCWD || strings.TrimSpace(workspaceFlag) != "" {
+		return apperr.New(apperr.CodeInvalidInput, "--global cannot be combined with --workspace, --init-if-missing, or --workspace-from-cwd")
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	home, _ := os.UserHomeDir()
+	if envHome := strings.TrimSpace(os.Getenv("HOME")); envHome != "" {
+		home = envHome
+	}
+	machine, err := atlasmcp.OpenMachine(atlasmcp.MachineOpenOptions{
+		Home:     home,
+		StateDir: mcpStateDir(),
+		CWD:      cwd,
+		Notice:   cmd.ErrOrStderr(),
+		Now:      defaultNow,
+	})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = machine.Close() }()
+	options.Home = home
+	options.StateDir = machine.StateDir()
+	options.CWD = cwd
+	options.Machine = machine
+	server := atlasmcp.NewGlobalServer(machine, options)
 	ctx := commandContext(cmd)
 	if ctx == nil {
 		ctx = context.Background()

@@ -11,6 +11,20 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
+func TestInitJSONPrintsStableHomeURL(t *testing.T) {
+	withTempWorkspace(t)
+	out, err := runCLI(t, "init", "--json")
+	if err != nil {
+		t.Fatalf("init --json: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, `"url"`) {
+		t.Fatalf("missing Home URL:\n%s", out)
+	}
+	if strings.Contains(out, "claim=") || strings.Contains(out, "/session/claim/") {
+		t.Fatalf("init JSON leaked a claim secret:\n%s", out)
+	}
+}
+
 func TestInitHardensLocalPathsAndSeedsGitignore(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix mode bits")

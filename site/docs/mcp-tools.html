@@ -11,6 +11,8 @@
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/docs/mcp-tools.html" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="../styles.css" />
@@ -72,12 +74,14 @@
           <p class="docs-group-label">Start</p>
           <a href="./">Overview</a>
           <a href="getting-started.html">Getting started</a>
+          <a href="home.html">Home and workspaces</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Core</p>
           <a href="tickets-and-workflow.html">Tickets and workflow</a>
           <a href="views-and-search.html">Views and search</a>
           <a href="web-board.html">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Agents</p>
@@ -89,6 +93,7 @@
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Help</p>
+          <a href="uninstall.html">Uninstall</a>
           <a href="faq.html">FAQ</a>
         </div>
         <div class="docs-side-foot">
@@ -116,10 +121,10 @@
               <tr><th scope="col">Profile</th><th scope="col">Exposes</th><th scope="col">Use it for</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>read</code></td><td>41 tools</td><td>Inspection, queues, plans, and dry runs. Default.</td></tr>
-              <tr><td><code>workflow</code></td><td>73 tools</td><td>Read plus 32 workflow tools for everyday agent work.</td></tr>
-              <tr><td><code>delivery</code></td><td>77 tools; 79 with the danger flag</td><td>Workflow plus dispatch and provider-backed change/check synchronization, with two guarded delivery actions available for supervised sessions.</td></tr>
-              <tr><td><code>admin</code></td><td>77 tools; 88 with the danger flag</td><td>All 11 high-impact operations. Each call also needs an external one-time approval.</td></tr>
+              <tr><td><code>read</code></td><td>live inventory</td><td>Inspection, queues, plans, context, status, attention, workspace list, backup health, and dry runs. Default.</td></tr>
+              <tr><td><code>workflow</code></td><td>live inventory</td><td>Read plus the ticket loop, workspace lifecycle, views, local checkpoint run, and restore plan.</td></tr>
+              <tr><td><code>delivery</code></td><td>live inventory</td><td>Workflow plus dispatch and provider-backed change/check synchronization, with guarded delivery actions for supervised sessions.</td></tr>
+              <tr><td><code>admin</code></td><td>live inventory</td><td>High-impact operations including backup configure, restore apply, and workspace fork-copy. Each call also needs an external one-time approval.</td></tr>
             </tbody>
           </table>
         </div>
@@ -132,7 +137,7 @@
             <h3>Queues and tickets</h3>
             <p>Find actionable work, inspect policy and dependencies, and read ticket history.</p>
             <ul class="tool-list">
-              <li><code>atlas.queue</code></li><li><code>atlas.next</code></li><li><code>atlas.search</code></li><li><code>atlas.board</code></li><li><code>atlas.ticket.view</code></li><li><code>atlas.ticket.history</code></li><li><code>atlas.ticket.inspect</code></li>
+              <li><code>atlas.queue</code></li><li><code>atlas.next</code></li><li><code>atlas.search</code></li><li><code>atlas.board</code></li><li><code>atlas.ticket.view</code></li><li><code>atlas.ticket.history</code></li><li><code>atlas.ticket.inspect</code></li><li><code>atlas.context</code></li><li><code>atlas.status</code></li><li><code>atlas.backup.status</code></li><li><code>atlas.attention</code></li><li><code>atlas.activity</code></li><li><code>atlas.project.list</code></li><li><code>atlas.workspace.list</code></li><li><code>atlas.workspace.get</code></li><li><code>atlas.workspace.status</code></li><li><code>atlas.workspace.board_url</code></li>
             </ul>
           </section>
           <section class="tool-group">
@@ -159,13 +164,13 @@
         </div>
 
         <h2 id="workflow-tools">Workflow tools</h2>
-        <p>This profile is the practical default when an agent is expected to do ticket work. It adds 32 tools. The 31 ticket and event mutations require <code>actor</code> and <code>reason</code>; they still run the same service permissions, dependency rules, leases, write lock, and event recording as the CLI. <code>atlas.project.create</code> is the narrow exception: it accepts only <code>key</code> and <code>name</code>, creates a metadata container inside the pinned workspace, and does not write an attributed event.</p>
+        <p>This profile is the practical default when an agent is expected to do ticket work. Ticket and event mutations require <code>actor</code> and <code>reason</code>; they still run the same service permissions, dependency rules, leases, write lock, and event recording as the CLI. <code>atlas.project.create</code> is the narrow exception: it accepts only <code>key</code> and <code>name</code>, creates a metadata container, and does not write an attributed event. Run <code>tracker mcp tools --json --tool-profile workflow</code> for the live list.</p>
         <div class="tool-groups">
           <section class="tool-group">
             <h3>Create and organize</h3>
             <p>Create project containers and tickets, edit ordinary ticket fields, set ownership and priority, manage labels, and build dependency or parent relationships without leaving MCP.</p>
             <ul class="tool-list">
-              <li><code>atlas.project.create</code></li><li><code>atlas.ticket.create</code></li><li><code>atlas.ticket.edit</code></li><li><code>atlas.ticket.assign</code></li><li><code>atlas.ticket.priority</code></li><li><code>atlas.ticket.label.add</code></li><li><code>atlas.ticket.label.remove</code></li><li><code>atlas.ticket.link</code></li><li><code>atlas.ticket.unlink</code></li>
+              <li><code>atlas.project.create</code></li><li><code>atlas.project.update</code></li><li><code>atlas.ticket.create</code></li><li><code>atlas.ticket.edit</code></li><li><code>atlas.ticket.assign</code></li><li><code>atlas.ticket.priority</code></li><li><code>atlas.ticket.label.add</code></li><li><code>atlas.ticket.label.remove</code></li><li><code>atlas.ticket.link</code></li><li><code>atlas.ticket.unlink</code></li><li><code>atlas.workspace.init</code></li><li><code>atlas.workspace.register</code></li><li><code>atlas.workspace.repair</code></li><li><code>atlas.workspace.hide</code></li><li><code>atlas.workspace.unhide</code></li><li><code>atlas.workspace.remove_pointer</code></li><li><code>atlas.views.save</code></li><li><code>atlas.views.delete</code></li><li><code>atlas.ticket.bulk</code></li><li><code>atlas.backup.run</code></li><li><code>atlas.restore.plan</code></li><li><code>atlas.settings.update</code></li>
             </ul>
           </section>
           <section class="tool-group">
@@ -207,7 +212,7 @@
 
         <h2>Delivery and high-impact tools</h2>
         <p>The four delivery tools can create provider or runtime side effects: <code>atlas.dispatch.run</code>, <code>atlas.change.create</code>, <code>atlas.change.sync</code>, and <code>atlas.checks.sync</code>.</p>
-        <p>Two high-impact delivery tools bring that profile to 79 when the danger flag is present. Admin adds nine more for a full inventory of 88. The 11 high-impact tools cover provider review/merge, gate waiver, sync push/pull, bundle/import apply, archive apply/restore, compact, and worktree cleanup. They are not exposed in ordinary sessions. See <a href="mcp-security.html">MCP security</a> for the external approval handshake and exact-target rules.</p>
+        <p>High-impact tools stay hidden unless the server starts with <code>--dangerously-allow-high-impact-tools</code> and the call carries a one-time approval. They cover provider review/merge, gate waiver, sync push/pull, bundle/import apply, archive apply/restore, compact, worktree cleanup, plus v1.15 <code>atlas.backup.configure</code>, <code>atlas.restore.apply</code>, <code>atlas.workspace.fork_copy</code>, and <code>atlas.settings.grant_discovery</code>. They are not in the Atlas-managed global registration. See <a href="mcp-security.html">MCP security</a> for the external approval handshake and exact-target rules. Run <code>tracker mcp tools --json --tool-profile admin --dangerously-allow-high-impact-tools</code> for the live list.</p>
 
         <h2>A practical first loop</h2>
         <div class="code-block">
@@ -275,6 +280,11 @@
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -282,6 +292,9 @@
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

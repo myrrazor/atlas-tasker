@@ -307,6 +307,15 @@ func BoardPretty(board contracts.BoardView) string {
 }
 
 func BoardPrettyWithWidth(board contracts.BoardView, width int) string {
+	return RenderBoard(NewCompactBoard(UniqueProject(board.Columns), board.Columns, -1, nil), BoardRenderOptions{
+		Width:       normalizedWidth(width),
+		Style:       BoardStyleTable,
+		Density:     DensityComfortable,
+		ShowSummary: true,
+	})
+}
+
+func BoardTableWithWidth(board contracts.BoardView, width int) string {
 	width = normalizedWidth(width)
 	ordered := []contracts.Status{
 		contracts.StatusBacklog,
@@ -594,8 +603,7 @@ func TruncateDisplay(value string, maxWidth int) string {
 	if lipgloss.Width(value) <= maxWidth {
 		return value
 	}
-	// too wide: drop styling so the rune cut below can't slice an escape
-	// sequence in half
+	// too wide: drop styling so the cut below can't slice an escape in half
 	value = SanitizeDisplayLine(value)
 	if lipgloss.Width(value) <= maxWidth {
 		return value
@@ -605,15 +613,7 @@ func TruncateDisplay(value string, maxWidth int) string {
 		suffix = ""
 	}
 	limit := maxWidth - lipgloss.Width(suffix)
-	var out strings.Builder
-	for _, r := range value {
-		next := out.String() + string(r)
-		if lipgloss.Width(next) > limit {
-			break
-		}
-		out.WriteRune(r)
-	}
-	return strings.TrimRight(out.String(), " ") + suffix
+	return truncateGraphemes(value, limit) + suffix
 }
 
 func EmptyState(title string, action string) string {

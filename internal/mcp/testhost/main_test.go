@@ -1,0 +1,10 @@
+package testhost
+
+import (
+	"os"
+	"testing"
+
+	"github.com/myrrazor/atlas-tasker/internal/testutil/testenv"
+)
+
+func TestMain(m *testing.M) { os.Exit(testenv.Run(m.Run)) }

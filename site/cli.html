@@ -3,30 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Atlas Tasker CLI: 73 commands, one binary</title>
-  <meta name="description" content="Tour the Atlas Tasker CLI: 73 top-level commands in nine groups, machine-readable JSON, stable exit codes, plus shell, TUI, and local web board." />
+  <title>Atlas Tasker CLI: init, Home, and the board</title>
+  <meta name="description" content="Use tracker init then tracker to open Home. The CLI still covers tickets, JSON, exit codes, TUI, and the local board without a hosted account." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/cli.html" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="styles.css" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://atlastasker.com/cli.html" />
-  <meta property="og:title" content="Atlas Tasker CLI: 73 commands, one binary" />
-  <meta property="og:description" content="Every tracker command in nine groups, plus the JSON contract and exit codes that make it scriptable." />
+  <meta property="og:title" content="Atlas Tasker CLI: init, Home, and the board" />
+  <meta property="og:description" content="Use tracker init then tracker to open Home. The CLI still covers tickets, JSON, exit codes, TUI, and the local board without a hosted account." />
   <meta property="og:image" content="https://atlastasker.com/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Atlas Tasker CLI: 73 commands, one binary" />
-  <meta name="twitter:description" content="Every tracker command in nine groups, plus the JSON contract and exit codes that make it scriptable." />
+  <meta name="twitter:title" content="Atlas Tasker CLI: init, Home, and the board" />
+  <meta name="twitter:description" content="Use tracker init then tracker to open Home. The CLI still covers tickets, JSON, exit codes, TUI, and the local board without a hosted account." />
   <meta name="twitter:image" content="https://atlastasker.com/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
@@ -34,8 +36,8 @@
   {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    "name": "Atlas Tasker CLI",
-    "description": "Tour the Atlas Tasker CLI: 73 top-level commands in nine groups, machine-readable JSON, stable exit codes, plus shell, TUI, and local web board.",
+    "name": "Atlas Tasker CLI: init, Home, and the board",
+    "description": "Use tracker init then tracker to open Home. The CLI still covers tickets, JSON, exit codes, TUI, and the local board without a hosted account.",
     "url": "https://atlastasker.com/cli.html",
     "isPartOf": {
       "@type": "WebSite",
@@ -67,7 +69,7 @@
     <header class="page-hero shell">
       <p class="kicker">The command line</p>
       <h1>A tracker that speaks shell.</h1>
-      <p class="lead">One <code>tracker</code> binary carries 73 top-level commands: tickets, boards, agents, gates, evidence, governance, sync, and the rest of the delivery loop. Commands support <code>--json</code> and stable exit codes; only explicit interactive setup paths ask for input.</p>
+      <p class="lead">One <code>tracker</code> binary. Ordinary use is <code>tracker init</code> then <code>tracker</code> to open Home. The rest of the command surface covers tickets, boards, agents, gates, evidence, governance, and sync. Commands support <code>--json</code> and stable exit codes; only explicit interactive setup paths ask for input.</p>
       <div class="page-hero-actions">
         <a class="button button-primary" href="./#install">Install Atlas Tasker</a>
         <a class="button button-secondary" href="docs/getting-started.html">Read the docs</a>
@@ -77,7 +79,7 @@
     <section class="page-section shell" aria-labelledby="trio-title">
       <div class="section-heading">
         <p class="section-label">Three ways to sit in it</p>
-        <h2 id="trio-title">Shell, TUI, or web board. Your call.</h2>
+        <h2 id="trio-title">Shell, TUI, or Home. Your call.</h2>
         <p class="section-note">The plain CLI is for scripts and agents. When a human wants to live in the tracker for a while, three interactive front ends share the exact same data and rules.</p>
       </div>
       <div class="cmd-groups">
@@ -88,13 +90,13 @@
         </div>
         <div class="cmd-group">
           <h3><span class="cmd-count">Full screen</span>tracker tui</h3>
-          <p>Board, queues, detail, search, review, and ops tabs in one keyboard-first screen. Single keys claim, move, comment, approve, and complete tickets.</p>
+          <p>Board tab uses the same polished table as <code>tracker board</code>, with keyboard scrolling for long lists and optional Kanban cards. Queues, detail, search, review, and ops stay keyboard-first. Single keys claim, move, comment, approve, and complete tickets.</p>
           <div class="cmd-chips"><code>n</code><code>m</code><code>c</code><code>p</code><code>v</code><code>d</code><code>/</code></div>
         </div>
         <div class="cmd-group">
-          <h3><span class="cmd-count">Browser</span>tracker web serve</h3>
-          <p>A local kanban on <code>127.0.0.1</code> with drag and drop, a ticket drawer, and search. Loopback only, one session token per process, <code>--read-only</code> when you want a wallboard.</p>
-          <div class="cmd-chips"><code>--open</code><code>--read-only</code><code>--project APP</code></div>
+          <h3><span class="cmd-count">Browser</span>tracker</h3>
+          <p>Atlas Home on <code>127.0.0.1:7432</code>: workspaces, projects, attention, backup health. Legacy <code>tracker web serve --open</code> is the single-workspace board. Loopback only, one essential session cookie, <code>--read-only</code> when you want a wallboard.</p>
+          <div class="cmd-chips"><code>tracker</code><code>--open</code><code>--read-only</code></div>
         </div>
       </div>
     </section>
@@ -293,6 +295,11 @@ tracker ticket approve APP-12 --actor agent:reviewer-1 --reason "review passed"
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -300,6 +307,9 @@ tracker ticket approve APP-12 --actor agent:reviewer-1 --reason "review passed"
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

@@ -1,6 +1,12 @@
 # Web Board User Guide
 
-Start the board from an initialized workspace:
+On the v1.15 candidate, start Home from anywhere:
+
+```bash
+tracker
+```
+
+Single-workspace board from an initialized workspace:
 
 ```bash
 tracker web serve --open

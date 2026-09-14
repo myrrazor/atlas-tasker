@@ -11,6 +11,8 @@
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/docs/faq.html" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="../styles.css" />
@@ -72,12 +74,14 @@
           <p class="docs-group-label">Start</p>
           <a href="./">Overview</a>
           <a href="getting-started.html">Getting started</a>
+          <a href="home.html">Home and workspaces</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Core</p>
           <a href="tickets-and-workflow.html">Tickets and workflow</a>
           <a href="views-and-search.html">Views and search</a>
           <a href="web-board.html">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Agents</p>
@@ -89,6 +93,7 @@
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Help</p>
+          <a href="uninstall.html">Uninstall</a>
           <a href="faq.html" aria-current="page">FAQ</a>
         </div>
         <div class="docs-side-foot">
@@ -124,7 +129,13 @@
         <p>Do not. Writes go through the CLI, web board, or MCP so the event log, the index, and lease state stay in agreement. If you already hand-edited something, <code>tracker doctor --repair</code> rebuilds the projection from Markdown and events and reports what it found.</p>
 
         <h2>How do I use Atlas on two machines?</h2>
-        <p>The repo is the database, so Git movement moves the tracker with it. For tracker-aware transfer there are signed export bundles (<code>tracker export create</code>, <code>tracker bundle</code>), remotes and sync (<code>tracker remote</code>, <code>tracker sync</code>), and conflict tooling (<code>tracker conflict</code>). Sync operations are explicit commands, never background daemons.</p>
+        <p>The repo is the database, so Git movement moves the tracker with it. For tracker-aware transfer there are signed export bundles (<code>tracker export create</code>, <code>tracker bundle</code>), remotes and sync (<code>tracker remote</code>, <code>tracker sync</code>), and conflict tooling (<code>tracker conflict</code>). Sync operations are explicit commands, never background daemons. Automatic Atlas backup is a separate isolated Git remote you name; it is not a silent copy of <code>origin</code> and a push is not verified until Atlas checks the remote commit.</p>
+
+        <h2>Do I wire each coding agent by hand?</h2>
+        <p>No. After the binary is installed, <code>tracker init</code> in your project detects Claude Code, Codex, Cursor, OpenClaw, and Grok and writes Atlas-managed MCP entries plus the worker skill unless you pass <code>--no-agents</code>. Restart the client. Open that repo in the agent and ask for the current board. You do not run a second Atlas installer inside the agent. <code>tracker integrations detect</code> is the read-only version of that scan. The curl installer never initializes the directory it ran in; that stays <code>tracker init</code>.</p>
+
+        <h2>Does setup turn on backup or a scheduler?</h2>
+        <p>No. Local checkpoints start at <code>tracker init</code> unless <code>--no-backup</code>. A remote stays a named target you add first, then enable with <code>tracker backup auto enable</code>. <code>tracker setup --yes</code> is not backup consent. Neither init nor setup installs a user-level scheduler. Home and init-time checkpoints are the v1.15 source candidate; the installer still installs the latest published tag.</p>
 
         <h2>What platforms are supported?</h2>
         <p>The release installer covers macOS and Linux on arm64 and amd64, verifying checksums and GitHub build attestations on the way in. Building from source needs Go 1.26.6 or newer. Unstamped source builds report <code>version: "dev"</code> in <code>tracker version --json</code>, which is expected and harmless.</p>
@@ -142,13 +153,13 @@
         <p>Pair and crossfire install <code>review_gate</code> with <code>agent:reviewer-1</code>; swarm uses <code>agent:qa-1</code>. New projects inherit that workspace policy. Applying a review preset also clears project <code>open</code> overrides so those projects inherit it, while preserving explicit non-open policies and reviewer overrides. The builder requests review and the required reviewer approves; approval itself moves review-gated work to Done.</p>
 
         <h2>Why are Done and Canceled separate?</h2>
-        <p>They mean different things. All board surfaces keep a seventh Canceled column, and cards show their assignee. A canceled ticket is terminal, but it does not satisfy dependencies or count toward Done totals.</p>
+        <p>They mean different things. The browser board keeps Canceled in a separate disclosure, and cards show their assignee. Terminal tables label each ticket with its status. A canceled ticket is terminal, but it does not satisfy dependencies or count toward Done totals.</p>
 
         <h2>Can I schedule a ticket in the past?</h2>
         <p>No. Setting or replacing a schedule requires a time strictly in the future and rejects the change before altering the schedule or assignment. A valid existing schedule can become overdue and then run through the normal tick flow.</p>
 
         <h2>How do I update or uninstall?</h2>
-        <p>Run <code>tracker update --check</code>, then <code>tracker update --yes</code> to verify and replace the binary (or re-run the release installer). Uninstall by removing the <code>tracker</code> binary. Your project data stays in the repository until you delete it, and if Git tracked it, history keeps it until you rewrite history.</p>
+        <p>Run <code>tracker update --check</code>, then <code>tracker update --yes</code> to verify and replace the binary (or re-run the release installer). On the v1.15 candidate, <code>tracker uninstall</code> previews Atlas-owned software and <code>tracker uninstall --yes</code> applies it. Boards, history, backups, and registry pointers stay. Removing the binary by hand also leaves repository data in place.</p>
 
         <h2>Something looks corrupted. Now what?</h2>
         <p>Run <code>tracker doctor</code> for the audit, then <code>tracker doctor --repair</code> to rebuild projection state. Exit code 7 from a read or from <code>doctor</code> usually means one of two things: the index is unreadable, or read-only <code>doctor</code> found it stale against the Markdown and events. A missing or stale index heals itself the next time a command opens the workspace; a corrupt one needs <code>tracker reindex</code> or <code>tracker doctor --repair</code>. Repair never invents data; it replays the Markdown and events you already have. It also will not recreate deleted worktrees, runtime files, or evidence artifacts, because those are execution leftovers, not the record.</p>
@@ -157,7 +168,7 @@
         <p>The <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">command reference</a> lists every command and flag, including the governance, signing, backup, classification, and goal-manifest surfaces these docs only wave at. <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md</a> is the same knowledge compressed for agent consumption.</p>
       </article>
       <nav class="docs-pager" aria-label="Docs pages">
-        <a class="pager-prev" href="json-and-exit-codes.html"><span class="pager-label">Previous</span><span class="pager-title">JSON and exit codes</span></a>
+        <a class="pager-prev" href="uninstall.html"><span class="pager-label">Previous</span><span class="pager-title">Uninstall</span></a>
       </nav>
     </main>
   </div>
@@ -210,6 +221,11 @@
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -217,6 +233,9 @@
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

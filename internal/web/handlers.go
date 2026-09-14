@@ -13,6 +13,7 @@ import (
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 )
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
@@ -274,7 +275,11 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, "atlas_web_project_action", map[string]any{"ok": true, "project": project.Key})
 		return
 	}
-	http.Redirect(w, r, "/?flash="+url.QueryEscape("created project "+project.Key), http.StatusSeeOther)
+	home := s.cfg.HomePath
+	if home == "" {
+		home = "/"
+	}
+	http.Redirect(w, r, home+"?flash="+url.QueryEscape("created project "+project.Key), http.StatusSeeOther)
 }
 
 func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
@@ -287,6 +292,10 @@ func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/actions/tickets/"), "/")
+	if rest == "bulk" {
+		s.handleBulkTicketAction(w, r)
+		return
+	}
 	id, action, ok := strings.Cut(rest, "/")
 	if !ok || id == "" || action == "" {
 		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "ticket action path is invalid"), http.StatusBadRequest)
@@ -295,6 +304,14 @@ func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 	actor := s.actorFromForm(r)
 	reason := reasonFromForm(r, "web ticket "+strings.ReplaceAll(action, "/", " "))
 	ctx := s.mutationContext(r, actor)
+	if err := s.guardTicketRevision(ctx, r, id, func(locked context.Context) {
+		s.runTicketAction(w, r.WithContext(locked), locked, id, action, actor, reason)
+	}); err != nil {
+		s.writeActionError(w, r, err, id)
+	}
+}
+
+func (s *Server) runTicketAction(w http.ResponseWriter, r *http.Request, ctx context.Context, id, action string, actor contracts.Actor, reason string) {
 	var ticket contracts.TicketSnapshot
 	var err error
 	switch action {
@@ -461,7 +478,47 @@ func editMutatorFromForm(r *http.Request) func(*contracts.TicketSnapshot) error 
 		if r.Form.Has("acceptance") {
 			ticket.AcceptanceCriteria = splitLines(r.Form.Get("acceptance"))
 		}
+		if r.Form.Has("notes") {
+			ticket.Notes = strings.TrimSpace(r.Form.Get("notes"))
+		}
 		return nil
+	}
+}
+
+func (s *Server) handleBulkTicketAction(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.ReadOnly {
+		s.writeActionError(w, r, apperr.New(apperr.CodePermissionDenied, "web board is read-only"), "")
+		return
+	}
+	actor := s.actorFromForm(r)
+	ids := r.Form["ticket_id"]
+	if len(ids) == 0 {
+		ids = splitCSV(r.Form.Get("ticket_ids"))
+	}
+	op := service.BulkOperation{
+		Kind:      service.BulkOperationKind(strings.TrimSpace(r.Form.Get("kind"))),
+		Actor:     actor,
+		Assignee:  contracts.Actor(strings.TrimSpace(r.Form.Get("assignee"))),
+		Status:    contracts.Status(strings.TrimSpace(r.Form.Get("status"))),
+		Reason:    reasonFromForm(r, "web bulk ticket action"),
+		TicketIDs: ids,
+		DryRun:    r.Form.Get("dry_run") == "1" || r.Form.Get("dry_run") == "true",
+		Confirm:   r.Form.Get("confirm") == "1" || r.Form.Get("confirm") == "true" || r.Form.Get("yes") == "1",
+	}
+	ctx := s.mutationContext(r, actor)
+	if err := s.guardBulkRevisions(ctx, r, ids, func(locked context.Context) {
+		result, err := s.actions.RunBulk(locked, op)
+		if err != nil {
+			s.writeActionError(w, r, err, "")
+			return
+		}
+		if wantsJSON(r) {
+			s.writeJSON(w, "atlas_web_bulk", result)
+			return
+		}
+		s.actionSuccess(w, r, "", fmt.Sprintf("bulk %s: %d succeeded", op.Kind, result.Summary.Succeeded))
+	}); err != nil {
+		s.writeActionError(w, r, err, "")
 	}
 }
 
@@ -503,16 +560,112 @@ func (s *Server) actionSuccess(w http.ResponseWriter, r *http.Request, ticketID 
 		s.writeJSON(w, "atlas_web_action", map[string]any{"ok": true, "ticket_id": ticketID, "flash": flash})
 		return
 	}
+	_, _, schedule, _, _ := s.navPaths()
 	q := r.URL.Query()
+	project := s.actionProject(r, ticketID)
+	if project != "" && q.Get("project") == "" {
+		q.Set("project", project)
+	}
 	if q.Get("return") == "schedule" {
 		q.Del("return")
 		q.Set("flash", flash)
-		http.Redirect(w, r, "/schedule?"+q.Encode(), http.StatusSeeOther)
+		http.Redirect(w, r, schedule+"?"+q.Encode(), http.StatusSeeOther)
 		return
 	}
-	q.Set("ticket", ticketID)
+	if ticketID != "" {
+		q.Set("ticket", ticketID)
+	}
 	q.Set("flash", flash)
-	http.Redirect(w, r, "/board?"+q.Encode(), http.StatusSeeOther)
+	http.Redirect(w, r, s.actionBoardPath(project)+"?"+q.Encode(), http.StatusSeeOther)
+}
+
+func (s *Server) actionProject(r *http.Request, ticketID string) string {
+	if key := s.projectFromTicket(r, ticketID); key != "" {
+		return key
+	}
+	if r.Form != nil {
+		ids := r.Form["ticket_id"]
+		if len(ids) == 0 {
+			ids = splitCSV(r.Form.Get("ticket_ids"))
+		}
+		for _, id := range ids {
+			if key := s.projectFromTicket(r, id); key != "" {
+				return key
+			}
+		}
+		if key := s.projectFromTicket(r, r.Form.Get("ticket_id")); key != "" {
+			return key
+		}
+	}
+	for _, raw := range []string{
+		r.Form.Get("return_project"),
+		r.Form.Get("project"),
+		r.URL.Query().Get("project"),
+		s.cfg.Project,
+	} {
+		if key := s.validatedProject(r, raw); key != "" {
+			return key
+		}
+	}
+	return s.soleProject(r)
+}
+
+func (s *Server) projectFromTicket(r *http.Request, ticketID string) string {
+	ticketID = strings.TrimSpace(ticketID)
+	if ticketID == "" || ticketID == "create" || ticketID == "bulk" || !contracts.IsValidTicketID(ticketID) {
+		return ""
+	}
+	if s.actions == nil {
+		return ""
+	}
+	ticket, err := s.actions.Tickets.GetTicket(r.Context(), ticketID)
+	if err != nil {
+		return ""
+	}
+	return s.validatedProject(r, ticket.Project)
+}
+
+func (s *Server) validatedProject(r *http.Request, raw string) string {
+	key := strings.TrimSpace(raw)
+	if !contracts.IsValidProjectKey(key) {
+		return ""
+	}
+	if s.queries != nil {
+		if projects, err := s.queries.Projects.ListProjects(r.Context()); err == nil {
+			for _, project := range projects {
+				if project.Key == key {
+					return key
+				}
+			}
+			return ""
+		}
+	}
+	if s.cfg.Project == "" || s.cfg.Project == key {
+		return key
+	}
+	return ""
+}
+
+func (s *Server) soleProject(r *http.Request) string {
+	if s.queries == nil {
+		return strings.TrimSpace(s.cfg.Project)
+	}
+	projects, err := s.queries.Projects.ListProjects(r.Context())
+	if err != nil || len(projects) != 1 {
+		return strings.TrimSpace(s.cfg.Project)
+	}
+	return projects[0].Key
+}
+
+func (s *Server) actionBoardPath(project string) string {
+	prefix := strings.TrimSpace(s.cfg.RoutePrefix)
+	if prefix != "" {
+		if project != "" {
+			return prefix + "/projects/" + project
+		}
+		return firstNonEmpty(s.cfg.HomePath, prefix)
+	}
+	return firstNonEmpty(s.cfg.BoardPath, "/board")
 }
 
 func (s *Server) actorFromForm(r *http.Request) contracts.Actor {

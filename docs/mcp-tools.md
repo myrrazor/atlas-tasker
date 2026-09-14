@@ -3,7 +3,7 @@
 Run this to inspect the live table:
 
 ```bash
-tracker mcp tools --json --tool-profile admin --dangerously-allow-high-impact-tools
+tracker mcp tools --global --json --tool-profile admin --dangerously-allow-high-impact-tools
 ```
 
 Columns:
@@ -27,7 +27,25 @@ Columns:
 | `atlas.team.show` | read | yes | no | no | no | no |
 | `atlas.goal.brief` | read | yes | no | no | no | no |
 | `atlas.search` | read | yes | no | no | no | no |
+| `atlas.context` | read | yes | no | no | no | no |
+| `atlas.status` | read | yes | no | no | no | no |
+| `atlas.backup.status` | read | yes | no | no | no | no |
 | `atlas.board` | read | yes | no | no | no | no |
+| `atlas.attention` | read | yes | no | no | no | no |
+| `atlas.activity` | read | yes | no | no | no | no |
+| `atlas.project.list` | read | yes | no | no | no | no |
+| `atlas.views.list` | read | yes | no | no | no | no |
+| `atlas.views.get` | read | yes | no | no | no | no |
+| `atlas.views.run` | read | yes | no | no | no | no |
+| `atlas.backup.list` | read | yes | no | no | no | no |
+| `atlas.backup.history` | read | yes | no | no | no | no |
+| `atlas.backup.verify` | read | yes | no | no | no | no |
+| `atlas.backup.targets` | read | yes | no | no | no | no |
+| `atlas.settings.get` | read | yes | no | no | no | no |
+| `atlas.workspace.list` | read | yes | no | no | no | no |
+| `atlas.workspace.get` | read | yes | no | no | no | no |
+| `atlas.workspace.status` | read | yes | no | no | no | no |
+| `atlas.workspace.board_url` | read | yes | no | no | no | no |
 | `atlas.ticket.view` | read | yes | no | no | no | no |
 | `atlas.ticket.history` | read | yes | no | no | no | no |
 | `atlas.ticket.inspect` | read | yes | no | no | no | no |
@@ -57,6 +75,19 @@ Columns:
 | `atlas.compact_plan` | read | yes | no | no | no | no |
 | `atlas.worktree.cleanup_plan` | read | yes | no | no | no | no |
 | `atlas.project.create` | workflow | no | no | no | no | no |
+| `atlas.project.update` | workflow | no | yes | yes | no | no |
+| `atlas.views.save` | workflow | no | yes | yes | no | no |
+| `atlas.views.delete` | workflow | no | yes | yes | no | no |
+| `atlas.ticket.bulk` | workflow | no | yes | yes | no | no |
+| `atlas.backup.run` | workflow | no | yes | yes | no | no |
+| `atlas.restore.plan` | workflow | no | yes | yes | no | no |
+| `atlas.settings.update` | workflow | no | yes | yes | no | no |
+| `atlas.workspace.init` | workflow | no | yes | yes | no | no |
+| `atlas.workspace.register` | workflow | no | yes | yes | no | no |
+| `atlas.workspace.repair` | workflow | no | yes | yes | no | no |
+| `atlas.workspace.hide` | workflow | no | yes | yes | no | no |
+| `atlas.workspace.unhide` | workflow | no | yes | yes | no | no |
+| `atlas.workspace.remove_pointer` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.comment` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.claim` | workflow | no | yes | yes | no | no |
 | `atlas.ticket.release` | workflow | no | yes | yes | no | no |
@@ -103,8 +134,12 @@ Columns:
 | `atlas.archive.restore` | high_impact | no | yes | yes | yes | yes |
 | `atlas.compact` | high_impact | no | yes | yes | yes | yes |
 | `atlas.worktree.cleanup` | high_impact | no | yes | yes | yes | yes |
+| `atlas.backup.configure` | high_impact | no | yes | yes | yes | yes |
+| `atlas.restore.apply` | high_impact | no | yes | yes | yes | yes |
+| `atlas.workspace.fork_copy` | high_impact | no | yes | yes | yes | yes |
+| `atlas.settings.grant_discovery` | high_impact | no | yes | yes | yes | yes |
 
-`atlas.project.create` creates a metadata container inside the workspace already pinned when the MCP server starts. Its schema accepts only `key` and `name`. Like `tracker project create`, it does not write an event and therefore does not take `actor` or `reason`; every ticket and workflow event mutation still requires both.
+`atlas.project.create` creates project metadata in the selected workspace. In global mode, use `workspace_id` to select a registered workspace; pinned servers keep their configured workspace. Project fields are `key` and `name`. Like `tracker project create`, it does not write an event and therefore does not take `actor` or `reason`; every ticket and workflow event mutation still requires both.
 
 `atlas.ticket.edit` accepts only ordinary ticket fields: `title`, `description`, `acceptance`, `priority`, `labels`, `assignee`, and `reviewer`. Omitted fields stay unchanged. Empty descriptions, assignee or reviewer strings, and empty acceptance or label arrays clear those fields. Description whitespace is preserved. Status, project, identity, timestamps, lease, archive state, policy, protection, and sensitivity remain outside this patch surface.
 
@@ -114,4 +149,6 @@ In `review_gate` mode, `atlas.ticket.approve` returns the ticket already moved t
 must not follow it with `atlas.ticket.complete`. Other completion modes leave the approved ticket
 in `in_review` until an authorized completion call.
 
-MCP-first agent loops should use `--tool-profile workflow`. That profile covers project and ticket creation, ticket edit, priority, labels, assign, link, claim, heartbeat, release, move, comment, request review, approve, reject, complete, agent/team setup, schedules, evidence, handoffs, and wake-up ack without a high-impact approval token. Run dispatch plus change creation and change/check synchronization require `delivery`. Provider review/merge and sync push/pull, bundle/import apply, archive apply/restore, compact, worktree cleanup, and gate waiver stay high-impact.
+MCP-first agent loops should use `--tool-profile workflow`. That profile covers project and ticket creation, ticket edit, priority, labels, assign, link, claim, heartbeat, release, move, comment, request review, approve, reject, complete, agent/team setup, schedules, evidence, handoffs, and wake-up ack without a high-impact approval token. On the v1.15 candidate it also covers workspace list/init/repair (except `fork_copy`), attention, activity, saved views, local checkpoint run, and restore **plan**. Run dispatch plus change creation and change/check synchronization require `delivery`. Provider review/merge, sync push/pull, bundle/import apply, archive apply/restore, compact, worktree cleanup, gate waiver, backup target configure, restore apply, workspace fork-copy, and discovery-root widening stay high-impact.
+
+Exact counts change as tools are added. `tracker mcp tools --json --tool-profile workflow` (add `--global` on the machine server) is the inventory for that build. Global schemas wrap existing tools with optional `workspace_id`. Names stay dotted `atlas.*`; there are no underscore aliases.

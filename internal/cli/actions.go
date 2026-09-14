@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/app"
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -111,6 +112,8 @@ func openWorkspaceWith(opts openOptions) (*workspace, error) {
 		Notifier: notifier,
 	}
 	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
+	home, _ := os.UserHomeDir()
+	service.AttachUserState(w.actions, w.queries, home, "")
 	return w, nil
 }
 
@@ -213,288 +216,15 @@ type initResult struct {
 }
 
 func refuseNestedWorkspaceInit(root string) error {
-	info, err := os.Stat(storage.TrackerDir(root))
-	if err == nil && info.IsDir() {
-		return nil
-	}
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	for dir := filepath.Dir(root); ; dir = filepath.Dir(dir) {
-		info, err := os.Stat(storage.TrackerDir(dir))
-		if err == nil && info.IsDir() {
-			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is inside existing Atlas workspace %s; run tracker from there", root, dir))
-		}
-		if err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		if filepath.Dir(dir) == dir {
-			return nil
-		}
-	}
+	return app.RefuseNestedWorkspaceInit(root)
 }
 
 func ensureInitArtifacts(root string) (initResult, error) {
-	root, err := service.CanonicalWorkspaceRoot(root)
+	res, err := app.ScaffoldWorkspace(root, app.ScaffoldOptions{Now: defaultNow, GitMode: app.GitModeShared})
 	if err != nil {
 		return initResult{}, err
 	}
-	if err := refuseNestedWorkspaceInit(root); err != nil {
-		return initResult{}, err
-	}
-	result := initResult{Kind: "workspace_init", Workspace: root, Created: []string{}}
-	trackerDir := storage.TrackerDir(root)
-	privateDirs := map[string]struct{}{
-		trackerDir:                            {},
-		storage.ImportsDir(root):              {},
-		storage.ExportsDir(root):              {},
-		storage.ArchivesDir(root):             {},
-		filepath.Join(trackerDir, "evidence"): {},
-		filepath.Join(trackerDir, "runtime"):  {},
-	}
-	for _, dir := range []string{
-		trackerDir,
-		storage.EventsDir(root),
-		storage.AutomationsDir(root),
-		storage.ViewsDir(root),
-		storage.SubscriptionsDir(root),
-		storage.AgentsDir(root),
-		storage.RunbooksDir(root),
-		storage.RunsDir(root),
-		storage.GatesDir(root),
-		storage.ChangesDir(root),
-		storage.ChecksDir(root),
-		storage.PermissionProfilesDir(root),
-		storage.HandoffsDir(root),
-		storage.ImportsDir(root),
-		storage.ExportsDir(root),
-		storage.RetentionPoliciesDir(root),
-		storage.ArchivesDir(root),
-		filepath.Join(trackerDir, "evidence"),
-		filepath.Join(trackerDir, "runtime"),
-		filepath.Join(trackerDir, "templates"),
-		storage.ProjectsDir(root),
-	} {
-		missing, err := isMissing(dir)
-		if err != nil {
-			return initResult{}, err
-		}
-		mode := os.FileMode(0o755)
-		if _, ok := privateDirs[dir]; ok {
-			mode = 0o700
-		}
-		if err := os.MkdirAll(dir, mode); err != nil {
-			return initResult{}, err
-		}
-		if _, ok := privateDirs[dir]; ok {
-			if err := os.Chmod(dir, 0o700); err != nil {
-				return initResult{}, err
-			}
-		}
-		if missing {
-			result.Created = append(result.Created, relativeToRoot(root, dir))
-		}
-	}
-	identityMissing, err := isMissing(storage.WorkspaceMetadataFile(root))
-	if err != nil {
-		return initResult{}, err
-	}
-	if _, err := service.EnsureWorkspaceIdentityForCLI(root); err != nil {
-		return initResult{}, err
-	}
-	if identityMissing {
-		result.Created = append(result.Created, relativeToRoot(root, storage.WorkspaceMetadataFile(root)))
-	}
-	configMissing, err := isMissing(config.Path(root))
-	if err != nil {
-		return initResult{}, err
-	}
-	cfg, err := config.Load(root)
-	if err != nil {
-		return initResult{}, err
-	}
-	if err := config.Save(root, cfg); err != nil {
-		return initResult{}, err
-	}
-	if configMissing {
-		result.Created = append(result.Created, relativeToRoot(root, config.Path(root)))
-	}
-	monthFile := filepath.Join(storage.EventsDir(root), defaultNow().Format("2006-01")+".jsonl")
-	if missing, err := isMissing(monthFile); err != nil {
-		return initResult{}, err
-	} else if missing {
-		if err := os.WriteFile(monthFile, []byte(""), 0o644); err != nil {
-			return initResult{}, err
-		}
-		result.Created = append(result.Created, relativeToRoot(root, monthFile))
-	}
-	templates := map[string]string{
-		"epic.md": `---
-type: epic
-blueprint: design
----
-# Summary
-
-## Description
-
-Shape the full slice before you break it into child work.
-
-## Acceptance Criteria
-- Scope is clear
-- Child tickets can be created from this epic
-`,
-		"task.md": `---
-type: task
-blueprint: implement
----
-# Summary
-
-## Description
-
-Implement the scoped change.
-
-## Acceptance Criteria
-- Code is merged locally
-- Tests cover the new behavior
-`,
-		"bug.md": `---
-type: bug
-blueprint: qa
----
-# Summary
-
-## Description
-
-Describe the broken behavior and the expected fix.
-
-## Acceptance Criteria
-- Repro is documented
-- Fix is verified
-`,
-		"subtask.md": `---
-type: subtask
-blueprint: implement
----
-# Summary
-
-## Description
-
-Small child task under a parent item.
-
-## Acceptance Criteria
-- Parent stays up to date
-`,
-		"design.md": `---
-type: task
-labels:
-  - design
-blueprint: design
-skill_hint: design
----
-# Summary
-
-## Description
-
-Capture the UX, constraints, and acceptance shape before implementation.
-
-## Acceptance Criteria
-- Design direction is written down
-- Open questions are resolved or tracked
-`,
-		"implement.md": `---
-type: task
-labels:
-  - implementation
-blueprint: implement
-skill_hint: implement
----
-# Summary
-
-## Description
-
-Build the scoped change and keep the diff reviewable.
-
-## Acceptance Criteria
-- Behavior works locally
-- Tests are updated
-`,
-		"review.md": `---
-type: task
-labels:
-  - review
-blueprint: review
-skill_hint: review
----
-# Summary
-
-## Description
-
-Audit the implementation for regressions and missing tests.
-
-## Acceptance Criteria
-- Findings are documented
-- Blocking issues are fixed or tracked
-`,
-		"qa.md": `---
-type: task
-labels:
-  - qa
-blueprint: qa
-skill_hint: qa
----
-# Summary
-
-## Description
-
-Run end-to-end validation and record the results.
-
-## Acceptance Criteria
-- Happy path is verified
-- Edge cases are covered
-`,
-		"spike.md": `---
-type: task
-labels:
-  - spike
-blueprint: spike
-skill_hint: spike
----
-# Summary
-
-## Description
-
-Time-boxed investigation with explicit follow-up output.
-
-## Acceptance Criteria
-- Findings are written down
-- Next steps are clear
-`,
-	}
-	names := make([]string, 0, len(templates))
-	for name := range templates {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		path := filepath.Join(trackerDir, "templates", name)
-		missing, err := isMissing(path)
-		if err != nil {
-			return initResult{}, err
-		}
-		if !missing {
-			continue
-		}
-		if err := os.WriteFile(path, []byte(templates[name]), 0o644); err != nil {
-			return initResult{}, err
-		}
-		result.Created = append(result.Created, relativeToRoot(root, path))
-	}
-	if updated, err := ensureWorkspaceGitignore(root); err != nil {
-		return initResult{}, err
-	} else if updated {
-		result.Created = append(result.Created, relativeToRoot(root, filepath.Join(root, ".gitignore")))
-	}
-	return result, nil
+	return initResult{Kind: res.Kind, Workspace: res.Root, Created: res.Created}, nil
 }
 
 func isMissing(path string) (bool, error) {
@@ -506,8 +236,8 @@ func isMissing(path string) (bool, error) {
 }
 
 const (
-	workspaceGitignoreBegin = "# atlas-tasker:begin-local-ignore"
-	workspaceGitignoreEnd   = "# atlas-tasker:end-local-ignore"
+	workspaceGitignoreBegin = app.ManagedGitignoreBegin
+	workspaceGitignoreEnd   = app.ManagedGitignoreEnd
 )
 
 func workspaceGitignoreBlock() string {

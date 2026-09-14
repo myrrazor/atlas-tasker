@@ -7,9 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/app"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
 )
@@ -49,6 +51,35 @@ func decodeJSONList[T any](t *testing.T, raw string) []T {
 func withTempWorkspace(t *testing.T) {
 	t.Helper()
 	temp := t.TempDir()
+	home := t.TempDir()
+	state := filepath.Join(home, "state")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, "xdg"))
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	instance := "11111111-2222-3333-4444-555555555555"
+	settings := []byte("{\n  \"format\": \"atlas_machine_settings_v1\",\n  \"instance_id\": \"" + instance + "\",\n  \"service\": {\"bind\": \"127.0.0.1\", \"port\": 7432, \"enabled\": true, \"auto_start\": true}\n}\n")
+	if err := os.WriteFile(filepath.Join(state, "settings.json"), settings, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var running atomic.Bool
+	prevLook := setupLookPath
+	prevRunner := setupClientRunner
+	prevHook := appOptionsOverride
+	setupLookPath = func(string) (string, error) { return "", os.ErrNotExist }
+	setupClientRunner = app.SilentRunner{}
+	appOptionsOverride = func(opts *app.Options) {
+		opts.Home = home
+		opts.StateDir = state
+		opts.LookPath = setupLookPath
+		opts.CommandRunner = app.SilentRunner{}
+		opts.SkipHostInstall = true
+		opts.Process = &app.RecordingSpawner{OnStart: func() { running.Store(true) }}
+		opts.Probe = app.LatchProber{Instance: instance, Running: running.Load}
+		opts.WriteClientCfg = true
+		opts.OpenBrowser = func(string) error { return nil }
+	}
 	oldWD, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd failed: %v", err)
@@ -58,6 +89,9 @@ func withTempWorkspace(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_ = os.Chdir(oldWD)
+		setupLookPath = prevLook
+		setupClientRunner = prevRunner
+		appOptionsOverride = prevHook
 	})
 }
 
@@ -99,8 +133,26 @@ func TestPrettyListCommandsUseTableOutput(t *testing.T) {
 	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner", "--reason", "test setup")
 
 	board := must("board", "--pretty")
-	if !strings.Contains(board, "Column") || !strings.Contains(board, "+") || !strings.Contains(board, "APP-1") {
-		t.Fatalf("expected board pretty output to use a table, got:\n%s", board)
+	if !strings.Contains(board, "APP-1") || !strings.Contains(board, "Ready") {
+		t.Fatalf("expected board pretty output to keep the ticket, got:\n%s", board)
+	}
+	if strings.Contains(board, "Column") && strings.Contains(board, "+---") {
+		t.Fatalf("default board pretty output should not be the legacy ASCII grid:\n%s", board)
+	}
+	table := must("board", "--pretty", "--style", "table")
+	if strings.Contains(table, "Column") && strings.Contains(table, "+---") {
+		t.Fatalf("expected --style table to stay the polished row board, got:\n%s", table)
+	}
+	if !strings.Contains(table, "APP-1") || !strings.Contains(table, "Ready") {
+		t.Fatalf("expected --style table to keep the ticket, got:\n%s", table)
+	}
+	legacy := must("board", "--pretty", "--style", "legacy")
+	if !strings.Contains(legacy, "Column") || !strings.Contains(legacy, "+") || !strings.Contains(legacy, "APP-1") {
+		t.Fatalf("expected --style legacy to keep the old grid, got:\n%s", legacy)
+	}
+	kanban := must("board", "--pretty", "--style", "kanban")
+	if strings.Contains(kanban, "+---") || !strings.Contains(kanban, "APP-1") {
+		t.Fatalf("expected --style kanban to keep lanes, got:\n%s", kanban)
 	}
 	available := must("agent", "available", "builder-1", "--pretty")
 	if !strings.Contains(available, "Agent Available") || !strings.Contains(available, "+") || !strings.Contains(available, "APP-1") {

@@ -11,6 +11,7 @@ import errno
 import functools
 import hashlib
 import http.server
+import json
 import os
 from pathlib import Path
 import platform
@@ -68,7 +69,7 @@ class InstallerTests(unittest.TestCase):
         (self.agent_home / ".codex").mkdir(parents=True)
         self.bin_dir = self.case / "bin"
         self.env = dict(os.environ)
-        for key in ("CODEX_HOME", "CLAUDE_CONFIG_DIR", "TRACKER_ACTOR", "SKIP_INTEGRATIONS"):
+        for key in ("CODEX_HOME", "CLAUDE_CONFIG_DIR", "TRACKER_ACTOR", "SKIP_INTEGRATIONS", "XDG_STATE_HOME"):
             self.env.pop(key, None)
         self.env.update({
             "HOME": str(self.agent_home),
@@ -81,11 +82,29 @@ class InstallerTests(unittest.TestCase):
             "TMPDIR": str(self.case),
         })
 
+    def receipt_path(self):
+        xdg = self.env.get("XDG_STATE_HOME")
+        if xdg:
+            return Path(xdg) / "atlas-tasker" / "install-receipt.json"
+        home = Path(self.env["HOME"])
+        if platform.system() == "Darwin":
+            return home / "Library" / "Application Support" / "Atlas Tasker" / "install-receipt.json"
+        return home / ".local" / "state" / "atlas-tasker" / "install-receipt.json"
+
     def assert_installed(self):
         installed = self.bin_dir / "tracker"
         self.assertTrue(os.access(installed, os.X_OK))
         self.assertEqual(hashlib.sha256(installed.read_bytes()).digest(),
                          hashlib.sha256(self.tracker.read_bytes()).digest())
+        receipt = self.receipt_path()
+        self.assertTrue(receipt.is_file(), f"missing install receipt at {receipt}")
+        data = json.loads(receipt.read_text())
+        self.assertEqual(data["format"], "atlas_install_receipt_v1")
+        self.assertEqual(data["install_method"], "script")
+        self.assertEqual(data["binary_path"], str(installed))
+        self.assertEqual(data["binary_sha256"], hashlib.sha256(installed.read_bytes()).hexdigest())
+        payload = f"{data['binary_path']}\n{data['binary_sha256']}\nscript\n{self.env['VERSION']}\n"
+        self.assertEqual(data["digest"], hashlib.sha256(payload.encode()).hexdigest())
 
     def terminal_install(self, answers):
         """Run the same pipe-to-shell shape as curl | sh, with a real TTY."""
@@ -145,21 +164,74 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.workspace / ".tracker").exists())
         self.assert_installed()
 
-    def test_terminal_installs_only_selected_guidance(self):
-        output = self.terminal_install([("[y/N]", b"yes\n"), ("Selection:", b"codex\n")])
-        self.assertIn("[x] codex", output)
-        self.assertTrue((self.workspace / ".codex/skills/atlas-worker/SKILL.md").is_file())
-        self.assertFalse((self.workspace / ".claude").exists())
-        self.assertFalse((self.workspace / ".cursor").exists())
+    def test_terminal_yes_keeps_binary_when_setup_fails(self):
+        output = self.terminal_install([("[y/N]", b"yes\n")])
+        self.assertIn("Tracker is installed, but agent setup did not complete", output)
+        self.assertFalse((self.workspace / ".tracker").exists())
         self.assert_installed()
 
-    def test_terminal_none_skips_guidance_successfully(self):
-        output = self.terminal_install([("[y/N]", b"yes\n"), ("Selection:", b"none\n")])
-        self.assertIn("skipped integrations", output)
-        # Initializing this workspace was explicitly accepted in the first prompt.
-        self.assertTrue((self.workspace / ".tracker").is_dir())
-        self.assertFalse((self.workspace / ".codex").exists())
+    def test_terminal_yes_invokes_setup_in_initialized_workspace(self):
+        (self.workspace / ".tracker").mkdir()
+        (self.workspace / ".tracker" / "workspace.json").write_text(
+            '{"workspace_id":"ws-install-test","created_at":"2026-09-11T00:00:00Z"}\n'
+        )
+        (self.workspace / ".tracker" / "config.toml").write_text("[workflow]\ncompletion_mode = \"open\"\n")
+        output = self.terminal_install([("[y/N]", b"yes\n"), ("[y/N]", b"n\n")])
+        self.assertIn("Setup plan", output)
+        self.assertFalse((self.workspace / "AGENTS.md").exists())
         self.assert_installed()
+
+    def test_terminal_eof_skips_setup(self):
+        output = self.terminal_install([("[y/N]", b"\x04")])
+        self.assertIn("Skipped setup", output)
+        self.assertFalse((self.workspace / ".tracker").exists())
+        self.assert_installed()
+
+    def test_xdg_state_home_overrides_platform_layout(self):
+        xdg = self.case / "xdg-state"
+        xdg.mkdir()
+        self.env["XDG_STATE_HOME"] = str(xdg)
+        result = subprocess.run(["sh"], input=self.script.read_text(), cwd=self.workspace,
+                                env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed()
+        self.assertTrue((xdg / "atlas-tasker" / "install-receipt.json").is_file())
+        if platform.system() == "Darwin":
+            mac = Path(self.env["HOME"]) / "Library" / "Application Support" / "Atlas Tasker" / "install-receipt.json"
+            self.assertFalse(mac.exists())
+
+    def test_custom_bin_dir(self):
+        self.assertNotEqual(str(self.bin_dir), str(Path.home() / ".local" / "bin"))
+        result = subprocess.run(["sh"], input=self.script.read_text(), cwd=self.workspace,
+                                env=self.env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.bin_dir / "tracker").is_file())
+        self.assert_installed()
+
+    def test_old_version_falls_back_safely(self):
+        stub_dir = self.case / "old-src"
+        stub_dir.mkdir()
+        stub = stub_dir / "tracker"
+        stub.write_text("#!/bin/sh\ncase \"$1\" in\nsetup) exit 1 ;;\ninit) echo 'Usage: tracker init [--integrations]' ;;\n*) echo old ;;\nesac\n")
+        stub.chmod(0o755)
+        os_name = {"Darwin": "darwin", "Linux": "linux"}[platform.system()]
+        arch = {"arm64": "arm64", "aarch64": "arm64", "x86_64": "amd64"}[platform.machine()]
+        archive = f"tracker_0.9.0-old_{os_name}_{arch}.tar.gz"
+        with tarfile.open(self.assets / archive, "w:gz") as bundle:
+            bundle.add(stub, arcname="tracker")
+        digest = hashlib.sha256((self.assets / archive).read_bytes()).hexdigest()
+        checksum_path = self.assets / "checksums.txt"
+        original = checksum_path.read_text()
+        checksum_path.write_text(original + f"{digest}  {archive}\n")
+        self.env["VERSION"] = "v0.9.0-old"
+        try:
+            output = self.terminal_install([])
+        finally:
+            checksum_path.write_text(original)
+        self.assertIn("tracker init", output)
+        self.assertNotIn("[y/N]", output)
+        self.assertFalse((self.workspace / ".tracker").exists())
+        self.assertTrue(os.access(self.bin_dir / "tracker", os.X_OK))
 
     def test_bad_checksum_stops_before_install_or_setup(self):
         checksum_path = self.assets / "checksums.txt"

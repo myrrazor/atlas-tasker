@@ -47,7 +47,6 @@ If a prior decision changes:
 ## Required Planning Docs
 
 - `docs/v1-implementation-plan.md`
-- `docs/v1-ticket-pr-breakdown.md`
 - `docs/v1-decision-log.md`
 
-These three files are the source of truth for v1 execution, sequencing, and rationale.
+These files are the source of truth for v1 sequencing and rationale. Per-PR ticket breakdowns were leftover execution notes and are no longer published.

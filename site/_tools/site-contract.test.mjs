@@ -11,14 +11,17 @@ const pageCanonicals = new Map([
   ["mcp.html", `${SITE_ORIGIN}/mcp.html`],
   ["docs/index.html", `${SITE_ORIGIN}/docs/`],
   ["docs/getting-started.html", `${SITE_ORIGIN}/docs/getting-started.html`],
+  ["docs/home.html", `${SITE_ORIGIN}/docs/home.html`],
   ["docs/tickets-and-workflow.html", `${SITE_ORIGIN}/docs/tickets-and-workflow.html`],
   ["docs/views-and-search.html", `${SITE_ORIGIN}/docs/views-and-search.html`],
   ["docs/web-board.html", `${SITE_ORIGIN}/docs/web-board.html`],
+  ["docs/backup.html", `${SITE_ORIGIN}/docs/backup.html`],
   ["docs/agents-and-dispatch.html", `${SITE_ORIGIN}/docs/agents-and-dispatch.html`],
   ["docs/mcp-setup.html", `${SITE_ORIGIN}/docs/mcp-setup.html`],
   ["docs/mcp-tools.html", `${SITE_ORIGIN}/docs/mcp-tools.html`],
   ["docs/mcp-security.html", `${SITE_ORIGIN}/docs/mcp-security.html`],
   ["docs/json-and-exit-codes.html", `${SITE_ORIGIN}/docs/json-and-exit-codes.html`],
+  ["docs/uninstall.html", `${SITE_ORIGIN}/docs/uninstall.html`],
   ["docs/faq.html", `${SITE_ORIGIN}/docs/faq.html`],
   ["changelog.html", `${SITE_ORIGIN}/changelog.html`],
   ["guide.html", `${SITE_ORIGIN}/guide.html`],
@@ -39,7 +42,23 @@ const css = await readFile(new URL("styles.css", siteRoot), "utf8");
 const sitemap = await readFile(new URL("sitemap.xml", siteRoot), "utf8");
 const robots = await readFile(new URL("robots.txt", siteRoot), "utf8");
 const llms = await readFile(new URL("llms.txt", siteRoot), "utf8");
+const notFound = await readFile(new URL("404.html", siteRoot), "utf8");
+const vercelConfig = JSON.parse(
+  await readFile(new URL("vercel.json", siteRoot), "utf8"),
+);
 const securityTxt = await readFile(new URL(".well-known/security.txt", siteRoot), "utf8");
+
+test("custom 404 assets and recovery links work at nested missing routes", async () => {
+  const missing = new URL("/docs/missing/deep/page", SITE_ORIGIN);
+  for (const [, value] of notFound.matchAll(/(?:href|src)="([^"]+)"/g)) {
+    if (value.startsWith("#")) continue;
+    const resolved = new URL(value, missing);
+    if (resolved.origin !== missing.origin) continue;
+    let file = resolved.pathname.slice(1);
+    if (!file || file.endsWith("/")) file += "index.html";
+    await assert.doesNotReject(readFile(new URL(file, siteRoot)), `${value} resolves to ${file}`);
+  }
+});
 const socialCard = await readFile(
   new URL("../../assets/brand/social-card.html", import.meta.url),
   "utf8",
@@ -299,13 +318,22 @@ test("MCP tool page covers every source workflow tool", () => {
     .map((match) => match[1]);
   const rendered = textContent(pages.get("docs/mcp-tools.html"));
 
-  assert.equal(workflowNames.length, 32);
+  assert.ok(workflowNames.length >= 32, "workflow inventory shrank");
   for (const name of workflowNames) {
+    assert.match(rendered, new RegExp(`\\b${name.replaceAll(".", "\\.")}\\b`));
+  }
+  for (const name of [
+    "atlas.workspace.list",
+    "atlas.workspace.init",
+    "atlas.attention",
+    "atlas.backup.run",
+    "atlas.restore.plan",
+  ]) {
     assert.match(rendered, new RegExp(`\\b${name.replaceAll(".", "\\.")}\\b`));
   }
 });
 
-test("public workflow guidance matches the v1.13 contracts", () => {
+test("public workflow guidance matches the v1.15 candidate contracts", () => {
   const home = textContent(pages.get("index.html"));
   const cli = textContent(pages.get("cli.html"));
   const gettingStarted = textContent(pages.get("docs/getting-started.html"));
@@ -322,7 +350,7 @@ test("public workflow guidance matches the v1.13 contracts", () => {
   assert.match(gettingStarted, /no silent human:owner fallback/i);
   assert.doesNotMatch(workflow, /tracker ticket complete APP-1/);
   assert.match(workflow, /approval is the final transition to done/i);
-  assert.match(board, /all seven canonical workflow columns/i);
+  assert.match(board, /Backlog, Ready, In Progress, In Review, Blocked, and Done; a disclosure opens Canceled/i);
   assert.match(board, /canceled work neither satisfies dependencies nor counts as completed/i);
   assert.match(board, /strictly in the future/i);
   assert.match(agents, /agent:reviewer-1/);
@@ -330,12 +358,22 @@ test("public workflow guidance matches the v1.13 contracts", () => {
   assert.match(agents, /clears existing project open overrides/i);
   assert.match(agents, /OpenClaw-only --global option/i);
   assert.match(mcp, /approval by the required reviewer itself moves the ticket directly to Done/i);
+  assert.match(textContent(pages.get("docs/mcp-setup.html")), /defaults to --tool-profile read/);
   assert.match(changelog, /v1\.13\.0 — Workflow Consistency/i);
   assert.match(changelog, /checksums, provenance, and hosted verification/i);
   assert.match(changelog, /v1\.12\.0 — Agent Setup And Documentation/i);
   assert.doesNotMatch(changelog, /v1\.12\.0 remains the latest published stable version/i);
   assert.match(pages.get("changelog.html"), /releases\/tag\/v1\.13\.0/i);
   assert.match(gettingStarted, /tracker update --version v1\.13\.0 --yes/);
+  const homeWorkspaces = textContent(pages.get("docs/home.html"));
+  const backup = textContent(pages.get("docs/backup.html"));
+  const uninstall = textContent(pages.get("docs/uninstall.html"));
+  assert.match(home, /tracker init/);
+  assert.match(home, /\btracker\b/);
+  assert.match(homeWorkspaces, /127\.0\.0\.1:7432/);
+  assert.match(backup, /not verified until Atlas fetches/i);
+  assert.match(uninstall, /tracker uninstall --yes/);
+  assert.doesNotMatch(home, /v1\.15 GitHub release already exists/i);
   for (const [file, html] of pages) {
     if (file === "changelog.html") continue;
     assert.doesNotMatch(html, /"version": "v1\.11\.0"/);
@@ -416,6 +454,81 @@ test("visible FAQ questions match FAQPage JSON-LD", () => {
   const sorted = (values) =>
     [...values].sort(([left], [right]) => left.localeCompare(right, "en"));
   assert.deepEqual(sorted(structuredEntries), sorted(visibleEntries));
+});
+
+test("custom 404 is a real page with hosting 404 status", () => {
+  assert.equal(tags(notFound, "h1").length, 1);
+  assert.match(textContent(notFound), /not on this site/i);
+  assert.match(notFound, /rel="canonical" href="https:\/\/atlastasker\.com\/404\.html"/);
+  assert.doesNotMatch(sitemap, /atlastasker\.com\/404\.html/);
+  assert.deepEqual(Object.keys(vercelConfig), ["routes"]);
+  assert.equal(vercelConfig.cleanUrls, undefined);
+  assert.equal(vercelConfig.trailingSlash, undefined);
+  assert.equal(vercelConfig.headers, undefined);
+  const [headerRoute, filesystem, notFoundRoute] = vercelConfig.routes;
+  assert.equal(headerRoute.src, "/(.*)");
+  assert.equal(headerRoute.continue, true);
+  assert.equal(headerRoute.headers["X-Content-Type-Options"], "nosniff");
+  assert.equal(filesystem.handle, "filesystem");
+  assert.equal(notFoundRoute.src, "/(.*)");
+  assert.equal(notFoundRoute.status, 404);
+  assert.equal(notFoundRoute.dest, "/404.html");
+});
+
+test("first-board copyables use an app directory so APP is the init key", () => {
+  const home = pages.get("index.html");
+  const gettingStarted = pages.get("docs/getting-started.html");
+  assert.match(textContent(home), /mkdir app && cd app/);
+  assert.match(textContent(gettingStarted), /mkdir app && cd app/);
+  assert.match(home, /tracker ticket create --project APP/);
+  assert.match(gettingStarted, /tracker ticket create --project APP/);
+  assert.doesNotMatch(home, /tracker project create APP/);
+  assert.doesNotMatch(gettingStarted, /tracker project create APP/);
+  assert.doesNotMatch(home + gettingStarted, /one-release compatibility/i);
+  assert.doesNotMatch(home + gettingStarted, /Conductor should/i);
+});
+
+test("marketing site has no cookie banner, analytics, or nonessential cookies", () => {
+  const scan = [...pages.values(), notFound, css];
+  for (const source of scan) {
+    assert.doesNotMatch(source, /cookie-banner|cookieconsent|Set-Cookie|gtag\(|googletagmanager|plausible\(|analytics\.js/i);
+  }
+  assert.match(textContent(pages.get("privacy.html")), /sets no cookies/i);
+  assert.match(textContent(pages.get("privacy.html")), /essential HttpOnly session cookie/i);
+});
+
+test("favicon set includes SVG, PNG, and apple-touch icon", async () => {
+  const index = pages.get("index.html");
+  assert.match(index, /rel="icon" href="favicon\.svg"/);
+  assert.match(index, /rel="icon" href="favicon-32\.png"/);
+  assert.match(index, /rel="apple-touch-icon" href="apple-touch-icon\.png"/);
+  const png32 = await readFile(new URL("favicon-32.png", siteRoot));
+  const apple = await readFile(new URL("apple-touch-icon.png", siteRoot));
+  assert.equal(png32.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  assert.equal(apple.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  assert.equal(png32.readUInt32BE(16), 32);
+  assert.equal(png32.readUInt32BE(20), 32);
+  assert.equal(apple.readUInt32BE(16), 180);
+  assert.equal(apple.readUInt32BE(20), 180);
+});
+
+test("copy controls expose loading, success, and error states", () => {
+  const index = pages.get("index.html");
+  assert.match(index, /Copying…/);
+  assert.match(index, /aria-busy/);
+  assert.match(index, /Command copied to clipboard/);
+  assert.match(index, /Automatic copy failed/);
+  assert.match(css, /copy-button\[aria-busy="true"\]/);
+});
+
+test("mobile navigation stays keyboard reachable", () => {
+  assert.match(css, /min-height:\s*44px/);
+  assert.match(css, /a:focus-visible/);
+  assert.match(css, /@media \(max-width: 620px\)/);
+  const docsCss = pages.get("docs/getting-started.html");
+  assert.match(docsCss, /docs-menu-button/);
+  assert.match(docsCss, /aria-expanded/);
+  assert.match(docsCss, /aria-controls="docs-sidebar"/);
 });
 
 test("website notices explain actual use without unresolved legal templates", () => {

@@ -1,0 +1,3 @@
+# Exact false positive: the existing Pen document's UUID fileToken metadata,
+# not an API credential. Keep this scoped to the historical commit and line.
+4282c81fbf1b2bb1a55fc45207681ad4cf16129b:docs/design/pen/atlas-tasker.pen:generic-api-key:28174

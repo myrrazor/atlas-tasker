@@ -9,7 +9,11 @@ Output modes:
 - `--pretty` returns terminal-oriented output where commands support it.
 - `--plain` disables terminal styling for the current invocation.
 
-Pretty output uses bordered tables for repeated-row views such as boards, queues, agent work, saved views, runs, evidence, and worktrees. `--plain`, `NO_COLOR=1`, and non-interactive output keep ASCII-safe borders.
+Pretty `tracker board` defaults to an aligned, colored table. `--style kanban`
+selects the optional card board. Queues, agent work, saved views, runs, evidence, and
+worktrees still use bordered tables where that layout is the right scan. `--plain`,
+`NO_COLOR=1`, and non-interactive output keep ASCII-safe borders. Truncation is
+grapheme-aware. There is no Nerd Font dependency.
 
 Tracked CLI mutations require an actor, resolved from explicit `--actor`, `TRACKER_ACTOR`, then
 `actor.default`. A non-empty `--reason` is recommended for ordinary writes and required for

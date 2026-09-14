@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/myrrazor/atlas-tasker/internal/app"
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/buildinfo"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -19,32 +20,70 @@ type Server struct {
 	Workspace *Workspace
 	Options   Options
 	Approvals ApprovalStore
+	resources *resourceHub
 }
 
 func NewServer(workspace *Workspace, options Options) *Server {
 	options = options.Normalized()
+	root := ""
+	if workspace != nil {
+		root = workspace.Root
+	} else if options.StateDir != "" {
+		root = options.StateDir
+	}
 	return &Server{
 		Workspace: workspace,
 		Options:   options,
-		Approvals: NewApprovalStore(workspace.Root, options.Now),
+		Approvals: NewApprovalStore(root, options.Now),
+		resources: newResourceHub(),
 	}
 }
 
+func NewGlobalServer(machine Machine, options Options) *Server {
+	options.Global = true
+	options.Machine = machine
+	if machine != nil && options.StateDir == "" {
+		options.StateDir = machine.StateDir()
+	}
+	if machine != nil && options.CWD == "" {
+		options.CWD = machine.CWD()
+	}
+	return NewServer(nil, options)
+}
+
 func (s *Server) SDKServer() *mcpsdk.Server {
-	server := mcpsdk.NewServer(serverImplementation(), nil)
-	for _, spec := range ToolSpecs() {
+	hub := s.resources
+	if hub == nil {
+		hub = newResourceHub()
+		s.resources = hub
+	}
+	server := mcpsdk.NewServer(serverImplementation(), &mcpsdk.ServerOptions{
+		SubscribeHandler:   hub.subscribe,
+		UnsubscribeHandler: hub.unsubscribe,
+		Capabilities: &mcpsdk.ServerCapabilities{
+			Resources: &mcpsdk.ResourceCapabilities{Subscribe: true, ListChanged: true},
+		},
+	})
+	hub.mu.Lock()
+	hub.sdk = server
+	hub.mu.Unlock()
+	for _, spec := range ToolSpecsFor(s.Options) {
 		enabled, _ := spec.Enabled(s.Options)
 		if !enabled {
 			continue
 		}
 		spec := spec
-		server.AddTool(&mcpsdk.Tool{
+		tool := &mcpsdk.Tool{
 			Name:        spec.Name,
 			Title:       spec.Title,
 			Description: spec.Description,
 			InputSchema: spec.InputSchema,
 			Annotations: toolAnnotations(spec),
-		}, func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+		}
+		if spec.UIResourceURI != "" {
+			tool.Meta = mcpsdk.Meta{"ui": map[string]any{"resourceUri": spec.UIResourceURI}}
+		}
+		server.AddTool(tool, func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 			args := map[string]any{}
 			if req != nil && req.Params != nil && len(req.Params.Arguments) > 0 {
 				if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
@@ -53,16 +92,7 @@ func (s *Server) SDKServer() *mcpsdk.Server {
 			}
 			payload, err := s.CallTool(ctx, spec.Name, args)
 			if err != nil {
-				result := &mcpsdk.CallToolResult{
-					Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: err.Error()}},
-					StructuredContent: map[string]any{
-						"format_version": FormatVersion,
-						"ok":             false,
-						"error":          apperr.Envelope(err)["error"],
-					},
-				}
-				result.SetError(err)
-				return result, nil
+				return s.sdkToolErrorResult(spec, payload, err), nil
 			}
 			truncated := resultPayloadTruncated(payload)
 			return &mcpsdk.CallToolResult{
@@ -70,6 +100,14 @@ func (s *Server) SDKServer() *mcpsdk.Server {
 				StructuredContent: payload,
 			}, nil
 		})
+	}
+	for _, resource := range s.resourceDescriptors() {
+		resource := resource
+		server.AddResource(resource, s.readResource)
+	}
+	for _, tmpl := range s.resourceTemplates() {
+		tmpl := tmpl
+		server.AddResourceTemplate(tmpl, s.readResource)
 	}
 	return server
 }
@@ -93,7 +131,7 @@ type nopWriteCloser struct{ io.Writer }
 func (nopWriteCloser) Close() error { return nil }
 
 func (s *Server) CallTool(ctx context.Context, name string, args map[string]any) (map[string]any, error) {
-	spec, ok := ToolSpecByName(name)
+	spec, ok := specByName(s.Options, name)
 	if !ok {
 		return nil, apperr.New(apperr.CodeNotFound, fmt.Sprintf("unknown MCP tool: %s", name))
 	}
@@ -110,11 +148,17 @@ func (s *Server) CallTool(ctx context.Context, name string, args map[string]any)
 	if callCtx == nil {
 		callCtx = context.Background()
 	}
+	bound, err := s.bindForCall(callCtx, spec, args)
+	if err != nil {
+		s.auditDenied(spec, args, "workspace_scope", err)
+		return nil, err
+	}
+	call := s.forCall(bound)
 	actor := ""
 	if spec.RequiresActor {
-		resolved, err := s.actor(callCtx, args)
+		resolved, err := call.actor(callCtx, args)
 		if err != nil {
-			s.auditDenied(spec, args, "actor_required", err)
+			call.auditDenied(spec, args, "actor_required", err)
 			return nil, err
 		}
 		actor = string(resolved)
@@ -124,16 +168,16 @@ func (s *Server) CallTool(ctx context.Context, name string, args map[string]any)
 		reason = strings.TrimSpace(stringArg(args, "reason"))
 		if reason == "" {
 			err := apperr.New(apperr.CodeInvalidInput, "reason is required")
-			s.auditDenied(spec, args, "reason_required", err)
+			call.auditDenied(spec, args, "reason_required", err)
 			return nil, err
 		}
 	}
 	target := specTarget(spec, args)
 	approval := OperationApproval{}
 	if spec.HighImpact {
-		approved, err := s.authorizeHighImpact(callCtx, spec, args, actor, target)
+		approved, err := call.authorizeHighImpact(callCtx, spec, args, actor, target)
 		if err != nil {
-			s.auditDenied(spec, args, "approval_required", err)
+			call.auditDenied(spec, args, "approval_required", err)
 			return nil, err
 		}
 		approval = approved
@@ -152,7 +196,7 @@ func (s *Server) CallTool(ctx context.Context, name string, args map[string]any)
 	})
 	payload, err := spec.Handler(ToolContext{
 		Context: callCtx,
-		Server:  s,
+		Server:  call,
 		Spec:    spec,
 		Actor:   actor,
 		Reason:  reason,
@@ -160,21 +204,128 @@ func (s *Server) CallTool(ctx context.Context, name string, args map[string]any)
 	}, args)
 	if err != nil {
 		if spec.HighImpact && approval.ID != "" {
-			s.auditExecutionFailed(spec, args, approval, err)
+			call.auditExecutionFailed(spec, args, approval, err)
+		}
+		if keepPartialToolResult(payload, err) {
+			// Workspace exists; still tell the client the later steps failed.
+			call.noteMutation(spec, args)
+			limited, _, limitErr := applyResultLimits(spec.Name, s.Options.Now(), payload, s.Options)
+			if limitErr != nil {
+				return nil, err
+			}
+			return limited, err
 		}
 		return nil, err
 	}
 	if spec.HighImpact {
-		s.auditExecuted(spec, args, approval)
+		call.auditExecuted(spec, args, approval)
 	}
+	call.noteMutation(spec, args)
 	limited, _, err := applyResultLimits(spec.Name, s.Options.Now(), payload, s.Options)
 	return limited, err
+}
+
+func (s *Server) sdkToolErrorResult(spec ToolSpec, payload map[string]any, err error) *mcpsdk.CallToolResult {
+	safeText, safeEnv := redactCallToolError(err, s.Options.IncludeLocalOnlyPaths)
+	result := &mcpsdk.CallToolResult{
+		Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: safeText}},
+		StructuredContent: map[string]any{
+			"format_version": FormatVersion,
+			"ok":             false,
+			"error":          safeEnv,
+		},
+	}
+	if payload != nil {
+		structured := make(map[string]any, len(payload)+2)
+		for k, v := range payload {
+			structured[k] = v
+		}
+		structured["ok"] = false
+		structured["error"] = safeEnv
+		result.StructuredContent = structured
+		text := textFallback(spec.Name, payload, resultPayloadTruncated(payload), s.Options.MaxTextTokensEstimate)
+		if strings.TrimSpace(text) == "" {
+			text = safeText
+		} else if safeText != "" && !strings.Contains(text, safeText) {
+			text = text + "\n" + safeText
+		}
+		result.Content = []mcpsdk.Content{&mcpsdk.TextContent{Text: text}}
+	}
+	result.SetError(err)
+	return result
+}
+
+func keepPartialToolResult(payload any, err error) bool {
+	if !app.IsPartial(err) {
+		return false
+	}
+	switch v := payload.(type) {
+	case app.InitResult:
+		return strings.TrimSpace(v.WorkspaceID) != ""
+	case *app.InitResult:
+		return v != nil && strings.TrimSpace(v.WorkspaceID) != ""
+	default:
+		return false
+	}
+}
+
+// forCall returns a request-scoped server that shares options, approvals, and
+// the resource hub but has its own Workspace pointer. The live mutex is not
+// copied: concurrent SDK calls must not share s.Workspace.
+func (s *Server) forCall(ws *Workspace) *Server {
+	return &Server{
+		Workspace: ws,
+		Options:   s.Options,
+		Approvals: s.Approvals,
+		resources: s.resources,
+	}
+}
+
+func (s *Server) bindForCall(ctx context.Context, spec ToolSpec, args map[string]any) (*Workspace, error) {
+	scope := spec.Scope
+	if scope == "" {
+		scope = ScopeWorkspace
+	}
+	if !s.Options.Global {
+		if s.Workspace == nil && scope != ScopeMachine && scope != ScopeOptional {
+			return nil, apperr.New(apperr.CodeInvalidInput, "workspace is not bound")
+		}
+		return s.Workspace, nil
+	}
+	if scope == ScopeMachine {
+		return nil, nil
+	}
+	if s.Options.Machine == nil {
+		return nil, apperr.New(apperr.CodeInvalidInput, "machine MCP surface is not available")
+	}
+	explicit := stringArg(args, "workspace_id")
+	if explicit != "" {
+		return s.Options.Machine.Bind(ctx, explicit)
+	}
+	inferred, err := s.Options.Machine.InferCWD(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if inferred.OK {
+		return s.Options.Machine.BindRoot(ctx, inferred.Root)
+	}
+	if scope == ScopeOptional {
+		return nil, nil
+	}
+	return nil, apperr.New(apperr.CodeInvalidInput, "workspace_id is required when the current directory is not a unique Atlas workspace")
 }
 
 func (s *Server) actor(ctx context.Context, args map[string]any) (contracts.Actor, error) {
 	raw := strings.TrimSpace(stringArg(args, "actor"))
 	if raw == "" {
 		return "", apperr.New(apperr.CodeInvalidInput, "actor is required")
+	}
+	if s.Workspace == nil || s.Workspace.Queries == nil {
+		actor := contracts.Actor(raw)
+		if !actor.IsValid() {
+			return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
+		}
+		return actor, nil
 	}
 	actor, err := s.Workspace.Queries.ResolveActor(ctx, contracts.Actor(raw))
 	if err != nil {
@@ -198,14 +349,29 @@ func (s *Server) authorizeHighImpact(ctx context.Context, spec ToolSpec, args ma
 		return OperationApproval{}, apperr.New(apperr.CodePermissionDenied, fmt.Sprintf("confirm_text must equal %q", expected))
 	}
 	approvalID := stringArg(args, "operation_approval_id")
-	return s.Approvals.Consume(ctx, approvalID, spec.Name, target, actor, spec.Name)
+	store := s.Approvals
+	if s.Workspace != nil && s.Workspace.Root != "" {
+		store = NewApprovalStore(s.Workspace.Root, s.Options.Now)
+	}
+	return store.Consume(ctx, approvalID, spec.Name, target, actor, spec.Name)
+}
+
+func (s *Server) auditRoot() string {
+	if s.Workspace != nil && s.Workspace.Root != "" {
+		return s.Workspace.Root
+	}
+	return s.Options.StateDir
 }
 
 func (s *Server) auditDenied(spec ToolSpec, args map[string]any, reasonCode string, err error) {
 	if !spec.HighImpact {
 		return
 	}
-	_ = AppendSecurityAudit(s.Workspace.Root, SecurityAuditRecord{
+	root := s.auditRoot()
+	if root == "" {
+		return
+	}
+	_ = AppendSecurityAudit(root, SecurityAuditRecord{
 		Timestamp:          s.Options.Now(),
 		Actor:              stringArg(args, "actor"),
 		Tool:               spec.Name,
@@ -220,7 +386,11 @@ func (s *Server) auditDenied(spec ToolSpec, args map[string]any, reasonCode stri
 }
 
 func (s *Server) auditExecuted(spec ToolSpec, args map[string]any, approval OperationApproval) {
-	_ = AppendSecurityAudit(s.Workspace.Root, SecurityAuditRecord{
+	root := s.auditRoot()
+	if root == "" {
+		return
+	}
+	_ = AppendSecurityAudit(root, SecurityAuditRecord{
 		Timestamp:          s.Options.Now(),
 		Actor:              approval.Actor,
 		Tool:               spec.Name,
@@ -235,7 +405,11 @@ func (s *Server) auditExecuted(spec ToolSpec, args map[string]any, approval Oper
 }
 
 func (s *Server) auditExecutionFailed(spec ToolSpec, args map[string]any, approval OperationApproval, err error) {
-	_ = AppendSecurityAudit(s.Workspace.Root, SecurityAuditRecord{
+	root := s.auditRoot()
+	if root == "" {
+		return
+	}
+	_ = AppendSecurityAudit(root, SecurityAuditRecord{
 		Timestamp:          s.Options.Now(),
 		Actor:              approval.Actor,
 		Tool:               spec.Name,
@@ -265,6 +439,19 @@ func specTarget(spec ToolSpec, args map[string]any) string {
 		return jsonTarget(map[string]any{"project": stringArg(args, "project"), "target": base})
 	case "atlas.worktree.cleanup":
 		return jsonTarget(map[string]any{"force": boolArg(args, "force"), "run_id": base})
+	case "atlas.restore.apply":
+		return jsonTarget(map[string]any{"plan_id": stringArg(args, "plan_id"), "digest": stringArg(args, "digest")})
+	case "atlas.workspace.fork_copy":
+		return jsonTarget(map[string]any{"workspace_id": stringArg(args, "workspace_id"), "path": stringArg(args, "path")})
+	case "atlas.backup.configure":
+		fields := map[string]any{"action": stringArg(args, "action")}
+		if id := stringArg(args, "target_id"); id != "" {
+			fields["target_id"] = id
+		}
+		if url := stringArg(args, "url"); url != "" {
+			fields["url"] = url
+		}
+		return jsonTarget(fields)
 	default:
 		return base
 	}
@@ -288,7 +475,7 @@ func toolAnnotations(spec ToolSpec) *mcpsdk.ToolAnnotations {
 }
 
 func Inventory(options Options) []ToolInfo {
-	specs := ToolSpecs()
+	specs := ToolSpecsFor(options)
 	items := make([]ToolInfo, 0, len(specs))
 	for _, spec := range specs {
 		items = append(items, spec.Info(options))
@@ -297,14 +484,14 @@ func Inventory(options Options) []ToolInfo {
 }
 
 func EnabledSchemas(options Options) []map[string]any {
-	specs := ToolSpecs()
+	specs := ToolSpecsFor(options)
 	items := []map[string]any{}
 	for _, spec := range specs {
 		enabled, _ := spec.Enabled(options)
 		if !enabled {
 			continue
 		}
-		items = append(items, map[string]any{
+		item := map[string]any{
 			"name":              spec.Name,
 			"description":       spec.Description,
 			"class":             spec.Class,
@@ -312,7 +499,11 @@ func EnabledSchemas(options Options) []map[string]any {
 			"schema_hash":       schemaHash(spec.InputSchema),
 			"high_impact":       spec.HighImpact,
 			"requires_approval": spec.RequiresApproval,
-		})
+		}
+		if spec.UIResourceURI != "" {
+			item["ui_resource_uri"] = spec.UIResourceURI
+		}
+		items = append(items, item)
 	}
 	return items
 }

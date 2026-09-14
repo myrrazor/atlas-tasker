@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/app"
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -45,18 +46,22 @@ func NewRootCommand() *cobra.Command {
 tickets are markdown files, history is an append-only event log, and both
 humans and coding agents drive it from the same CLI.
 
-Start with 'tracker init' inside your project, create a project and a ticket,
-and 'tracker board' shows where everything stands. 'tracker web serve --open'
-gets you the same board in a browser.`,
+Start with 'tracker init' inside your project. 'tracker' with no args opens
+Atlas Home on this machine. Advanced commands stay available; everyday use is
+init plus Home.`,
 		Example: `  tracker init
+  tracker
   tracker project create APP "My App"
   tracker ticket create --project APP --title "Ship login page" --type task --actor human:owner
   tracker board`,
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		PersistentPreRunE: resolveMutationActor,
+		RunE:              runRootHome,
 	}
 	root.PersistentFlags().Bool("plain", false, "Disable terminal styling and print plain text output")
+	root.Flags().Bool("no-open", false, "Print the Home URL without opening a browser")
+	addReadOutputFlags(root, &outputFlags{})
 
 	root.AddCommand(newInitCommand())
 	root.AddCommand(newDoctorCommand())
@@ -111,10 +116,12 @@ gets you the same board in a browser.`,
 	root.AddCommand(newUnwatchCommand())
 	root.AddCommand(newBulkCommand())
 	root.AddCommand(newTemplatesCommand())
+	root.AddCommand(newSetupCommand())
 	root.AddCommand(newIntegrationsCommand())
 	root.AddCommand(newSearchCommand())
 	root.AddCommand(newRenderCommand())
 	root.AddCommand(newWebCommand())
+	root.AddCommand(newServeCommand())
 	root.AddCommand(newVersionCommand())
 	root.AddCommand(newUpdateCommand())
 	root.AddCommand(newShellCommand())
@@ -131,6 +138,8 @@ gets you the same board in a browser.`,
 	root.AddCommand(newAdminCommand())
 	root.AddCommand(newGoalCommand())
 	root.AddCommand(newTUICommand())
+	root.AddCommand(newUninstallCommand())
+	root.AddCommand(newWorkspacesCommand())
 
 	return root
 }
@@ -139,60 +148,88 @@ func newInitCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize tracker workspace",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			root, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			result, err := ensureInitArtifacts(root)
-			if err != nil {
-				return err
-			}
-			workspace, err := openWorkspace()
-			if err != nil {
-				return err
-			}
-			workspace.close()
-			md := fmt.Sprintf("# Workspace\n\n- Root: %s\n- Created: %d\n", result.Workspace, len(result.Created))
-			for _, path := range result.Created {
-				md += "- " + path + "\n"
-			}
-			pretty := "initialized"
-			if len(result.Created) == 0 {
-				pretty = "already bootstrapped"
-			}
-			if err := writeCommandOutput(cmd, result, md, pretty); err != nil {
-				return err
-			}
-
-			wantIntegrations, _ := cmd.Flags().GetBool("integrations")
-			skipIntegrations, _ := cmd.Flags().GetBool("skip-integrations")
-			if skipIntegrations {
-				return nil
-			}
-			if !wantIntegrations && !canPromptIntegrations(cmd) {
-				return nil
-			}
-			if !wantIntegrations {
-				ok, err := confirmIntegrationsSetup(cmd)
-				if err != nil {
-					return err
-				}
-				if !ok {
-					fmt.Fprintln(cmd.OutOrStdout(), "skipped integrations; run tracker integrations install later")
-					return nil
-				}
-			}
-			if !canPromptIntegrations(cmd) && wantIntegrations {
-				return apperr.New(apperr.CodeInvalidInput, "tracker init --integrations requires an interactive TTY; use tracker integrations install --targets ... instead")
-			}
-			return runIntegrationsInstallWizard(cmd, nil, false, false, true)
-		},
+		RunE:  runInit,
 	}
 	cmd.Flags().Bool("integrations", false, "After init, open the coding-agent integrations installer")
-	cmd.Flags().Bool("skip-integrations", false, "Never prompt for coding-agent integrations after init")
+	cmd.Flags().Bool("skip-integrations", false, "Skip automatic agent MCP setup (alias of --no-agents)")
+	cmd.Flags().Bool("no-agents", false, "Do not install Atlas-managed agent MCP/worker entries")
+	cmd.Flags().Bool("no-register", false, "Do not add this workspace to the machine registry")
+	cmd.Flags().Bool("no-backup", false, "Do not enable local checkpoints during init")
+	cmd.Flags().Bool("no-open", false, "Do not open Atlas Home after init")
+	cmd.Flags().String("git-mode", "shared", "Ignore rules: shared, private, or unmanaged")
 	addReadOutputFlags(cmd, &outputFlags{})
 	return cmd
+}
+
+func runInit(cmd *cobra.Command, _ []string) error {
+	root, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	a, err := openApp()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = a.Close() }()
+	skipIntegrations, _ := cmd.Flags().GetBool("skip-integrations")
+	noAgents, _ := cmd.Flags().GetBool("no-agents")
+	noRegister, _ := cmd.Flags().GetBool("no-register")
+	noBackup, _ := cmd.Flags().GetBool("no-backup")
+	noOpen, _ := cmd.Flags().GetBool("no-open")
+	gitModeRaw, _ := cmd.Flags().GetString("git-mode")
+	wantIntegrations, _ := cmd.Flags().GetBool("integrations")
+	agents := !skipIntegrations && !noAgents && a.Settings().Agents.AutoInstall
+	jsonMode, _ := cmd.Flags().GetBool("json")
+	openHome := !noOpen && !jsonMode && canPromptIntegrations(cmd)
+	result, err := a.Init(commandContext(cmd), app.InitOptions{
+		Root:           root,
+		GitMode:        app.GitMode(gitModeRaw),
+		Register:       !noRegister,
+		Agents:         agents,
+		Backup:         !noBackup,
+		DefaultProject: a.Settings().DefaultProject,
+		OpenHome:       openHome,
+		WriteClientCfg: agents,
+	})
+	if result.Kind == "" && err != nil {
+		return err
+	}
+	printResult := result
+	if printResult.Service != nil {
+		svc := *printResult.Service
+		svc.ClaimURL = ""
+		printResult.Service = &svc
+	}
+	md := fmt.Sprintf("# Workspace\n\n- Root: %s\n- Created: %d\n", result.Workspace, len(result.Created))
+	for _, path := range result.Created {
+		md += "- " + path + "\n"
+	}
+	if result.Service != nil && result.Service.URL != "" {
+		md += "- Home: " + result.Service.URL + "\n"
+	}
+	pretty := result.Summary
+	if pretty == "" {
+		pretty = "initialized"
+		if result.Already {
+			pretty = "already bootstrapped"
+		}
+	}
+	if result.Service != nil && result.Service.URL != "" && !strings.Contains(pretty, result.Service.URL) {
+		pretty = pretty + "\n" + result.Service.URL
+	}
+	if writeErr := writeCommandOutput(cmd, printResult, md, pretty); writeErr != nil {
+		return writeErr
+	}
+	if err != nil {
+		return err
+	}
+	if wantIntegrations {
+		if !canPromptIntegrations(cmd) {
+			return apperr.New(apperr.CodeInvalidInput, "tracker init --integrations requires an interactive TTY; use tracker integrations install --targets ... instead")
+		}
+		return runIntegrationsInstallWizard(cmd, nil, false, false, true)
+	}
+	return nil
 }
 
 func newDoctorCommand() *cobra.Command {
@@ -337,7 +374,28 @@ func newIntegrationsCommand() *cobra.Command {
 		install.AddCommand(targetCmd)
 	}
 
-	cmd.AddCommand(detect, install)
+	status := &cobra.Command{Use: "status", Short: "Show Atlas-owned integration state for this workspace", RunE: runIntegrationsStatus}
+	addReadOutputFlags(status, &outputFlags{})
+
+	repair := &cobra.Command{
+		Use:   "repair <target>",
+		Args:  cobra.ExactArgs(1),
+		Short: "Repair drifted Atlas-owned files for one agent target",
+		RunE:  runIntegrationsRepair,
+	}
+	repair.Flags().Bool("yes", false, "Apply the repair plan")
+	addReadOutputFlags(repair, &outputFlags{})
+
+	disconnect := &cobra.Command{
+		Use:   "disconnect <target>",
+		Args:  cobra.ExactArgs(1),
+		Short: "Remove Atlas-owned files for one agent target",
+		RunE:  runIntegrationsDisconnect,
+	}
+	disconnect.Flags().Bool("yes", false, "Apply the removal plan; required when Atlas-owned files were edited")
+	addReadOutputFlags(disconnect, &outputFlags{})
+
+	cmd.AddCommand(detect, install, status, repair, disconnect)
 	return cmd
 }
 
@@ -731,6 +789,8 @@ func newBoardCommand() *cobra.Command {
 	cmd.Flags().String("project", "", "Filter by project")
 	cmd.Flags().String("assignee", "", "Filter by assignee")
 	cmd.Flags().String("type", "", "Filter by ticket type")
+	cmd.Flags().String("style", "table", "Board presentation: table (default), kanban, or legacy")
+	cmd.Flags().String("density", "comfortable", "Board density: comfortable, compact, or focus")
 	addReadOutputFlags(cmd, flags)
 	return cmd
 }
@@ -763,6 +823,7 @@ func newTemplatesCommand() *cobra.Command {
 func newTUICommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "tui", Short: "Launch the full-screen tracker TUI", RunE: runTUI}
 	cmd.Flags().String("actor", "", "Actor used for queue-aware tabs")
+	cmd.Flags().String("style", "table", "Board presentation: table (default) or kanban")
 	return cmd
 }
 
@@ -1819,12 +1880,19 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	// doctor opens stores directly (it has to survive a corrupt index), so it
-	// needs the same wrong-CWD guard openWorkspace has.
-	if err := requireInitializedWorkspace(root); err != nil {
-		return err
-	}
 	repair, _ := cmd.Flags().GetBool("repair")
+	if err := requireInitializedWorkspace(root); err != nil {
+		a, appErr := openApp()
+		if appErr != nil {
+			return appErr
+		}
+		defer func() { _ = a.Close() }()
+		report, docErr := a.Doctor(ctx, app.DoctorOptions{Repair: repair, Workspace: root})
+		if docErr != nil {
+			return docErr
+		}
+		return writeCommandOutput(cmd, report, "# "+report.Summary, report.Summary)
+	}
 	if repair {
 		return service.WithWriteLock(ctx, service.FileLockManager{Root: root}, "doctor repair", func(ctx context.Context) error {
 			return runDoctorAtRoot(cmd, ctx, root, true)
@@ -1886,6 +1954,8 @@ func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repai
 	}
 	defer func() { _ = projection.Close() }()
 	queries := service.NewQueryService(root, projectStore, ticketStore, eventLog, projection, defaultNow)
+	home, _ := os.UserHomeDir()
+	service.AttachUserState(nil, queries, home, "")
 	projectIssues := 0
 	for _, project := range projects {
 		if err := project.Validate(); err != nil {
@@ -2014,6 +2084,12 @@ func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repai
 			"ticket_issues":  ticketIssues,
 			"orchestration":  orchestrationReport,
 		},
+	}
+	if auto, autoErr := queries.AutoBackupStatus(ctx); autoErr == nil {
+		payload["backup_auto"] = auto
+		if auto.LastErrorClass != "" {
+			issueCodes = append(issueCodes, auto.LastErrorClass)
+		}
 	}
 	return writeCommandOutput(cmd, payload, message, message)
 }
@@ -2246,7 +2322,11 @@ func runBoard(cmd *cobra.Command, _ []string) error {
 		}
 		board := result.Board.Board
 		markdown := boardMarkdown(savedViewTitle(result.View, "Board"), board, result.View.Board.Columns)
-		return writeCommandOutput(cmd, result, markdown, render.BoardPretty(board))
+		pretty, err := formatBoardFromCmd(cmd, workspace, board)
+		if err != nil {
+			return err
+		}
+		return writeCommandOutput(cmd, result, markdown, pretty)
 	}
 	boardVM, err := workspace.queries.Board(ctx, contracts.BoardQueryOptions{
 		Project:  project,
@@ -2258,8 +2338,23 @@ func runBoard(cmd *cobra.Command, _ []string) error {
 	}
 	board := boardVM.Board
 	markdown := boardMarkdown("Board", board, nil)
-	pretty := render.BoardPretty(board)
+	pretty, err := formatBoardFromCmd(cmd, workspace, board)
+	if err != nil {
+		return err
+	}
 	return writeCommandOutput(cmd, board, markdown, pretty)
+}
+
+func formatBoardFromCmd(cmd *cobra.Command, workspace *workspace, board contracts.BoardView) (string, error) {
+	style, _ := cmd.Flags().GetString("style")
+	density, _ := cmd.Flags().GetString("density")
+	project, _ := cmd.Flags().GetString("project")
+	backup, backupErr := workspace.queries.BackupHealth(commandContext(cmd))
+	pretty, err := formatBoard(board, project, style, density, backup, backupErr == nil)
+	if err != nil {
+		return "", apperr.New(apperr.CodeInvalidInput, err.Error())
+	}
+	return pretty, nil
 }
 
 func boardMarkdown(title string, board contracts.BoardView, columns []contracts.Status) string {
@@ -2901,7 +2996,15 @@ func runTUI(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	actorRaw, _ := cmd.Flags().GetString("actor")
-	return tui.Run(rootDir, contracts.Actor(strings.TrimSpace(actorRaw)))
+	styleRaw, _ := cmd.Flags().GetString("style")
+	style, err := render.ParseBoardStyle(styleRaw)
+	if err != nil {
+		return apperr.New(apperr.CodeInvalidInput, err.Error())
+	}
+	if style == render.BoardStyleLegacy {
+		return apperr.New(apperr.CodeInvalidInput, "tui --style does not support legacy; use table or kanban")
+	}
+	return tui.Run(rootDir, contracts.Actor(strings.TrimSpace(actorRaw)), style)
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {

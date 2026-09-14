@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.15.0 (release candidate)
+
+Atlas Home, simpler first use, and a polished terminal table. This candidate includes the compatible v1.14 implementation and has not been published as a release.
+
+- `tracker init` creates the first project, registers the workspace, configures supported coding agents, enables local checkpoints, and makes Home available. Repeating setup preserves identities and explicit opt-outs. Bare `tracker` starts or reuses one local Home service from any directory.
+- Home brings workspace discovery, project Kanban boards, attention, search, activity, backup health, and settings together. Registry repairs change pointers; workspace files remain authoritative.
+- Terminal and TUI boards default to aligned, colored ticket tables. Long lists remain navigable; `--style kanban` selects cards and terminal `--style legacy` retains the old grid. JSON and Markdown remain available.
+- Global workflow MCP registration exposes workspace-aware tools, resources, notifications, native Markdown, and a read-only MCP App board for compatible hosts. High-impact operations retain explicit approvals.
+- Checkpoints stay outside source Git. Existing macOS backup histories remain attached to their original state directory; conflicting histories require repair. Remote verification and restore apply remain bound to the exact checkpoint and stored plan.
+- `tracker uninstall` previews verified Atlas software and managed integration entries; `--yes` applies removal while preserving boards, events, registry pointers, and backups. Provider guidance also supports `/uninstall`.
+- README, migration and command guides, marketing pages, and website documentation cover the candidate. Static site essentials include a favicon, sitemap, robots.txt, social metadata, and a custom 404, with no cookie banner or nonessential tracking.
+
+See [the v1.15 implementation contract](docs/v1.15-implementation.md) and [local release evidence](docs/release/v1.15.0-release-evidence.md) for verification and remaining release boundaries.
+
+## v1.14.0 (release candidate)
+
+Seamless agent setup and automatic verified backup. This is an implementation candidate, not a published release.
+
+- `tracker setup` is one cohesive pass: detect agents, refresh the existing atlas-worker skill, register MCP, map team identities, write managed mode, and optionally enable an already-added backup target. After enable it runs one first checkpoint and remote verify. `--yes` is still not backup consent. Setup never installs the user scheduler and never infers origin.
+- Six provider adapters (Codex, Claude Code, Cursor, OpenClaw, Grok, Generic) stay transactional. Unmanaged `atlas` MCP entries and custom text outside instruction markers are not rewritten. `tracker update` replaces only the binary.
+- Automatic local checkpoints stay in an isolated bare Git repository. Off-device publication is fast-forward only onto `refs/atlas/backups/<workspace>/<replica>`. Push success is not `verified` until ls-remote plus a fetch into an empty temporary repo shows the commit, tree, and manifest. Verification is remembered per target; a blocked or switched target is not reported as verified. Mutations stay available when backup is offline or diverged. Local destructive operations can still proceed after a local checkpoint if only the remote publish failed.
+- Read-only MCP tools `atlas.context`, `atlas.status`, and `atlas.backup.status` never return backup URLs or credentials. High-impact tools stay hidden from ordinary setup.
+- Recovery uses the existing restore-plan/apply boundary with `backup_restore` governance. Disposable `file://` remotes require `--allow-local-file` on add and edit (DEC-088) and are not an off-device claim. Leading or trailing whitespace on a target URL cannot skip that flag.
+
+Remaining before a published v1.14.0: real-client sessions for the five named hosts, real user-level scheduler enablement, macOS installer matrix, the 10k/100k/10k soak, and an owner-authorized private remote disaster drill. Procedural SHA/attestation ceremony is waived as a gate.
+
 ## v1.13.0 - Workflow Consistency
 
 - Canceled work has a separate board column across CLI, JSON, TUI, and web, and the web move control includes canceled. Board and ticket views show assignment directly.

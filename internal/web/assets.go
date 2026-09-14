@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 )
 
 //go:embed templates static
@@ -30,6 +31,9 @@ func parseTemplates() (*template.Template, error) {
 		"statusKey":          statusKey,
 		"statusLabel":        statusLabel,
 		"statusMessageKey":   statusMessageKey,
+		"ticketRevision":     TicketRevision,
+		"displayName":        displayName,
+		"backupCompact":      backupCompact,
 		"t":                  translator(defaultLanguage),
 	}
 	return template.New("atlas-web").Funcs(funcs).ParseFS(embeddedFiles, "templates/*.html")
@@ -132,4 +136,52 @@ func formatTime(t time.Time) string {
 		return "unknown"
 	}
 	return t.Local().Format("Jan 2, 15:04")
+}
+
+// displayName reads an optional DisplayName from the page currently being
+// rendered. Legacy welcome/settings/schedule pages have no such field; the
+// helper must not blow up when those structs are passed to layout.
+func displayName(page any) string {
+	switch p := page.(type) {
+	case BoardPage:
+		if name := strings.TrimSpace(p.DisplayName); name != "" {
+			return name
+		}
+		return p.Workspace
+	case WelcomePage:
+		return p.Workspace
+	case SettingsPage:
+		return p.Workspace
+	case SchedulePage:
+		return p.Workspace
+	case HomePage:
+		if name := strings.TrimSpace(p.DisplayName); name != "" {
+			return name
+		}
+		if p.Workspace != "" && p.Workspace != "Atlas Home" {
+			return p.Workspace
+		}
+		return "Atlas Home"
+	default:
+		return ""
+	}
+}
+
+func backupCompact(health *service.BackupHealthSummary) string {
+	if health == nil {
+		return ""
+	}
+	local := "No local checkpoint"
+	if !health.LastLocalCheckpointAt.IsZero() {
+		local = "Local checkpoint " + formatTime(health.LastLocalCheckpointAt)
+	} else if strings.TrimSpace(health.LastLocalCheckpointID) != "" {
+		local = "Local checkpoint saved"
+	}
+	remote := "No off-device copy"
+	if health.VerifiedRemote {
+		remote = "Off-device copy verified"
+	} else if strings.TrimSpace(health.LastRemoteCheckpointID) != "" {
+		remote = "Off-device copy not verified"
+	}
+	return local + " · " + remote
 }

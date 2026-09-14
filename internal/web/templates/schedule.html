@@ -15,7 +15,7 @@
         <a href="{{.TodayURL}}">Today</a>
         <a href="{{.NextURL}}" aria-label="Next week">→</a>
       </nav>
-      <form method="post" action="/actions/schedule/tick?return=schedule&amp;date={{.SelectedDate}}{{if .ProjectExplicit}}&amp;project={{.Project}}{{end}}">
+      <form method="post" action="{{.ActionPrefix}}/actions/schedule/tick?return=schedule&amp;date={{.SelectedDate}}{{if .ProjectExplicit}}&amp;project={{.Project}}{{end}}">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <input type="hidden" name="actor" value="{{.Actor}}">
         <input type="hidden" name="reason" value="web schedule tick">
@@ -43,7 +43,7 @@
         </div>
         <details class="schedule-composer" {{if .Form}}open{{end}}>
           <summary>Schedule ticket</summary>
-          <form class="schedule-form" method="post" action="/actions/schedule/set?return=schedule&amp;date={{.SelectedDate}}{{if .ProjectExplicit}}&amp;project={{.Project}}{{end}}">
+          <form class="schedule-form" method="post" action="{{.ActionPrefix}}/actions/schedule/set?return=schedule&amp;date={{.SelectedDate}}{{if .ProjectExplicit}}&amp;project={{.Project}}{{end}}">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <input type="hidden" name="actor" value="{{.Actor}}">
             <label>Ticket
@@ -83,7 +83,7 @@
                 <time datetime="{{.AtRFC3339}}">{{.Time}}</time>
                 <span class="schedule-state">{{.StateLabel}}</span>
               </div>
-              <a class="schedule-ticket" href="{{.TicketURL}}">
+              <a class="schedule-ticket" href="{{$.BoardPath}}?ticket={{.Entry.Ticket.ID}}{{if $.ProjectExplicit}}&amp;project={{$.Project}}{{end}}">
                 <span>{{.Entry.Ticket.ID}}</span>
                 <strong>{{.Entry.Ticket.Title}}</strong>
               </a>
@@ -93,7 +93,7 @@
               </div>
               {{if .Entry.Ticket.Schedule.Error}}<p class="schedule-error" role="alert">{{.Entry.Ticket.Schedule.Error}}</p>{{end}}
               {{if not $.ReadOnly}}
-              <form class="schedule-clear" method="post" action="/actions/tickets/{{.Entry.Ticket.ID}}/schedule/clear?return=schedule&amp;date={{$.SelectedDate}}{{if $.ProjectExplicit}}&amp;project={{$.Project}}{{end}}">
+              <form class="schedule-clear" method="post" action="{{$.ActionPrefix}}/actions/tickets/{{.Entry.Ticket.ID}}/schedule/clear?return=schedule&amp;date={{$.SelectedDate}}{{if $.ProjectExplicit}}&amp;project={{$.Project}}{{end}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="actor" value="{{$.Actor}}">
                 <input type="hidden" name="reason" value="web clear ticket schedule">
@@ -126,7 +126,7 @@
         <li>
           <span class="completion-mark" aria-hidden="true">✓</span>
           <div>
-            <a href="{{.TicketURL}}"><strong>{{.Entry.Ticket.ID}}</strong> {{.Entry.Ticket.Title}}</a>
+            <a href="{{$.BoardPath}}?ticket={{.Entry.Ticket.ID}}{{if $.ProjectExplicit}}&amp;project={{$.Project}}{{end}}"><strong>{{.Entry.Ticket.ID}}</strong> {{.Entry.Ticket.Title}}</a>
             <p>{{.Day}} · {{.Time}} · {{.Entry.CompletedBy}}</p>
           </div>
         </li>

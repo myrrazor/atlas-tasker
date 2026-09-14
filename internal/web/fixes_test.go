@@ -264,19 +264,16 @@ func TestDrawerCloseControlKeepsATouchSizedTarget(t *testing.T) {
 func TestExplicitEmptyTicketSelectionClosesDrawer(t *testing.T) {
 	h := newWebHarness(t, false)
 	res := h.doAuthed(t, http.MethodGet, "/board?ticket=", "", nil)
-	if !strings.Contains(res.body, "No ticket selected") {
-		t.Fatalf("explicit close should render an empty detail drawer:\n%s", excerpt(res.body, "detail-drawer"))
+	if strings.Contains(res.body, `class="detail-drawer"`) || strings.Contains(res.body, "No ticket selected") {
+		t.Fatalf("closed board must not keep an empty detail column:\n%s", excerpt(res.body, "app-shell"))
 	}
 	if strings.Contains(res.body, `class="close-button"`) {
 		t.Fatal("explicit close must not immediately auto-select another ticket")
 	}
-	if got := strings.Count(res.body, `href="/board?ticket=" class="close-button"`); got != 0 {
-		t.Fatalf("closed drawer unexpectedly rendered %d close controls", got)
-	}
 
 	open := h.doAuthed(t, http.MethodGet, "/board", "", nil)
-	if !strings.Contains(open.body, `href="/board?ticket=" class="close-button"`) {
-		t.Fatal("auto-selected drawer must link to the explicit closed state")
+	if strings.Contains(open.body, `class="detail-drawer"`) || strings.Contains(open.body, `has-drawer`) {
+		t.Fatal("board with no ticket query must not auto-open a drawer")
 	}
 }
 
@@ -364,7 +361,7 @@ func TestNewTicketLinkOmitsImplicitProject(t *testing.T) {
 		t.Fatalf("New Ticket link exposes the implicit default project:\n%s", excerpt(implicit.body, "new=1"))
 	}
 	explicit := h.doAuthed(t, http.MethodGet, "/board?project=WEB", "", nil)
-	if !strings.Contains(explicit.body, `href="/board?new=1&project=WEB"`) {
+	if !strings.Contains(explicit.body, `href="/board?new=1&project=WEB"`) && !strings.Contains(explicit.body, `href="/board?new=1&amp;project=WEB"`) {
 		t.Fatalf("New Ticket link should keep an explicit project:\n%s", excerpt(explicit.body, "new=1"))
 	}
 }
@@ -484,6 +481,19 @@ func TestFiltersFormDoesNotExposeImplicitProject(t *testing.T) {
 	explicit := h.doAuthed(t, http.MethodGet, "/board?project=WEB", "", nil)
 	if !strings.Contains(explicit.body, `name="project" value="WEB"`) {
 		t.Fatalf("explicit project must render in the filters form:\n%s", excerpt(explicit.body, `name="project"`))
+	}
+}
+
+func TestBoardRendersBackupHealth(t *testing.T) {
+	h := newWebHarness(t, false)
+	res := h.doAuthed(t, http.MethodGet, "/board", "", nil)
+	if res.code != http.StatusOK {
+		t.Fatalf("board status = %d", res.code)
+	}
+	for _, want := range []string{`class="backup-health"`, "Backup health", "Automatic backup", "Unbacked events"} {
+		if !strings.Contains(res.body, want) {
+			t.Fatalf("board missing backup health %q:\n%s", want, excerpt(res.body, "backup"))
+		}
 	}
 }
 

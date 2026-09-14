@@ -10,15 +10,15 @@
 
 Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your repo. You get Jira-grade tickets — boards, dependencies, review gates, audit history — as plain markdown files plus a fast SQLite index, without a hosted service or an account. Then it goes where Jira can't: your coding agents (Claude Code, Codex, anything that speaks MCP) claim tickets, get blocked on each other, wake up when their dependencies land, attach evidence, and hand work off for review.
 
-![Atlas Tasker demo](docs/assets/demo.gif)
-
 ## Install
+
+The curl installer and `go install ...@latest` install the latest **published** GitHub release. Atlas Home, global MCP (`mcp serve --global --tool-profile workflow`), and `tracker uninstall` live in this v1.15 source and are not on that published tag until a v1.15 release exists. Unstamped builds report `"version": "dev"`.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
 
-The installer downloads the latest release for your platform, verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release). In an interactive terminal it can also offer to initialize the current directory and open the coding-agent integration picker; that step defaults to **no**, shows the directory before changing it, and is skipped for non-interactive installs or when `SKIP_INTEGRATIONS=1` is set.
+The installer verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release). Unattended `curl | sh` never initializes the directory you happened to be in.
 
 With a Go toolchain (1.26.6 or newer):
 
@@ -26,30 +26,43 @@ With a Go toolchain (1.26.6 or newer):
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest
 ```
 
-Or from source:
+To try this source:
 
 ```bash
 git clone https://github.com/myrrazor/atlas-tasker && cd atlas-tasker
 go build -o tracker ./cmd/tracker
 ```
 
-## Minutes to a working board
+## Two commands
+
+After a v1.15 `tracker` is on your `PATH`:
 
 ```bash
+mkdir app && cd app
 tracker init
-tracker project create APP "My App"
+tracker
 tracker ticket create --project APP --title "Ship first feature" --type task --actor human:owner --reason "first ticket"
 tracker ticket move APP-1 ready --actor human:owner --reason "groomed"
 tracker board
 ```
 
-In a terminal, `tracker init` asks `Set up coding-agent integrations now? [Y/n]`; pressing Enter or answering yes opens the picker. This differs from the shell installer's optional workspace setup prompt, which defaults to **no**. In the picker, choose the detected agents, enter `none` to skip, or use `tracker init --skip-integrations` when you want a predictable non-interactive bootstrap. The [agent integrations guide](docs/guides/agent-integrations.md) covers every target and scripted setup.
+The example directory is named `app`, so init's default project key is `APP` and the ticket command is valid. In a repo whose directory name is not `app`, use that generated key (or `MAIN` when the basename is too short) instead of `APP`. Extra projects are still `tracker project create AUTH "Auth"`.
 
-![Kanban board in the terminal](docs/assets/board.png)
+`tracker init` writes identity, canonical `projects/` and `.tracker/` files, local checkpoints, and Atlas-managed coding-agent entries for clients it actually finds. Opt out with `--no-agents` / `--skip-integrations`, `--no-backup`, `--no-register`, `--no-open`, or `--git-mode private|unmanaged`. `--integrations` still opens the older TTY picker.
+
+`tracker` with no arguments starts or reuses the one machine-wide Home service on `127.0.0.1:7432`, opens Home in a TTY, and prints a usable URL (or JSON) otherwise. It works outside a repo. Standing inside a valid workspace also registers that workspace when auto-register is on. If something else already owns that port, Atlas fails instead of silently moving.
+
+Mutation commands resolve `--actor`, then `TRACKER_ACTOR`, then `actor.default`, and exit 2 before writing if none is set. There is no silent `human:owner` fallback.
+
+The default terminal board is a polished table with aligned ticket rows and status colors. Choose `--style kanban` for side-by-side cards. `--json`, `--md`, `--plain`, and `NO_COLOR` remain available. Chat hosts get native Markdown; MCP Apps that implement the UI resource get a read-only board. Restart the coding agent after init so it loads the new MCP entry — a written config is `pending_client_restart` until the client actually connects.
+
+The [getting started](docs/getting-started.md), [setup and backup](docs/guides/setup-and-backup.md), and [agent integrations](docs/guides/agent-integrations.md) guides cover the short path plus `tracker setup` and per-workspace MCP.
+
+![Polished ticket table in the terminal](docs/assets/board.png)
 
 Every ticket is a markdown file under `projects/`, every change is an append-only event in `.tracker/`, and a SQLite projection keeps queries instant. Your tracker ships with your repo: branch it, diff it, `git blame` a status change. If the index goes missing or falls behind, the next command rebuilds it from the files and says so once on stderr; if it ever gets corrupted, `tracker reindex` or `tracker doctor --repair` rebuilds it from the event log.
 
-Prefer a full-screen view? `tracker tui` opens the interactive console — board, work queues, ticket detail with timeline, search, review and owner queues, inbox, and an ops dashboard, all keyboard-driven.
+Prefer a full-screen view? `tracker tui` opens the interactive console — board, work queues, ticket detail with timeline, search, review and owner queues, inbox, and an ops dashboard, all keyboard-driven. The Board tab uses the same table presentation as `tracker board`, with keyboard scrolling for long lists. Open ticket details explicitly with Enter.
 
 ![TUI splash](docs/assets/splash.png)
 
@@ -57,13 +70,17 @@ Prefer a full-screen view? `tracker tui` opens the interactive console — board
 
 ![Ticket detail with runs, evidence, and timeline](docs/assets/tui-detail.png)
 
-## The web board
+## Atlas Home
 
-Prefer a browser without giving up local-first storage? `tracker web serve --open` starts the optional local web UI on `127.0.0.1` — a welcome dashboard with per-project rollups, the Kanban board, and a schedule timeline — with a session token, CSRF checks, and the same `QueryService`/`ActionService` paths as the CLI. The dashboard and board chrome ship in English, Spanish, Indonesian, Chinese, Japanese, and Korean ([i18n notes](docs/i18n-notes.md) lists the honest gaps). It is still just your repo: no hosted mode, no login system, and no second database.
+`tracker` opens **Atlas Home** in the browser: workspaces, projects, attention, search, backup health, and settings, all on loopback. Routes include `/`, `/attention`, `/search`, `/w/<workspace-id>`, `/w/<workspace-id>/projects/<project-key>`, `/w/<workspace-id>/activity`, `/w/<workspace-id>/backup`, `/settings`, `/settings/agents`, and `/settings/workspaces`. The browser never posts an arbitrary filesystem path; Create board uses a path grant or a hit under configured discovery roots.
+
+Home opens with a one-time claim in the URL fragment. It clears the fragment, then POSTs the claim to establish an HttpOnly loopback session cookie. That cookie is essential to the local app, not a marketing tracker. The marketing site at [atlastasker.com](https://atlastasker.com) sets none.
+
+`tracker web serve --open` is still supported: welcome at `/`, board at `/board`, schedule at `/schedule`. Prefer Home for new setups. The chrome still ships in English, Spanish, Indonesian, Chinese, Japanese, and Korean ([i18n notes](docs/i18n-notes.md) lists the honest gaps). No hosted mode, no login system, no second database.
 
 ![Kanban board in the browser with a ticket drawer open](docs/assets/web-board-desktop.png)
 
-![Welcome dashboard with per-project rollups and recent changes](docs/assets/web-welcome-desktop.png)
+![Atlas Home with registered workspaces and attention](docs/assets/web-welcome-desktop.png)
 
 ![Schedule workspace with the week strip and day timeline](docs/assets/web-schedule-desktop.png)
 
@@ -107,7 +124,7 @@ Around that core, agents get the full delivery loop:
 - **Evidence** attaches proof to runs — test output, diffs, logs, screenshots — so review isn't vibes.
 - **Gates** block completion until a reviewer, owner, QA, or release check signs off.
 - **Handoffs** package up changed files, open questions, and risks for the next agent.
-- **MCP** exposes all of it as tools (`tracker mcp serve`), with tiered profiles from read-only to admin and typed approvals for high-impact operations.
+- **MCP** exposes all of it as tools. Init registers detected clients with `tracker mcp serve --global --tool-profile workflow`. Cross-workspace writes need an explicit `workspace_id`. Pinned `tracker mcp serve --workspace /path` is still supported and still defaults to `--tool-profile read`. Profiles still go read → workflow → delivery → admin, with typed approvals for high-impact operations. Restart the client after a registration change. A written config is not proof the client is connected.
 - **Goal manifests** (`tracker goal brief APP-1 --md`) give an agent the full context of a ticket in one shot.
 
 To hand work off, install the Atlas worker skill and give the ticket to Claude Code, Codex, Cursor, OpenClaw, Grok, or another agent. The skill teaches the agent to read its queue, claim work, dispatch a run, attach evidence, request review, acknowledge wake-ups, and hand off context while everything is tracked in Atlas Tasker. Humans still choose where to intervene through assignments, review gates, owner gates, and explicit handoffs.
@@ -121,7 +138,7 @@ tracker run dispatch APP-2 --agent agent:builder-1 --actor human:owner --reason 
 tracker goal brief APP-2 --md
 ```
 
-Integration installation writes project instructions, a guide, and skill or command files for the selected agent. It does **not** register an MCP server. If your agent should call Atlas as MCP tools, configure `tracker mcp serve` in that client separately and pin `--workspace` to this repo. See [agent integrations](docs/guides/agent-integrations.md) and [MCP for agents](docs/guides/mcp-for-agents.md).
+On the v1.15 candidate, `tracker init` both writes the worker skill and, unless you pass `--no-agents`, writes Atlas-managed MCP entries pointing at `tracker mcp serve --global --tool-profile workflow`. Status is `written`, `pending_client_restart`, or `unverified` from the actual file — never “connected” just because a config exists. `tracker integrations install` still writes skills later. Advanced `tracker setup` remains the v1.14 one-pass planner. See [agent integrations](docs/guides/agent-integrations.md) and [MCP for agents](docs/guides/mcp-for-agents.md).
 
 **[AGENTS.md](AGENTS.md) is the file to hand an agent.** It leads with the things that trip
 them up — every tracked CLI mutation needs an actor, reasons are recommended and sometimes mandatory,
@@ -148,6 +165,33 @@ tracker team apply crossfire --actor human:owner --reason "team setup"
 
 `tracker team show <preset>` previews the roster, `--dry-run` applies nothing, and re-running is always safe — existing agents are never overwritten. Then install the matching integration (`claude`, `codex`, `cursor`, `openclaw`, `grok`, or `generic`), file your tickets, and the agents handle claiming, building, review handoffs, and wake-ups on their own. The [team presets guide](docs/guides/team-presets.md) has the full walkthrough.
 
+## Local checkpoints, then an explicit remote
+
+Tickets already live in Git with your repo. Atlas also keeps **local checkpoints** of Atlas-owned records in an isolated bare repo under machine state (`$XDG_STATE_HOME/atlas-tasker/backups/<workspace-id>/` or `~/.local/state/atlas-tasker/backups/<workspace-id>/`). `tracker init` starts that local replica unless you pass `--no-backup`. Checkpoints coalesce (about 30s quiet, 5min max, 100 pending events) and do not rewrite your project Git HEAD, index, or remotes.
+
+A remote is separate and never inferred from `origin`:
+
+```bash
+tracker backup target add --id private \
+  --url git@github.com:you/atlas-backups.git \
+  --acknowledge-data-boundary --attest-private
+tracker backup auto enable --target private
+tracker backup run --now
+```
+
+A successful push is not verified. Atlas fetches the remote commit into an empty temporary repo and checks the commit, workspace, manifest, tree, and files. Verification is remembered per target and is not claimed while the replica is blocked. Ticket writes stay available if the remote is offline. Restore is two-phase: `tracker backup restore-plan` then `restore-apply`, bound to the stored plan ID and digest. `file://` drills need `--allow-local-file` and are not off-device proof.
+
+Details: [setup and backup](docs/guides/setup-and-backup.md).
+
+## Uninstall the software, keep the boards
+
+```bash
+tracker uninstall          # preview: Atlas-owned binary, service, managed MCP blocks
+tracker uninstall --yes    # apply the digest-bound plan; --apply is an alias
+```
+
+`/uninstall` in the tracker shell is the same preview/apply. Uninstall removes Atlas software only. Workspaces, `projects/`, `.tracker/`, tickets, events, backup repositories, history, targets, and registry pointers stay so a later install can rediscover them. No receipt, no delete. Homebrew/apt installs print the manager command instead of unlinking a Cellar path. See [uninstall](docs/guides/uninstall.md).
+
 ## Everything else you'd expect from a real tracker
 
 Epics with progress rollups, subtasks, labels, priorities, comments, saved views, full-text search (`tracker search 'text~payment status=ready'`), bulk operations with dry-run previews, watch subscriptions, automations, a REPL shell, JSON output and stable exit codes on every command for scripting, import/export, archives, and a `doctor` that can actually fix things.
@@ -156,13 +200,13 @@ For the paranoid (complimentary): signed artifacts and trust keys, governance po
 
 ## Docs
 
-Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [updating](docs/guides/updating.md), [getting started](docs/getting-started.md), [agent integrations](docs/guides/agent-integrations.md), [your first agent workflow](docs/first-agent-workflow.md), [scheduled work](docs/scheduling.md), [the local web board](docs/web-board.md), [MCP for agents](docs/guides/mcp-for-agents.md), [the command reference](docs/reference/commands.md), or [troubleshooting](docs/troubleshooting.md).
+Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [getting started](docs/getting-started.md), [Home and workspaces](docs/guides/home-and-workspaces.md), [setup and backup](docs/guides/setup-and-backup.md), [agent integrations](docs/guides/agent-integrations.md), [MCP for agents](docs/guides/mcp-for-agents.md), [doctor and repair](docs/guides/doctor-and-repair.md), [uninstall](docs/guides/uninstall.md), [the local web board](docs/web-board.md), [the command reference](docs/command-reference.md), or [troubleshooting](docs/troubleshooting.md).
 
 ## Status
 
 The [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/latest) is what the installer and `go install ...@latest` give you. [CHANGELOG.md](CHANGELOG.md) lists the changes, and each release page records its published artifacts and verification.
 
-The v1.13.0 source tightens actor and review-policy consistency, keeps canceled work distinct on every board, rejects nonfuture schedules before mutation, makes integration packs portable across all six targets, and expands safe MCP bootstrap and workflow coverage. The [workflow consistency review](docs/release/workflow-consistency-review-2026-09-09.md) records the local implementation evidence. Development-branch documentation can describe changes ahead of the latest published tag; hosted verification is recorded only on the corresponding release page.
+See [Install](#install) for the published-tag vs this-source split. v1.14 `tracker setup` remains as an advanced path. Hosted verification is recorded only on the corresponding release page.
 
 `v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 

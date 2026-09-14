@@ -91,14 +91,16 @@ func (s BackupSnapshot) Validate() error {
 }
 
 type RestorePlan struct {
-	RestorePlanID  string            `json:"restore_plan_id" yaml:"restore_plan_id"`
-	BackupID       string            `json:"backup_id" yaml:"backup_id"`
-	GeneratedAt    time.Time         `json:"generated_at" yaml:"generated_at"`
-	GeneratedBy    Actor             `json:"generated_by" yaml:"generated_by"`
-	TargetRootHash string            `json:"target_root_hash,omitempty" yaml:"target_root_hash,omitempty"`
-	Items          []RestorePlanItem `json:"items,omitempty" yaml:"items,omitempty"`
-	Warnings       []string          `json:"warnings,omitempty" yaml:"warnings,omitempty"`
-	SchemaVersion  int               `json:"schema_version" yaml:"schema_version"`
+	RestorePlanID      string            `json:"restore_plan_id" yaml:"restore_plan_id"`
+	BackupID           string            `json:"backup_id" yaml:"backup_id"`
+	GeneratedAt        time.Time         `json:"generated_at" yaml:"generated_at"`
+	GeneratedBy        Actor             `json:"generated_by" yaml:"generated_by"`
+	TargetRootHash     string            `json:"target_root_hash,omitempty" yaml:"target_root_hash,omitempty"`
+	SourceManifestHash string            `json:"source_manifest_hash,omitempty" yaml:"source_manifest_hash,omitempty"`
+	SourceArchiveHash  string            `json:"source_archive_hash,omitempty" yaml:"source_archive_hash,omitempty"`
+	Items              []RestorePlanItem `json:"items,omitempty" yaml:"items,omitempty"`
+	Warnings           []string          `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	SchemaVersion      int               `json:"schema_version" yaml:"schema_version"`
 }
 
 func (p RestorePlan) Validate() error {
@@ -227,6 +229,8 @@ func isCanonicalRestorePlanPath(rel string) bool {
 	case strings.HasPrefix(rel, ".tracker/audit/packets/") && strings.HasSuffix(rel, ".json"):
 		return true
 	case strings.HasPrefix(rel, ".tracker/events/") && strings.HasSuffix(rel, ".jsonl"):
+		return true
+	case rel == ".tracker/managed-mode.json":
 		return true
 	default:
 		return false

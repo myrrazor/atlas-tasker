@@ -4,13 +4,26 @@ Atlas MCP is a local stdio adapter for agents that need structured tools instead
 
 ## Start Read-Only
 
+On the v1.15 candidate, `tracker init` already registered detected clients with
+`tracker mcp serve --global --tool-profile workflow`. Restart the client, then inspect:
+
+```bash
+tracker mcp serve --global --tool-profile workflow
+tracker mcp tools --json --global --tool-profile read
+tracker mcp schema --json --global --tool-profile read
+```
+
+Pinned per-workspace serve remains:
+
 ```bash
 tracker mcp serve --tool-profile read
 tracker mcp tools --json --tool-profile read
 tracker mcp schema --json --tool-profile read
 ```
 
-The read profile includes 41 core read and plan/dry-run tools. It does not expose workflow writes or high-impact tools.
+The read profile is inspection, queues, plans, context, status, backup health, and
+dry runs. It does not expose workflow writes or high-impact tools. Run
+`tracker mcp tools --json` for the live count; do not copy a stale number.
 
 Stdio speaks newline-delimited JSON-RPC and also accepts LSP-style `Content-Length` frames.
 
@@ -33,8 +46,14 @@ initialized, startup opens it without rerunning initialization.
 Use the 73-tool workflow profile when the human expects the agent to mutate Atlas state. This is the real agent loop profile — project create; ticket create/edit, assign, link, priority and label changes, claim, heartbeat, release, move, comment, review, approve, reject, and complete; agent/team setup; schedule writes; checkpoints, evidence, handoffs, and wake-up acknowledgement:
 
 ```bash
-tracker mcp serve --tool-profile workflow --max-items 30 --max-result-bytes 65536
+tracker mcp serve --global --tool-profile workflow --max-items 30 --max-result-bytes 65536
+# or pin one repo:
+tracker mcp serve --workspace /path/to/workspace --tool-profile workflow --max-items 30 --max-result-bytes 65536
 ```
+
+Cross-workspace writes on `--global` require `workspace_id`. Restore apply and backup
+target changes are high-impact and need `tracker mcp approve-operation` plus the
+plan ID/digest from `atlas.restore.plan`.
 
 Tracked workflow writes require actor, non-empty reason, permissions, event metadata, and the Atlas
 write lock. `atlas.project.create` is the container exception: it accepts only `key` and `name`, uses

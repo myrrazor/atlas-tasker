@@ -28,6 +28,8 @@ Use these docs:
 - [MCP Claude Code setup](../mcp-claude-code.md)
 - [Coding-agent integrations](../guides/agent-integrations.md)
 
-Project integration installation and MCP registration are separate. The integration installer writes
-instructions and skills inside the workspace; an MCP client must be configured explicitly to launch
-`tracker mcp serve`.
+On the v1.15 candidate, `tracker init` writes Atlas-managed MCP entries for detected
+clients (`tracker mcp serve --global --tool-profile workflow`) as well as the worker skill. Restart the client.
+`tracker integrations install` still writes skills only. Pinned
+Pinned `tracker mcp serve --workspace` is still supported and still defaults to
+`--tool-profile read`. Global resources are documented in [MCP overview](../mcp.md).

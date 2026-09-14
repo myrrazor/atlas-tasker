@@ -76,6 +76,18 @@ func TestV17BackupAndGoalCLI(t *testing.T) {
 	if !strings.Contains(planRaw, `"kind": "backup_restore_plan"`) {
 		t.Fatalf("restore plan should be concrete json:\n%s", planRaw)
 	}
+	autoRaw := must("backup", "auto", "status", "--json")
+	if !strings.Contains(autoRaw, `"kind": "backup_auto_status"`) {
+		t.Fatalf("backup auto status:\n%s", autoRaw)
+	}
+	tickRaw := must("backup", "run", "--now", "--json")
+	if !strings.Contains(tickRaw, `"kind": "backup_auto_result"`) {
+		t.Fatalf("backup run --now:\n%s", tickRaw)
+	}
+	doctorRaw := must("doctor", "--json")
+	if !strings.Contains(doctorRaw, `"backup_auto"`) {
+		t.Fatalf("doctor should include backup_auto:\n%s", doctorRaw)
+	}
 	drillRaw := must("backup", "drill", "--json")
 	if !strings.Contains(drillRaw, `"side_effect_free": true`) {
 		t.Fatalf("recovery drill should be side-effect free:\n%s", drillRaw)

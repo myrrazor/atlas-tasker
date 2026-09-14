@@ -1,0 +1,34 @@
+globalThis.BOARD_PAYLOAD = {
+  format_version: "v1",
+  kind: "atlas.board",
+  payload: {
+    board: {
+      title: "Board APP",
+      project: "APP",
+      board_url: "http://127.0.0.1:7432/w/ws-atlas-demo/projects/APP",
+      total_cards: 1,
+      shown_cards: 1,
+      truncated: false,
+      columns: [
+        {
+          status: "ready",
+          label: "Ready",
+          total: 1,
+          shown: 1,
+          truncated: false,
+          cards: [{ id: "APP-1", title: "Ship the board", status: "ready", priority: "high" }]
+        }
+      ],
+      attention: ["1 ready"],
+      next_actions: ["ready work APP-1"],
+      backup: {
+        configured: true,
+        automatic_enabled: false,
+        unbacked_event_count: 2,
+        notes: ["managed-mode.json is not present; recommended defaults apply until setup writes the file"]
+      }
+    },
+    board_url: "http://127.0.0.1:7432/w/ws-atlas-demo/projects/APP",
+    markdown: "# Board APP\n\n1 ticket.\nBoard `http://127.0.0.1:7432/w/ws-atlas-demo/projects/APP`\n"
+  }
+};

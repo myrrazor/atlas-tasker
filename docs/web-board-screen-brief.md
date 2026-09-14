@@ -32,8 +32,8 @@ The card itself stays neutral. Status belongs to the column, ownership color is 
 
 ## Responsive coverage
 
-- 1280px: six compact columns fit beside the drawer when content allows.
-- 768px: the board remains horizontally navigable and the drawer stacks below.
+- 1280px: six compact columns use the available width; selecting a ticket opens an overlay drawer.
+- 768px: the board remains horizontally navigable and the drawer overlays the board.
 - 390px: one selected workflow column is shown; column navigation and New Ticket remain visible.
 
 ## Acceptance

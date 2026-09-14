@@ -6,7 +6,10 @@ Start here if you are new to Atlas Tasker. This page is the public docs route ma
 
 - [Installation](installation.md): source builds, release installs, and verification.
 - [Updating](guides/updating.md): check, preview, and safely replace the current binary.
-- [Getting started](getting-started.md): the shortest path from empty repo to first ticket.
+- [Getting started](getting-started.md): `tracker init` then `tracker`.
+- [Home and workspaces](guides/home-and-workspaces.md): global Home, registry, repair.
+- [Setup and backup](guides/setup-and-backup.md): local checkpoints vs named remotes; advanced `tracker setup`.
+- [Uninstall](guides/uninstall.md): software-only removal that keeps boards and backups.
 - [Coding-agent integrations](guides/agent-integrations.md): the six project skill targets and their generated files.
 - [Quickstart](quickstart.md): one copyable terminal flow.
 - [First agent workflow](first-agent-workflow.md): register an agent, dispatch work, attach evidence, and hand off for review.
@@ -42,7 +45,8 @@ Start here if you are new to Atlas Tasker. This page is the public docs route ma
 - [Generic agents](guides/generic-agent.md)
 - [Coding-agent integrations](guides/agent-integrations.md)
 - [MCP for agents](guides/mcp-for-agents.md)
-- [MCP](mcp.md): serve modes, tool profiles, and approvals in full
+- [MCP](mcp.md): global and pinned serve, tool profiles, resources, and approvals
+- [v1.15 migration](migration-v1.15.md): compatibility with v1.14 and published tags
 - [v1.9 agent workflow](v1.9-agent-workflow.md)
 - [Local web board](web-board.md)
 - [Web board security](web-board-security.md)
@@ -73,7 +77,7 @@ Start here if you are new to Atlas Tasker. This page is the public docs route ma
 
 ## Release Status
 
-The v1.13.0 source tightens actor and review-policy consistency, keeps canceled work distinct on every board, rejects nonfuture schedules before mutation, makes all six integration targets portable, and expands safe MCP bootstrap and workflow coverage. Local proof and hosted release proof stay separate gates for every release. The [workflow consistency review](release/workflow-consistency-review-2026-09-09.md) records the local implementation evidence, while release pages record hosted verification. Read [public release gates](release/public-release-gates.md) before treating a development build as release-ready.
+The latest *published* stable release remains what the installer and `go install ...@latest` give you. This source also contains the v1.15 implementation candidate: `tracker init` + Home, automatic agent MCP pickup, modern default boards, local checkpoints versus verified remotes, global MCP, repair/migration, and software-only uninstall. That candidate is not a published tag. v1.14 `tracker setup` remains documented as an advanced path. See [CHANGELOG.md](../CHANGELOG.md), [v1.15 migration](migration-v1.15.md), and [v1.14 RC evidence](release/v1.14-rc-evidence.md). Local proof and hosted release proof stay separate gates. Read [public release gates](release/public-release-gates.md) before treating a development build as release-ready.
 
 ## Security Boundary
 

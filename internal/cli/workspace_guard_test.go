@@ -45,11 +45,17 @@ func TestDoctorOutsideWorkspaceFailsInsteadOfReportingOK(t *testing.T) {
 	withTempWorkspace(t)
 
 	out, err := runCLI(t, "doctor")
-	if err == nil {
-		t.Fatalf("expected doctor to refuse an uninitialized directory, got output:\n%s", out)
+	if err != nil {
+		t.Fatalf("machine doctor should run outside a workspace: %v\n%s", err, out)
 	}
-	if !strings.Contains(err.Error(), "not an Atlas workspace") {
-		t.Fatalf("error should say the directory is not a workspace, got: %v", err)
+	if strings.Contains(out, "doctor ok: ") && strings.Contains(out, "events scanned") {
+		t.Fatalf("must not report workspace doctor ok outside a workspace:\n%s", out)
+	}
+	if !strings.Contains(out, "machine") && !strings.Contains(out, "registered") && !strings.Contains(out, "doctor ok") {
+		t.Fatalf("expected a machine doctor summary, got:\n%s", out)
+	}
+	if _, statErr := os.Stat(".tracker"); !os.IsNotExist(statErr) {
+		t.Fatalf("machine doctor must not scaffold .tracker (stat err: %v)", statErr)
 	}
 }
 

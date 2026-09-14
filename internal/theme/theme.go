@@ -25,6 +25,11 @@ var (
 	Danger  = lipgloss.AdaptiveColor{Light: "#CF222E", Dark: "#F85149"}
 	Info    = lipgloss.AdaptiveColor{Light: "#0969DA", Dark: "#58A6FF"}
 	Orange  = lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FF8A3D"}
+	Review  = lipgloss.AdaptiveColor{Light: "#8250DF", Dark: "#A371F7"}
+
+	// copy
+	Text   = lipgloss.AdaptiveColor{Light: "#1F2328", Dark: "#E6EDF3"}
+	Subtle = lipgloss.AdaptiveColor{Light: "#656D76", Dark: "#8B949E"}
 )
 
 // StatusColor buckets workflow-ish state strings into semantic colors. Keep
@@ -39,6 +44,26 @@ func StatusColor(value string) lipgloss.TerminalColor {
 	case "in_progress", "in_review", "open", "running", "verifying", "publishing", "planned", "valid_untrusted", "valid_unknown_key":
 		return Warning
 	case "done", "merged", "synced":
+		return Info
+	default:
+		return Muted
+	}
+}
+
+// LaneColor is the left-edge accent for a workflow column. Badges still use
+// StatusColor; this one is allowed to distinguish in_progress from in_review
+// because the lane heading already names the state.
+func LaneColor(value string) lipgloss.TerminalColor {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "ready":
+		return Success
+	case "in_progress":
+		return Primary
+	case "in_review":
+		return Review
+	case "blocked":
+		return Danger
+	case "done":
 		return Info
 	default:
 		return Muted

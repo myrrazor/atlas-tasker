@@ -26,7 +26,7 @@ func TestBoardCardsRenderMinimalFacePreviewDataAndMappedAgentChip(t *testing.T) 
 		t.Fatalf("seed comment: %v", err)
 	}
 
-	res := h.doAuthed(t, http.MethodGet, "/board", "", nil)
+	res := h.doAuthed(t, http.MethodGet, "/board?ticket="+h.ticketID, "", nil)
 	card := firstCardMarkup(t, res.body)
 	for _, want := range []string{
 		`data-status="blocked"`,

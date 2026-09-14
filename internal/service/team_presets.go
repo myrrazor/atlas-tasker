@@ -150,22 +150,30 @@ func (s *ActionService) applyTeamPreset(ctx context.Context, preset TeamPreset, 
 		return result, err
 	}
 	if cfg.Workflow.CompletionMode != preset.Completion {
-		result.Created = append(result.Created, "completion_mode "+string(preset.Completion))
-		if !dryRun {
-			cfg.Workflow.CompletionMode = preset.Completion
-			if err := config.Save(s.Root, cfg); err != nil {
-				return result, err
+		if isProtectedCompletionMode(cfg.Workflow.CompletionMode) {
+			result.Skipped = append(result.Skipped, "completion_mode "+string(cfg.Workflow.CompletionMode)+" (already set; not overwritten)")
+		} else {
+			result.Created = append(result.Created, "completion_mode "+string(preset.Completion))
+			if !dryRun {
+				cfg.Workflow.CompletionMode = preset.Completion
+				if err := config.Save(s.Root, cfg); err != nil {
+					return result, err
+				}
 			}
 		}
 	} else {
 		result.Skipped = append(result.Skipped, "completion_mode "+string(preset.Completion)+" (already set)")
 	}
 	if cfg.Workflow.RequiredReviewer != preset.Reviewer {
-		result.Created = append(result.Created, "required_reviewer "+string(preset.Reviewer))
-		if !dryRun {
-			cfg.Workflow.RequiredReviewer = preset.Reviewer
-			if err := config.Save(s.Root, cfg); err != nil {
-				return result, err
+		if cfg.Workflow.RequiredReviewer != "" {
+			result.Skipped = append(result.Skipped, "required_reviewer "+string(cfg.Workflow.RequiredReviewer)+" (already set; not overwritten)")
+		} else {
+			result.Created = append(result.Created, "required_reviewer "+string(preset.Reviewer))
+			if !dryRun {
+				cfg.Workflow.RequiredReviewer = preset.Reviewer
+				if err := config.Save(s.Root, cfg); err != nil {
+					return result, err
+				}
 			}
 		}
 	}
@@ -190,6 +198,15 @@ func (s *ActionService) applyTeamPreset(ctx context.Context, preset TeamPreset, 
 		}
 	}
 	return result, nil
+}
+
+func isProtectedCompletionMode(mode contracts.CompletionMode) bool {
+	switch mode {
+	case contracts.CompletionModeReviewGate, contracts.CompletionModeOwnerGate, contracts.CompletionModeDualGate:
+		return true
+	default:
+		return false
+	}
 }
 
 func resolvePresetProvider(flag string, fallback contracts.AgentProvider) contracts.AgentProvider {

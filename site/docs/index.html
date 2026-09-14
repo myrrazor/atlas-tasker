@@ -3,14 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Atlas Tasker Docs</title>
-  <meta name="description" content="Documentation for Atlas Tasker, the local-first ticketing system for humans and AI agents: setup, workflow, views, the web board, MCP, and JSON." />
+  <title>Atlas Tasker Docs — Home, MCP, backup</title>
+  <meta name="description" content="Current Atlas Tasker docs: few-command init, global Home, MCP discovery, local checkpoints versus verified remotes, repair, and software-only uninstall." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/docs/" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="../styles.css" />
@@ -18,16 +20,16 @@
 
   <meta property="og:type" content="article" />
   <meta property="og:url" content="https://atlastasker.com/docs/" />
-  <meta property="og:title" content="Atlas Tasker Docs" />
-  <meta property="og:description" content="Documentation for Atlas Tasker, the local-first ticketing system for humans and AI agents: setup, workflow, views, the web board, MCP, and JSON." />
+  <meta property="og:title" content="Atlas Tasker Docs — Home, MCP, backup" />
+  <meta property="og:description" content="Current Atlas Tasker docs: few-command init, global Home, MCP discovery, local checkpoints versus verified remotes, repair, and software-only uninstall." />
   <meta property="og:image" content="https://atlastasker.com/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Atlas Tasker Docs" />
-  <meta name="twitter:description" content="Documentation for Atlas Tasker, the local-first ticketing system for humans and AI agents: setup, workflow, views, the web board, MCP, and JSON." />
+  <meta name="twitter:title" content="Atlas Tasker Docs — Home, MCP, backup" />
+  <meta name="twitter:description" content="Current Atlas Tasker docs: few-command init, global Home, MCP discovery, local checkpoints versus verified remotes, repair, and software-only uninstall." />
   <meta name="twitter:image" content="https://atlastasker.com/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
@@ -35,8 +37,8 @@
   {
     "@context": "https://schema.org",
     "@type": "TechArticle",
-    "name": "Atlas Tasker Docs",
-    "description": "Documentation for Atlas Tasker, the local-first ticketing system for humans and AI agents: setup, workflow, views, the web board, MCP, and JSON.",
+    "name": "Atlas Tasker Docs — Home, MCP, backup",
+    "description": "Current Atlas Tasker docs: few-command init, global Home, MCP discovery, local checkpoints versus verified remotes, repair, and software-only uninstall.",
     "url": "https://atlastasker.com/docs/",
     "isPartOf": {
       "@type": "WebSite",
@@ -72,12 +74,14 @@
           <p class="docs-group-label">Start</p>
           <a href="./" aria-current="page">Overview</a>
           <a href="getting-started.html">Getting started</a>
+          <a href="home.html">Home and workspaces</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Core</p>
           <a href="tickets-and-workflow.html">Tickets and workflow</a>
           <a href="views-and-search.html">Views and search</a>
           <a href="web-board.html">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Agents</p>
@@ -89,6 +93,7 @@
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Help</p>
+          <a href="uninstall.html">Uninstall</a>
           <a href="faq.html">FAQ</a>
         </div>
         <div class="docs-side-foot">
@@ -103,18 +108,18 @@
       <article>
         <p class="docs-kicker">Documentation</p>
         <h1>Atlas Tasker Docs</h1>
-        <p class="docs-lead">Everything you need to run Atlas Tasker: a lightweight, local-first ticketing system that lives in your repository and works equally well for you, your team, and your AI agents. Tickets are plain Markdown, every change is an audited event, and one <code>tracker</code> binary serves the CLI, the TUI, the local web board, and an MCP server.</p>
+        <p class="docs-lead">Everything you need to run Atlas Tasker. Tickets are plain Markdown, every change is an audited event, and one <code>tracker</code> binary serves the CLI, the TUI, Atlas Home, and MCP. Ordinary onboarding is <code>tracker init</code> then <code>tracker</code>. Remote backup is optional and never guesses your Git origin.</p>
 
         <h2>Start here</h2>
         <p>New to Atlas? Two pages get you from nothing to a working board with an agent on it.</p>
         <div class="docs-cards">
           <a href="getting-started.html">
             <span class="card-title">Getting started</span>
-            <p class="card-blurb">Install the binary, initialize a workspace, create a project and a ticket, and open the board.</p>
+            <p class="card-blurb">Install the binary, run tracker init, then tracker to open Home.</p>
           </a>
-          <a href="agents-and-dispatch.html">
-            <span class="card-title">Agents and dispatch</span>
-            <p class="card-blurb">Register an agent, apply a team preset, and hand over tickets with evidence and review gates.</p>
+          <a href="home.html">
+            <span class="card-title">Home and workspaces</span>
+            <p class="card-blurb">Global Home, registry health, repair, and project boards.</p>
           </a>
         </div>
 
@@ -139,6 +144,14 @@
           <a href="web-board.html">
             <span class="card-title">The web board</span>
             <p class="card-blurb">The local kanban: drag and drop, the ticket drawer, session tokens, and read-only mode.</p>
+          </a>
+          <a href="backup.html">
+            <span class="card-title">Checkpoints and backup</span>
+            <p class="card-blurb">Local checkpoints versus a named, verified remote. Restore is plan-then-apply.</p>
+          </a>
+          <a href="uninstall.html">
+            <span class="card-title">Uninstall</span>
+            <p class="card-blurb">Remove Atlas software. Boards, history, and backups stay.</p>
           </a>
           <a href="mcp-setup.html">
             <span class="card-title">MCP setup</span>
@@ -220,6 +233,11 @@
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -227,6 +245,9 @@
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

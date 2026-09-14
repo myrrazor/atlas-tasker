@@ -702,7 +702,7 @@ The initial three-language scope is superseded by DEC-058. Request precedence an
 
 ## DEC-048
 
-**Status:** DEC-062 and DEC-066 clarify actor resolution and reason enforcement in the operating guidance. The operator-first documentation structure remains current.
+**Status:** DEC-062 and DEC-066 clarify actor resolution and reason enforcement in the operating guidance. DEC-099 supersedes the process-only authentication description for Atlas Home with persisted, single-use claims. The operator-first documentation structure remains current.
 
 1. **Decision ID:** DEC-048
 2. **Date:** 2026-07-30
@@ -981,3 +981,499 @@ version, compatibility decisions, and hosted proof requirements remain unchanged
 7. **Confidence:** high
 8. **Revisit Trigger:** A required check fails, the source or required approvals change, or hosted proof exposes a release defect.
 9. **Affected PRs/Files:** docs/release/v1.13.0-release-evidence.md, docs/release/launch-checklist.md, CHANGELOG.md, site/changelog.html, site/cli.html, site/docs/getting-started.html, site/docs/json-and-exit-codes.html, site/_tools/site-contract.test.mjs.
+
+## DEC-070
+
+Revisited 2026-09-10 by DEC-079 after independent review round 1 (findings S-A..S-D, T-A..T-C):
+the ten states stand; the edge set was tightened (no edge back to `planned`, `failed` only from
+`rolling_back`), the integration-to-operation mapping was made total and tested, and rollback
+idempotency is now defined per action kind instead of assumed. Items 5 and 8 below read with those
+amendments.
+
+1. **Decision ID:** DEC-070
+2. **Date:** 2026-09-10
+3. **Question:** How does v1.14 add seamless agent setup without turning `tracker init` or the integration installer into an unreviewable multi-write operation?
+4. **Options Considered:** Extend `tracker init --integrations` with MCP registration and backup; write provider configuration directly from each installer with best-effort cleanup; add a separate `tracker setup` orchestrator that plans read-only, applies one journaled transaction per provider, and treats backup as a separately consented group.
+5. **Chosen Option:** The orchestrator. `tracker init` stays low-level. Every run produces complete validated plans before any write; each provider is its own transaction with snapshots and rollback; backup is a separate transaction group; repair and removal reuse the same adapter plans; the operation state machine is the closed set `planned, applying, applied, verifying, connected, pending_approval, failed, rolling_back, rolled_back, repair_required` with `verifying` mandatory before any success state and crash recovery defined per in-flight state (`internal/setup/operation.go`). Provider trust dialogs are reported as approval steps and never bypassed; no global provider scope is written without an explicit scope choice; Atlas installs no agent software.
+6. **Why We Chose It:** Client configuration files hold other servers' credentials and the user's trust decisions, so partial writes and heuristic cleanup are unacceptable. A plan-first journaled model makes AT114-103's crash-injection matrix testable and lets partial success be reported per provider instead of as one failure. It extends DEC-047/DEC-048/DEC-066 (managed blocks, no machine-wide writes) rather than replacing them.
+7. **Confidence:** high
+8. **Revisit Trigger:** A provider offers a transactional registration API, or the crash-injection tests in AT114-103 show a state the machine cannot represent.
+9. **Affected PRs/Files:** docs/v1.14-setup-transaction-model.md, internal/setup/operation.go, internal/setup/operation_test.go, docs/v1.14-implementation-plan.md (AT114-002, AT114-101..106).
+
+## DEC-071
+
+1. **Decision ID:** DEC-071
+2. **Date:** 2026-09-10
+3. **Question:** What single contract do the six provider adapters implement, and how are AT114-208's generic states reconciled with the nine states of locked decision 5?
+4. **Options Considered:** Per-provider ad hoc installers extended with MCP writes; the plan's six-method interface as written; the six methods plus `Target()`/`Capabilities()` with a registry that checks each adapter against a frozen capability matrix, and the nine-state vocabulary plus a separate connection kind.
+5. **Chosen Option:** `internal/integrations/adapter.AgentIntegrationAdapter` with eight methods; `Registry.Register` rejects adapters whose capabilities disagree with `Matrix()`. `State` is exactly the nine plan states; AT114-208's `connected_by_standard_config` / `connected_by_custom_adapter` become `Verification.ConnectionKind = standard_config | custom_adapter` on a `connected` state, and a generic verified result must carry one of those two kinds. Only `Verify` may produce a verified state; `Apply` may not. Plans are deterministic, fingerprinted, validated for containment, reversibility, approval, unsupported-version, and removal-ownership rules before anything is written. Client binaries run only through the structured `Command` model, which refuses shell interpreters, credential URLs, secret-looking environment names, and relative executables.
+6. **Why We Chose It:** One interface with machine-checked capabilities keeps the six adapters honest about what they can verify (generic caps at `portable_ready`; OpenClaw at `connected_restart_required`). Keeping nine states honors the locked decision while preserving the plan's generic distinction as a field, which avoids two state vocabularies in status output. Structured commands satisfy the plan's "no adapter uses shell interpolation" acceptance by construction rather than by review.
+7. **Confidence:** high
+8. **Revisit Trigger:** Design review prefers eleven states, a client requires a non-stdio transport for local use, or a Sprint 114.2 real-client run contradicts a matrix row (then the row and its sources change, not the contract).
+9. **Affected PRs/Files:** internal/integrations/adapter/*.go, docs/v1.14-provider-adapter-contract.md, docs/v1.14-implementation-plan.md (AT114-003, AT114-201, AT114-208, Verification notes).
+
+## DEC-072
+
+**Partially superseded by DEC-091:** default registration used by the new v1.15 init flow. Original safety and historical v1.14 decisions remain as recorded below.
+
+1. **Decision ID:** DEC-072
+2. **Date:** 2026-09-10
+3. **Question:** How is one Atlas MCP registration bound to exactly one workspace across clients whose configuration may travel with the repository?
+4. **Options Considered:** Absolute `--workspace` everywhere; client-expanded variables everywhere; per-scope bindings (`absolute_path` for machine-local scopes, `client_variable` or `verified_cwd` for repository-carried scopes) with `--expected-workspace-id` only on the cwd form as the plan minimally requires; the same per-scope bindings with `--expected-workspace-id` on every form.
+5. **Chosen Option:** Per-scope bindings with `--expected-workspace-id <UUID>` always present. Server name `atlas-` plus the first twelve hex characters of SHA-256 of the workspace UUID (`^atlas-[0-9a-f]{12}$`), never a project name or path. Fixed argv `mcp serve <binding> --expected-workspace-id <id> --tool-profile workflow --max-items 30 --max-result-bytes 65536`, derived by one function and re-derived on validation; `--dangerously-allow-high-impact-tools`, `--init-if-missing`, `--read-only`, and non-workflow profiles are rejected. Repository-carried scopes refuse absolute workspace paths and home-relative executables; portable descriptors name the bare `tracker` executable and use `verified_cwd`. JSON forms always render `"type": "stdio"`.
+6. **Why We Chose It:** A still-valid absolute path can point at a moved, copied, or replaced workspace; pinning the expected ID makes every registration fail closed (AT114-102's rules) at negligible cost. The hashed name is safe as a TOML key, JSON key, and CLI argument and leaks neither path nor raw identity. Single-function derivation prevents hand-assembled argv drifting from the specification. `--workspace-from-cwd`/`--expected-workspace-id` do not exist in v1.13.0, which makes AT114-102 a hard dependency of Sprint 114.2 and is recorded as such.
+7. **Confidence:** high
+8. **Revisit Trigger:** AT114-102 cannot implement `--workspace-from-cwd` safely for a provider's project scope, or a client forbids the `type` field.
+9. **Affected PRs/Files:** internal/integrations/adapter/registration.go, internal/integrations/adapter/registration_test.go, docs/v1.14-provider-adapter-contract.md §4, docs/v1.14-implementation-plan.md (AT114-102, AT114-201).
+
+## DEC-073
+
+Revisited 2026-09-10 by DEC-080 after independent review round 1 (findings M-A..M-C): `disabled`
+additionally forbids `mcp_preferred`, the per-mode constructor returns an error for an invalid mode,
+and `delivery` in the shared document takes effect only with machine-local enablement
+(`EffectiveMode`). The seven-field document and its vocabulary are unchanged.
+
+1. **Decision ID:** DEC-073
+2. **Date:** 2026-09-10
+3. **Question:** How is managed project mode expressed so that agents track material work without any path to waive existing workflow authority?
+4. **Options Considered:** Free-form instructions in the skill only; a policy document with fields for reviewer/approval overrides; a closed seven-field `atlas_managed_mode_v1` document whose parser rejects unknown fields and whose only completion value defers to the workspace completion mode.
+5. **Chosen Option:** `contracts.ManagedModePolicy` with `mode` (`guidance | managed | delivery | disabled`), `capture_policy` (`never | ask | material_work`), `progress_policy` (`none | milestones | every_checkpoint`), `status_policy` (`atlas_required` only), `completion_policy` (`follow_workspace` only), `mcp_preferred`; stored workspace-shared at `.tracker/managed-mode.json`; `DisallowUnknownFields`; `disabled` forces `never`/`none`; `guidance` forbids `mcp_preferred`; `delivery` is never a setup default. `WorkIntent` classification makes every non-material intent and explicit tracking exclusion yield `no_ticket` regardless of policy. The plan's alternate spellings (`query_atlas`, `follow_workspace_policy`) are rejected in favor of one vocabulary (`atlas_required`, `follow_workspace`); the plan text stays as approved.
+6. **Why We Chose It:** The AT114-004 acceptance criteria (existing policies authoritative, no waivers, explicit actor, no silent self-approval) are guaranteed structurally when the document cannot carry a waiver field and completion always returns the workspace mode. One spelling per field keeps stored documents and status output unambiguous.
+7. **Confidence:** high
+8. **Revisit Trigger:** A second status or completion strategy is needed (then `atlas_managed_mode_v2`), or the review prefers the plan's `query_atlas` spelling.
+9. **Affected PRs/Files:** internal/contracts/managed_mode.go, internal/contracts/managed_mode_test.go, docs/v1.14-managed-mode-contract.md, docs/v1.14-implementation-plan.md (AT114-004, AT114-301).
+
+## DEC-074
+
+Revisited 2026-09-10 after independent review round 1 (findings B-A..B-F, G-A; the model stands,
+these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2.2, §3, §3.2, §3.3,
+§4.1, §4.4, §6):
+
+- **B-A (allowlist/candidate parity).** AT114-401's shared builder adds `collaborators`,
+  `memberships`, `mentions`, and archive records with their Markdown payloads to the candidate list
+  (all already restore-safe) and adds a parity test between `isCanonicalRestorePlanPath` and the
+  collector with named exclusion lists. The exported-but-not-restore-safe direction (item 5 of the
+  chosen option) stays inherited until the AT114-507 drill shows what setup re-creates.
+- **G-A (restore governance).** AT114-506 evaluates `requireGovernance{backup_restore, workspace}`
+  in `ApplyRestorePlan` before `commitMutation`; a denying policy is exit 5 with zero writes; `--yes`
+  is a guard, not authorization. No protected action is added for checkpoint creation.
+- **B-B.** There is no read lock; the checkpoint copies under the exclusive write lock with a
+  bounded hold and yields (`busy` → retry) to writers; hashing, commit, push, and verify run outside
+  the lock.
+- **B-C.** Threat 2 is exclusion by path with no content redaction; redaction rules are canonical
+  data and are included.
+- **B-D.** `manifest_sha256` = SHA-256 of the canonical encoding with the field blanked; pinned by
+  golden and round-trip tests. Product integrity hashing is outside the owner's SHA-ceremony waiver.
+- **B-E.** The user's global/system Git configuration is not masked (credential helpers,
+  `insteadOf`, `core.sshCommand` live there); only `commit.gpgsign`, `tag.gpgsign`, `core.hooksPath`,
+  `protocol.*.allow`, and `credential.interactive` are pinned per invocation. `--force-with-lease` is
+  rejected because locked decision 6 says backup never force-pushes; the `ls-remote`/push window is
+  benign because the ref is per replica and single-writer, and a server-side non-fast-forward
+  rejection reports `diverged`.
+- **B-F.** Two threats added: SSH host-key trust on first connection (`host_key_unverified`, Atlas
+  never writes `known_hosts` or relaxes host-key checking) and backup target equal to a workspace
+  remote (warning at configuration and in `backup status`; vanished `refs/atlas/*` detected and
+  re-published). Threat 18 records the restore-governance check.
+- Confidence for the allowlist question rises to high for the never-collected direction (decided)
+  and stays medium for the exported-only direction (drill-dependent).
+
+1. **Decision ID:** DEC-074
+2. **Date:** 2026-09-10
+3. **Question:** How does automatic off-device backup work without touching the user's Git repository, pulling, merging, force-pushing, or leaking non-Atlas data?
+4. **Options Considered:** Commit Atlas files on the user's branch and push to origin; a second backup format; an Atlas-owned isolated bare repository whose checkpoints contain exactly the existing restore-safe collector output plus a manifest, pushed fast-forward to a replica-specific ref and verified remotely.
+5. **Chosen Option:** The isolated repository. Checkpoint tree = `backupRestoreSafeFiles(collectExportFiles(root))` plus `.atlas-checkpoint.json` (`atlas_git_checkpoint_v1` with per-stream watermarks keyed `workspace` and project key, canonical tree hash, manifest hash, per-file hashes). Git runs only with `GIT_DIR` set to the Atlas bare repository, a temp index, plumbing commands, empty hooks path, and a temp snapshot directory as cwd; ref `refs/atlas/backups/<workspace-id>/<replica-id>`; fast-forward only with an expected-tip check; verification by fetching the exact commit and comparing commit, tree, and manifest. Trigger via a machine-local outbox marked from a post-commit hook in `commitMutation` (skipped on replay, never failing the mutation), 30 s quiet / 5 min max / 100 events, explicit `backup tick`/`watch`, consented user-level scheduling. Automatic checkpoints append no canonical events. Restore fetches into temp storage, verifies manifest, workspace ID, allowlisted `100644` blobs and hashes, then goes through the existing restore-plan/apply boundary with explicit confirmation, reindex, and doctor. Targets are explicit, machine-local, credential-free URLs with a typed private-visibility attestation; origin is never offered. The existing allowlist gap (config.toml, agents, views, automations, subscriptions, runbooks, imports exported but not restore-safe) is inherited unchanged and raised for review rather than widened silently.
+6. **Why We Chose It:** Reusing the existing collector, allowlist, restore planner, and apply boundary keeps one backup format and one restore path (locked decisions 7–10). Plumbing-only Git in a separate `GIT_DIR` is the only way to guarantee the user's HEAD, index, and work tree are untouched under crash. Appending backup events would make each checkpoint dirty the tree it just captured. Per-replica refs remove multi-machine contention without merges.
+7. **Confidence:** high for the model; medium for the allowlist question, which review must answer.
+8. **Revisit Trigger:** Review approves widening the restore-safe allowlist; the private-Git provider proves insufficient and an encrypted object-store provider is scheduled; or the outbox hook shows measurable mutation latency in AT114-407.
+9. **Affected PRs/Files:** docs/v1.14-automatic-backup-adr.md, docs/v1.14-implementation-plan.md (AT114-005, AT114-401..407, AT114-501..507), later internal/service/import_export.go, internal/service/backup_goal_actions.go, internal/service/action.go, internal/contracts/backup.go.
+
+## DEC-075
+
+**Partially superseded by DEC-089:** v1.15 delivery path. Original safety and historical v1.14 decisions remain as recorded below.
+
+1. **Decision ID:** DEC-075
+2. **Date:** 2026-09-10
+3. **Question:** From which baseline and under which branch discipline is v1.14 developed and reviewed?
+4. **Options Considered:** Continue on a floating branch head from an earlier session; start from `origin/dev` at the v1.13.0 promotion commit in an isolated worktree with sprint-gated independent review and no pull request before implementation approval.
+5. **Chosen Option:** Base commit `b95fd640c5b6bd956aadf5ac08d4b5b460e33de2` (tree `21d08ea3c2f40840b1730325a515b2d8b533cf64`, equal to `origin/dev`, `origin/main`, `origin/testing`, `v1.13.0`), one isolated worktree on `feat/v1.14-seamless-agent-backup`, unrelated local work audited and left untouched, no changes to `dev`/`testing`/`main`. Each sprint ends with the full gate suite captured to `TEST_STDOUT.log`, evidence summarized in `docs/release/v1.14-baseline-evidence.md`, and an independent design review before the next sprint starts; pull requests target `testing` only after the completed implementation is approved. Procedural release SHA/checksum ceremony is waived by owner override; backup-product integrity hashing is not.
+6. **Why We Chose It:** The plan requires an exact recorded baseline and forbids mixing unrelated work; the owner's directives fix the review and publication order. Recording the waiver here prevents later sprints from re-adding the ceremony as a completion gate.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner changes the release train, base branch, or publication order.
+9. **Affected PRs/Files:** docs/release/v1.14-baseline-evidence.md, docs/v1.14-acceptance.md, docs/v1.14-implementation-plan.md (Plan status section).
+
+## DEC-076
+
+1. **Decision ID:** DEC-076
+2. **Date:** 2026-09-10
+3. **Question:** How does the Claude Code shared `.mcp.json` registration bind to the workspace, and which client placeholders may a repository-carried registration carry?
+4. **Options Considered:** Keep `client_variable` with `${CLAUDE_PROJECT_DIR:-.}` as the earlier contract draft did; bind with `verified_cwd` (`--workspace-from-cwd --expected-workspace-id`) and restrict placeholders to one bare `${name}` that the client documents as interpolated; refuse repository-carried Claude registration altogether.
+5. **Chosen Option:** `verified_cwd` for Claude's `.mcp.json` row; `client_variable` accepts only `^\$\{[A-Za-z][A-Za-z0-9_]*\}$` and only for Cursor's `.cursor/mcp.json`, the one project file whose client documents variable interpolation. Shell-style defaults (`${VAR:-default}`) are refused everywhere. Grok's compatibility import of Cursor/Claude files is recorded as passing placeholders literally, so an imported entry fails closed at `--expected-workspace-id` and AT114-207/209 must report the duplicate.
+6. **Why We Chose It:** The official Claude Code documentation (re-read for review round 1) states that `CLAUDE_PROJECT_DIR` is set in the spawned server's environment and is not expanded by Claude Code inside a project `.mcp.json`; the earlier row would have passed the literal string `.` as `--workspace`, binding the server to whatever directory it started in. `verified_cwd` is exactly the plan's AT114-102 rule for providers without reliable variable expansion, and `--expected-workspace-id` (DEC-072) still fails closed if the start directory is wrong. Refusing defaults removes the failure class rather than special-casing one client.
+7. **Confidence:** high for the binding and the placeholder rule; medium for the working directory Claude Code gives a project-scoped stdio server, which AT114-204's real-client run confirms.
+8. **Revisit Trigger:** Claude Code documents variable interpolation inside `.mcp.json`, or AT114-204 shows the server is not started in the project directory (then AT114-102 must use the server-environment `CLAUDE_PROJECT_DIR` as corroborating evidence and the row changes).
+9. **Affected PRs/Files:** internal/integrations/adapter/registration.go, internal/integrations/adapter/capabilities.go, internal/integrations/adapter/registration_test.go, internal/integrations/adapter/review_round1_test.go, docs/v1.14-provider-adapter-contract.md §4.1, §7.1, §8, docs/release/v1.14-s0-review-round1.md.
+
+## DEC-077
+
+1. **Decision ID:** DEC-077
+2. **Date:** 2026-09-10
+3. **Question:** How far does plan validation confine what an adapter may write and run, given that the journal engine of AT114-103 does not exist yet and Sprint 114.2 adapters will code against the contract?
+4. **Options Considered:** Keep containment at "inside the workspace or a consented root" and rely on adapter review; add fail-closed structural rules to `IntegrationPlan.Validate` for path classes, rollback binding, executable identity, approval promises, and required inputs; move all such checks into the journal engine.
+5. **Chosen Option:** Structural rules in the contract, live-filesystem checks in the engine. Managed-file steps may touch only Atlas-owned roots (instruction file, skill directory, `.tracker/integrations`, the client's command directory) or a consented root and never a client configuration file; config-entry steps carry the plan scope and may touch only the file the target documents for that scope with `atlas_file_edit`, or a user-selected consented destination (the generic `user` scope added for AT114-208). `.git` is never writable anywhere; `.tracker` admits only `integrations/**`. A rollback is bound to its step (same path; removals only by `restore_snapshot`; command steps only by `run_command` with the same executable and a `remove`/`reload` purpose). Every plan, rollback, detection, and verification command runs the detected client executable (or, for `probe`, the registered server executable); the shell/interpreter denylist is widened (`env`, `busybox`, Python, Perl, Ruby, Node, Deno, Bun) as defence in depth only. Approval steps and pending states imply each other exactly. `PlanInput.Home` is required and a repository-carried non-portable plan must carry `Home`; when home is unknown the conventional per-user roots are refused heuristically. Writes use `0644`/`0600`; `remove_local_state` exists; `FileIdentity` records `Owner{UID, GID}`. `Registry.Register` compares the whole capability struct. A standalone `Command.Validate` does **not** reject arbitrary binaries such as `/usr/bin/curl`: without a reference executable that check would be a denylist guessing game, so the tie lives at every level where a reference exists.
+6. **Why We Chose It:** Review round 1 reproduced eight ways a syntactically valid plan could reach client configuration, Git metadata, tracker state, or a foreign binary while still validating. Encoding the rules in the contract makes Sprint 114.2 adapters fail at unit-test time instead of at review time, and keeps the engine's remaining checks (symlinks, ownership, current identity) to what needs the live filesystem. Confining managed files to Atlas-owned roots is stronger than the reviewer's minimum (excluding client config files) and follows DEC-047/DEC-066's managed-block ownership model.
+7. **Confidence:** high
+8. **Revisit Trigger:** A Sprint 114.2 adapter needs a legitimate write outside the enumerated roots (then the matrix gains a documented root, not an exemption), or AT114-103's engine finds a containment case the contract cannot express.
+9. **Affected PRs/Files:** internal/integrations/adapter/plan.go, internal/integrations/adapter/capabilities.go, internal/integrations/adapter/command.go, internal/integrations/adapter/contract.go, internal/integrations/adapter/registration.go, internal/integrations/adapter/doc.go, internal/integrations/adapter/*_test.go, docs/v1.14-provider-adapter-contract.md §2, §5, §6, §7, docs/release/v1.14-s0-review-round1.md.
+
+## DEC-078
+
+1. **Decision ID:** DEC-078
+2. **Date:** 2026-09-10
+3. **Question:** Does a target's `MaxPlannedState` bound what `Verify` may report, and what evidence must a verified result carry?
+4. **Options Considered:** Clamp `Verification.State` to the target's cap (the reviewer's suggestion); leave verification unbounded and unstructured; keep verification independent of the cap but require its connection kind to match the target class and to be backed by a passed check of one of that kind's own methods, with every probe tied to the detected client or registered server executable.
+5. **Chosen Option:** The third. `MaxPlannedState` bounds what a plan may *promise* before anything runs (strict ranks: `connected` 5, `connected_restart_required` 4, `configured_unverified`/`portable_ready` 2, others 0). `Verification` reports what a post-apply probe *proved*: `client_native` must be backed by `client_cli_list`/`get`/`doctor`, `self_probe` by `self_probe`, `standard_config`/`custom_adapter` by `conformance_host`; generic targets use only the last two kinds and named clients never do; probes run `ClientExecutable` or, for `probe`, `ServerExecutable`, and are read-only.
+6. **Why We Chose It:** A promised-state cap and post-probe verification answer different questions. OpenClaw's cap is `connected_restart_required` because the saved definition and the live gateway differ at plan time, yet `openclaw mcp doctor --probe` opens a live session and can prove `connected` afterwards; clamping would force the contract to report less than it observed. Requiring kind-specific evidence closes the actual gap the reviewer found (a `connected` result whose only passed check was a manual one or a method that cannot prove that kind).
+7. **Confidence:** high
+8. **Revisit Trigger:** A client's native listing proves less than a live session (then that method leaves the `client_native` evidence set), or design review still prefers the clamp after reading the OpenClaw case.
+9. **Affected PRs/Files:** internal/integrations/adapter/plan.go (`stateRank`, `connectionKindEvidence`, `Verification.Validate`), internal/integrations/adapter/review_round1_test.go, docs/v1.14-provider-adapter-contract.md §3, docs/release/v1.14-s0-review-round1.md.
+
+## DEC-079
+
+**Partially superseded by DEC-091:** opt-in machine-scope default used by the new v1.15 init flow. Original safety and historical v1.14 decisions remain as recorded below.
+
+1. **Decision ID:** DEC-079
+2. **Date:** 2026-09-10
+3. **Question:** How do the setup operation states preserve "planned means nothing was written" and "failed means a rollback failed", and how is an adapter's integration outcome mapped to an operation state so partial success is reported honestly?
+4. **Options Considered:** Keep DEC-070's edges (`failed -> planned`, `rolled_back -> planned`, `repair_required -> planned`, `applying -> failed`, `verifying -> failed`) and document the caveats; remove those edges and add an eleventh operation state `unverified` for outcomes no probe can verify; remove those edges, keep the ten states, add a total tested `OutcomeFor` mapping, broaden `pending_approval` to "writes kept, not proven connected", rename `Succeeded()` to `KeepsWrites()`, and carry the integration state plus a run-level status in every report.
+5. **Chosen Option:** The third. Exactly seventeen edges remain; no edge leads back to `planned` (a fresh plan is a new operation reading the old journal entry); `failed` is reachable only from `rolling_back` and leads only to `rolling_back`; `rolled_back` and `repair_required` are final. `OutcomeFor` maps `connected`/`connected_restart_required` to `connected`; the two pending states, `configured_unverified`, `portable_ready`, and `unsupported_client_version` to `pending_approval`; `repair_required` to `repair_required`; `failed` to `rolling_back`. A plan with no write steps creates no operation. Run-level status is `connected | pending | unverified` (exit 0, distinct strings) or `partial | failed` (non-zero, codes fixed in AT114-104), with per-provider operation and integration states in `--json`. Rollback idempotency is defined per action kind (`restore_snapshot` compares identities, `delete_created` treats ENOENT as success, `run_command` removals are preceded by the provider's read-only listing probe) and implemented in AT114-103 with a resume-twice table test. Lock order is setup lock then workspace write lock, never reversed; a `busy` workspace lock fails the step and rolls back. Machine-wide scopes (OpenClaw gateway, any `user` scope) are never pre-selected and must be named in noninteractive mode. Rollback material is deleted at commit or `rolled_back` and retained only while `failed`.
+6. **Why We Chose It:** Review round 1 showed that two documented guarantees were false under the old edges and that the integration-to-operation mapping existed only in prose. An eleventh state would contradict DEC-070's closed set for a distinction that the integration state already carries; a total mapping plus a run-level vocabulary gives agents the branch they need (`status == "connected"`) without a second state machine. Client CLIs are not idempotent (`openclaw mcp unset` fails on an absent name), so idempotency has to be constructed by the engine, not assumed.
+7. **Confidence:** high
+8. **Revisit Trigger:** AT114-103's crash-injection matrix finds an outcome the seventeen edges cannot express, or AT114-104 cannot give `partial`/`failed` distinct codes inside the existing exit-code table.
+9. **Affected PRs/Files:** internal/setup/operation.go, internal/setup/operation_test.go, docs/v1.14-setup-transaction-model.md §1, §2, §3, §4, §5, §6, §7, §8, docs/v1.14-acceptance.md (AT114-103/104 requirements), docs/release/v1.14-s0-review-round1.md.
+
+## DEC-080
+
+1. **Decision ID:** DEC-080
+2. **Date:** 2026-09-10
+3. **Question:** How can `delivery` mode "require an explicit enable" when the managed-mode document is committed, cloned, imported, and restored with the repository?
+4. **Options Considered:** Reject `mode: delivery` in the shared file and keep delivery entirely machine-local; accept it in the shared file and let it take effect on every machine; accept it in the shared file as a declaration and make the effective mode depend on this machine's private setup state recording a delivery-profile server registration.
+5. **Chosen Option:** The third. `ManagedModePolicy.EffectiveMode(deliveryEnabledLocally)` returns `managed` for a declared `delivery` without local enablement and never upgrades a non-delivery declaration; `AllowsDelivery()` is read only from the effective mode; `atlas.context`/`atlas.status` report declared and effective mode. Additionally `disabled` forbids `mcp_preferred` (no server is registered in that mode) and `ManagedModePolicyForMode` returns an error for an invalid mode so no caller holds a policy that fails validation.
+6. **Why We Chose It:** Rejecting the value in the shared file would make a team's intent unexpressible; letting it take effect would make the first committer's choice binding for every clone and every restored workspace, which is the property review finding M-C showed to be missing. Layering the machine-local enablement follows locked decision 3 (delivery is a separately registered profile server) and DEC-070's rule that no machine-wide capability is enabled without an explicit local action.
+7. **Confidence:** high
+8. **Revisit Trigger:** A deployment needs repository-wide delivery enablement (then an explicit team-policy record with its own governance, not the managed-mode file, would carry it).
+9. **Affected PRs/Files:** internal/contracts/managed_mode.go, internal/contracts/managed_mode_test.go, docs/v1.14-managed-mode-contract.md §1, §2, §2.1, §5, docs/release/v1.14-s0-review-round1.md.
+
+## DEC-081
+
+1. **Decision ID:** DEC-081
+2. **Date:** 2026-09-11
+3. **Question:** What can Sprint 114.1 honestly apply for each provider, and what happens when backup is requested before Sprint 114.5 exists?
+4. **Options Considered:** Invent MCP adapters and a backup writer so setup looks complete; refuse `--agents` and `--backup` until later sprints; apply the existing skill/instruction installer as a skill-only transaction and record backup as a deferred consent group that never rolls back successful agent work.
+5. **Chosen Option:** Skill-only apply. Each selected provider writes Atlas-owned instruction, guide, and skill files plus a private local state record. MCP registration is planned as a remaining dependency on AT114-201..208. Backup is a separate consent group: `--yes` is not backup consent; `--backup`/`--backup-target` appear in the plan with `writes=false` and do not mutate backup state. A backup-apply failure (injected for tests, or later real apply) returns partial success and leaves connected agents untouched.
+6. **Why We Chose It:** The honest-ledger rule forbids claiming adapters or off-device backup that do not exist. The existing installer already knows how to preview and preserve custom instruction content; reusing it keeps one ownership model. Treating backup as a later group matches locked decision 7 and AT114-104.
+7. **Confidence:** high
+8. **Revisit Trigger:** Sprint 114.2 registers adapters; then setup apply must use adapter plans instead of skill-only plans. Sprint 114.5 implements backup apply.
+9. **Affected PRs/Files:** internal/setup/{planner,skillplan,engine,executor}.go, internal/cli/setup.go, docs/v1.14-acceptance.md (AT114-101, AT114-104).
+
+## DEC-082
+
+1. **Decision ID:** DEC-082
+2. **Date:** 2026-09-11
+3. **Question:** Which process exit codes carry the run-level setup statuses from DEC-079 §7?
+4. **Options Considered:** Map every non-connected status to exit 1; invent new exit codes; reuse the existing table: connected/pending/unverified → 0, partial → 4 (`conflict`), failed → 1 (`internal`).
+5. **Chosen Option:** The third. `connected`, `pending`, and `unverified` are successful resting outcomes (writes kept or a truthful no-op) and exit 0. `partial` is `CodeConflict` (exit 4): some consented providers were kept and at least one was not. `failed` is `CodeInternal` (exit 1): nothing consented was kept. Per-provider operation and integration states remain in `--json`.
+6. **Why We Chose It:** DEC-079 already froze the five status strings and required distinct non-zero codes for partial versus failed inside the existing exit-code table. Agents can branch on `status` without a second state machine, and exit 4 already means "the workflow worked but this run did not finish cleanly."
+7. **Confidence:** high
+8. **Revisit Trigger:** A caller needs to distinguish unverified from pending in the exit code (then the JSON status remains the API; do not add an exit code).
+9. **Affected PRs/Files:** internal/setup/report.go, internal/cli/setup.go, docs/v1.14-setup-transaction-model.md §7, docs/v1.14-acceptance.md (AT114-104).
+
+## DEC-083
+
+1. **Decision ID:** DEC-083
+2. **Date:** 2026-09-11
+3. **Question:** How does `--workspace-from-cwd` interact with `--workspace`, `--init-if-missing`, and the machine-local workspace registry?
+4. **Options Considered:** Let the registry supply a fallback path when cwd is wrong; allow combining `--workspace` with `--workspace-from-cwd`; keep `--workspace` as today and add a verified-cwd mode that never initializes, never uses a registry path as the workspace, and treats the registry only as a move/copy/replace detector.
+5. **Chosen Option:** The third. `--workspace-from-cwd` requires `--expected-workspace-id`, is mutually exclusive with `--workspace` and `--init-if-missing`, canonicalizes cwd, walks to the single nearest real Atlas root, verifies the ID, and refuses nested workspaces, symlink substitution, a replaced inode, and a copied workspace whose original registration still exists. The registry is never opened as a workspace. Bare `--workspace` stays for existing callers; if `--expected-workspace-id` is also set, the ID is verified on that root.
+6. **Why We Chose It:** DEC-072 and AT114-102 already forbade fallback and unverified registry paths. Combining the flags would let a client select a different workspace than the one it started in. Copy-versus-move has to fail closed: a second checkout with the same ID is not the registered directory.
+7. **Confidence:** high
+8. **Revisit Trigger:** A provider documents a safe absolute-path placeholder that makes `--workspace-from-cwd` unnecessary for that target (the flag remains for the others).
+9. **Affected PRs/Files:** internal/setup/{resolve,registry}.go, internal/cli/mcp.go, internal/cli/mcp_bootstrap.go, docs/mcp.md, docs/command-reference.md.
+
+## DEC-084
+
+1. **Decision ID:** DEC-084
+2. **Date:** 2026-09-11
+3. **Question:** When a named client is installed, what version evidence is enough for Sprint 114.2 to write MCP configuration rather than report `unsupported_client_version`?
+4. **Options Considered:** Treat every installed client as supported; refuse MCP writes unless a real-client run has pinned a version range; treat a parsed `X.Y.Z` from the client's documented version probe as provisionally `supported` and keep unparsable or failed probes as `unsupported_client_version`.
+5. **Chosen Option:** The third. `DetectClient` runs the matrix `VersionArgs` and, when stdout/stderr yields a parsed `X.Y.Z`, sets `VersionSupport=supported`. An installed client with no successful parse plans `unsupported_client_version` and gets skill/instruction refresh only — no client-config or CLI registration steps. Generic is exempt because it has no client.
+6. **Why We Chose It:** The matrix VersionPolicy requires a parseable version before adapters mutate client configuration they have not verified. Pinning an exact supported range still waits for real-client smoke (AT114-203..207 remaining dependencies). A missing or unparsable version must not heuristically edit Codex/Claude/Cursor/OpenClaw/Grok files.
+7. **Confidence:** high
+8. **Revisit Trigger:** A Sprint 114.2 or 114.6 real-client run records a minimum/maximum version; then the adapter reports `unsupported_client_version` outside that range even when the version parses.
+9. **Affected PRs/Files:** internal/integrations/adapter/host/detect.go, internal/integrations/adapter/host/plan.go, docs/v1.14-acceptance.md (AT114-203..207).
+
+## DEC-085
+
+1. **Decision ID:** DEC-085
+2. **Date:** 2026-09-11
+3. **Question:** What does `tracker setup --team` actually write now that Sprint 114.2 owns AT114-209?
+4. **Options Considered:** Keep `--team` as a plan-only note (Sprint 114.1); invent new agent records that overwrite existing roles; apply the named `solo`/`pair`/`swarm`/`crossfire` preset through `ActionService.ApplyTeamPreset` without overwriting existing assignments, and map each selected provider to a distinct actor hint.
+5. **Chosen Option:** The third. One selected provider suggests `solo`, two suggest `pair`, three or four suggest `swarm`, and more suggest `crossfire`. Existing agents, runbooks, and permission profiles are skipped when present. An existing `review_gate` / `owner_gate` / `dual_gate` completion mode or a non-empty required reviewer is left in place (so `--team solo` cannot silently undo review separation). A default `open` workspace may still be strengthened to a review-gate preset. Provider and Atlas actor stay distinct: the hint is `agent:<preset-agent-id>` when the preset has a matching slot, otherwise `agent:<target>`. MCP writes still require an explicit actor and reason.
+6. **Why We Chose It:** AT114-209 forbids silently overwriting roles and requires reuse of compatible existing agents when they are already present. Applying the preset makes `--team` a real write so a re-plan that includes `--team` does not stale (DEC-081 revisit).
+7. **Confidence:** high
+8. **Revisit Trigger:** Setup needs an interactive picker to reuse a named existing agent instead of the positional preset slot.
+9. **Affected PRs/Files:** internal/setup/team.go, internal/setup/planner.go, docs/command-reference.md, docs/guides/agent-integrations.md.
+
+## DEC-086
+
+1. **Decision ID:** DEC-086
+2. **Date:** 2026-09-11
+3. **Question:** When does OpenClaw Verify report `connected` versus `connected_restart_required`?
+4. **Options Considered:** Always `connected` after a self-probe; always `connected_restart_required` until the user confirms a restart; self-probe proves Atlas and reports `connected_restart_required`, while a passing `openclaw mcp doctor <name> --probe` proves the Gateway and reports `connected`.
+5. **Chosen Option:** The third. Apply still never returns a verified state. A successful Atlas self-probe with no live doctor check is `connected_restart_required` / `self_probe`. A passing client-native doctor check is `connected` / `client_native`. Pending trust/approval states are never upgraded.
+6. **Why We Chose It:** OpenClaw's matrix restart requirement is `gateway_reload`, and official docs distinguish saved configuration from a live probe. Claiming `connected` from a self-probe alone would hide the Gateway reload the user still has to perform.
+7. **Confidence:** high
+8. **Revisit Trigger:** Official OpenClaw docs show that `mcp add` makes the server live in already-running Gateway processes without a reload.
+9. **Affected PRs/Files:** internal/integrations/adapter/host/apply.go, internal/integrations/adapter/openclaw/adapter.go.
+
+## DEC-087
+
+1. **Decision ID:** DEC-087
+2. **Date:** 2026-09-11
+3. **Question:** What evidence may Verify treat as a live connection, and what must Detect/Remove prove before touching another client's MCP server?
+4. **Options Considered:** Treat any client CLI exit 0 as connected and delete Atlas-prefixed names on sight; require the exact `ServerName` (and command/argv when present) before claiming `client_native`, treat `mcp list` and OpenClaw `mcp show` as inventory only, and remove or overwrite a same-name entry only when it matches the canonical registration.
+5. **Chosen Option:** The second. `nativeOK` requires the inspect output to mention this workspace's server name. List never upgrades a connection. OpenClaw `show` is configuration evidence; only `doctor --probe` or a passed self-probe may verify, and a doctor sentence that reports probe failure is not a pass. Detect parses JSON `mcpServers`, TOML `[mcp_servers.<name>]`, nested Claude project maps, and read-only CLI list/get/show. Get/show that exit 0 without naming this server do not invent an existing entry. `AtlasOwned` is true only from that server's own command/args (`mcp serve` and `--expected-workspace-id` for this workspace), never from tokens elsewhere in the same stdout. CLI-registered targets plan `claude mcp remove`, `openclaw mcp unset`, or `grok mcp remove --scope project` on the detected binary.
+6. **Why We Chose It:** Independent review of Sprint 114.2 found that exit 0 on an unrelated `mcp list` reported `connected`, that disconnect never unset CLI servers, and that Codex TOML / Claude / OpenClaw collisions were invisible. Saved configuration is not a live probe (DEC-086).
+7. **Confidence:** high
+8. **Revisit Trigger:** A real-client run shows a provider's list/get JSON schema that this parser misses, or `grok mcp remove --scope project` is rejected by the shipped CLI.
+9. **Affected PRs/Files:** internal/integrations/adapter/host/{apply,existing,cli,plan}.go, docs/v1.14-acceptance.md.
+
+## DEC-088
+
+1. **Decision ID:** DEC-088
+2. **Date:** 2026-09-11
+3. **Question:** How can Sprint 114.5 test off-device Git backup publication and restore without creating a real remote repository or claiming a public backup target?
+4. **Options Considered:** Use a real GitHub/SSH remote in CI; invent an encrypted archive provider; accept disposable `file://` remotes only under `--allow-local-file`, keep ADR production schemes as `https` and SSH, and never treat `file://` as an off-device claim.
+5. **Chosen Option:** The third. `ValidateBackupTargetURL` accepts `https`, `ssh://`, scp-like `git@host:path`, and `file://` paths. `file://` additionally requires `--allow-local-file`. HTTPS with any userinfo is rejected; SSH user without a password is allowed. Public `github.com` / `gist.github.com` / `www.github.com` hosts are refused unless `--attest-private` or (`--attest-public` and `--allow-public-github`). Push is by URL onto `refs/atlas/backups/<workspace-id>/<replica-id>` and does not persist remotes on the isolated backup repo. `protocol.file.allow=always` is pinned only so those disposable remotes work in tests and drills.
+6. **Why We Chose It:** Execution overrides forbid real remotes, public backup targets, and irreversible external action. ADR §3.2 names ssh/https for production; a named local exception keeps the drill honest without inventing a second provider. The isolated repo still has no configured remotes, and status redacts `file://` to `file://local`.
+7. **Confidence:** high
+8. **Revisit Trigger:** An owner-authorized private SSH/HTTPS target is used for a live off-device drill; then `file://` remains test-only and the off-device claim is evidenced against that target.
+9. **Affected PRs/Files:** internal/contracts/backup_target.go, internal/service/checkpoint_{target,publish,remote,git}.go, docs/backup-disaster-recovery.md, docs/v1.14-acceptance.md (AT114-501, AT114-507).
+
+
+## DEC-089
+
+1. **Decision ID:** DEC-089
+2. **Date:** 2026-09-14
+3. **Question:** Which source and PR target carry the combined v1.15 work?
+4. **Options Considered:** Continue the older scheduled-ticket branch; start from main alone and reimplement missing work; carry the compatible v1.14 PR stack into an isolated main-based feature branch.
+5. **Chosen Option:** Carry main b95fd64 plus the unmerged stack through d2ad0a4 into v1.15. Submit a feature PR directly to main after local checks. Do not merge, deploy, tag, or publish a release in this task. This supersedes DEC-075 only for the v1.15 delivery path.
+6. **Why We Chose It:** The older scheduled-ticket commit is already in main. The owner explicitly requested the latest compatible planned work and direct-to-main PRs.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner changes the source baseline or authorizes promotion.
+9. **Affected PRs/Files:** docs/v1.15-implementation.md, CHANGELOG.md, docs/release/v1.15-local-evidence.md
+
+
+## DEC-090
+
+1. **Decision ID:** DEC-090
+2. **Date:** 2026-09-14
+3. **Question:** How does Atlas expose multiple workspaces through one local application?
+4. **Options Considered:** One browser server per repository; a centralized canonical ticket database; one user-level Home service backed by pointer registration and the existing workspace services.
+5. **Chosen Option:** One configured loopback port and verified machine instance, a v2 pointer registry, and internal/app bindings to the authoritative ActionService and QueryService. Canonical Markdown/events stay in each workspace. Health and visibility remain separate; moves and copies require explicit repair or fork. Discovery uses approved roots. Browser access uses single-use claims, an opaque HttpOnly session, exact Host/Origin checks, CSRF, and registry-scoped paths.
+6. **Why We Chose It:** This gives users one Home without duplicating canonical data or allowing a browser to choose arbitrary filesystem paths.
+7. **Confidence:** high
+8. **Revisit Trigger:** A measured multi-workspace bottleneck or a new supported transport requires a different cache or binding mechanism.
+9. **Affected PRs/Files:** internal/app, internal/web/home_server.go, internal/web/home_handlers.go, internal/cli/home.go
+
+
+## DEC-091
+
+1. **Decision ID:** DEC-091
+2. **Date:** 2026-09-14
+3. **Question:** What should the shortest first-use flow configure by default?
+4. **Options Considered:** Keep setup, registration, backup, and serving as separate required commands; make init one resumable application operation with meaningful opt-outs.
+5. **Chosen Option:** tracker init scaffolds and registers a workspace, creates a first project when needed, enables local checkpoints, configures supported detected agents, and ensures Home. Bare tracker opens Home. Interactive commands may open a browser; noninteractive commands return a usable URL or JSON. Use one global workflow MCP definition per supported client, preserving unrelated entries and reporting written/pending/unverified separately from observed connection. Existing per-workspace registration and explicit setup remain supported. This supersedes the opt-in machine-scope default in DEC-079 and the single-workspace default in DEC-072 for the new init flow; their ownership, rollback, identity, and verification requirements remain.
+6. **Why We Chose It:** The owner requested very few setup commands and useful behavior by default. Persisted opt-outs and honest partial-step reporting keep retries predictable.
+7. **Confidence:** high
+8. **Revisit Trigger:** A provider changes its documented global registration mechanism or repeated init cannot preserve a supported customization.
+9. **Affected PRs/Files:** internal/app/init.go, internal/app/agents.go, internal/setup, internal/integrations, internal/cli/root.go, docs/getting-started.md
+
+
+## DEC-092
+
+1. **Decision ID:** DEC-092
+2. **Date:** 2026-09-14
+3. **Question:** Which display is the default for terminal boards with large ticket sets?
+4. **Options Considered:** Default side-by-side cards; switch layout automatically when a count threshold is crossed; a polished table by default with explicit optional Kanban.
+5. **Chosen Option:** A polished table is the default for terminal and TUI output. Preserve aligned rows, status colors plus text, readable IDs and titles, restrained separators, width-aware columns, and keyboard access to every row. TUI uses a bounded scroll window; CLI never silently omits rows. Card lanes remain an explicit option. Browser Kanban stays the default. Native Markdown and structured MCP remain distinct from ANSI output.
+6. **Why We Chose It:** The owner explicitly preferred the original table pattern after considering crowded backlogs and confirmed the change applies only to terminal and TUI. [Carbon data-table guidance](https://carbondesignsystem.com/components/data-table/usage/) and [NN/g table-scanning research](https://www.nngroup.com/articles/lawn-mower-pattern/) support consistent alignment, row sizing, clear headings, and deliberate long-list navigation.
+7. **Confidence:** high
+8. **Revisit Trigger:** Rendered evidence shows a common terminal size or ticket distribution cannot be scanned or navigated reliably.
+9. **Affected PRs/Files:** internal/render, internal/tui, internal/cli/board.go, docs/reference/tui.md, docs/reference/cli.md, README.md, site/cli.html
+
+
+## DEC-093
+
+1. **Decision ID:** DEC-093
+2. **Date:** 2026-09-14
+3. **Question:** How do default checkpoints and two-phase recovery preserve the existing backup contract?
+4. **Options Considered:** Reuse source-repository commits; introduce a second snapshot format; keep DEC-074 isolated Git checkpoints and bind recovery to a stored immutable plan.
+5. **Chosen Option:** Retain the canonical allowlist, isolated bare repository, temporary index, per-replica refs, and current coalescing policy. Enable local checkpoints by default without inferring or publishing to origin. A remote is verified only after an independent fetch and matching commit/tree/manifest/file hashes. Restore applies the exact stored plan and digest, including source hashes, to a clean destination under existing governance. DEC-074 remote-target consent and divergence refusal remain unchanged.
+6. **Why We Chose It:** A local checkpoint is useful out of the box; it is not an off-device backup claim. Binding the plan prevents later source changes or a second plan from silently changing the approved restore.
+7. **Confidence:** high
+8. **Revisit Trigger:** The canonical allowlist is deliberately widened, a provider changes ref behavior, or an approved recovery drill exposes a contract gap.
+9. **Affected PRs/Files:** internal/service/checkpoint_*.go, internal/service/backup_goal_actions.go, internal/contracts/backup.go, internal/mcp/global_tools.go, docs/guides/setup-and-backup.md
+
+
+## DEC-094
+
+1. **Decision ID:** DEC-094
+2. **Date:** 2026-09-14
+3. **Question:** What may uninstall remove without losing a board or recovery path?
+4. **Options Considered:** Recursively remove all Atlas directories; delete the current executable by name; remove only receipt-bound software and verified managed entries.
+5. **Chosen Option:** Provide tracker uninstall and slash uninstall through supported command surfaces. Preview verified actions, revalidate ownership/content at apply time, stop owned services before binary removal, and preserve all canonical workspace data, registry pointers, backups, targets, and recovery material. Script-installed binaries require an exact path/hash receipt; package-manager binaries receive truthful manager instructions. Preserve unrelated client configuration and edited or unverified files.
+6. **Why We Chose It:** The owner requested removal of software while keeping tracker files and boards. Exact ownership makes that promise testable across upgrades and partial uninstalls.
+7. **Confidence:** high
+8. **Revisit Trigger:** A new installation method or integration file format needs a documented ownership producer.
+9. **Affected PRs/Files:** internal/uninstall, internal/cli/uninstall.go, internal/slashcmd, internal/integrations, scripts/install.sh, docs/guides/uninstall.md
+
+
+## DEC-095
+
+1. **Decision ID:** DEC-095
+2. **Date:** 2026-09-14
+3. **Question:** Which website essentials belong in the v1.15 product update?
+4. **Options Considered:** Add tracking, forms, cookie prompts, and new marketing infrastructure; update the existing static site and only the useful product essentials.
+5. **Chosen Option:** Keep the existing Atlas identity and static architecture. Update README, software docs, marketing pages, and site docs together. Include a favicon set, robots.txt, sitemap, unique titles/descriptions, Open Graph metadata, accessible responsive images/navigation, copy loading/error feedback, privacy/terms notices describing actual use, and a custom HTTP 404 with root-relative recovery links. Add no nonessential cookies, analytics, or cookie banner.
+6. **Why We Chose It:** These support discovery and reliable first use without inventing services or adding unnecessary consent UI. A missing nested URL must retain working assets and navigation.
+7. **Confidence:** high
+8. **Revisit Trigger:** The product actually introduces accounts, telemetry, forms, or another data-processing feature that changes these notices.
+9. **Affected PRs/Files:** README.md, docs, site, site/_tools/site-contract.test.mjs, site/vercel.json
+
+
+## DEC-096
+
+1. **Decision ID:** DEC-096
+2. **Date:** 2026-09-14
+3. **Question:** What evidence supports a v1.15 implementation PR without overstating release readiness?
+4. **Options Considered:** Rely on prior PR metadata; treat local fixtures as production proof; verify the integrated tree locally and explicitly distinguish host and off-device limits.
+5. **Chosen Option:** Run required local suites on the integrated tree, retain full sanitized output in TEST_STDOUT.log, review actual terminal/TUI/browser rendering, and exercise setup, identity, concurrency, backup, restore, and uninstall with isolated fixtures. Local bare remotes remain protocol/integrity fixtures per DEC-088. Do not claim real-client activation, an off-device drill, a hosted deployment, or a published release from these checks.
+6. **Why We Chose It:** The owner asked for properly tested local work submitted as main-target PRs. Source inspection, fixture tests, real host sessions, and production behavior provide different evidence.
+7. **Confidence:** high
+8. **Revisit Trigger:** The owner authorizes a real-client activation matrix, off-device drill, or release/deployment.
+9. **Affected PRs/Files:** TEST_STDOUT.log, docs/release/v1.15.0-release-evidence.md, scripts, internal/*/*_test.go
+
+## DEC-097 — Preserve each workspace's existing backup state directory
+
+- **Decision ID:** DEC-097
+- **Date:** 2026-09-14
+- **Question:** How should Home and older CLI backup state agree on macOS?
+- **Options Considered:** Always use Application Support; always use the legacy path; use the canonical default while preserving an existing per-workspace legacy history and refusing conflicting histories.
+- **Chosen Option:** Fresh macOS backup state uses Application Support. When only the legacy location contains a workspace history or opt-out, use it without moving data. If both contain history, return `backup_state_conflict`. Explicit custom state and absolute XDG state remain authoritative.
+- **Why We Chose It:** The previous CLI default and Home default could otherwise create separate replica histories. One resolver keeps status, checkpoints, targets, and restore connected to the same workspace data.
+- **Confidence:** high
+- **Revisit Trigger:** A supported platform requires a different state layout, or an explicitly designed history reconciliation tool is introduced.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/service/backup_state.go`, checkpoint callers, `internal/app/init.go`, `docs/migration-v1.15.md`.
+
+
+## DEC-098 — Detect stale browser edits under the workspace lock
+
+- **Decision ID:** DEC-098
+- **Date:** 2026-09-14
+- **Question:** How should a browser action react when an agent has changed the same ticket since it was rendered?
+- **Options Considered:** Last writer wins; timestamps alone; a digest of editable canonical ticket state checked under the existing write lock.
+- **Chosen Option:** Render revision digests in ticket forms, drag payloads, and per-ticket bulk selections. Check them under the same workspace lock as the mutation. Reject a stale or malformed precondition with HTTP 409 and retain the current data. Existing callers that omit a precondition retain their prior interface.
+- **Why We Chose It:** Humans and coding agents use the same Markdown files. A displayed form must not silently overwrite newer work; the existing write lock prevents a race between validation and mutation.
+- **Confidence:** high
+- **Revisit Trigger:** A new mutable ticket field changes the digest contract or a new write transport requires shared preconditions.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/web/revision.go`, handlers, board templates, browser interaction tests.
+
+## DEC-099 — Purpose-bound path grants and fragment claims
+
+- **Decision ID:** DEC-099
+- **Date:** 2026-09-14
+- **Question:** How can Home safely reuse terminal-authorized directory access and authenticate a browser without URL credential leakage?
+- **Options Considered:** Browser-entered paths and query tokens; process-only grants; persisted, single-use, identity-bound grants and a fragment-to-POST claim exchange.
+- **Chosen Option:** A terminal command creates a private persisted grant for an existing directory with an init, register, or repair purpose. Consumption checks purpose, expiry, directory identity, and replay. Home clears a one-time fragment before POSTing the session claim; claim consumption is atomic across processes and the page uses the existing restrictive CSP.
+- **Why We Chose It:** The browser and terminal run in separate processes. Persisted authorization makes their interaction usable without granting arbitrary filesystem access, while fragment removal keeps the claim out of normal request URLs. This supersedes the Home authentication portion of DEC-048; the legacy single-workspace server retains its existing mechanism.
+- **Confidence:** high
+- **Revisit Trigger:** A native directory picker or another transport provides equivalent directory ownership and one-time authentication guarantees.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/app`, `internal/cli/workspaces.go`, `internal/web/home_server.go`, `static/claim.js`, Home handlers and MCP adapter.
+
+
+## DEC-100 — Let the Home child load settings during startup
+
+- **Decision ID:** DEC-100
+- **Date:** 2026-09-14
+- **Question:** How can concurrent callers start one Home without blocking the child before it answers health checks?
+- **Options Considered:** One lock for settings and startup; release the startup lock before health verification; separate startup serialization from settings serialization.
+- **Chosen Option:** Hold `home-start.lock` while starting and verifying Home, and keep `setup.lock` for machine settings and registry operations. The child can load settings while the parent still excludes competing starters.
+- **Why We Chose It:** A real fresh-init smoke test reproduced a parent/child lock wait that injected probes did not cover. A real child-process regression now verifies startup and reuse of the same instance.
+- **Confidence:** high
+- **Revisit Trigger:** A supported service manager introduces another startup or settings lock dependency.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/setup/lock.go`, `internal/app/service.go`, `internal/web/home_process_test.go`.
+
+
+## DEC-101 — Isolate the machine state of every executable test
+
+- **Decision ID:** DEC-101
+- **Date:** 2026-09-14
+- **Question:** How should tests exercise the new automatic setup defaults without registering their temporary workspaces on the developer's machine?
+- **Options Considered:** Rely on each test's current-directory fixture; add production test-mode behavior; isolate HOME and XDG state in test process entrypoints and executable smoke harnesses.
+- **Chosen Option:** Use private machine state for test packages that invoke Atlas services and for Python executable smoke harnesses. Disable host auto-start and agent auto-install in that default fixture. Tests of those features explicitly inject their own settings, commands, and state. Preserve existing Go caches outside the temporary HOME.
+- **Why We Chose It:** The integrated suite reproduced old tests inheriting real user state after init gained automatic setup. Isolation belongs in the test harness, while production keeps its documented defaults. The leaked test-only registrations and service were removed, and private rollback evidence was retained outside the repository.
+- **Confidence:** high
+- **Revisit Trigger:** A new executable test or machine-scoped surface is added without the shared environment boundary.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/testutil/testenv`, package `main_test.go` entrypoints, `scripts/atlas_test_env.py`, executable MCP smoke scripts.
+
+
+## DEC-102 — Keep the browser board visible and ticket actions in their project
+
+- **Decision ID:** DEC-102
+- **Date:** 2026-09-14
+- **Question:** How should the browser Kanban use limited screen space and retain context after edits?
+- **Options Considered:** Reserve space for an empty drawer; replace Kanban with the terminal table; show full-width Kanban with an explicit ticket overlay and project-bound actions.
+- **Chosen Option:** Keep six main workflow lanes and a separate Canceled disclosure. Open the overlay drawer only for a selected ticket, use a full-width drawer on phones, and keep filters, bulk controls, and unscheduled details behind disclosures. Resolve action redirects from the authoritative ticket or validated project. Stale forms preserve typed values while refusing the write.
+- **Why We Chose It:** The owner explicitly kept browser Kanban. Rendered desktop and phone checks showed that an empty reserved drawer hid useful board space. A full browser save exposed loss of the project in the redirect; ticket-bound routing now preserves the working context without trusting external return URLs.
+- **Confidence:** high
+- **Revisit Trigger:** A supported viewport or new action cannot retain visible navigation, ticket context, or stale-edit protection.
+- **Affected PRs/Files:** v1.15 main-target PR; `internal/web`, `docs/web-board-screen-brief.md`, `docs/web-board.md`, `site/docs/web-board.html`.
+
+
+## DEC-103 — Scope the historical design-metadata scanner exception
+
+- **Decision ID:** DEC-103
+- **Date:** 2026-09-14
+- **Question:** How should the secret scan handle an existing Pen document UUID classified as a generic API key?
+- **Options Considered:** Ignore the scan failure; exclude all design files or generic API keys; allow only the inspected historical fingerprint.
+- **Chosen Option:** Record one `.gitleaksignore` fingerprint for the `fileToken` UUID metadata at commit `4282c81fbf1b2bb1a55fc45207681ad4cf16129b`, `docs/design/pen/atlas-tasker.pen`, line 28174. Continue scanning the complete submitted history and all new changes.
+- **Why We Chose It:** The flagged value is design-document UUID metadata, not an API credential. A commit/file/rule/line fingerprint preserves detection for other values and future changes without rewriting historical design evidence.
+- **Confidence:** high
+- **Revisit Trigger:** The document metadata acquires authentication meaning or the scanner reports a different finding.
+- **Affected PRs/Files:** v1.15 main-target PR; `.gitleaksignore`, `TEST_STDOUT.log`, release evidence.
+
+
+## DEC-104 — Reconstruct the same remote checkpoint as the same archive
+
+- **Decision ID:** DEC-104
+- **Date:** 2026-09-14
+- **Question:** How can restore apply validate the archive approved by restore plan after independently fetching the same remote checkpoint again?
+- **Options Considered:** Remove archive binding; cache and trust the previous fetched archive; reconstruct deterministic archive metadata from verified checkpoint data while fetching and verifying again.
+- **Chosen Option:** Derive the reconstructed bundle creation time and archive entry timestamps from the checkpoint's immutable creation time. Keep the normal local export path's metadata behavior and retain manifest, archive, plan-digest, content-hash, and remote-ref validation.
+- **Why We Chose It:** PR #155's macOS recovery drill crossed a clock boundary while rebuilding an unchanged checkpoint archive. Current time and temporary-file mtimes changed its hash, so the correct archive-binding check rejected it. Deterministic reconstruction fixes the cause without accepting changed backup content.
+- **Confidence:** high
+- **Revisit Trigger:** Reconstructed archive bytes change for the same verified checkpoint because of another host-dependent metadata field or serialization change.
+- **Affected PRs/Files:** PR #155; `internal/service/checkpoint_remote.go`, `internal/service/import_export.go`, remote recovery regressions, and local verification evidence.
+
+
+## DEC-105 — Finish smoke fuzzing by execution count
+
+- **Decision ID:** DEC-105
+- **Date:** 2026-09-14
+- **Question:** How should the stability smoke lane stop fuzzing without Go's wall-clock cancellation race reporting a false failure?
+- **Options Considered:** Retry or ignore bare deadline errors; raise the package timeout; increase the timed fuzz window; use measured execution counts while preserving every target and failure exit.
+- **Chosen Option:** Use Go's `-fuzztime=Nx` form for all five smoke targets, with counts rounded upward from PR #155 run `34865271389`: slash parser 260710 to 300000; search query 128171 to 150000; Markdown decoder 78391 to 80000; automation store 4909 to 5000; event reader 7595 to 8000. Keep the existing 60-second package guard, race tests, target assertions, corpus handling, and shell fail-fast behavior.
+- **Why We Chose It:** `FuzzReadEventFile` completed 7595 executions and then reported only `context deadline exceeded` at 3.00 seconds, despite the existing 60-second package timeout. Go's fuzz coordinator installs a separate timer for time-based fuzzing; its parent/child cancellation ordering can let that timer error escape, matching [golang/go#75804](https://github.com/golang/go/issues/75804). Count mode avoids that coordinator deadline and still propagates real failures. These are measured smoke workloads, not a guarantee of identical random coverage or a replacement for longer fuzz campaigns. This corrects the script's prior timeout explanation.
+- **Confidence:** high
+- **Revisit Trigger:** The pinned Go toolchain changes, corpus growth consumes the smoke workload, or measured CI throughput warrants recalibrating the documented counts.
+- **Affected PRs/Files:** PR #155; `scripts/stability-smoke.sh`, `TEST_STDOUT.log`, and release evidence.

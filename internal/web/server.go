@@ -35,18 +35,22 @@ type Services struct {
 }
 
 type Config struct {
-	Root      string
-	Workspace string
-	Host      string
-	Port      int
-	Project   string
-	Actor     contracts.Actor
-	ReadOnly  bool
-	TokenMode string
-	Token     string
-	CSRFToken string
-	Clock     func() time.Time
-	Location  *time.Location
+	Root        string
+	Workspace   string
+	DisplayName string
+	Host        string
+	Port        int
+	Project     string
+	Actor       contracts.Actor
+	ReadOnly    bool
+	TokenMode   string
+	Token       string
+	CSRFToken   string
+	Clock       func() time.Time
+	Location    *time.Location
+	RoutePrefix string
+	BoardPath   string
+	HomePath    string
 }
 
 type Server struct {
@@ -389,8 +393,12 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 	if target == "create" {
 		q.Set("new", "1")
 	}
+	project := s.actionProject(r, pathTicketID)
+	if project != "" {
+		q.Set("project", project)
+	}
 	pageReq := r.Clone(r.Context())
-	pageReq.URL = &url.URL{Path: "/board", RawQuery: q.Encode()}
+	pageReq.URL = &url.URL{Path: s.actionBoardPath(project), RawQuery: q.Encode()}
 	page, buildErr := s.buildBoardPage(r.Context(), pageReq)
 	if buildErr != nil {
 		http.Error(w, err.Error(), statusForError(err))
@@ -426,8 +434,9 @@ func (s *Server) writeProjectActionError(w http.ResponseWriter, r *http.Request,
 func (s *Server) writeScheduleActionError(w http.ResponseWriter, r *http.Request, actionErr error) {
 	q := r.URL.Query()
 	q.Del("return")
+	_, _, schedule, _, _ := s.navPaths()
 	pageReq := r.Clone(r.Context())
-	pageReq.URL = &url.URL{Path: "/schedule", RawQuery: q.Encode()}
+	pageReq.URL = &url.URL{Path: schedule, RawQuery: q.Encode()}
 	page, buildErr := s.buildSchedulePage(r.Context(), pageReq)
 	if buildErr != nil {
 		http.Error(w, actionErr.Error(), statusForError(actionErr))

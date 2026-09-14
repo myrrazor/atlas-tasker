@@ -39,6 +39,12 @@ func WorkspaceMetadataFile(root string) string {
 	return filepath.Join(TrackerDir(root), "workspace.json")
 }
 
+// ManagedModeFile is the workspace-shared managed-mode policy
+// (.tracker/managed-mode.json).
+func ManagedModeFile(root string) string {
+	return filepath.Join(TrackerDir(root), "managed-mode.json")
+}
+
 func AgentsDir(root string) string {
 	return filepath.Join(TrackerDir(root), "agents")
 }

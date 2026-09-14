@@ -1,0 +1,601 @@
+{{define "homeLayout"}}
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="atlas-csrf-token" content="{{.CSRFToken}}">
+  <title>{{if eq .Page "home"}}Atlas Home{{else if eq .Page "attention"}}Attention · Atlas Home{{else if eq .Page "search"}}Search · Atlas Home{{else if eq .Page "workspace"}}{{if .DisplayName}}{{.DisplayName}}{{else}}{{.WorkspaceID}}{{end}} · Atlas Home{{else if eq .Page "activity"}}Activity · Atlas Home{{else if eq .Page "backup"}}Backup · Atlas Home{{else if eq .Page "unavailable"}}Repair · Atlas Home{{else}}Atlas Home{{end}}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/home.css">
+</head>
+<body data-page="{{.Page}}" class="home-body" data-home-path="{{.HomePath}}" data-board-path="{{.BoardPath}}" data-action-prefix="{{.ActionPrefix}}">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="net-banner" data-net-banner hidden role="status"></div>
+  <div class="home-frame">
+    <aside class="home-rail" aria-label="Workspaces">
+      <a class="brand rail-brand" href="/" aria-label="Atlas Home">
+        <img src="/static/brand/atlas-tasker-ascii.svg" alt="Atlas Tasker">
+      </a>
+      <nav class="rail-nav" aria-label="Home">
+        <a href="/" {{if eq .Page "home"}}aria-current="page"{{end}}>Home</a>
+        <a href="/attention" {{if eq .Page "attention"}}aria-current="page"{{end}}>Attention</a>
+        <a href="/search" {{if eq .Page "search"}}aria-current="page"{{end}}>Search</a>
+        <a href="/settings" {{if or (eq .Page "settings") (eq .Page "settings-agents") (eq .Page "settings-workspaces")}}aria-current="page"{{end}}>Settings</a>
+      </nav>
+      <p class="rail-kicker">Workspaces</p>
+      <ul class="rail-list">
+        {{range .Rows}}
+          <li>
+            <a href="/w/{{.Record.WorkspaceID}}" {{if eq $.WorkspaceID .Record.WorkspaceID}}aria-current="page"{{end}}>
+              <span class="rail-name">{{.Title}}</span>
+              <span class="rail-meta {{if not .Available}}is-warn{{end}}">{{.HealthLabel}}{{if .Attention}} · {{.Attention}}{{end}}</span>
+            </a>
+          </li>
+        {{else}}
+          {{range .Workspaces}}
+            <li>
+              <a href="/w/{{.WorkspaceID}}">
+                <span class="rail-name">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.WorkspaceID}}{{end}}</span>
+                <span class="rail-meta">{{.Health}}</span>
+              </a>
+            </li>
+          {{else}}
+            <li class="rail-empty">None registered yet.</li>
+          {{end}}
+        {{end}}
+      </ul>
+      {{if and (not .ReadOnly) (ne .Page "home")}}
+      <div class="rail-actions">
+        <a class="secondary-action" href="/?find=1">Find existing</a>
+        <a class="secondary-action" href="/?init=1">Initialize board</a>
+      </div>
+      {{end}}
+    </aside>
+
+    <div class="home-main">
+      <header class="topbar topbar--welcome home-topbar">
+        <div class="topbar-primary">
+          <nav class="crumbs" aria-label="Breadcrumb">
+            <a href="/">Home</a>
+            {{if .WorkspaceID}}
+              <span aria-hidden="true">/</span>
+              <a href="/w/{{.WorkspaceID}}" {{if or (eq .Page "workspace") (eq .Page "unavailable")}}aria-current="page"{{end}}>{{if .DisplayName}}{{.DisplayName}}{{else}}{{.WorkspaceID}}{{end}}</a>
+            {{end}}
+            {{if eq .Page "activity"}}<span aria-hidden="true">/</span><span aria-current="page">Activity</span>{{end}}
+            {{if eq .Page "backup"}}<span aria-hidden="true">/</span><span aria-current="page">Backup</span>{{end}}
+            {{if eq .Page "attention"}}<span aria-hidden="true">/</span><span aria-current="page">Attention</span>{{end}}
+            {{if eq .Page "search"}}<span aria-hidden="true">/</span><span aria-current="page">Search</span>{{end}}
+            {{if or (eq .Page "settings") (eq .Page "settings-agents") (eq .Page "settings-workspaces")}}<span aria-hidden="true">/</span><span aria-current="page">Settings</span>{{end}}
+          </nav>
+        </div>
+        <form class="searchbar" method="get" action="/search" role="search">
+          <input type="search" name="q" value="{{.Query}}" placeholder="ticket text, APP-12, status=ready" aria-label="Search workspaces and tickets">
+          <button type="submit">Search</button>
+        </form>
+        <div class="top-meta">
+          <span class="meta-block"><span class="meta-label">Local</span><strong><span class="status-dot online"></span>{{.Host}}</strong></span>
+          <span class="meta-block"><span class="meta-label">Actor</span><strong>{{.Actor}}</strong></span>
+          {{if .ReadOnly}}<span class="mode-chip readonly">Read only</span>{{else}}<span class="mode-chip">Read/write</span>{{end}}
+        </div>
+      </header>
+
+      {{if .Flash}}<div class="flash" role="status">{{.Flash}}</div>{{end}}
+      {{if and .Error (ne .Page "unavailable")}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
+
+      <div id="main">
+        {{if eq .Page "home"}}{{template "homeContent" .}}{{end}}
+        {{if eq .Page "attention"}}{{template "homeAttention" .}}{{end}}
+        {{if eq .Page "search"}}{{template "homeSearch" .}}{{end}}
+        {{if eq .Page "workspace"}}{{template "homeWorkspace" .}}{{end}}
+        {{if eq .Page "activity"}}{{template "homeActivity" .}}{{end}}
+        {{if eq .Page "backup"}}{{template "homeBackup" .}}{{end}}
+        {{if eq .Page "unavailable"}}{{template "homeUnavailable" .}}{{end}}
+        {{if or (eq .Page "settings") (eq .Page "settings-agents") (eq .Page "settings-workspaces")}}{{template "homeSettings" .}}{{end}}
+      </div>
+    </div>
+  </div>
+
+  {{if and (or .ShowFind .ShowInit) (ne .Page "workspace")}}{{template "homeFindDialog" .}}{{end}}
+  <script src="/static/app.js"></script>
+  <script src="/static/home.js"></script>
+</body>
+</html>
+{{end}}
+
+{{define "homeContent"}}
+<main class="welcome-shell home-shell">
+  <section class="welcome-main" aria-labelledby="home-title">
+    <div class="welcome-heading">
+      <div>
+        <p class="section-kicker">Machine</p>
+        <h1 id="home-title">Atlas Home</h1>
+        <p class="lede">Workspaces on this machine. Open one to see tickets that need you.</p>
+      </div>
+      {{if not .ReadOnly}}
+      <div class="heading-actions">
+        <a class="secondary-action" href="/?find=1">Find existing</a>
+        <a class="new-button" href="/?init=1">Initialize board</a>
+      </div>
+      {{end}}
+    </div>
+    <nav class="sort-nav" aria-label="Sort workspaces">
+      <a href="{{.SortHref "attention"}}" {{if eq .Sort "attention"}}aria-current="true"{{end}}>Attention</a>
+      <a href="{{.SortHref "recent"}}" {{if eq .Sort "recent"}}aria-current="true"{{end}}>Recent</a>
+      <a href="{{.SortHref "name"}}" {{if eq .Sort "name"}}aria-current="true"{{end}}>Name</a>
+    </nav>
+    <div class="project-table-wrap">
+      <table class="project-table home-table">
+        <thead>
+          <tr>
+            <th scope="col">Workspace</th>
+            <th scope="col">Status</th>
+            <th scope="col">Attention</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Rows}}
+            <tr>
+              <th scope="row">
+                <a class="project-link" href="/w/{{.Record.WorkspaceID}}">
+                  <span>{{.Title}}</span>
+                  <small>{{.Location}}{{if .Hidden}} · hidden{{end}}</small>
+                </a>
+              </th>
+              <td><span class="mode-chip {{if not .Available}}readonly{{end}}">{{.HealthLabel}}</span></td>
+              <td class="blocker-cell {{if or .Attention .Blocked}}has-blockers{{end}}">
+                {{if .Available}}
+                  <a href="/w/{{.Record.WorkspaceID}}"><strong>{{.Attention}}</strong> queued{{if .Blocked}} · {{.Blocked}} blocked{{end}}</a>
+                {{else}}
+                  <a href="/w/{{.Record.WorkspaceID}}">Repair</a>
+                {{end}}
+              </td>
+            </tr>
+          {{else}}
+            <tr class="empty-projects">
+              <td colspan="3">No registered workspaces. Run <code>tracker init</code> in a repo, or initialize from an approved discovery result. Home will not take a typed filesystem path.</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <aside class="recent-rail" aria-labelledby="home-attention-title">
+    <div class="rail-heading">
+      <p class="section-kicker">Now</p>
+      <h2 id="home-attention-title">Needs attention</h2>
+    </div>
+    <ol class="recent-list">
+      {{range .Attention}}
+        <li>
+          <a href="{{if .TicketID}}/w/{{.WorkspaceID}}/projects/{{.Project}}?ticket={{.TicketID}}{{else}}/w/{{.WorkspaceID}}{{end}}">{{if .TicketID}}{{.Title}} <small>{{.TicketID}}</small>{{else}}{{if .DisplayName}}{{.DisplayName}}{{else}}{{.WorkspaceID}}{{end}}{{end}}</a>
+          <time>{{if .Reason}}{{.Reason}}{{else}}{{.Category}}{{end}}</time>
+        </li>
+      {{else}}
+        <li class="recent-empty">Quiet. Blocked, due, and review work from registered workspaces lands here.</li>
+      {{end}}
+    </ol>
+  </aside>
+</main>
+{{end}}
+
+{{define "homeAttention"}}
+<main class="welcome-shell home-shell home-narrow">
+  <section class="welcome-main">
+    <p class="section-kicker">Queue</p>
+    <h1>Attention</h1>
+    <ol class="recent-list attention-list">
+      {{range .Attention}}
+        <li>
+          <a href="{{if .TicketID}}/w/{{.WorkspaceID}}/projects/{{.Project}}?ticket={{.TicketID}}{{else}}/w/{{.WorkspaceID}}{{end}}">
+            <span>{{if .TicketID}}{{.Title}}{{else}}{{if .DisplayName}}{{.DisplayName}}{{else}}{{.WorkspaceID}}{{end}}{{end}}</span>
+            <small>{{if .TicketID}}{{.TicketID}} · {{.DisplayName}}{{else}}{{.Health}}{{end}}</small>
+          </a>
+          <time>{{if .Reason}}{{.Reason}}{{else}}{{.Category}}{{end}}</time>
+        </li>
+      {{else}}
+        <li class="recent-empty">Nothing queued.</li>
+      {{end}}
+    </ol>
+  </section>
+</main>
+{{end}}
+
+{{define "homeSearch"}}
+<main class="welcome-shell home-shell home-narrow">
+  <section class="welcome-main">
+    <p class="section-kicker">Find</p>
+    <h1>Search</h1>
+    <form class="searchbar searchbar-block" method="get" action="/search" role="search">
+      <input type="search" name="q" value="{{.Query}}" placeholder="ticket text, APP-12, status=ready" aria-label="Search tickets">
+      <button type="submit">Search</button>
+    </form>
+    <ol class="recent-list">
+      {{range .Hits}}
+        <li>
+          <a href="/w/{{.WorkspaceID}}/projects/{{.Project}}?ticket={{.TicketID}}">{{.Title}} <small>{{.TicketID}}</small></a>
+          <time>{{.Status}}</time>
+        </li>
+      {{else}}
+        {{if .Query}}<li class="recent-empty">No matches.</li>{{else}}<li class="recent-empty">Search titles, IDs, and saved-view syntax such as <code>status=ready</code>.</li>{{end}}
+      {{end}}
+    </ol>
+  </section>
+</main>
+{{end}}
+
+{{define "homeWorkspace"}}
+<main class="welcome-shell home-shell">
+  <section class="welcome-main">
+    <div class="welcome-heading">
+      <div>
+        <p class="section-kicker">Workspace</p>
+        <h1>{{if .DisplayName}}{{.DisplayName}}{{else}}{{.WorkspaceID}}{{end}}</h1>
+        {{if .HealthLabel}}<p class="lede"><span class="mode-chip">{{.HealthLabel}}</span> {{if .Location}}{{.Location}}{{end}}</p>{{end}}
+      </div>
+      {{if not .ReadOnly}}
+        <a class="new-button" href="/w/{{.WorkspaceID}}?new_project=1" data-dialog-open="new-project-dialog">New project</a>
+      {{end}}
+    </div>
+    {{if .BackupView.Present}}
+    <p class="backup-compact">
+      {{.BackupView.LocalLabel}}
+      <span aria-hidden="true">·</span>
+      {{.BackupView.OffDeviceLabel}}
+      <a href="/w/{{.WorkspaceID}}/backup">Details</a>
+    </p>
+    {{end}}
+    <div class="project-table-wrap">
+      <table class="project-table">
+        <thead>
+          <tr>
+            <th scope="col">Project</th>
+            <th scope="col">Status</th>
+            <th scope="col">Blockers</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Projects}}
+            <tr>
+              <th scope="row">
+                <a class="project-link" href="/w/{{$.WorkspaceID}}/projects/{{.Project.Key}}">
+                  <span>{{.Project.Name}}</span>
+                  <small>{{.Project.Key}}</small>
+                </a>
+              </th>
+              <td>
+                <div class="rollup-links">
+                  <a href="/w/{{$.WorkspaceID}}/projects/{{.Project.Key}}"><strong>{{.Active}}</strong> active</a>
+                  <span aria-hidden="true">·</span>
+                  <a href="/w/{{$.WorkspaceID}}/projects/{{.Project.Key}}"><strong>{{.Backlog}}</strong> backlog</a>
+                  <span aria-hidden="true">·</span>
+                  <a href="/w/{{$.WorkspaceID}}/projects/{{.Project.Key}}"><strong>{{.Done}}</strong> done</a>
+                </div>
+              </td>
+              <td class="blocker-cell {{if .Blocked}}has-blockers{{end}}">
+                <a href="/w/{{$.WorkspaceID}}/projects/{{.Project.Key}}"><strong>{{.Blocked}}</strong> blocked</a>
+              </td>
+            </tr>
+          {{else}}
+            <tr class="empty-projects"><td colspan="3">No projects yet. Create one here or run <code>tracker project create</code>.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <p class="workspace-links"><a href="/w/{{.WorkspaceID}}/activity">Activity</a> · <a href="/w/{{.WorkspaceID}}/backup">Backup</a> · <a href="/w/{{.WorkspaceID}}/schedule">Schedule</a></p>
+    {{if not .ReadOnly}}{{template "homePointerActions" .}}{{end}}
+  </section>
+  <aside class="recent-rail">
+    <div class="rail-heading">
+      <p class="section-kicker">Activity</p>
+      <h2>Latest changes</h2>
+    </div>
+    <ol class="recent-list">
+      {{range .Recent}}
+        <li>
+          <a href="/w/{{$.WorkspaceID}}/projects/{{.Project}}?ticket={{.TicketID}}">{{recentDescription .}}</a>
+          <time datetime="{{.At.Format "2006-01-02T15:04:05Z07:00"}}">{{formatTime .At}}</time>
+        </li>
+      {{else}}
+        <li class="recent-empty">Ticket changes will appear here.</li>
+      {{end}}
+    </ol>
+  </aside>
+</main>
+<dialog class="project-dialog" id="new-project-dialog" {{if .ShowNewProject}}open{{end}} aria-labelledby="new-project-title">
+  <div class="dialog-head">
+    <div>
+      <p class="section-kicker">Workspace</p>
+      <h2 id="new-project-title">New project</h2>
+    </div>
+    <a class="close-button" href="/w/{{.WorkspaceID}}" data-dialog-close aria-label="Close">×</a>
+  </div>
+  <form class="project-form" method="post" action="/w/{{.WorkspaceID}}/actions/projects/create" data-confirm="Create this project?">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="actor" value="{{.Actor}}">
+    <label>Project key <input name="key" placeholder="APP" autocomplete="off" required></label>
+    <label>Project name <input name="name" placeholder="App Project" autocomplete="off" required></label>
+    <p class="form-help">Keys use uppercase letters, numbers, underscores, or hyphens.</p>
+    <div class="dialog-actions">
+      <a class="secondary-action" href="/w/{{.WorkspaceID}}" data-dialog-close>Cancel</a>
+      <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>Create project</button>
+    </div>
+  </form>
+</dialog>
+{{end}}
+
+{{define "homeActivity"}}
+<main class="welcome-shell home-shell home-narrow">
+  <section class="welcome-main">
+    <p class="section-kicker">Workspace</p>
+    <h1>Activity</h1>
+    <ol class="recent-list">
+      {{range .Recent}}
+        <li>
+          <a href="/w/{{$.WorkspaceID}}/projects/{{.Project}}?ticket={{.TicketID}}">{{recentDescription .}}</a>
+          <time datetime="{{.At.Format "2006-01-02T15:04:05Z07:00"}}">{{formatTime .At}}</time>
+        </li>
+      {{else}}
+        <li class="recent-empty">Ticket changes will appear here.</li>
+      {{end}}
+    </ol>
+  </section>
+</main>
+{{end}}
+
+{{define "homeBackup"}}
+<main class="welcome-shell home-shell home-narrow">
+  <section class="welcome-main">
+    <p class="section-kicker">Recovery</p>
+    <h1>Backup</h1>
+    {{if .BackupView.Present}}
+      <section class="backup-facts">
+        <div>
+          <p class="section-kicker">This machine</p>
+          <h2>{{.BackupView.LocalLabel}}</h2>
+          <p>{{.BackupView.LocalDetail}}</p>
+        </div>
+        <div>
+          <p class="section-kicker">Off-device</p>
+          <h2>{{.BackupView.OffDeviceLabel}}</h2>
+          <p>{{.BackupView.OffDeviceDetail}}</p>
+        </div>
+      </section>
+      {{if .BackupView.PendingLabel}}<p class="lede">{{.BackupView.PendingLabel}}</p>{{end}}
+      {{if .Backup}}
+      <details class="backup-details">
+        <summary>Technical details</summary>
+        <dl class="settings-list">
+          <div><dt>Automatic</dt><dd>{{if .Backup.AutomaticEnabled}}on{{else}}off{{end}}</dd></div>
+          <div><dt>Worker</dt><dd>{{if .Backup.WorkerState}}{{.Backup.WorkerState}}{{else}}none{{end}}</dd></div>
+          <div><dt>Unbacked events</dt><dd>{{.Backup.UnbackedEventCount}}</dd></div>
+        </dl>
+      </details>
+      {{end}}
+    {{else}}
+      <p>No backup health for this workspace.</p>
+    {{end}}
+  </section>
+</main>
+{{end}}
+
+{{define "homeUnavailable"}}
+<main class="welcome-shell home-shell home-narrow">
+  <section class="welcome-main">
+    <p class="section-kicker">Repair</p>
+    <h1>{{if .DisplayName}}{{.DisplayName}}{{else}}{{.WorkspaceID}}{{end}}</h1>
+    <p class="lede"><span class="mode-chip readonly">{{.HealthLabel}}</span> {{.HealthDetail}}</p>
+    {{if .Error}}<div class="flash error" role="alert">{{.Error}}</div>{{end}}
+    <p>Other workspaces stay usable. This pointer needs an explicit repair; Atlas will not guess a new folder from the browser.</p>
+    {{template "homePointerActions" .}}
+    {{if .FindHits}}
+      <h2>Approved locations</h2>
+      <p class="form-help">These are discovery hits under configured roots. Choosing one consumes a path grant.</p>
+      {{range .FindHits}}
+        <form class="inline-grant" method="post" action="/actions/workspaces/repair">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <input type="hidden" name="workspace_id" value="{{$.WorkspaceID}}">
+          <input type="hidden" name="action" value="update_path">
+          <input type="hidden" name="grant_id" value="{{.GrantID}}">
+          <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Use {{.Title}}</button>
+        </form>
+      {{end}}
+    {{end}}
+  </section>
+</main>
+{{end}}
+
+{{define "homePointerActions"}}
+<details class="pointer-box">
+  <summary>Hide, repair, or remove this pointer</summary>
+  <p class="form-help">These change the Home registry only. They do not delete project files, tickets, or backup history.</p>
+  {{if ne .Visibility "hidden"}}
+  <form method="post" action="/actions/workspaces/repair" data-confirm="Hide this workspace from Home? Files and backups stay on disk.">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="workspace_id" value="{{.WorkspaceID}}">
+    <input type="hidden" name="action" value="hide">
+    <button type="submit" {{if .ReadOnly}}disabled{{end}}>Hide from Home</button>
+  </form>
+  {{else}}
+  <form method="post" action="/actions/workspaces/repair">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="workspace_id" value="{{.WorkspaceID}}">
+    <input type="hidden" name="action" value="unhide">
+    <button type="submit" {{if .ReadOnly}}disabled{{end}}>Show on Home</button>
+  </form>
+  {{end}}
+  <form method="post" action="/actions/workspaces/repair" data-confirm="Remove this Home pointer? Project files, tickets, and backup history stay on disk.">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="workspace_id" value="{{.WorkspaceID}}">
+    <input type="hidden" name="action" value="remove_pointer">
+    <button type="submit" {{if .ReadOnly}}disabled{{end}}>Remove pointer</button>
+  </form>
+</details>
+{{end}}
+
+{{define "homeFindDialog"}}
+<dialog class="project-dialog" id="find-workspace-dialog" open aria-labelledby="find-title">
+  <div class="dialog-head">
+    <div>
+      <p class="section-kicker">{{if .ShowInit}}Initialize{{else}}Register{{end}}</p>
+      <h2 id="find-title">{{if .ShowInit}}Initialize a board{{else}}Find an existing workspace{{end}}</h2>
+    </div>
+    <a class="close-button" href="/" data-dialog-close aria-label="Close">×</a>
+  </div>
+  {{if .FindHits}}
+    {{range .FindHits}}
+      <form class="project-form" method="post" action="{{if eq .Purpose "init"}}/actions/workspaces/init{{else}}/actions/workspaces/register{{end}}">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="grant_id" value="{{.GrantID}}">
+        <p><strong>{{.Title}}</strong> <span class="form-help">{{.Location}}</span></p>
+        <button class="primary-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>{{if eq .Purpose "init"}}Initialize{{else}}Register{{end}}</button>
+      </form>
+    {{end}}
+  {{else}}
+    <p class="form-help">Home does not accept a typed filesystem path. Run <code>tracker init</code> in the folder, or enable discovery roots in machine settings and reopen this dialog. A CLI path grant can also be pasted below.</p>
+    <form class="project-form" method="post" action="{{if .ShowInit}}/actions/workspaces/init{{else}}/actions/workspaces/register{{end}}">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <label>Path grant <input name="grant_id" autocomplete="off" required placeholder="grant id from tracker"></label>
+      <div class="dialog-actions">
+        <a class="secondary-action" href="/" data-dialog-close>Cancel</a>
+        <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>{{if .ShowInit}}Initialize{{else}}Register{{end}}</button>
+      </div>
+    </form>
+  {{end}}
+</dialog>
+{{end}}
+
+{{define "homeSettings"}}
+<main class="settings-shell">
+  <div class="settings-head">
+    <div>
+      <p class="section-kicker">Machine</p>
+      <h1>Settings</h1>
+    </div>
+    <nav class="primary-nav">
+      <a href="/settings" {{if eq .Page "settings"}}aria-current="page"{{end}}>General</a>
+      <a href="/settings/agents" {{if eq .Page "settings-agents"}}aria-current="page"{{end}}>Agents</a>
+      <a href="/settings/workspaces" {{if eq .Page "settings-workspaces"}}aria-current="page"{{end}}>Workspaces</a>
+    </nav>
+  </div>
+  {{if eq .Page "settings"}}
+    <form class="settings-form" method="post" action="/actions/settings">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <section class="settings-section">
+        <h2>Service</h2>
+        <dl class="settings-list">
+          <div><dt>Bind</dt><dd>{{.Settings.Service.Bind}}</dd></div>
+          <div><dt>Port</dt><dd>{{.Settings.Service.Port}}</dd></div>
+        </dl>
+        <p class="form-help">The Home port is fixed. If another app owns it, Atlas fails instead of silently moving.</p>
+      </section>
+      <section class="settings-section">
+        <h2>Defaults</h2>
+        <label>Auto-register current workspace
+          <select name="auto_register">
+            <option value="on" {{if .Settings.AutoRegister}}selected{{end}}>On</option>
+            <option value="off" {{if not .Settings.AutoRegister}}selected{{end}}>Off</option>
+          </select>
+        </label>
+        <label>Install Atlas-managed agent entries
+          <select name="agents_auto_install">
+            <option value="on" {{if .Settings.Agents.AutoInstall}}selected{{end}}>On</option>
+            <option value="off" {{if not .Settings.Agents.AutoInstall}}selected{{end}}>Off</option>
+          </select>
+        </label>
+        <label>Local checkpoints
+          <select name="local_checkpoints">
+            <option value="on" {{if .Settings.LocalCheckpoints}}selected{{end}}>On</option>
+            <option value="off" {{if not .Settings.LocalCheckpoints}}selected{{end}}>Off</option>
+          </select>
+        </label>
+        <label>Open Home in the browser
+          <select name="open_home">
+            <option value="on" {{if .Settings.Browser.OpenHome}}selected{{end}}>On</option>
+            <option value="off" {{if not .Settings.Browser.OpenHome}}selected{{end}}>Off</option>
+          </select>
+        </label>
+        <label>Create a default project on init
+          <select name="default_project">
+            <option value="on" {{if .Settings.DefaultProject}}selected{{end}}>On</option>
+            <option value="off" {{if not .Settings.DefaultProject}}selected{{end}}>Off</option>
+          </select>
+        </label>
+        <label>Show hidden workspaces
+          <select name="show_hidden">
+            <option value="on" {{if .Settings.Home.ShowHidden}}selected{{end}}>On</option>
+            <option value="off" {{if not .Settings.Home.ShowHidden}}selected{{end}}>Off</option>
+          </select>
+        </label>
+        <label>Git mode
+          <select name="git_mode">
+            <option value="shared" {{if eq .Settings.GitMode "shared"}}selected{{end}}>shared</option>
+            <option value="private" {{if eq .Settings.GitMode "private"}}selected{{end}}>private</option>
+            <option value="unmanaged" {{if eq .Settings.GitMode "unmanaged"}}selected{{end}}>unmanaged</option>
+          </select>
+        </label>
+        <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>Save settings</button>
+      </section>
+    </form>
+    <section class="settings-section">
+      <h2>Discovery roots</h2>
+      {{if .Settings.Discovery.Roots}}
+        <ul class="check-list">{{range .Settings.Discovery.Roots}}<li>{{.}}</li>{{end}}</ul>
+      {{else}}
+        <p class="form-help">No discovery roots. Atlas never crawls the whole home directory. Add roots from the CLI; the browser will not take an arbitrary path.</p>
+      {{end}}
+    </section>
+  {{end}}
+  {{if eq .Page "settings-agents"}}
+    <section class="settings-section">
+      <h2>Agents</h2>
+      <p>Atlas writes an <code>atlas-tasker</code> MCP entry with <code>{{.MCPArgv}}</code> when agent install is on. This page reports that intended registration. A config file is not a live connection.</p>
+      <dl class="settings-list">
+        <div><dt>Auto-install</dt><dd>{{if .Settings.Agents.AutoInstall}}on{{else}}off{{end}}</dd></div>
+        <div><dt>Canonical argv</dt><dd><code>{{.MCPArgv}}</code></dd></div>
+      </dl>
+      {{if .Agents}}
+      <table class="project-table home-table">
+        <thead><tr><th>Client</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody>
+          {{range .Agents}}
+            <tr>
+              <th scope="row">{{.Target}}</th>
+              <td><span class="mode-chip">{{.Status}}</span></td>
+              <td>{{if .Detail}}{{.Detail}}{{else}}{{.Command}}{{end}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{end}}
+      <p class="settings-note">Status is read from the written executable and args. It is never reported as connected just because a config file exists. Opt out with <code>tracker init --no-agents</code> or the General toggle.</p>
+    </section>
+  {{end}}
+  {{if eq .Page "settings-workspaces"}}
+    <section class="settings-section">
+      <h2>Workspaces</h2>
+      <table class="project-table home-table">
+        <thead><tr><th>Workspace</th><th>Health</th><th></th></tr></thead>
+        <tbody>
+          {{range .Rows}}
+            <tr>
+              <th scope="row">
+                <a class="project-link" href="/w/{{.Record.WorkspaceID}}">
+                  <span>{{.Title}}</span>
+                  <small>{{if .Hidden}}hidden{{end}}</small>
+                </a>
+              </th>
+              <td>{{.HealthLabel}}</td>
+              <td><a href="/w/{{.Record.WorkspaceID}}">Open</a></td>
+            </tr>
+          {{else}}
+            <tr class="empty-projects"><td colspan="3">None registered.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+      <p><a class="secondary-action" href="/?find=1">Find existing</a></p>
+    </section>
+  {{end}}
+</main>
+{{end}}

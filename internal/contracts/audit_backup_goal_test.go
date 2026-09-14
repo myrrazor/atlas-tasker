@@ -150,6 +150,7 @@ func TestV17AuditBackupGoalContractsValidate(t *testing.T) {
 		".tracker/security/keys/public/key.md",
 		".tracker/audit/packets/audit_1.json",
 		".tracker/governance/policies/default.toml",
+		".tracker/managed-mode.json",
 	} {
 		restoreItem.Path = path
 		restoreItem.ReasonCodes = []string{"untrusted_signer"}

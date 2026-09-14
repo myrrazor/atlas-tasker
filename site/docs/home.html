@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas Home, workspaces, and projects</title>
+  <meta name="description" content="tracker opens Atlas Home on loopback port 7432. Register workspaces, switch projects, repair moved copies, and keep unavailable boards from blocking others." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlastasker.com/docs/home.html" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlastasker.com/docs/home.html" />
+  <meta property="og:title" content="Atlas Home, workspaces, and projects" />
+  <meta property="og:description" content="tracker opens Atlas Home on loopback port 7432. Register workspaces, switch projects, repair moved copies, and keep unavailable boards from blocking others." />
+  <meta property="og:image" content="https://atlastasker.com/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Atlas Home, workspaces, and projects" />
+  <meta name="twitter:description" content="tracker opens Atlas Home on loopback port 7432. Register workspaces, switch projects, repair moved copies, and keep unavailable boards from blocking others." />
+  <meta name="twitter:image" content="https://atlastasker.com/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "name": "Atlas Home, workspaces, and projects",
+  "description": "tracker opens Atlas Home on loopback port 7432. Register workspaces, switch projects, repair moved copies, and keep unavailable boards from blocking others.",
+  "url": "https://atlastasker.com/docs/home.html",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "Atlas Tasker",
+    "url": "https://atlastasker.com/"
+  }
+}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+          <a href="home.html" aria-current="page">Home and workspaces</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html">Tickets and workflow</a>
+          <a href="views-and-search.html">Views and search</a>
+          <a href="web-board.html">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-tools.html">MCP tools</a>
+          <a href="mcp-security.html">MCP security</a>
+          <a href="json-and-exit-codes.html">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="uninstall.html">Uninstall</a>
+          <a href="faq.html">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Start</p>
+        <h1>Home and workspaces</h1>
+        <p class="docs-lead">One command opens Atlas Home. Workspaces stay in your repositories; the machine registry only stores pointers.</p>
+
+        <h2>Open Home</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>from anywhere</span><button class="copy-button" type="button" data-copy="home-open" aria-label="Copy tracker command">Copy</button></div>
+          <pre id="home-open">tracker</pre>
+        </div>
+        <p>No arguments. Atlas starts or reuses one loopback service on <code>127.0.0.1:7432</code>, opens Home in a terminal, and prints a URL or JSON otherwise. You do not need to be inside a repository. If another app owns that port, the command fails instead of hopping.</p>
+        <p>Home clears its one-time URL fragment before sending the claim to <code>POST /session/claim</code>, which establishes an HttpOnly cookie. The claim is absent from request URLs. <code>tracker web serve</code> still uses <code>?token=</code>.</p>
+        <h2>Routes</h2>
+        <ul>
+          <li><code>/</code> Home</li>
+          <li><code>/attention</code>, <code>/search</code></li>
+          <li><code>/w/&lt;id&gt;</code>, <code>/w/&lt;id&gt;/projects/&lt;key&gt;</code>, <code>/w/&lt;id&gt;/activity</code>, <code>/w/&lt;id&gt;/backup</code></li>
+          <li><code>/settings</code>, <code>/settings/agents</code>, <code>/settings/workspaces</code></li>
+        </ul>
+        <p>The browser cannot POST an arbitrary filesystem path. Create board needs a path grant or a hit under configured discovery roots. For an existing directory, run <code>tracker workspaces grant /absolute/path/to/project --purpose init --json</code> and paste the grant ID into Home. Register and repair use their matching purposes; grants expire and work once.</p>
+        <h2>Workspaces</h2>
+        <p>One repository root, one stable <code>workspace_id</code>. Canonical tickets stay in that tree. The machine registry stores pointers only. Health includes <code>available</code>, <code>unavailable</code>, <code>moved</code>, <code>copied_identity_conflict</code>, and related states. Unavailable workspaces keep a stale summary and do not block the others. Atlas-managed agent entries use <code>mcp serve --global --tool-profile workflow</code>; restart the client after init.</p>
+        <div class="code-block">
+          <div class="snippet-title"><span>machine + workspace checks</span><button class="copy-button" type="button" data-copy="home-doctor" aria-label="Copy doctor command">Copy</button></div>
+          <pre id="home-doctor">tracker doctor --json
+tracker doctor --repair</pre>
+        </div>
+        <p>Outside a workspace, doctor reports <code>current_workspace: none</code> and does not create <code>.tracker</code>. Repair can update a moved path, fork a copied tree, hide a pointer, or remove a pointer without deleting board files. Details: the <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/guides/home-and-workspaces.md">source guide</a>.</p>
+
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-prev" href="getting-started.html"><span class="pager-label">Previous</span><span class="pager-title">Getting started</span></a>
+        <a class="pager-next" href="tickets-and-workflow.html"><span class="pager-label">Next</span><span class="pager-title">Tickets and workflow</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

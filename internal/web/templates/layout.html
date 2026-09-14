@@ -9,33 +9,78 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body data-page="{{.Page}}">
+<body data-page="{{.Page}}" data-board-path="{{.BoardPath}}" data-action-prefix="{{.ActionPrefix}}" data-home-path="{{.HomePath}}">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="net-banner" data-net-banner hidden role="status"></div>
   <header class="topbar topbar--{{.Page}}">
     <div class="topbar-primary">
-      <a class="brand" href="/" aria-label="{{t "nav.welcome.aria"}}">
+      <a class="brand" href="{{.HomePath}}" aria-label="{{t "nav.welcome.aria"}}">
         <img src="/static/brand/atlas-tasker-ascii.svg" alt="Atlas Tasker">
       </a>
       <nav class="primary-nav" aria-label="{{t "nav.primary"}}">
-        <a href="/" {{if eq .Page "welcome"}}aria-current="page"{{end}}>{{t "nav.overview"}}</a>
-        <a href="/board{{if eq .Page "schedule"}}{{if .ProjectExplicit}}?project={{.Project}}{{end}}{{end}}" {{if eq .Page "board"}}aria-current="page"{{end}}>{{t "nav.board"}}</a>
-        <a href="/schedule{{if eq .Page "board"}}{{if .ProjectExplicit}}?project={{.Project}}{{end}}{{end}}" {{if eq .Page "schedule"}}aria-current="page"{{end}}>Schedule</a>
+        {{if and .HomePath (ne .HomePath "/")}}
+          <a href="/">Home</a>
+        {{end}}
+        <a href="{{.HomePath}}" {{if eq .Page "welcome"}}aria-current="page"{{end}}>{{t "nav.overview"}}</a>
+        <a href="{{.BoardPath}}" {{if eq .Page "board"}}aria-current="page"{{end}}>{{t "nav.board"}}</a>
+        <a href="{{.SchedulePath}}" {{if eq .Page "schedule"}}aria-current="page"{{end}}>Schedule</a>
       </nav>
     </div>
     <div class="top-meta">
-      <span class="meta-block"><span class="meta-label">{{t "meta.workspace"}}</span><strong>{{.Workspace}}</strong></span>
+      <span class="meta-block"><span class="meta-label">{{t "meta.workspace"}}</span><strong>{{displayName .}}</strong></span>
       <span class="meta-block"><span class="meta-label">{{t "meta.local"}}</span><strong><span class="status-dot online"></span>{{.Host}}</strong></span>
       <span class="meta-block"><span class="meta-label">{{t "meta.actor"}}</span><strong>{{.Actor}}</strong></span>
       {{if .ReadOnly}}<span class="mode-chip readonly">{{t "mode.read_only"}}</span>{{else}}<span class="mode-chip">{{t "mode.read_write"}}</span>{{end}}
     </div>
     {{if eq .Page "board"}}
-    <form class="searchbar" method="get" action="/board" role="search">
+    <form class="searchbar" method="get" action="{{.BoardPath}}" role="search">
       <input type="search" name="q" value="{{.Query}}" placeholder="{{t "board.search.placeholder"}}" aria-label="{{t "board.field.search"}}">
       <input type="hidden" name="project" value="{{if .ProjectExplicit}}{{.Project}}{{end}}">
+      {{if .View}}<input type="hidden" name="view" value="{{.View}}">{{end}}
       <button type="submit">{{t "action.search"}}</button>
     </form>
-    <a class="new-button" href="/board?new=1{{if .ProjectExplicit}}&project={{.Project}}{{end}}">{{t "action.new_ticket"}}</a>
+    <a class="new-button" href="{{.NewTicketPath}}">{{t "action.new_ticket"}}</a>
     {{end}}
   </header>
+  {{if eq .Page "board"}}
+  <div class="board-context">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      {{if and .HomePath (ne .HomePath "/")}}
+        <a href="/">Home</a>
+        <span aria-hidden="true">/</span>
+      {{end}}
+      <a href="{{.HomePath}}">{{displayName .}}</a>
+      {{if .Project}}
+        <span aria-hidden="true">/</span>
+        <span aria-current="page">{{.Project}}</span>
+      {{end}}
+    </nav>
+    {{if and .HomePath (ne .HomePath "/") .Projects (gt (len .Projects) 1)}}
+    <nav class="project-switch" aria-label="{{t "board.field.project"}}">
+      {{range .Projects}}
+        <a href="{{$.HomePath}}/projects/{{.Key}}" {{if eq $.Project .Key}}aria-current="page"{{end}}>{{.Name}}</a>
+      {{end}}
+    </nav>
+    {{else if or (eq .HomePath "/") (eq .HomePath "")}}
+    <form class="project-switch" method="get" action="{{.BoardPath}}">
+      <label>{{t "board.field.project"}}
+        {{if .Projects}}
+        <select name="project" aria-label="{{t "board.field.project"}}">
+          <option value="">{{t "board.option.any"}}</option>
+          {{range .Projects}}
+            <option value="{{.Key}}" {{if and $.ProjectExplicit (eq $.Project .Key)}}selected{{end}}>{{.Name}}</option>
+          {{end}}
+        </select>
+        {{else}}
+        <input name="project" value="{{if .ProjectExplicit}}{{.Project}}{{end}}" placeholder="{{if .Project}}{{.Project}}{{else}}APP{{end}}" aria-label="{{t "board.field.project"}}">
+        {{end}}
+      </label>
+      <button type="submit">Open</button>
+    </form>
+    {{end}}
+  </div>
+  {{end}}
+  <div id="main">
   {{if eq .Page "welcome"}}
     {{template "welcomeContent" .}}
   {{else if eq .Page "settings"}}
@@ -45,6 +90,7 @@
   {{else}}
     {{template "boardContent" .}}
   {{end}}
+  </div>
   <div id="atlas-i18n" hidden
     data-none="{{t "common.none"}}"
     data-unknown-status="{{t "board.preview.unknown_status"}}"
@@ -63,7 +109,10 @@
     data-stale="{{t "board.flash.stale"}}"
     data-move-failed-status="{{t "board.flash.move_failed_status"}}"
     data-move-failed="{{t "board.flash.move_failed"}}"
-    data-updated="{{t "board.flash.updated"}}"></div>
+    data-updated="{{t "board.flash.updated"}}"
+    data-offline="The local server is unreachable. Work stays on disk; retry when Atlas Home is running."
+    data-online="Back online."
+    data-conflict="Someone else changed this ticket. Reload and retry with the current revision."></div>
   {{if eq .Page "board"}}<script src="/static/vendor/sortable.min.js"></script>{{end}}
   <script src="/static/app.js"></script>
 </body>
@@ -71,13 +120,14 @@
 {{end}}
 
 {{define "languageSwitcher"}}
+{{$base := .HomePath}}{{if eq .Page "board"}}{{$base = .BoardPath}}{{else if eq .Page "schedule"}}{{$base = .SchedulePath}}{{else if eq .Page "settings"}}{{$base = "/settings"}}{{end}}
 <nav class="language-switcher" aria-label="{{t "language.switcher.aria"}}">
   <span>{{t "common.language"}}</span>
-  <a href="{{langURL "en"}}" lang="en" {{if eq (lang) "en"}}aria-current="true"{{end}}>{{t "language.english"}}</a>
-  <a href="{{langURL "es"}}" lang="es" {{if eq (lang) "es"}}aria-current="true"{{end}}>{{t "language.spanish"}}</a>
-  <a href="{{langURL "id"}}" lang="id" {{if eq (lang) "id"}}aria-current="true"{{end}}>{{t "language.indonesian"}}</a>
-  <a href="{{langURL "zh"}}" lang="zh" {{if eq (lang) "zh"}}aria-current="true"{{end}}>{{t "language.chinese"}}</a>
-  <a href="{{langURL "ja"}}" lang="ja" {{if eq (lang) "ja"}}aria-current="true"{{end}}>{{t "language.japanese"}}</a>
-  <a href="{{langURL "ko"}}" lang="ko" {{if eq (lang) "ko"}}aria-current="true"{{end}}>{{t "language.korean"}}</a>
+  <a href="{{$base}}?lang=en" lang="en" {{if eq (lang) "en"}}aria-current="true"{{end}}>{{t "language.english"}}</a>
+  <a href="{{$base}}?lang=es" lang="es" {{if eq (lang) "es"}}aria-current="true"{{end}}>{{t "language.spanish"}}</a>
+  <a href="{{$base}}?lang=id" lang="id" {{if eq (lang) "id"}}aria-current="true"{{end}}>{{t "language.indonesian"}}</a>
+  <a href="{{$base}}?lang=zh" lang="zh" {{if eq (lang) "zh"}}aria-current="true"{{end}}>{{t "language.chinese"}}</a>
+  <a href="{{$base}}?lang=ja" lang="ja" {{if eq (lang) "ja"}}aria-current="true"{{end}}>{{t "language.japanese"}}</a>
+  <a href="{{$base}}?lang=ko" lang="ko" {{if eq (lang) "ko"}}aria-current="true"{{end}}>{{t "language.korean"}}</a>
 </nav>
 {{end}}

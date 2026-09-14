@@ -411,6 +411,12 @@ code[tabindex]:focus-visible {
   color: var(--text);
 }
 
+.copy-button[aria-busy="true"],
+.copy-button:disabled {
+  cursor: wait;
+  color: var(--text-3);
+}
+
 .command-note {
   margin: 0;
   padding: 15px 26px;
@@ -1839,6 +1845,31 @@ figcaption {
   .legal-content section + section {
     margin-top: 40px;
   }
+}
+
+.not-found-actions {
+  display: flex;
+  margin-top: 32px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.not-found-list {
+  max-width: 42rem;
+  margin: 28px 0 0;
+  padding-left: 1.2rem;
+  color: var(--text-2);
+}
+
+.not-found-list a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.not-found-list a:hover {
+  text-decoration-color: var(--accent);
 }
 
 @media (prefers-reduced-motion: reduce) {

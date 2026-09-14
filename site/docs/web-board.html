@@ -11,6 +11,8 @@
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/docs/web-board.html" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="../styles.css" />
@@ -72,12 +74,14 @@
           <p class="docs-group-label">Start</p>
           <a href="./">Overview</a>
           <a href="getting-started.html">Getting started</a>
+          <a href="home.html">Home and workspaces</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Core</p>
           <a href="tickets-and-workflow.html">Tickets and workflow</a>
           <a href="views-and-search.html">Views and search</a>
           <a href="web-board.html" aria-current="page">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Agents</p>
@@ -89,6 +93,7 @@
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Help</p>
+          <a href="uninstall.html">Uninstall</a>
           <a href="faq.html">FAQ</a>
         </div>
         <div class="docs-side-foot">
@@ -103,37 +108,38 @@
       <article>
         <p class="docs-kicker">Core</p>
         <h1>The local web board</h1>
-        <p class="docs-lead">A real kanban in your browser, served by the same binary from the same workspace. No hosted server, no second database, no login system. It is a local view over the Markdown snapshots, the event log, and the query index.</p>
+        <p class="docs-lead"><code>tracker</code> opens Atlas Home on <code>127.0.0.1:7432</code>. The single-workspace board below is still supported. No hosted server, no second database, no login system. It is a local view over the Markdown snapshots, the event log, and the query index.</p>
 
         <figure class="terminal-shot">
           <div class="terminal-bar">
-            <span class="terminal-title">tracker web serve --open</span>
+            <span class="terminal-title">tracker web serve</span>
             <span class="terminal-state">127.0.0.1 · local only</span>
           </div>
-          <img src="../assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Atlas Tasker web board showing seven workflow columns including separate Done and Canceled columns, visible card assignees, and an open ticket drawer" />
+          <img src="../assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Synthetic local review capture of the Atlas Tasker web board showing six workflow columns and a separate Canceled disclosure" />
           <figcaption>The board with a ticket drawer open: Overview, Notes &amp; activity, Policy/Gates, and Evidence in one place.</figcaption>
         </figure>
 
         <h2>Serving</h2>
         <div class="code-block">
           <div class="snippet-title"><span>start it</span><button class="copy-button" type="button" data-copy="wb-serve" aria-label="Copy web serve commands">Copy</button></div>
-          <pre id="wb-serve">tracker web serve --open                      <span class="c"># serve + open the session URL</span>
+          <pre id="wb-serve">tracker                                       <span class="c"># Atlas Home on 127.0.0.1:7432</span>
+tracker web serve --open                      <span class="c"># single-workspace board</span>
 tracker web serve --project APP --actor human:owner --open
 tracker web serve --read-only --no-browser    <span class="c"># wallboard mode</span>
 tracker web status                            <span class="c"># where is it running</span>
 tracker web open                              <span class="c"># reopen the last server</span></pre>
         </div>
         <ul>
-          <li>Binds to <code>127.0.0.1</code> and picks a random free port by default. There is no non-loopback option; the board is loopback-only, full stop.</li>
-          <li>Each server process mints a fresh session token, prints it once in the session URL, and never writes it to disk. The token dies with the process.</li>
+          <li>Home binds <code>127.0.0.1:7432</code> and fails if another app owns that port. Legacy <code>web serve</code> picks a random free port. There is no non-loopback option.</li>
+          <li>Home clears a one-time URL fragment and exchanges it at <code>POST /session/claim</code> for an HttpOnly cookie. Legacy serve still prints <code>?token=</code>. Home keeps pending claims in private local state until consumed or expired. That cookie is essential to the local app; this marketing site sets none.</li>
           <li><code>--read-only</code> serves the board without any mutation controls: handy for a shared screen.</li>
           <li>Runtime status lands, without secrets, under <code>.tracker/runtime/web/server.json</code>, which is how <code>web open</code> and <code>web status</code> find the running server.</li>
         </ul>
 
         <h2>What you can do on it</h2>
         <ul>
-          <li>All seven canonical workflow columns are on screen at once: Backlog, Ready, In Progress, In Review, Blocked, Done, and Canceled. Done and Canceled stay separate because canceled work neither satisfies dependencies nor counts as completed. Drag cards between legal states: dropping a card on its own column is a no-op, and every move runs the same status-edge rules as the CLI. On a phone the board shows one column at a time and a strip above it switches between them.</li>
-          <li>The ticket drawer is open as soon as the board loads, on the first ticket in the Ready column (or whichever column <code>?column=</code> names; if that column is empty, the first ticket anywhere on the board). It sits beside the board on wide screens and below it on narrow ones. Click any card to switch, and use the close control in the drawer head to clear the selection; the drawer then shows its empty state with a New ticket button. Four tabs: Overview (description, acceptance criteria, schedule, edit), Notes &amp; activity (comments and history), Policy/Gates, and Evidence.</li>
+          <li>The board shows Backlog, Ready, In Progress, In Review, Blocked, and Done; a disclosure opens Canceled. Done and Canceled stay separate because canceled work neither satisfies dependencies nor counts as completed. Drag cards between legal states: dropping a card on its own column is a no-op, and every move runs the same status-edge rules as the CLI. On a phone the board shows one column at a time and a strip above it switches between them.</li>
+          <li>The board uses the available width until you select a card. The ticket drawer then opens over the board, with a full-width layout on phones. Close it with the visible Close link or <code>Escape</code>. Four tabs group the details: Overview (description, acceptance criteria, schedule, and editing, including saved notes), Notes &amp; activity (comments and history), Policy/Gates, and Evidence. Saving keeps you in the same project. If another session changes the ticket, Atlas shows a conflict and preserves your typed form values for review.</li>
           <li>Each card shows its assignee on its face. Hover for a couple of seconds and a preview adds reviewer, priority, labels, and the blocker, gate, and comment counts without changing the drawer.</li>
           <li>Create and edit tickets, comment, move through workflow states, and run request-review, approve, or complete where policy allows. For <code>review_gate</code>, reviewer approval is the transition to Done; it is not followed by a separate completion.</li>
           <li>Filter by project, assignee, reviewer, label, priority, and type; search; and load saved views. The state lives in the URL, so a filtered board is a shareable local link.</li>
@@ -162,7 +168,7 @@ tracker web open                              <span class="c"># reopen the last 
       </article>
       <nav class="docs-pager" aria-label="Docs pages">
         <a class="pager-prev" href="views-and-search.html"><span class="pager-label">Previous</span><span class="pager-title">Views and search</span></a>
-        <a class="pager-next" href="agents-and-dispatch.html"><span class="pager-label">Next</span><span class="pager-title">Agents and dispatch</span></a>
+        <a class="pager-next" href="backup.html"><span class="pager-label">Next</span><span class="pager-title">Checkpoints and backup</span></a>
       </nav>
     </main>
   </div>
@@ -215,6 +221,11 @@ tracker web open                              <span class="c"># reopen the last 
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -222,6 +233,9 @@ tracker web open                              <span class="c"># reopen the last 
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

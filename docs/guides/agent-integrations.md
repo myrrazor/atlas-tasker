@@ -1,11 +1,42 @@
 # Coding-Agent Integrations
 
+For the short regular-user path, start with [setup and backup](setup-and-backup.md). This page is the per-target detail.
+
+Install the binary, then in your project run `tracker init`. On the v1.15 candidate that
+detects the coding agents on the machine and, unless you pass `--no-agents`, writes
+Atlas-managed MCP entries pointing at `tracker mcp serve --global --tool-profile workflow` plus the worker
+skill. Restart the client. After that, open the same repo in Claude Code, Codex, Cursor,
+OpenClaw, or Grok and ask for the board — you do not install a second Atlas package
+inside the agent.
+
 Atlas can install project-level instructions and an `atlas-worker` skill for six agent targets. The
 integration pack teaches an agent how to read Atlas work, claim a ticket, record evidence, and request
-review. It does not install an agent, launch one, grant it permissions, or register Atlas as an MCP
-server.
+review. It does not install an agent, launch one, or grant it permissions. A written MCP entry is
+`written` or `pending_client_restart`, never “connected” just because a config file exists.
+Advanced `tracker setup` can still register a workspace-bound Atlas MCP server for selected
+providers.
 
-## Choose During Setup
+## Unified setup (advanced / v1.14)
+
+Prefer `tracker init` on the v1.15 candidate. `tracker setup` is the workspace-scoped
+planner and apply path for agent guidance and MCP registration when you already have a
+workspace and want the older one-pass refresh. It inspects detected clients, existing managed blocks, and local setup state, prints a
+read-only plan, and applies one provider transaction at a time. Planning never writes. `--yes` is
+not backup consent and is not consent for unnamed machine-wide scopes. `--team` may apply `solo`,
+`pair`, `swarm`, or `crossfire` and never silently overwrites existing roles.
+
+```bash
+tracker setup --plan --json
+tracker setup --yes --agents generic
+tracker setup status --json
+tracker integrations repair generic --yes
+tracker integrations disconnect generic --yes
+```
+
+The release installer may offer `tracker setup` after an explicit TTY yes. Unattended install never
+initializes the current directory and never runs a second integration wizard.
+
+## Choose During Init
 
 In an interactive terminal, `tracker init` initializes the current workspace and then asks:
 
@@ -108,19 +139,25 @@ For OpenClaw, `openclaw skills list` and `openclaw skills check` show whether th
 ready. For other agents, inspect the generated paths above and use that client's normal project-skill
 or command discovery UI.
 
-## MCP Is A Separate Setup
+## MCP registration
 
-The integration pack gives the agent durable instructions and reusable command prompts. MCP gives a
-client structured Atlas tools. Installing one does not configure the other.
+`tracker setup --yes --agents <targets>` refreshes each target's managed instruction block, the
+existing `atlas-worker` skill, and the provider's MCP registration in one transaction. The server
+name is derived from the workspace ID (`atlas-` plus twelve hex characters), the profile is always
+`workflow`, and high-impact tools stay absent. Atlas never grants workspace trust or MCP approval
+on the user's behalf; those stay `pending_workspace_trust` or `pending_mcp_approval`.
 
-To use MCP, register an absolute `tracker` binary path in the MCP client and pin the workspace:
+Generic setup writes a portable descriptor at `.tracker/integrations/atlas-mcp.json` and reports
+`portable_ready` until a conformance host or a real client probes it. It does not claim a universal
+unknown client is connected merely because a file exists.
+
+Manual registration remains available when you are not using setup:
 
 ```bash
-codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile read
+codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile workflow
 ```
 
-Start with `read`, or use `workflow` when the session is expected to create, claim, move, review, or
-complete Atlas work. See [MCP for agents](mcp-for-agents.md), [Codex MCP setup](../mcp-codex.md), and
+See [MCP for agents](mcp-for-agents.md), [Codex MCP setup](../mcp-codex.md), and
 [Claude Code MCP setup](../mcp-claude-code.md).
 
 ## After An Atlas Update

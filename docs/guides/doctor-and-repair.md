@@ -7,7 +7,17 @@ tracker doctor --json
 tracker doctor --md
 ```
 
-Read-only doctor checks consistency between Atlas markdown, events, and the SQLite projection. It should not mutate workspace state.
+On the v1.15 candidate, doctor always checks the **machine**: registry, agent
+registrations, backup/replica health, and service identity. Workspace checks run
+when the current directory is an Atlas root. Outside a workspace it reports
+`current_workspace: none` and does not create `.tracker`.
+
+`--repair` is the single repair switch for machine + current workspace when
+present: moved-path updates, projection rebuild, and journal replay. Forking a
+copied workspace onto a new ID is an explicit repair action, not an implicit
+side effect.
+
+Read-only workspace doctor still checks consistency between Atlas markdown, events, and the SQLite projection. It should not mutate workspace state.
 
 Two things it will refuse to call `ok`:
 
@@ -18,7 +28,7 @@ The second case is the one that used to slip through. `doctor` counted events an
 
 ## The index heals itself
 
-You should rarely need to act on a stale index, because every command that opens the workspace checks the fingerprint first and rebuilds the index under the write lock when it is missing or behind. That includes `board`, `ticket view`, the TUI, `web serve`, and `mcp serve`. The rebuild reads only markdown and events, takes a fraction of a second on a normal workspace, and announces itself once on stderr:
+You should rarely need to act on a stale index, because every command that opens the workspace checks the fingerprint first and rebuilds the index under the write lock when it is missing or behind. That includes `board`, `ticket view`, the TUI, Home / `web serve`, and `mcp serve`. The rebuild reads only markdown and events, takes a fraction of a second on a normal workspace, and announces itself once on stderr:
 
 ```
 [tracker] index.sqlite was missing or stale; rebuilt it from markdown and events (events=13 tickets=5)
