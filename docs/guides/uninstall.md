@@ -20,7 +20,11 @@ when it is marked Atlas-owned and names that same binary, and Atlas-managed MCP 
 that match `<tracker> mcp serve --global --tool-profile workflow`.
 
 Without a verifiable install receipt, uninstall prints the preview and **refuses** to
-delete files. It never guesses an executable path.
+delete files. It never guesses an executable path. Source and `go install` builds write a
+receipt for the running tracker on successful `tracker init` or `tracker setup` when none
+exists. That receipt never replaces an installer or package-manager receipt, never claims
+Homebrew/Cellar paths, and never tracks a test binary. Uninstall then removes that
+executable plus already Atlas-owned integrations; boards, backups, and the registry stay.
 
 Package-manager installs (Homebrew Cellar paths, apt, pacman) emit the manager command
 instead of unlinking the binary.

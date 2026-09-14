@@ -2,6 +2,9 @@ package grok
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,6 +21,11 @@ func configure(bc *host.BuildContext) error {
 	if bc.Reg == nil {
 		return nil
 	}
+	styled, err := bc.Reg.WithToolNameStyle(adapter.ToolNameStylePortable)
+	if err != nil {
+		return err
+	}
+	bc.Reg = &styled
 	for _, existing := range bc.Detection.ExistingServers {
 		if strings.HasPrefix(existing.Name, adapter.ServerNamePrefix) {
 			bc.Warnings = append(bc.Warnings, "Grok also loads "+existing.Name+" from a compatibility import; native project config takes precedence. Disable [compat.cursor] mcps or [compat.claude] mcps to avoid a duplicate Atlas catalog.")
@@ -47,11 +55,26 @@ func configure(bc *host.BuildContext) error {
 	if err := add.Validate(); err != nil {
 		return err
 	}
-	if host.AtlasOwnedSameName(bc.Detection, bc.Reg.ServerName) {
+	if grokNativeMatchesRegistration(bc.Input.WorkspaceRoot, bc.Reg) {
 		bc.Warnings = append(bc.Warnings, "skipping native grok mcp add because a same-name Atlas catalog is already present")
 	} else {
 		host.AddCommandStep(bc, "grok-mcp-add", "register native Grok project MCP server", add, &remove)
 	}
 	bc.Resulting = adapter.StateConfiguredUnverified
 	return nil
+}
+
+func grokNativeMatchesRegistration(workspaceRoot string, reg *adapter.MCPRegistration) bool {
+	if reg == nil {
+		return false
+	}
+	raw, err := os.ReadFile(filepath.Join(workspaceRoot, ".grok", "config.toml"))
+	if err != nil {
+		return false
+	}
+	entry, ok := host.TOMLServerEntry(raw, reg.ServerName)
+	if !ok {
+		return false
+	}
+	return entry.Command == reg.Command && slices.Equal(entry.Args, reg.Args)
 }

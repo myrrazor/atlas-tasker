@@ -36,7 +36,35 @@ const (
 	flagDangerousHighImpactTool = "--dangerously-allow-high-impact-tools"
 	flagInitIfMissing           = "--init-if-missing"
 	flagReadOnly                = "--read-only"
+	FlagToolNameStyle           = "--tool-name-style"
 )
+
+// ToolNameStyle is the optional advertised-name mode for a registration.
+// Empty and "canonical" omit the flag so existing clients keep dotted names.
+type ToolNameStyle string
+
+const (
+	ToolNameStyleCanonical ToolNameStyle = "canonical"
+	ToolNameStylePortable  ToolNameStyle = "portable"
+)
+
+func (s ToolNameStyle) normalized() ToolNameStyle {
+	switch ToolNameStyle(strings.TrimSpace(string(s))) {
+	case "", ToolNameStyleCanonical:
+		return ToolNameStyleCanonical
+	default:
+		return ToolNameStyle(strings.TrimSpace(string(s)))
+	}
+}
+
+func (s ToolNameStyle) IsValid() bool {
+	switch s.normalized() {
+	case ToolNameStyleCanonical, ToolNameStylePortable:
+		return true
+	default:
+		return false
+	}
+}
 
 var serverNamePattern = regexp.MustCompile(`^atlas-[0-9a-f]{12}$`)
 
@@ -142,6 +170,9 @@ type MCPRegistration struct {
 	// Portable registrations name the executable without a path so the entry
 	// can travel with a repository; they must use the verified_cwd binding.
 	Portable bool `json:"portable,omitempty"`
+	// ToolNameStyle is omitted for canonical dotted names. Grok registrations
+	// set "portable" so argv includes --tool-name-style portable.
+	ToolNameStyle ToolNameStyle `json:"tool_name_style,omitempty"`
 }
 
 // NewRegistration builds the canonical registration for a workspace. command
@@ -164,17 +195,38 @@ func NewRegistration(command string, workspaceID string, binding WorkspaceBindin
 		MaxResultBytes: RegistrationMaxResultBytes,
 		Portable:       portable,
 	}
-	reg.Args = RegistrationArgs(workspaceID, binding)
+	reg.Args = deriveRegistrationArgs(workspaceID, binding, reg.ToolNameStyle)
 	if err := reg.Validate(); err != nil {
 		return MCPRegistration{}, err
 	}
 	return reg, nil
 }
 
+// WithToolNameStyle returns a copy whose derived argv matches style.
+func (r MCPRegistration) WithToolNameStyle(style ToolNameStyle) (MCPRegistration, error) {
+	if !style.IsValid() {
+		return MCPRegistration{}, fmt.Errorf("invalid tool-name-style %q", style)
+	}
+	if style.normalized() == ToolNameStyleCanonical {
+		r.ToolNameStyle = ""
+	} else {
+		r.ToolNameStyle = style.normalized()
+	}
+	r.Args = deriveRegistrationArgs(r.WorkspaceID, r.Binding, r.ToolNameStyle)
+	if err := r.Validate(); err != nil {
+		return MCPRegistration{}, err
+	}
+	return r, nil
+}
+
 // RegistrationArgs derives the exact server argv for a binding. Every binding
 // pins the expected workspace ID; result bounds and the workflow profile are
-// fixed.
+// fixed. Canonical tool names are the default; portable names are opt-in.
 func RegistrationArgs(workspaceID string, binding WorkspaceBinding) []string {
+	return deriveRegistrationArgs(workspaceID, binding, "")
+}
+
+func deriveRegistrationArgs(workspaceID string, binding WorkspaceBinding, style ToolNameStyle) []string {
 	args := []string{"mcp", "serve"}
 	switch binding.Kind {
 	case WorkspaceBindingAbsolutePath:
@@ -190,6 +242,9 @@ func RegistrationArgs(workspaceID string, binding WorkspaceBinding) []string {
 		flagMaxItems, strconv.Itoa(RegistrationMaxItems),
 		flagMaxResultBytes, strconv.Itoa(RegistrationMaxResultBytes),
 	)
+	if style.normalized() == ToolNameStylePortable {
+		args = append(args, FlagToolNameStyle, string(ToolNameStylePortable))
+	}
 	return args
 }
 
@@ -231,6 +286,9 @@ func (r MCPRegistration) Validate() error {
 	if r.MaxItems != RegistrationMaxItems || r.MaxResultBytes != RegistrationMaxResultBytes {
 		return fmt.Errorf("result bounds are fixed at --max-items %d --max-result-bytes %d", RegistrationMaxItems, RegistrationMaxResultBytes)
 	}
+	if !r.ToolNameStyle.IsValid() {
+		return fmt.Errorf("invalid tool-name-style %q", r.ToolNameStyle)
+	}
 	for _, arg := range r.Args {
 		for _, forbidden := range forbiddenRegistrationArgs {
 			if arg == forbidden {
@@ -241,7 +299,7 @@ func (r MCPRegistration) Validate() error {
 			return fmt.Errorf("registration args must not embed credentials")
 		}
 	}
-	expected := RegistrationArgs(r.WorkspaceID, r.Binding)
+	expected := deriveRegistrationArgs(r.WorkspaceID, r.Binding, r.ToolNameStyle)
 	if len(expected) != len(r.Args) {
 		return fmt.Errorf("registration args must equal the derived argv (%d args, got %d)", len(expected), len(r.Args))
 	}

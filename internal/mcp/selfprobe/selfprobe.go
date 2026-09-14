@@ -157,21 +157,19 @@ func Run(ctx context.Context, opts Options) (report Report, err error) {
 	tools := toolNames(listed)
 	report.Tools = tools
 	for _, name := range highImpactDenied {
-		for _, have := range tools {
-			if have == name {
-				report.HighImpactFound = append(report.HighImpactFound, name)
-			}
+		if hasTool(tools, name) {
+			report.HighImpactFound = append(report.HighImpactFound, name)
 		}
 	}
-	if !contains(tools, "atlas.dashboard") || !contains(tools, "atlas.board") {
+	if !hasTool(tools, "atlas.dashboard") || !hasTool(tools, "atlas.board") {
 		report.Detail = "workflow read tools missing"
 		return report, nil
 	}
-	if contains(tools, "atlas.ticket.create") == opts.Mutate && opts.Mutate {
+	if hasTool(tools, "atlas.ticket.create") == opts.Mutate && opts.Mutate {
 		// mutation path checked below
 	}
 
-	dash, err := sess.call(runCtx, "atlas.dashboard", map[string]any{})
+	dash, err := sess.call(runCtx, callName(tools, "atlas.dashboard"), map[string]any{})
 	if err == nil && toolOK(dash) {
 		report.DashboardOK = true
 	} else if err != nil {
@@ -179,7 +177,7 @@ func Run(ctx context.Context, opts Options) (report Report, err error) {
 	} else {
 		report.Detail = "atlas.dashboard failed"
 	}
-	board, err := sess.call(runCtx, "atlas.board", map[string]any{})
+	board, err := sess.call(runCtx, callName(tools, "atlas.board"), map[string]any{})
 	if err == nil && toolOK(board) {
 		report.BoardOK = true
 	} else if err != nil {
@@ -188,7 +186,7 @@ func Run(ctx context.Context, opts Options) (report Report, err error) {
 		report.Detail = "atlas.board failed"
 	}
 
-	if opts.Mutate && contains(tools, "atlas.project.create") {
+	if opts.Mutate && hasTool(tools, "atlas.project.create") {
 		actor := strings.TrimSpace(opts.Actor)
 		if actor == "" {
 			actor = "human:owner"
@@ -197,14 +195,14 @@ func Run(ctx context.Context, opts Options) (report Report, err error) {
 		if reason == "" {
 			reason = "AT114-201 self-probe mutation"
 		}
-		created, err := sess.call(runCtx, "atlas.project.create", map[string]any{
+		created, err := sess.call(runCtx, callName(tools, "atlas.project.create"), map[string]any{
 			"key":  "PRB",
 			"name": "Selfprobe",
 		})
 		if err == nil && toolOK(created) {
 			report.MutationOK = true
-		} else if contains(tools, "atlas.ticket.create") {
-			ticket, terr := sess.call(runCtx, "atlas.ticket.create", map[string]any{
+		} else if hasTool(tools, "atlas.ticket.create") {
+			ticket, terr := sess.call(runCtx, callName(tools, "atlas.ticket.create"), map[string]any{
 				"project": "PRB",
 				"title":   "selfprobe",
 				"type":    "task",
@@ -360,6 +358,21 @@ func contains(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func portableName(canonical string) string {
+	return strings.ReplaceAll(canonical, ".", "_")
+}
+
+func hasTool(tools []string, canonical string) bool {
+	return contains(tools, canonical) || contains(tools, portableName(canonical))
+}
+
+func callName(tools []string, canonical string) string {
+	if contains(tools, canonical) {
+		return canonical
+	}
+	return portableName(canonical)
 }
 
 func truncate(s string, n int) string {

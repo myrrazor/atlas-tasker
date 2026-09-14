@@ -119,8 +119,8 @@ tracker mcp serve --workspace /absolute/path/to/repo --tool-profile read
 tracker mcp serve --workspace /absolute/path/to/existing-directory --tool-profile workflow --init-if-missing
 tracker mcp schema --json --tool-profile workflow</pre>
         </div>
-        <p><code>tracker init</code> registers detected clients with <code>tracker mcp serve --global --tool-profile workflow</code>. Restart the client; a written file is not a live connection. <code>--global</code> cannot be combined with <code>--workspace</code> or <code>--init-if-missing</code>. Cross-workspace writes need <code>workspace_id</code>. Pinned <code>serve</code> without <code>--global</code> still defaults to <code>--tool-profile read</code> and still reads the current directory unless <code>--workspace</code> names one. Without a pin, a user-scoped client starts wherever it happens to be, which is the usual reason a tool returns <code>not_found</code> for a ticket you can see in your terminal.</p>
-        <p><code>--init-if-missing</code> is an explicit bootstrap opt-in for a fresh workspace. It requires an absolute path to an existing directory and a write-capable workflow, delivery, or admin profile. Atlas refuses the option with the read profile, <code>--read-only</code>, a nested Atlas root, or redirected initialization outputs. Once startup succeeds, <code>atlas.project.create</code> can create a project container through MCP using only <code>key</code> and <code>name</code>.</p>
+        <p><code>tracker init</code> registers detected clients with <code>tracker mcp serve --global --tool-profile workflow</code>. Restart the client; a written file is not a live connection. <code>--global</code> cannot be combined with <code>--workspace</code> or <code>--init-if-missing</code>. Cross-workspace writes need <code>workspace_id</code>. Both global and pinned <code>serve</code> default to <code>--tool-profile workflow</code>. Use <code>--tool-profile read</code> or <code>--read-only</code> for inspection only. Pinned serve reads the current directory unless <code>--workspace</code> names one. Without a pin, a user-scoped client starts wherever it happens to be, which is the usual reason a tool returns <code>not_found</code> for a ticket you can see in your terminal.</p>
+        <p><code>--init-if-missing</code> is an explicit bootstrap opt-in for a fresh workspace. It requires an absolute path to an existing directory and a write-capable workflow, delivery, or admin profile. Atlas refuses the option with the read profile, <code>--read-only</code>, a nested Atlas root, or redirected initialization outputs. Bootstrap creates the first project and registers the workspace with Home without opening a browser or changing agent registrations. Existing projects and workspace identity are preserved. Use <code>atlas.project.create</code> with <code>key</code> and <code>name</code> for additional projects.</p>
 
         <h2>Profiles</h2>
         <p>Four cumulative profiles decide which tools exist in a session. Use <code>read</code> for inspection and <code>workflow</code> when the agent is expected to work tickets. Inspect your installed binary rather than assuming a count from documentation.</p>
@@ -130,13 +130,17 @@ tracker mcp schema --json --tool-profile workflow</pre>
               <tr><th scope="col">Profile</th><th scope="col">Tools</th><th scope="col">Adds</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>read</code></td><td>live inventory</td><td>Reads, plans, attention, workspace list, backup health. The default.</td></tr>
-              <tr><td><code>workflow</code></td><td>live inventory</td><td>The full ticket loop plus workspace init/repair, views, local checkpoint run, and restore plan. Run <code>tracker mcp tools --json</code>.</td></tr>
+              <tr><td><code>read</code></td><td>live inventory</td><td>Reads, plans, attention, workspace list, and backup health. Select explicitly for inspection only.</td></tr>
+              <tr><td><code>workflow</code></td><td>live inventory</td><td>The CLI default: the full ticket loop plus workspace init/repair, views, local checkpoint run, and restore plan. Run <code>tracker mcp tools --json</code>.</td></tr>
               <tr><td><code>delivery</code></td><td>live inventory</td><td>Adds dispatch, change create, change sync, and checks sync. The danger flag exposes guarded delivery actions.</td></tr>
               <tr><td><code>admin</code></td><td>live inventory</td><td>The danger flag exposes high-impact operations including backup configure, restore apply, and workspace fork-copy. See <a href="mcp-security.html">MCP security</a>.</td></tr>
             </tbody>
           </table>
         </div>
+
+        <h2>Grok Build</h2>
+        <p><code>tracker init</code> and <code>tracker setup --yes --agents grok</code> include <code>--tool-name-style portable</code> automatically. Grok receives names such as <code>atlas_status</code> and <code>atlas_board</code>; other clients keep dotted names such as <code>atlas.status</code>. The tools use the same handlers, permission checks, and response limits.</p>
+        <p>After setup, restart Grok and ask “How are the tickets looking?” Home’s Agents page shows the registration scope and actual command. A matching configuration can still need a client restart; successful tool use confirms the connection.</p>
 
         <h2>Client setup</h2>
         <h3>Claude Code</h3>

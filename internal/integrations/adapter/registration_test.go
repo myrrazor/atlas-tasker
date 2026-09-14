@@ -112,6 +112,9 @@ func TestRegistrationValidateRejectsTampering(t *testing.T) {
 		"other workspace":     func(r *MCPRegistration) { r.WorkspaceID = "other" },
 		"bad actor hint":      func(r *MCPRegistration) { r.ActorHint = "agent:" },
 		"portable with path":  func(r *MCPRegistration) { r.Portable = true },
+		"invalid name style":  func(r *MCPRegistration) { r.ToolNameStyle = "dotted" },
+		"style without args":  func(r *MCPRegistration) { r.ToolNameStyle = ToolNameStylePortable },
+		"portable argv patch": func(r *MCPRegistration) { r.Args = append(r.Args, FlagToolNameStyle, string(ToolNameStylePortable)) },
 	}
 	for name, mutate := range cases {
 		reg := base()
@@ -160,6 +163,41 @@ func TestPortableRegistration(t *testing.T) {
 	}
 	if cmd.Purpose != CommandPurposeProbe || cmd.Dir != "/srv/ws" || !reflect.DeepEqual(cmd.Args, reg.Args) {
 		t.Fatalf("unexpected serve command: %+v", cmd)
+	}
+}
+
+func TestPortableToolNameStyleDerivesGrokSafeArgv(t *testing.T) {
+	base, err := NewRegistration("/usr/local/bin/tracker", testWorkspaceID, WorkspaceBinding{Kind: WorkspaceBindingVerifiedCwd}, "agent:builder-1", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, arg := range base.Args {
+		if arg == FlagToolNameStyle || arg == string(ToolNameStylePortable) {
+			t.Fatalf("canonical argv leaked portable flag: %v", base.Args)
+		}
+	}
+	styled, err := base.WithToolNameStyle(ToolNameStylePortable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if styled.ToolNameStyle != ToolNameStylePortable {
+		t.Fatalf("style %q", styled.ToolNameStyle)
+	}
+	if err := styled.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(styled.Args, " ")
+	if !strings.Contains(got, FlagToolNameStyle+" "+string(ToolNameStylePortable)) {
+		t.Fatalf("portable argv missing flag: %v", styled.Args)
+	}
+	if strings.Contains(got, "dangerously") {
+		t.Fatalf("portable argv leaked danger flag: %v", styled.Args)
+	}
+	if styled.Fingerprint() == base.Fingerprint() {
+		t.Fatal("portable argv must change the registration fingerprint")
+	}
+	if _, err := base.WithToolNameStyle("dotted"); err == nil {
+		t.Fatal("invalid style must fail")
 	}
 }
 

@@ -1042,7 +1042,24 @@ func requireKnownSubcommand(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return cmd.Help()
 	}
+	if args[0] == "help" {
+		return helpForKnownSubcommand(cmd, args[1:])
+	}
 	return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath()))
+}
+
+func helpForKnownSubcommand(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return cmd.Help()
+	}
+	child, rest, err := cmd.Find(args)
+	if err != nil || child == nil || child == cmd {
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath()))
+	}
+	if len(rest) > 0 {
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unknown command %q for %q", rest[0], child.CommandPath()))
+	}
+	return child.Help()
 }
 
 func requireTicketTypeOrTemplate(cmd *cobra.Command, _ []string) error {
@@ -3642,6 +3659,7 @@ func orderedQueueCategories() []service.QueueCategory {
 	return []service.QueueCategory{
 		service.QueueReadyForMe,
 		service.QueueUnblockedForMe,
+		service.QueueAssignedBacklog,
 		service.QueueClaimedByMe,
 		service.QueueBlockedForMe,
 		service.QueueNeedsReview,

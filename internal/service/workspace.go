@@ -40,7 +40,7 @@ func InitializedWorkspaceRoot(root string) (string, error) {
 	for dir := filepath.Dir(root); ; dir = filepath.Dir(dir) {
 		info, err := os.Stat(storage.TrackerDir(dir))
 		if err == nil && info.IsDir() {
-			return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is not an Atlas workspace root — the workspace is %s; run tracker from there", root, dir))
+			return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is not an Atlas workspace root — the workspace is %s; run tracker from there, or open Atlas Home with 'tracker'", root, dir))
 		}
 		if err != nil && !os.IsNotExist(err) {
 			return "", fmt.Errorf("inspect ancestor Atlas workspace %s: %w", dir, err)
@@ -49,5 +49,5 @@ func InitializedWorkspaceRoot(root string) (string, error) {
 			break
 		}
 	}
-	return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is not an Atlas workspace; run 'tracker init' first", root))
+	return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is not an Atlas workspace; run 'tracker init' first, or open Atlas Home with 'tracker' and attach an existing board with 'tracker workspaces grant'", root))
 }

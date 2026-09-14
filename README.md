@@ -10,6 +10,36 @@
 
 Atlas Tasker is a local-first issue tracker and orchestration layer that lives in your repo. You get Jira-grade tickets — boards, dependencies, review gates, audit history — as plain markdown files plus a fast SQLite index, without a hosted service or an account. Then it goes where Jira can't: your coding agents (Claude Code, Codex, anything that speaks MCP) claim tickets, get blocked on each other, wake up when their dependencies land, attach evidence, and hand work off for review.
 
+## Get started
+
+Install Atlas once:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
+```
+
+Open your project in your coding agent and ask:
+
+```text
+Initialize Atlas Tasker in this project.
+```
+
+Atlas sets up the board, local checkpoints, and integrations for supported agents installed on your machine. Restart your agent to load the integration.
+
+Then ask normally:
+
+```text
+What's the current status of this project?
+```
+
+**v1.15 preview:** This walkthrough uses the current source. The installer downloads the latest published release; these setup features become available when v1.15 is released. See [Install](#install) to build this version now.
+
+### A real Grok Build session
+
+![Grok Build answering a project-status question from current Atlas tickets](docs/assets/grok-status.png)
+
+Actual Grok Build 4.6 (xhigh) session: a normal status question, Atlas MCP reads, and a ticket table. Synthetic example tickets on a v1.15 source build.
+
 ## Install
 
 The curl installer and `go install ...@latest` install the latest **published** GitHub release. Atlas Home, global MCP (`mcp serve --global --tool-profile workflow`), and `tracker uninstall` live in this v1.15 source and are not on that published tag until a v1.15 release exists. Unstamped builds report `"version": "dev"`.
@@ -18,7 +48,7 @@ The curl installer and `go install ...@latest` install the latest **published** 
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
 
-The installer verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release). Unattended `curl | sh` never initializes the directory you happened to be in.
+The installer verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release). Unattended `curl | sh` never initializes the directory you happened to be in. The installer alone does not register coding agents.
 
 With a Go toolchain (1.26.6 or newer):
 
@@ -38,6 +68,15 @@ go build -o tracker ./cmd/tracker
 After a v1.15 `tracker` is on your `PATH`:
 
 ```bash
+tracker init
+tracker
+```
+
+`tracker init` writes identity, canonical `projects/` and `.tracker/` files, local checkpoints, and Atlas-managed coding-agent entries for clients it actually finds. `tracker` with no arguments starts or reuses the one machine-wide Home service on `127.0.0.1:7432`, opens Home in a TTY, and prints a usable URL (or JSON) otherwise. It works outside a repo. Standing inside a valid workspace also registers that workspace when auto-register is on. If something else already owns that port, Atlas fails instead of silently moving.
+
+To seed a first ticket, use a directory named `app` so init's default project key is `APP`:
+
+```bash
 mkdir app && cd app
 tracker init
 tracker
@@ -48,9 +87,7 @@ tracker board
 
 The example directory is named `app`, so init's default project key is `APP` and the ticket command is valid. In a repo whose directory name is not `app`, use that generated key (or `MAIN` when the basename is too short) instead of `APP`. Extra projects are still `tracker project create AUTH "Auth"`.
 
-`tracker init` writes identity, canonical `projects/` and `.tracker/` files, local checkpoints, and Atlas-managed coding-agent entries for clients it actually finds. Opt out with `--no-agents` / `--skip-integrations`, `--no-backup`, `--no-register`, `--no-open`, or `--git-mode private|unmanaged`. `--integrations` still opens the older TTY picker.
-
-`tracker` with no arguments starts or reuses the one machine-wide Home service on `127.0.0.1:7432`, opens Home in a TTY, and prints a usable URL (or JSON) otherwise. It works outside a repo. Standing inside a valid workspace also registers that workspace when auto-register is on. If something else already owns that port, Atlas fails instead of silently moving.
+Opt out of init's extras with `--no-agents` / `--skip-integrations`, `--no-backup`, `--no-register`, `--no-open`, or `--git-mode private|unmanaged`. `--integrations` still opens the older TTY picker.
 
 Mutation commands resolve `--actor`, then `TRACKER_ACTOR`, then `actor.default`, and exit 2 before writing if none is set. There is no silent `human:owner` fallback.
 
@@ -63,8 +100,6 @@ The [getting started](docs/getting-started.md), [setup and backup](docs/guides/s
 Every ticket is a markdown file under `projects/`, every change is an append-only event in `.tracker/`, and a SQLite projection keeps queries instant. Your tracker ships with your repo: branch it, diff it, `git blame` a status change. If the index goes missing or falls behind, the next command rebuilds it from the files and says so once on stderr; if it ever gets corrupted, `tracker reindex` or `tracker doctor --repair` rebuilds it from the event log.
 
 Prefer a full-screen view? `tracker tui` opens the interactive console — board, work queues, ticket detail with timeline, search, review and owner queues, inbox, and an ops dashboard, all keyboard-driven. The Board tab uses the same table presentation as `tracker board`, with keyboard scrolling for long lists. Open ticket details explicitly with Enter.
-
-![TUI splash](docs/assets/splash.png)
 
 ![Interactive TUI board](docs/assets/tui-board.png)
 
@@ -124,7 +159,7 @@ Around that core, agents get the full delivery loop:
 - **Evidence** attaches proof to runs — test output, diffs, logs, screenshots — so review isn't vibes.
 - **Gates** block completion until a reviewer, owner, QA, or release check signs off.
 - **Handoffs** package up changed files, open questions, and risks for the next agent.
-- **MCP** exposes all of it as tools. Init registers detected clients with `tracker mcp serve --global --tool-profile workflow`. Cross-workspace writes need an explicit `workspace_id`. Pinned `tracker mcp serve --workspace /path` is still supported and still defaults to `--tool-profile read`. Profiles still go read → workflow → delivery → admin, with typed approvals for high-impact operations. Restart the client after a registration change. A written config is not proof the client is connected.
+- **MCP** exposes all of it as tools. Init registers detected clients with `tracker mcp serve --global --tool-profile workflow`. Cross-workspace writes need an explicit `workspace_id`. Global and pinned `tracker mcp serve --workspace /path` default to `workflow`; use `--tool-profile read` or `--read-only` for inspection only. Grok setup automatically uses compatible names such as `atlas_status` and `atlas_board`. Profiles still go read → workflow → delivery → admin, with typed approvals for high-impact operations. Restart the client after a registration change. A written config is not proof the client is connected.
 - **Goal manifests** (`tracker goal brief APP-1 --md`) give an agent the full context of a ticket in one shot.
 
 To hand work off, install the Atlas worker skill and give the ticket to Claude Code, Codex, Cursor, OpenClaw, Grok, or another agent. The skill teaches the agent to read its queue, claim work, dispatch a run, attach evidence, request review, acknowledge wake-ups, and hand off context while everything is tracked in Atlas Tasker. Humans still choose where to intervene through assignments, review gates, owner gates, and explicit handoffs.

@@ -135,6 +135,19 @@ func TestSkillContentTeachesBootstrapAndWakeups(t *testing.T) {
 	}
 }
 
+func TestGrokSkillTeachesPortableMCPNames(t *testing.T) {
+	skill := atlasWorkerSkill("grok")
+	for _, needle := range []string{"atlas_status", "atlas_board", "atlas_context", "atlas.status"} {
+		if !strings.Contains(skill, needle) {
+			t.Fatalf("grok skill missing %q:\n%s", needle, skill)
+		}
+	}
+	guide := grokGuide()
+	if !strings.Contains(guide, "atlas_status") || !strings.Contains(guide, "--tool-name-style portable") {
+		t.Fatalf("grok guide missing portable MCP names:\n%s", guide)
+	}
+}
+
 func TestAllProviderSkillsShareManagedLifecycle(t *testing.T) {
 	core := lifecycleSection(atlasWorkerSkill("claude"))
 	if core == "" {

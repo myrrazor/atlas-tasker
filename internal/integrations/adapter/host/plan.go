@@ -279,11 +279,7 @@ This file contains no secrets or machine-local home paths.
 }
 
 func addRegistration(bc *BuildContext) error {
-	portable := bc.Input.Detection.Target == integrations.TargetGeneric && bc.Scope.Binding == adapter.WorkspaceBindingVerifiedCwd && bc.Scope.WriteMethod == adapter.WriteMethodPortableOnly
-	command := bc.Input.TrackerPath
-	if portable {
-		command = adapter.PortableExecutableName
-	}
+	command, portable, note := registrationCommand(bc)
 	binding := adapter.WorkspaceBinding{Kind: bc.Scope.Binding}
 	switch bc.Scope.Binding {
 	case adapter.WorkspaceBindingAbsolutePath:
@@ -299,6 +295,10 @@ func addRegistration(bc *BuildContext) error {
 		if portable {
 			return err
 		}
+		if bc.Input.Detection.Target == integrations.TargetGrok && bc.Scope.Scope.RepositoryCarried() {
+			bc.Warnings = append(bc.Warnings, grokHomePathGuidance(bc.Input.TrackerPath))
+			return nil
+		}
 		// Repository-carried scopes cannot embed a home-local tracker. Fall
 		// back to the portable executable name with verified_cwd when the
 		// preferred binding allows it.
@@ -309,7 +309,6 @@ func addRegistration(bc *BuildContext) error {
 			}
 			portableCmd := adapter.PortableExecutableName
 			if bc.Scope.Binding == adapter.WorkspaceBindingClientVariable {
-				// Cursor still wants an absolute-or-portable command; use system path if not under home.
 				portableCmd = command
 			}
 			reg, err = adapter.NewRegistration(portableCmd, bc.Input.WorkspaceID, altBinding, ActorHint(bc.Input), portableCmd == adapter.PortableExecutableName)
@@ -325,8 +324,26 @@ func addRegistration(bc *BuildContext) error {
 			return nil
 		}
 	}
+	if note != "" {
+		bc.Warnings = append(bc.Warnings, note)
+	}
 	bc.Reg = &reg
 	return nil
+}
+
+func grokHomePathGuidance(trackerPath string) string {
+	return "project Grok MCP was not written: " + trackerPath + " is under the home directory and PATH does not resolve tracker to this Atlas executable. Put this binary on PATH as tracker and rerun setup. User-scoped Home registration can still use the absolute command."
+}
+
+func registrationCommand(bc *BuildContext) (string, bool, string) {
+	command := bc.Input.TrackerPath
+	if bc.Input.Detection.Target == integrations.TargetGeneric && bc.Scope.Binding == adapter.WorkspaceBindingVerifiedCwd && bc.Scope.WriteMethod == adapter.WriteMethodPortableOnly {
+		return adapter.PortableExecutableName, true, ""
+	}
+	if bc.Input.Detection.Target == integrations.TargetGrok && bc.Scope.Scope.RepositoryCarried() && bc.Scope.Binding == adapter.WorkspaceBindingVerifiedCwd {
+		return PortableTrackerCommand(command)
+	}
+	return command, false, ""
 }
 
 func addStateStep(bc *BuildContext) error {

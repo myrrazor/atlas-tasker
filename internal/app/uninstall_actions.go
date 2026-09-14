@@ -29,11 +29,15 @@ func (a *App) recordUninstallClientActions(command string, args []string, client
 			continue
 		}
 		id := "mcp-" + string(client.Target)
+		clientArgs := client.Args
+		if len(clientArgs) == 0 {
+			clientArgs = args
+		}
 		switch {
 		case strings.HasSuffix(path, ".toml"):
-			actions = append(actions, uninstall.NewManagedTOMLAction(id, path, GlobalMCPServerName, command, args))
+			actions = append(actions, uninstall.NewManagedTOMLAction(id, path, GlobalMCPServerName, command, clientArgs))
 		default:
-			actions = append(actions, uninstall.NewManagedJSONAction(id, path, GlobalMCPServerName, command, args))
+			actions = append(actions, uninstall.NewManagedJSONAction(id, path, GlobalMCPServerName, command, clientArgs))
 		}
 	}
 	return a.publishUninstallActions(actions)

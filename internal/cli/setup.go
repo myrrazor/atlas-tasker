@@ -7,11 +7,13 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/integrations"
 	"github.com/myrrazor/atlas-tasker/internal/setup"
+	"github.com/myrrazor/atlas-tasker/internal/uninstall"
 	"github.com/spf13/cobra"
 )
 
@@ -107,6 +109,9 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 			}
 		}
 		report, err := engine.ApplyPrepared(commandContext(cmd), prepared, setup.ApplyOptions{Interactive: true, AllowMachineWide: containsOpenClaw(agents) || agentsAll})
+		if err == nil {
+			recordSourceInstallReceipt(report)
+		}
 		return writeSetupReport(cmd, &prepared.Plan, report, err)
 	}
 
@@ -118,7 +123,27 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 		return writeSetupReport(cmd, &prepared.Plan, engine.PlanReport(prepared), nil)
 	}
 	report, err := engine.ApplyPrepared(commandContext(cmd), prepared, setup.ApplyOptions{Yes: true, AllowMachineWide: containsOpenClaw(agents) || agentsAll})
+	if err == nil {
+		recordSourceInstallReceipt(report)
+	}
 	return writeSetupReport(cmd, &prepared.Plan, report, err)
+}
+
+func recordSourceInstallReceipt(report *setup.RunReport) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	state, err := setup.DefaultStateDir(home, os.Getenv)
+	if err != nil {
+		return
+	}
+	_, recErr := uninstall.MaybeWriteRunningReceipt(state, time.Now().UTC())
+	if recErr == nil || report == nil {
+		return
+	}
+	notice := "install receipt not written: " + recErr.Error() + "; uninstall will refuse until a verifiable receipt exists"
+	report.RemainingDependencies = append(report.RemainingDependencies, notice)
 }
 
 func runSetupStatus(cmd *cobra.Command, _ []string) error {
@@ -299,6 +324,11 @@ func writeSetupReport(cmd *cobra.Command, plan *setup.SetupPlan, report *setup.R
 	pretty := "setup"
 	if report != nil {
 		pretty = fmt.Sprintf("setup status=%s providers=%d", report.Status, len(report.Providers))
+		for _, dep := range report.RemainingDependencies {
+			if strings.Contains(dep, "install receipt not written") {
+				pretty += "\n" + dep
+			}
+		}
 	}
 	if err := writeCommandOutput(cmd, data, pretty, pretty); err != nil {
 		return err

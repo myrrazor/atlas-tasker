@@ -204,6 +204,40 @@ func serversFromTOML(raw []byte) []namedServer {
 	return out
 }
 
+// TOMLServerEntry returns the named [mcp_servers.<name>] entry if the table
+// parsed and that key decoded to a command-bearing server. Other keys, comments,
+// and sibling servers are ignored.
+func TOMLServerEntry(raw []byte, name string) (adapter.StandardServerEntry, bool) {
+	entry, _, present, usable := InspectTOMLServer(raw, name)
+	return entry, present && usable
+}
+
+// InspectTOMLServer distinguishes a missing named server from a malformed file
+// or an unusable named table. parsed is false when the document is not TOML.
+func InspectTOMLServer(raw []byte, name string) (entry adapter.StandardServerEntry, parsed, present, usable bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return adapter.StandardServerEntry{}, false, false, false
+	}
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		return adapter.StandardServerEntry{}, true, false, false
+	}
+	var doc map[string]any
+	if toml.Unmarshal(raw, &doc) != nil {
+		return adapter.StandardServerEntry{}, false, false, false
+	}
+	table, _ := doc["mcp_servers"].(map[string]any)
+	if table == nil {
+		return adapter.StandardServerEntry{}, true, false, false
+	}
+	value, exists := table[name]
+	if !exists {
+		return adapter.StandardServerEntry{}, true, false, false
+	}
+	entry, ok := decodeServerValue(value)
+	return entry, true, true, ok
+}
+
 func decodeServerValue(value any) (adapter.StandardServerEntry, bool) {
 	raw, err := json.Marshal(value)
 	if err != nil {

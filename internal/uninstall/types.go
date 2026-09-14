@@ -18,11 +18,13 @@ const (
 	KindRemoveConfigEntry  = "remove_config_entry"
 	KindPackageManager     = "package_manager"
 
-	MethodScript   = "script"
-	MethodHomebrew = "homebrew"
-	MethodApt      = "apt"
-	MethodPacman   = "pacman"
-	MethodUnknown  = "unknown"
+	MethodScript    = "script"
+	MethodHomebrew  = "homebrew"
+	MethodApt       = "apt"
+	MethodPacman    = "pacman"
+	MethodSource    = "source"
+	MethodGoInstall = "go-install"
+	MethodUnknown   = "unknown"
 
 	StatusPreview                = "preview"
 	StatusApplied                = "applied"

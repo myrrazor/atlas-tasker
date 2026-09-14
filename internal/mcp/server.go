@@ -67,16 +67,27 @@ func (s *Server) SDKServer() *mcpsdk.Server {
 	hub.mu.Lock()
 	hub.sdk = server
 	hub.mu.Unlock()
+	if s.Options.toolNameStyle() == ToolNameStylePortable {
+		if err := ValidateAdvertisedToolNames(s.Options); err != nil {
+			// Catalog bug: refuse to advertise a colliding or Grok-unsafe name.
+			panic(err)
+		}
+	}
 	for _, spec := range ToolSpecsFor(s.Options) {
 		enabled, _ := spec.Enabled(s.Options)
 		if !enabled {
 			continue
 		}
 		spec := spec
+		name := advertisedName(spec.Name, s.Options)
+		title := spec.Title
+		if s.Options.toolNameStyle() == ToolNameStylePortable {
+			title = name
+		}
 		tool := &mcpsdk.Tool{
-			Name:        spec.Name,
-			Title:       spec.Title,
-			Description: spec.Description,
+			Name:        name,
+			Title:       title,
+			Description: advertisedDescription(spec, s.Options),
 			InputSchema: spec.InputSchema,
 			Annotations: toolAnnotations(spec),
 		}
@@ -492,8 +503,8 @@ func EnabledSchemas(options Options) []map[string]any {
 			continue
 		}
 		item := map[string]any{
-			"name":              spec.Name,
-			"description":       spec.Description,
+			"name":              advertisedName(spec.Name, options),
+			"description":       advertisedDescription(spec, options),
 			"class":             spec.Class,
 			"inputSchema":       spec.InputSchema,
 			"schema_hash":       schemaHash(spec.InputSchema),

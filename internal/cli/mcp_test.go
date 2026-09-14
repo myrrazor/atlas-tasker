@@ -60,6 +60,22 @@ func TestMCPSchemaAndToolsReflectProfiles(t *testing.T) {
 	t.Fatalf("expected inventory to include atlas.change.merge")
 }
 
+func TestMCPToolNameStylePortableListsUnderscoreNames(t *testing.T) {
+	out, err := runCLI(t, "mcp", "tools", "--json", "--tool-profile", "read", "--tool-name-style", "portable")
+	if err != nil {
+		t.Fatalf("mcp tools portable failed: %v\n%s", err, out)
+	}
+	if strings.Contains(out, `"atlas.status"`) || strings.Contains(out, `"atlas.board"`) {
+		t.Fatalf("portable tools leaked dotted names:\n%s", out)
+	}
+	if !strings.Contains(out, `"atlas_status"`) || !strings.Contains(out, `"atlas_board"`) {
+		t.Fatalf("portable tools missing underscore names:\n%s", out)
+	}
+	if _, err := runCLI(t, "mcp", "tools", "--json", "--tool-name-style", "dotted"); err == nil {
+		t.Fatal("invalid tool-name-style must fail")
+	}
+}
+
 func TestMCPApproveOperationTargetContractIsDocumented(t *testing.T) {
 	cmd, _, err := NewRootCommand().Find([]string{"mcp", "approve-operation"})
 	if err != nil {

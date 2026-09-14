@@ -753,7 +753,7 @@ Dependency rules:
 - `tracker search --view <NAME>`
 - `tracker render <ID>`
 
-Queue categories, in the order `next` walks them: `ready_for_me`, `unblocked_for_me` (backlog tickets whose blockers are all `done` but that nobody moved to `ready` yet), `claimed_by_me`, `needs_review`, `awaiting_owner`, `blocked_for_me`, `stale_claims`, `policy_violations`. Backlog that never had blockers is not queued.
+Queue categories, in the order `next` walks them: `ready_for_me`, `unblocked_for_me` (backlog tickets whose blockers are all `done` but that nobody moved to `ready` yet), `assigned_backlog` (tickets assigned to the actor that are still `backlog`, reason `not_ready_status`; not startable and not auto-promoted), `claimed_by_me`, `needs_review`, `awaiting_owner`, `blocked_for_me`, `stale_claims`, `policy_violations`. Unassigned backlog is not added to a personal queue.
 
 Search query terms:
 
@@ -887,17 +887,23 @@ Slash command examples:
 
 ## MCP Adapter
 
-- `tracker mcp serve [--global] [--workspace <ABSOLUTE-PATH>] [--init-if-missing] [--workspace-from-cwd --expected-workspace-id <ID>] [--tool-profile read|workflow|delivery|admin] [--read-only] [--dangerously-allow-high-impact-tools]` (Atlas-managed global registration is `--global --tool-profile workflow`)
+- `tracker mcp serve [--global] [--workspace <ABSOLUTE-PATH>] [--init-if-missing] [--workspace-from-cwd --expected-workspace-id <ID>] [--tool-profile read|workflow|delivery|admin] [--read-only] [--dangerously-allow-high-impact-tools]` (CLI default profile is `workflow`, matching Atlas-managed global registration `--global --tool-profile workflow`)
 - `tracker mcp schema --json [--tool-profile <PROFILE>]`
 - `tracker mcp tools --json [--tool-profile <PROFILE>]`
 - `tracker mcp approve-operation --operation <TOOL> --target <ID> --actor <ACTOR> --reason <TEXT> [--ttl 10m]`
 - `tracker mcp approvals list --json`
 - `tracker mcp approvals revoke <APPROVAL-ID>`
 
-Default MCP setup uses `--tool-profile read`. The exact visible counts are read 44, workflow 76,
-delivery 80 (82 with `--dangerously-allow-high-impact-tools`), and admin 80 (the full 91 with the
-flag). High-impact tools require both a profile that includes the tool and the danger flag; execution
-still requires a one-time approval created outside MCP.
+`tracker mcp serve` and `tracker mcp tools` default to `--tool-profile workflow`, matching managed
+registration. Pass `--tool-profile read` or `--read-only` for a read catalog. The Go MCP library still
+defaults empty options to `read`. High-impact tools stay hidden unless `--dangerously-allow-high-impact-tools`
+is set; execution still requires a one-time approval created outside MCP.
+
+`--init-if-missing` creates the default project and registers the workspace with Atlas Home the same
+way `tracker init` does. It still requires an explicit absolute `--workspace`, a write-capable profile,
+and never opens a browser or re-registers coding agents during stdio startup. A second start is
+idempotent and does not overwrite existing projects. A hollow `.tracker` with zero projects gets its
+first default project without rewriting config. `--expected-workspace-id` is checked before any write.
 
 `--workspace-from-cwd` resolves the nearest Atlas root from the current directory and requires
 `--expected-workspace-id`. It never initializes, never follows a registry path as a fallback, and

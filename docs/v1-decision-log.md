@@ -921,6 +921,8 @@ Rebuild, watermark advancement, and recovery locking are superseded by DEC-052. 
 
 ## DEC-065
 
+**Partially superseded by DEC-110:** CLI profile default and opt-in bootstrap completion changed for v1.15; the remaining security and storage contracts below are retained.
+
 1. **Decision ID:** DEC-065
 2. **Date:** 2026-09-09
 3. **Question:** How can MCP complete ordinary workspace setup and ticket maintenance without widening default authority?
@@ -1477,3 +1479,66 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 - **Confidence:** high
 - **Revisit Trigger:** The pinned Go toolchain changes, corpus growth consumes the smoke workload, or measured CI throughput warrants recalibrating the documented counts.
 - **Affected PRs/Files:** PR #155; `scripts/stability-smoke.sh`, `TEST_STDOUT.log`, and release evidence.
+
+
+## DEC-106 — Simple install, init, restart, then ask
+
+- **Decision ID:** DEC-106
+- **Date:** 2026-09-14
+- **Question:** How should v1.15 present first use in the README and marketing site without overclaiming the published installer or inventing agent output?
+- **Options Considered:** Keep the opening as a flag-heavy command dump with seed tickets; lead with a simulated coding-agent chat and imply `curl | sh` wires MCP; present install the binary, initialize in the chosen project (or ask the coding agent to), restart so Atlas MCP loads, then ask for ticket status, with published-tag versus this-source kept explicit.
+- **Chosen Option:** Lead README and the site with install → initialize here → restart the detected agent → ask for status. Keep the verified curl command, a natural-language init prompt, and a normal status question in Get started. Two commands leads with `tracker init` and `tracker` only; seed-ticket commands stay in later detail. Show one real Grok Build status capture (synthetic tickets, v1.15 source) as native Markdown, not an embedded TUI or browser board. Retain the detailed Install section, source-versus-release truth, browser Kanban, and no cookie banner. Public installer still fetches the published v1.13 tag until a v1.15 release exists.
+- **Why We Chose It:** The owner asked for very simple onboarding, current dark-mode product shots, a real coding-agent status flow, and README plus website updated together. The installer only places the binary; claiming it initializes or registers agents would be false. Simulated chat as if it were output, speed promises, customers, and a live v1.15 install claim are out of scope. Advanced flags stay out of the opening pitch.
+- **Confidence:** high
+- **Revisit Trigger:** A v1.15 GitHub release is published so curl installs this flow, the Grok capture no longer matches the current client, or the owner changes the first-use sequence.
+- **Affected PRs/Files:** v1.15 main-target documentation; `README.md`, `docs/getting-started.md`, `docs/examples/screenshot-fixtures.md`, `docs/v1-decision-log.md`, `site/index.html`, `site/styles.css`, `site/docs/getting-started.html`, `site/guide.html`, `site/_tools/site-contract.test.mjs`.
+
+## DEC-107 — Portable MCP tool names for Grok Build
+
+- **Decision ID:** DEC-107
+- **Date:** 2026-09-14
+- **Question:** How should Atlas expose MCP tools to Grok Build so the model actually receives them, without breaking existing dotted-name clients or hacking Grok?
+- **Options Considered:** Change every client to underscore names; leave dotted names and document a Grok workaround; add an explicit `--tool-name-style portable` server mode (default `canonical`) and auto-select it only on Atlas-managed Grok registration.
+- **Chosen Option:** Keep canonical dotted names (`atlas.status`) as the default advertised catalog. Add `--tool-name-style portable`, which advertises unique Grok-safe underscore names (`atlas_status`) and dispatches them to the existing canonical handlers without duplicating the catalog or loosening actor/reason/workspace checks. Atlas-managed Grok registration on both `tracker init` (user-scope global server) and `tracker setup --agents grok` (project-scoped adapter) passes `--tool-name-style portable`. Other targets keep the existing argv. JSON/Markdown retain public canonical terminology; portable discovery descriptions mention the canonical name.
+- **Why We Chose It:** Live Grok Build 1.0.30 handshakes and lists 94 tools, then skips every dotted Atlas name as `invalid or ambiguous qualified name` (`atlas-…__atlas.status`). That is a tool-name contract failure, not registration or trust. The owner wants Atlas integrated with Grok and a real automatic status demonstration before merge, without modifying Grok. A typed optional `tool_name_style` field keeps registration argv derived and validated instead of patched.
+- **Confidence:** high
+- **Revisit Trigger:** Grok accepts dotted MCP tool names, another client needs a different advertised-name mapping, or portable underscore names collide in the catalog.
+- **Affected PRs/Files:** v1.15 Grok MCP name integration; `internal/mcp/tool_names.go`, `internal/mcp/types.go`, `internal/mcp/server.go`, `internal/mcp/tools.go`, `internal/mcp/machine.go`, `internal/cli/mcp.go`, `internal/integrations/adapter/registration.go`, `internal/integrations/adapter/grok/adapter.go`, `internal/app/agents.go`, `internal/mcp/selfprobe/selfprobe.go`, `docs/guides/agent-integrations.md`, `docs/guides/mcp-for-agents.md`, `docs/v1.15-mcp-capabilities.md`, `docs/v1-decision-log.md`.
+
+### DEC-108 — Current dark screenshots and wordmark favicon
+
+- **Date:** 2026-09-14
+- **Question:** How should the onboarding refresh represent the product and brand on README and the marketing site?
+- **Options Considered:** Keep older screenshots; restyle existing images; capture the current interfaces using synthetic tickets. Use a generic letter icon or extract the existing wordmark glyph.
+- **Chosen Option:** Capture the current dark CLI, TUI, Home, browser board, schedule, and real Grok Build session. Use the existing wordmark’s first A geometry for a compact SVG favicon plus 32 px PNG and 180 px touch icon. Use wrapping setup prompts and account for the sticky navigation at mobile widths.
+- **Why We Chose It:** Screenshots should show the actual version being described. Synthetic fixtures protect private project data; direct glyph extraction keeps the existing identity readable at small sizes. The website’s WebP copies and intrinsic image dimensions reduce transfer size and layout movement.
+- **Confidence:** high
+- **Revisit Trigger:** Product chrome, brand geometry, or agent rendering changes; a v1.15 release replaces the source-preview instructions.
+- **Affected PRs/Files:** v1.15 main-target onboarding refresh; `README.md`, `docs/assets/`, `docs/examples/screenshot-fixtures.md`, `site/assets/`, `site/favicon.svg`, `site/favicon-32.png`, `site/apple-touch-icon.png`, `site/index.html`, `site/styles.css`.
+
+## DEC-109 — PATH lookup, project-scoped agent status, and launchable Grok commands
+
+- **Decision ID:** DEC-109
+- **Date:** 2026-09-14
+- **Question:** How should Atlas register and report coding-agent MCP entries so init finds CLIs on PATH, Home distinguishes user vs project Grok config, and project commands stay launchable without embedding home paths or pretending a source build is on PATH?
+- **Options Considered:** Keep injected-only LookPath and compare every Home row to global argv; always write bare `tracker` into project Grok config; write home-local absolute commands into repository-carried files and skip later ValidateForScope; crawl `$HOME` for `.grok` files; treat any matching config as live/verified. Fall back to `exec.LookPath` when unset, list only registered/granted workspace roots, match each native entry to its own expected binding/argv, use bare `tracker` only when PATH resolves to the running Atlas executable, and keep an absolute project command only when ValidateForScope allows it.
+- **Chosen Option:** `App.lookPath()` uses `exec.LookPath` when the caller did not inject a lookup, preserving test injection. Home Agents lists user-scoped files and project-scoped Grok entries from already registered or granted workspace roots, shows the actual written argv (including `--tool-name-style portable`), and reports configured / pending client restart only when the written command is launchable — never connected or live. Bare `tracker` is configured only while PATH still resolves to the intended executable. A missing user-scoped Atlas key is omitted; a malformed or present-but-mismatched Atlas entry stays unverified. Project Grok uses bare `tracker` with `verified_cwd` when PATH points at this executable. Absolute project commands are kept only when they pass repository-carried scope rules. A home-local binary that is not on PATH yields a configured-unverified guidance plan (skill refresh, no project MCP) telling the user to put this binary on PATH and rerun setup; user-scoped Home registration remains available and is not invented by setup. The shared agent skill answers status/board questions with a compact Markdown ticket table, then blockers and next steps, with shown/total on truncated boards.
+- **Why We Chose It:** Init was detecting Grok on PATH while registration reported it absent because production LookPath was nil. Home compared project Grok argv to the global Home command and labeled a working project entry as a broken user entry, including when `~/.grok/config.toml` existed without `atlas-tasker`. Blind portable `tracker` names would fail to launch a source build that is not on PATH. Writing a home-local absolute command into project config violates the repository-carried placement rule and then fails `IntegrationPlan.Validate`. Ownership checks stay limited to the `tracker` basename; a fixture named `v1.15-tracker` is not treated as Atlas-owned.
+- **Confidence:** high
+- **Revisit Trigger:** Grok accepts dotted MCP names without `--tool-name-style portable`, project Grok starts with a working directory other than the workspace, PATH `tracker` can no longer be compared to the running executable by symlink-resolved path, or setup gains an explicit user-scope Grok registration path that does not invent a config location.
+- **Affected PRs/Files:** v1.15 RC integration follow-up; `internal/app/app.go`, `internal/app/agents.go`, `internal/app/types.go`, `internal/web/home_handlers.go`, `internal/integrations/adapter/host/plan.go`, `internal/integrations/adapter/host/portable.go`, `internal/integrations/adapter/host/existing.go`, `internal/integrations/adapter/grok/`, `internal/integrations/agent_skill.go`, `docs/guides/agent-integrations.md`, `docs/guides/mcp-for-agents.md`. The Agents page uses compact comparison rows with an expandable command/configuration section so long paths remain readable at phone widths (`internal/web/templates/home.html`, `internal/web/static/home.css`).
+
+## DEC-110
+
+1. **Decision ID:** DEC-110
+2. **Date:** 2026-09-14
+3. **Question:** How should Atlas close the v1.15 independent rc-audit workflow gaps (default MCP profile, assigned backlog visibility, MCP bootstrap including hollow `.tracker` trees, workspace error copy, default project keys, parent `help`, source-install receipts with on-disk proof and nonfatal write failures) without weakening identity, high-impact, claim-token, or uninstall safeguards?
+4. **Options Considered:**
+   - Leave CLI MCP on `read`, hide assigned backlog until ready, keep scaffold-only `--init-if-missing`, truncate long project keys, treat `ticket help` as unknown, and require the curl installer for uninstall receipts.
+   - Default CLI `mcp serve`/`tools`/`schema` to `workflow` (library empty profile stays `read`); add additive `assigned_backlog` after ready/unblocked for the actor only; run ordinary `App.Init` for missing trees and `EnsureDefaultProjectAndRegister` for existing/hollow `.tracker` (first project only, no git-mode rewrite); verify `--expected-workspace-id` before any write; point missing-workspace errors at `tracker` and `workspaces grant`; use the first valid 2–12 character word for long hyphen/underscore names (`MAIN` otherwise); handle `help` in `requireKnownSubcommand`; write a conservative source/`go-install` receipt after proving both process and on-disk binaries are Atlas main, executable, and not package-managed; report receipt write failures as nonfatal init/setup notices.
+   - Auto-promote assigned backlog to `ready`, seed `actor.default=human:owner`, add `--force` uninstall, and hash-suffix project keys.
+5. **Chosen Option:** The second option. This partially supersedes DEC-065’s CLI read-profile default and scaffold-only bootstrap: ordinary CLI MCP now defaults to workflow and explicit bootstrap creates the first project and registers it. The MCP library default, explicit read-only profile, actor/reason rules, strict schemas, and high-impact approvals remain. Existing machine opt-outs apply to fresh and hollow workspaces; a failed required bootstrap step prevents MCP startup. Only explicit MCP bootstrap passes `SkipHomeService`; ordinary init retains Home startup and failure reporting. Keep high-impact gates, claim-token stripping, actor/type identity, and receipt-bound uninstall. Do not auto-ready backlog or invent actors.
+6. **Why We Chose It:** Managed registration already pins workflow; the CLI default was the footgun. Agents need to *see* assigned backlog without a silent status change. MCP stdio bootstrap was a hollow workspace that Home could not list. Long compacted keys were unreadable. `help` as a leftover arg is a cobra parent-command trap. Source builds could not uninstall software they actually installed. The rejected third option weakens readiness, identity, and uninstall verification.
+7. **Confidence:** high
+8. **Revisit Trigger:** A client that cannot load workflow tools by default; operators needing unassigned backlog in personal queues; a package-manager receipt format that collides with source receipts; project-key collisions on `ATLAS`/`MAIN` in dense monorepos.
+9. **Affected PRs/Files:** `internal/cli/mcp.go`, `internal/cli/mcp_bootstrap.go`, `internal/cli/root.go`, `internal/cli/setup.go`, `internal/cli/uninstall.go`, `internal/cli/rc_workflow_test.go`; `internal/app/init.go`, `internal/app/init_bootstrap_test.go`, `internal/app/gitmode.go`, `internal/app/gitmode_test.go`, `internal/app/attention.go`; `internal/service/query.go`, `internal/service/types.go`, `internal/service/workspace.go`, `internal/service/query_test.go`; `internal/tui/app.go`, `internal/tui/app_test.go`; `internal/uninstall/types.go`, `internal/uninstall/source_receipt.go`, `internal/uninstall/source_receipt_test.go`; `docs/command-reference.md`, `docs/mcp.md`, `docs/guides/uninstall.md`.

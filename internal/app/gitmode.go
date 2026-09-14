@@ -91,24 +91,42 @@ func upsertManagedBlock(path, block string) (bool, error) {
 }
 
 func DefaultProjectKey(dirName string) string {
+	if key, ok := validDefaultProjectKey(compactProjectKey(dirName)); ok {
+		return key
+	}
+	for _, word := range splitProjectNameWords(dirName) {
+		if key, ok := validDefaultProjectKey(compactProjectKey(word)); ok {
+			return key
+		}
+	}
+	return "MAIN"
+}
+
+func compactProjectKey(raw string) string {
 	var b strings.Builder
-	for _, r := range strings.ToUpper(dirName) {
+	for _, r := range strings.ToUpper(raw) {
 		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
 			b.WriteRune(r)
 		}
 	}
-	key := b.String()
+	return b.String()
+}
+
+func splitProjectNameWords(raw string) []string {
+	return strings.FieldsFunc(raw, func(r rune) bool {
+		return !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	})
+}
+
+func validDefaultProjectKey(key string) (string, bool) {
 	if key == "" {
-		return "MAIN"
+		return "", false
 	}
 	if key[0] < 'A' || key[0] > 'Z' {
 		key = "P" + key
 	}
-	if len(key) < 2 {
-		return "MAIN"
+	if len(key) < 2 || len(key) > 12 {
+		return "", false
 	}
-	if len(key) > 12 {
-		key = key[:12]
-	}
-	return key
+	return key, true
 }

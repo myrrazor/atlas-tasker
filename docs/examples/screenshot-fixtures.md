@@ -35,3 +35,29 @@ Use actual rendered UI and inspect every capture for private names, paths, and t
 The README and website wordmark copies come from
 `internal/web/static/brand/atlas-tasker-ascii.svg`. Render
 `assets/brand/social-card.html` at 1200 × 630 to reproduce `site/og.png`.
+
+## Current dark mode
+
+Every product screenshot in README and the marketing site must be a genuine
+capture of the current dark-mode UI. Recapture rather than restyle an old
+light-mode or stale-chrome frame. Do not author simulated chat or board pixels
+and present them as output.
+
+## Grok Build status
+
+Capture a real Grok Build session after `tracker init` on a v1.15 source build,
+with the Atlas MCP entry loaded, asking a normal ticket-status question.
+Use synthetic sample tickets only (the web demo fixture is fine). Save:
+
+1. `docs/assets/grok-status.png` for README
+2. `site/assets/grok-status.webp` encoded from that capture for the website
+
+Use the capture’s actual dimensions in HTML image attributes. Crop session IDs,
+credentials, personal identity, and local filesystem paths before commit. Public files may identify `myrrazor` and the product; they must not
+identify a person or a private path.
+
+Caption both uses as a real Grok Build session, synthetic sample tickets, and a
+v1.15 source build. Grok has its own native Markdown display. Do not caption it
+as Atlas's terminal TUI or a rich browser board.
+
+Source/build evidence for the capture stays outside the repository.

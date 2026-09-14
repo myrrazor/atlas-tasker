@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
@@ -134,7 +135,10 @@ func (a *App) getenv() func(string) string {
 }
 
 func (a *App) lookPath() func(string) (string, error) {
-	return a.opts.LookPath
+	if a.opts.LookPath != nil {
+		return a.opts.LookPath
+	}
+	return exec.LookPath
 }
 
 func randomID() string {

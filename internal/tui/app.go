@@ -1373,6 +1373,7 @@ func queueItems(queue service.QueueView) []contracts.TicketSnapshot {
 	for _, category := range []service.QueueCategory{
 		service.QueueReadyForMe,
 		service.QueueUnblockedForMe,
+		service.QueueAssignedBacklog,
 		service.QueueClaimedByMe,
 		service.QueueNeedsReview,
 		service.QueueAwaitingOwner,

@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/myrrazor/atlas-tasker/internal/app"
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	atlasmcp "github.com/myrrazor/atlas-tasker/internal/mcp"
 	"github.com/myrrazor/atlas-tasker/internal/service"
@@ -70,7 +72,7 @@ func prepareMCPWorkspace(cmd *cobra.Command, options atlasmcp.Options) (string, 
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 			return "", apperr.New(apperr.CodeInvalidInput, ".tracker must be a real directory for MCP bootstrap")
 		}
-		// Do not re-run init: it would rewrite an existing workspace's config.
+		// Existing Atlas state: do not scaffold (that rewrites git mode/config).
 		root, err = service.InitializedWorkspaceRoot(root)
 		if err != nil {
 			return "", err
@@ -78,9 +80,16 @@ func prepareMCPWorkspace(cmd *cobra.Command, options atlasmcp.Options) (string, 
 		if err := setup.VerifyExpectedWorkspaceID(root, expectedID); err != nil {
 			return "", err
 		}
+		if err := repairMCPBootstrapWorkspace(cmd, root); err != nil {
+			return "", err
+		}
 		return root, nil
 	}
 	if !os.IsNotExist(err) {
+		return "", err
+	}
+	// Fresh directory: an expected ID cannot match until identity exists.
+	if err := setup.VerifyExpectedWorkspaceID(root, expectedID); err != nil {
 		return "", err
 	}
 	if err := refuseNestedWorkspaceInit(root); err != nil {
@@ -108,7 +117,7 @@ func prepareMCPWorkspace(cmd *cobra.Command, options atlasmcp.Options) (string, 
 			return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("MCP bootstrap refuses redirected or invalid output %s", output.name))
 		}
 	}
-	if _, err := ensureInitArtifacts(root); err != nil {
+	if err := initMCPBootstrapWorkspace(cmd, root); err != nil {
 		return "", err
 	}
 	root, err = service.InitializedWorkspaceRoot(root)
@@ -119,6 +128,45 @@ func prepareMCPWorkspace(cmd *cobra.Command, options atlasmcp.Options) (string, 
 		return "", err
 	}
 	return root, nil
+}
+
+func mcpBootstrapContext(cmd *cobra.Command) context.Context {
+	ctx := commandContext(cmd)
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+func initMCPBootstrapWorkspace(cmd *cobra.Command, root string) error {
+	a, err := openApp()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = a.Close() }()
+	_, err = a.Init(mcpBootstrapContext(cmd), app.InitOptions{
+		Root:            root,
+		Register:        true,
+		Agents:          false,
+		Backup:          false,
+		DefaultProject:  true,
+		OpenHome:        false,
+		WriteClientCfg:  false,
+		SkipHomeService: true,
+	})
+	// A partial init can mean the first project or registry write failed.
+	// Do not start MCP while reporting that incomplete bootstrap as success.
+	return err
+}
+
+func repairMCPBootstrapWorkspace(cmd *cobra.Command, root string) error {
+	a, err := openApp()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = a.Close() }()
+	_, _, err = a.EnsureDefaultProjectAndRegister(mcpBootstrapContext(cmd), root)
+	return err
 }
 
 func mcpStateDir() string {

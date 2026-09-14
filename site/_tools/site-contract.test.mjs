@@ -358,7 +358,8 @@ test("public workflow guidance matches the v1.15 candidate contracts", () => {
   assert.match(agents, /clears existing project open overrides/i);
   assert.match(agents, /OpenClaw-only --global option/i);
   assert.match(mcp, /approval by the required reviewer itself moves the ticket directly to Done/i);
-  assert.match(textContent(pages.get("docs/mcp-setup.html")), /defaults to --tool-profile read/);
+  assert.match(textContent(pages.get("docs/mcp-setup.html")), /default to --tool-profile workflow/);
+  assert.match(textContent(pages.get("docs/mcp-setup.html")), /--tool-profile read or --read-only for inspection only/);
   assert.match(changelog, /v1\.13\.0 — Workflow Consistency/i);
   assert.match(changelog, /checksums, provenance, and hosted verification/i);
   assert.match(changelog, /v1\.12\.0 — Agent Setup And Documentation/i);
@@ -495,6 +496,18 @@ test("marketing site has no cookie banner, analytics, or nonessential cookies", 
   }
   assert.match(textContent(pages.get("privacy.html")), /sets no cookies/i);
   assert.match(textContent(pages.get("privacy.html")), /essential HttpOnly session cookie/i);
+});
+
+test("all local page images exist and declare dimensions", async () => {
+  for (const [file, html] of pages) {
+    for (const image of tags(html, "img")) {
+      if (!image.src || /^(?:https?:|data:)/.test(image.src)) continue;
+      const data = await readFile(new URL(image.src, new URL(file, siteRoot)));
+      assert.ok(data.length > 0, `${file}: empty image ${image.src}`);
+      assert.ok(Number(image.width) > 0 && Number(image.height) > 0,
+        `${file}: ${image.src} needs intrinsic dimensions`);
+    }
+  }
 });
 
 test("favicon set includes SVG, PNG, and apple-touch icon", async () => {
