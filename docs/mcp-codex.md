@@ -2,10 +2,10 @@
 
 Use an absolute path to the built `tracker` binary.
 
-CLI setup:
+CLI setup. Serve defaults to `--tool-profile workflow`; pass `--tool-profile read` or `--read-only` for inspection only:
 
 ```bash
-codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile read
+codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile workflow
 ```
 
 Verify the saved server with `codex mcp list`; inside an interactive Codex session, `/mcp` shows the
@@ -18,7 +18,7 @@ Global config. A globally registered server does not inherit your shell's direct
 ```toml
 [mcp_servers.atlas]
 command = "/usr/local/bin/tracker"
-args = ["mcp", "serve", "--workspace", "/path/to/workspace", "--tool-profile", "read"]
+args = ["mcp", "serve", "--workspace", "/path/to/workspace", "--tool-profile", "workflow"]
 ```
 
 Project-scoped config in a trusted project can use the same shape. Keeping `--workspace` explicit makes the target independent of the client working directory:

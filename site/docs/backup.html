@@ -111,7 +111,7 @@
         <p class="docs-lead">Local checkpoints are the default. A remote is a named target you add, and a push is not verified until Atlas fetches it.</p>
 
         <div class="docs-note">
-          <p>Local checkpoints start at <code>tracker init</code> on the v1.15 candidate. A remote is extra, named by you, and never inferred from Git <code>origin</code>. A push is not verified until Atlas fetches the remote commit into an empty temporary repository.</p>
+          <p>Local checkpoints start at <code>tracker init</code>. A remote is extra, named by you, and never inferred from Git <code>origin</code>. A push is not verified until Atlas fetches the remote commit into an empty temporary repository.</p>
         </div>
         <h2>Local checkpoints</h2>
         <p>Atlas-owned snapshots live under <code>$XDG_STATE_HOME/atlas-tasker/backups/&lt;workspace-id&gt;/</code> (or <code>~/.local/state/atlas-tasker/backups/&lt;workspace-id&gt;/</code>). They use an isolated bare Git repo. They do not rewrite your project Git HEAD, index, or remotes. Coalescing stays about 30s quiet / 5min max / 100 pending. Ticket edits stay available offline. Opt out with <code>tracker init --no-backup</code>.</p>

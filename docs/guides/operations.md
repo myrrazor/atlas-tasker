@@ -13,7 +13,7 @@ tracker inbox
 tracker sync status
 ```
 
-On the v1.15 candidate, `tracker` with no args opens Home (or prints the URL). `doctor` checks the machine even outside a workspace.
+`tracker` with no args opens Home (or prints the URL). `doctor` checks the machine even outside a workspace.
 
 ## Before High-Impact Work
 

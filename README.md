@@ -32,7 +32,7 @@ Then ask normally:
 What's the current status of this project?
 ```
 
-**v1.15 preview:** This walkthrough uses the current source. The installer downloads the latest published release; these setup features become available when v1.15 is released. See [Install](#install) to build this version now.
+The installer places the binary only. Run `tracker init` in each workspace, then restart detected coding agents so they load Atlas MCP.
 
 ### A real Grok Build session
 
@@ -44,21 +44,21 @@ Recorded in Grok Build 4.6 (xhigh), using synthetic example tickets on a v1.15 s
 
 ## Install
 
-The curl installer and `go install ...@latest` install the latest **published** GitHub release. Atlas Home, global MCP (`mcp serve --global --tool-profile workflow`), and `tracker uninstall` live in this v1.15 source and are not on that published tag until a v1.15 release exists. Unstamped builds report `"version": "dev"`.
+The one-line installer is the normal path. It fetches the latest **published** GitHub release, checks the SHA-256 checksum, verifies the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release).
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
 ```
 
-The installer verifies the checksum and the GitHub build attestation, and drops a single `tracker` binary into `/usr/local/bin` (set `BIN_DIR` to install somewhere else, `VERSION` to pin a specific release). Unattended `curl | sh` never initializes the directory you happened to be in. The installer alone does not register coding agents.
+Requires `curl`, `tar`, and the GitHub CLI (`gh`) for attestation checks. Unattended `curl | sh` never initializes the directory you happened to be in. The installer alone does not register coding agents. After install, run `tracker init` in each workspace and restart those agents.
 
-With a Go toolchain (1.26.6 or newer):
+Optional, with a Go toolchain (1.26.6 or newer):
 
 ```bash
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest
 ```
 
-To try this source:
+Optional, from this source (unstamped builds report `"version": "dev"`):
 
 ```bash
 git clone https://github.com/myrrazor/atlas-tasker && cd atlas-tasker
@@ -67,7 +67,7 @@ go build -o tracker ./cmd/tracker
 
 ## Two commands
 
-After a v1.15 `tracker` is on your `PATH`:
+After `tracker` is on your `PATH`:
 
 ```bash
 tracker init
@@ -175,7 +175,7 @@ tracker run dispatch APP-2 --agent agent:builder-1 --actor human:owner --reason 
 tracker goal brief APP-2 --md
 ```
 
-On the v1.15 candidate, `tracker init` both writes the worker skill and, unless you pass `--no-agents`, writes Atlas-managed MCP entries pointing at `tracker mcp serve --global --tool-profile workflow`. Status is `written`, `pending_client_restart`, or `unverified` from the actual file — never “connected” just because a config exists. `tracker integrations install` still writes skills later. Advanced `tracker setup` remains the v1.14 one-pass planner. See [agent integrations](docs/guides/agent-integrations.md) and [MCP for agents](docs/guides/mcp-for-agents.md).
+`tracker init` both writes the worker skill and, unless you pass `--no-agents`, writes Atlas-managed MCP entries pointing at `tracker mcp serve --global --tool-profile workflow`. Status is `written`, `pending_client_restart`, or `unverified` from the actual file — never “connected” just because a config exists. `tracker integrations install` still writes skills later. Advanced `tracker setup` remains the v1.14 one-pass planner. See [agent integrations](docs/guides/agent-integrations.md) and [MCP for agents](docs/guides/mcp-for-agents.md).
 
 **[AGENTS.md](AGENTS.md) is the file to hand an agent.** It leads with the things that trip
 them up — every tracked CLI mutation needs an actor, reasons are recommended and sometimes mandatory,
@@ -241,9 +241,9 @@ Start at the [docs landing page](docs/README.md), or jump to [installation](docs
 
 ## Status
 
-The [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/latest) is what the installer and `go install ...@latest` give you. [CHANGELOG.md](CHANGELOG.md) lists the changes, and each release page records its published artifacts and verification.
+Atlas Tasker v1.15.0 is available. The [latest GitHub release](https://github.com/myrrazor/atlas-tasker/releases/latest) is what the installer and `go install ...@latest` give you. [CHANGELOG.md](CHANGELOG.md) lists the changes. See verification results on that release page.
 
-See [Install](#install) for the published-tag vs this-source split. v1.14 `tracker setup` remains as an advanced path. Hosted verification is recorded only on the corresponding release page.
+v1.14 `tracker setup` remains as an advanced path. Optional source builds are unstamped (`"version": "dev"`) until you install a published archive.
 
 `v1.9.0` was the first stable release, shipped with full [release gates](docs/release/public-release-gates.md): verified hosted assets, signed build attestations, an SBOM, and recorded release evidence. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 

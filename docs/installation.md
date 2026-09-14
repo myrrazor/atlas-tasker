@@ -2,10 +2,9 @@
 
 Atlas ships one `tracker` binary for macOS and Linux on Intel/AMD and ARM64. The
 [release page](https://github.com/myrrazor/atlas-tasker/releases/latest) lists the
-current stable archives and their verification. This guide describes the current
-source, including the v1.15 candidate (`tracker init` then `tracker`). Unstamped
-builds report `"version": "dev"`. Hosted verification is recorded only on a
-published release page.
+current stable archives and their hosted verification. The one-line installer is
+the normal path. Ordinary use is `tracker init` then `tracker` in each workspace,
+then restart detected coding agents. Unstamped source builds report `"version": "dev"`.
 
 ## Install a release
 
@@ -31,7 +30,7 @@ tracker version --json
 a checked-out installer, for example:
 
 ```bash
-VERSION=v1.12.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=v1.15.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 ```
 
 Inspect installer scripts before running them. Use repository or release URLs,
@@ -39,7 +38,7 @@ and do not run commands copied from untrusted issues or comments.
 
 ## Uninstall
 
-On the v1.15 candidate, preview then apply a software-only removal:
+Preview then apply a software-only removal:
 
 ```bash
 tracker uninstall
@@ -56,7 +55,7 @@ the directory `curl | sh` happened to run in. If stdout is a terminal and the
 current directory is already an Atlas workspace, it may offer `tracker setup`
 and defaults to **no**. `SKIP_INTEGRATIONS=1` skips that offer.
 
-On the v1.15 candidate the short path is `tracker init` inside your project, which
+The short path is `tracker init` inside your project, which
 writes Atlas-managed MCP entries for detected agents unless you pass `--no-agents`.
 Restart the client afterward.
 
@@ -105,9 +104,9 @@ use `tracker init --skip-integrations --json`, then explicit integration targets
 Running `tracker init --integrations` without a terminal fails with instructions
 for the non-interactive command.
 
-Guidance installation writes instructions and the `atlas-worker` skill. **MCP
-registration is a separate step** in the agent client. Use the [MCP setup guide](mcp.md)
-to pin an initialized workspace and choose the `read` or `workflow` profile.
+`tracker init` writes Atlas-managed MCP entries for detected agents unless you
+opt out. `tracker integrations install` writes instructions and the `atlas-worker`
+skill only. Manual pinned `--workspace` serve remains in the [MCP setup guide](mcp.md).
 Neither installation route signs into an agent provider or starts an autonomous worker.
 
 ## Install with Go or build from source
@@ -157,7 +156,7 @@ pinned versions, reinstalling with `--force`, and failure behavior.
 For a pinned published release:
 
 ```bash
-VERSION=v1.12.0 ./scripts/verify-release.sh ./tracker_1.12.0_darwin_arm64.tar.gz
+VERSION=v1.15.0 ./scripts/verify-release.sh ./tracker_1.15.0_darwin_arm64.tar.gz
 ```
 
 The script checks `checksums.txt` and GitHub artifact attestations. Authentication

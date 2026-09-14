@@ -7,7 +7,7 @@ tracker doctor --json
 tracker doctor --md
 ```
 
-On the v1.15 candidate, doctor always checks the **machine**: registry, agent
+Doctor always checks the **machine**: registry, agent
 registrations, backup/replica health, and service identity. Workspace checks run
 when the current directory is an Atlas root. Outside a workspace it reports
 `current_workspace: none` and does not create `.tracker`.

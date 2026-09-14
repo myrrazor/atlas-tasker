@@ -1,11 +1,11 @@
 # Setup and backup
 
-Ordinary use on the v1.15 candidate is `tracker init` then `tracker`. This page is the
-backup contract plus the older `tracker setup` path. Neither this source nor a published
-tag turns on off-device backup by itself.
+Ordinary use is `tracker init` then `tracker`. This page is the
+backup contract plus the older `tracker setup` path. Neither the installer nor a
+source build turns on off-device backup by itself.
 
-The latest published installer tag is still what `curl | sh` and `go install ...@latest`
-install. Build this tree for Home, global MCP, and init-time local checkpoints.
+The one-line installer is the normal path. See verification results on the
+[GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
 
 ## After install
 
@@ -90,7 +90,7 @@ What setup will not do:
 - Install a user-level backup scheduler.
 
 `tracker update` only replaces the `tracker` binary. Run setup again when you want
-provider config refreshed. Prefer `tracker init` / `tracker doctor --repair` on v1.15
+provider config refreshed. Prefer `tracker init` / `tracker doctor --repair`
 for machine agent entries and registry health.
 
 See [v1.15 migration](../migration-v1.15.md) and the [command reference](../command-reference.md).

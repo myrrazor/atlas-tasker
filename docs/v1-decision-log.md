@@ -1483,6 +1483,8 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 
 ## DEC-106 — Simple install, init, restart, then ask
 
+**Partially superseded by DEC-112:** current-user publication wording now treats v1.15.0 as the authorized stable release and the one-line installer as the normal path. The first-use sequence, recording provenance, and no-cookie-banner rules below remain.
+
 - **Decision ID:** DEC-106
 - **Date:** 2026-09-14
 - **Question:** How should v1.15 present first use in the README and marketing site without overclaiming the published installer or inventing agent output?
@@ -1506,6 +1508,8 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 - **Affected PRs/Files:** v1.15 Grok MCP name integration; `internal/mcp/tool_names.go`, `internal/mcp/types.go`, `internal/mcp/server.go`, `internal/mcp/tools.go`, `internal/mcp/machine.go`, `internal/cli/mcp.go`, `internal/integrations/adapter/registration.go`, `internal/integrations/adapter/grok/adapter.go`, `internal/app/agents.go`, `internal/mcp/selfprobe/selfprobe.go`, `docs/guides/agent-integrations.md`, `docs/guides/mcp-for-agents.md`, `docs/v1.15-mcp-capabilities.md`, `docs/v1-decision-log.md`.
 
 ### DEC-108 — Current dark screenshots and wordmark favicon
+
+**Partially superseded by DEC-112:** current-user docs no longer carry source-preview install instructions. Screenshot and favicon choices below remain.
 
 - **Date:** 2026-09-14
 - **Question:** How should the onboarding refresh represent the product and brand on README and the marketing site?
@@ -1545,6 +1549,8 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 
 ## DEC-111 — Record real agent reads and ticket creation
 
+**Partially superseded by DEC-112:** current-user docs may describe the recording as a v1.15 demonstration. The recording itself remains a v1.15 source-build session; do not rewrite its provenance.
+
 - **Decision ID:** DEC-111
 - **Date:** 2026-09-14
 - **Question:** How should the README and marketing site demonstrate the status-and-ticket-creation flow requested for PR #156?
@@ -1554,3 +1560,30 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 - **Confidence:** high
 - **Revisit Trigger:** The recorded client or Atlas workflow changes, the source preview is released, or playback compatibility changes.
 - **Affected PRs/Files:** PR #156; `README.md`, `site/index.html`, `site/styles.css`, `site/_tools/site-contract.test.mjs`, `site/assets/grok-flow.mp4`, `site/assets/grok-flow-poster.webp`, `docs/assets/grok-flow-poster.png`, `docs/examples/grok-video-transcript.md`, `docs/examples/screenshot-fixtures.md`, and release evidence.
+
+## DEC-112
+
+1. **Decision ID:** DEC-112
+2. **Date:** 2026-09-14
+3. **Question:** How should current-user documentation describe the owner-authorized v1.15.0 launch without fabricating hosted verification or rewriting historical evidence?
+4. **Options Considered:**
+   - Keep source-preview and not-yet-published notices in README, current guides, AGENTS.md, and the website until Codex finishes hosted RC/stable verification.
+   - Rewrite local RC reports, historical decisions, and the recorded Grok session as if they already proved hosted GitHub downloads and a live production website.
+   - Treat v1.15.0 as the authorized stable release in current-user docs: the one-line installer is the normal path, source install remains optional, and each workspace still needs `tracker init` plus an agent restart. Leave hosted asset verification and GitHub/Vercel results to Codex and the GitHub release page. Keep historical candidate evidence, DEC-106–111 wording, and the recording's v1.15 source-build provenance unchanged.
+5. **Chosen Option:** The third option. This supersedes DEC-106, DEC-108, and DEC-111 only for current-user publication wording. It does not change product behavior, high-impact/actor/reason safeguards, or the recording. PR #156 is merged at `3277570`. Codex performs hosted RC/stable asset verification and all GitHub/Vercel operations.
+6. **Why We Chose It:** The owner approved PR #156 and explicitly authorized publishing v1.15.0 and the production website. Current-user docs that still call this a source preview would send people to an older published tag. Local `TEST_STDOUT.log` and RC reports remain local proof; they do not become hosted download proof. Publication claims require the corresponding hosted verification; local source checks alone are insufficient. The Grok walkthrough was recorded on a v1.15 source build and must stay labeled that way.
+7. **Confidence:** high
+8. **Revisit Trigger:** Codex records hosted verification or a blocked no-ship on the GitHub release page; the installer tag, recording, or first-use sequence changes; or the owner withdraws publication.
+9. **Affected PRs/Files:** `README.md`, `AGENTS.md`, `CHANGELOG.md`, `docs/v1-decision-log.md`, current `docs/` guides, `site/` HTML, `site/_tools/site-contract.test.mjs`, and release evidence. Historical `docs/release/v1.15.0-release-evidence.md`, `docs/release/v1.15-rc-audit.md`, and the recording transcript/poster are not rewritten.
+
+## DEC-113 — Release proof uses isolated replica fixtures
+
+1. **Decision ID:** DEC-113
+2. **Date:** 2026-09-14
+3. **Question:** How should the existing release rehearsal exercise sync replicas after init began creating a default project?
+4. **Options Considered:** Weaken conflict detection; remove the replica checks; or run the explicit-project rehearsal with the supported default-project opt-out in isolated machine settings while testing normal init separately.
+5. **Chosen Option:** Set `default_project=false` only in the private rehearsal machine settings. The rehearsal creates APP itself and imports it into initially empty replicas. Keep every sync, intentional ticket-conflict, resolution, bundle, archive, and repair assertion. The separate RC validator and product tests retain normal default-project coverage. Run all installers and machine state in temporary directories, with agent auto-install and Home disabled for these packaged CLI fixtures.
+6. **Why We Chose It:** Independent temporary directory names each produced project TMP; importing one replica into another correctly detected divergent TMP metadata. Empty replicas restore the intended fixture contract without changing product defaults or conflict protections. The complete rehearsal passed with this setting.
+7. **Confidence:** high
+8. **Revisit Trigger:** The rehearsal explicitly covers default-project replication or machine settings stop supporting this opt-out.
+9. **Affected PRs/Files:** Release verification procedure in `docs/release.md`, `docs/release/v1.15.0-release-evidence.md`, `TEST_STDOUT.log`; `scripts/release-rehearsal.sh` behavior is unchanged.

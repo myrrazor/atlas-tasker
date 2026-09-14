@@ -2,7 +2,7 @@
 
 The [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/latest) lists the current published version and its hosted verification. This guide explains the release workflow and its proof gates.
 
-The next v1.13 cycle is recorded in [release evidence](release/v1.13.0-release-evidence.md), the [launch checklist](release/launch-checklist.md), and [public release gates](release/public-release-gates.md). Source approval, hosted RC proof, and stable publication are separate gates. Post-publication results belong on the release pages so tags remain immutable.
+The v1.15.0 cycle uses [public release gates](release/public-release-gates.md) as the release process. [Local v1.15.0 evidence](release/v1.15.0-release-evidence.md) is local proof only. Hosted RC proof and stable publication results belong on the [v1.15.0 GitHub release](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.15.0) so tags remain immutable. Historical v1.13 evidence stays in [v1.13.0-release-evidence.md](release/v1.13.0-release-evidence.md).
 
 ## Release States
 
@@ -29,26 +29,28 @@ Each archive contains a single `tracker` binary. The release workflow attests th
 ## Local Rehearsal
 
 ```bash
-VERSION=v1.13.0-rc1 sh scripts/preflight-release.sh
-VERSION=v1.13.0-rc1 sh scripts/validate-rc.sh
-VERSION=v1.13.0-rc1 ./scripts/release-rehearsal.sh
+VERSION=v1.15.0-rc1 sh scripts/preflight-release.sh
+VERSION=v1.15.0-rc1 sh scripts/validate-rc.sh
+VERSION=v1.15.0-rc1 ./scripts/release-rehearsal.sh
 sh scripts/stability-smoke.sh
 ```
 
 The preflight checks release script syntax and verifies the stamped `tracker version --json` contract. The RC validator checks public docs, examples, terminal output, CLI/slash-shell read parity, MCP read-profile tool presence, leakage, stale release strings, quickstart smoke, and local performance budgets without network access. The rehearsal builds the current binary, packages archives, generates checksums, verifies a local archive, serves local artifacts, installs through `scripts/install.sh`, checks the installed version metadata, and runs the packaged smoke flow.
 
+For an isolated packaged rehearsal, configure its private `XDG_STATE_HOME/atlas-tasker/settings.json` with `default_project=false`, `agents.auto_install=false`, and `service.enabled=false`. The rehearsal creates APP explicitly and needs empty receiving replicas; separate RC validation covers ordinary init defaults. This keeps client configuration and Home services out of the packaging fixture (DEC-113).
+
 Local vulnerability and SBOM proof is generated explicitly:
 
 ```bash
-VERSION=v1.13.0-rc1 RUN_GOVULNCHECK=1 RUN_SBOM=1 sh scripts/preflight-release.sh
+VERSION=v1.15.0-rc1 RUN_GOVULNCHECK=1 RUN_SBOM=1 sh scripts/preflight-release.sh
 ```
 
 ## Hosted Release Gate
 
 Before public sign-off, a release actor must:
 
-1. run `VERSION=v1.13.0-rc1 sh scripts/preflight-release.sh --hosted`
-2. create a prerelease tag such as `v1.13.0-rc1`
+1. run `VERSION=v1.15.0-rc1 sh scripts/preflight-release.sh --hosted`
+2. create a prerelease tag such as `v1.15.0-rc1`
 3. let GitHub publish all four archives, the SBOM, `checksums.txt`, and `install.sh`
 4. download at least one published archive
 5. run `scripts/verify-release.sh` against that archive with attestation verification enabled
@@ -70,14 +72,14 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 Prefer explicit verification for release candidates:
 
 ```bash
-VERSION=v1.13.0-rc1 ./scripts/verify-release.sh ./tracker_1.13.0-rc1_darwin_arm64.tar.gz
-VERSION=v1.13.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=v1.15.0-rc1 ./scripts/verify-release.sh ./tracker_1.15.0-rc1_darwin_arm64.tar.gz
+VERSION=v1.15.0-rc1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 ```
 
 `scripts/verify-release.sh` verifies checksums and GitHub artifact attestations by default:
 
 ```bash
-gh attestation verify ./tracker_1.13.0-rc1_darwin_arm64.tar.gz --repo myrrazor/atlas-tasker
+gh attestation verify ./tracker_1.15.0-rc1_darwin_arm64.tar.gz --repo myrrazor/atlas-tasker
 ```
 
 Set `VERIFY_ATTESTATIONS=0` only for local rehearsals or intentionally unattested artifacts.

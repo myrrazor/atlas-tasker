@@ -3,8 +3,8 @@
 `tracker uninstall` and `/uninstall` in the tracker shell remove **Atlas-owned software**.
 They do not delete your boards.
 
-This is the v1.15 source candidate. The command exists in this tree; a published release
-tag is not required for the docs, and this page does not claim a v1.15 GitHub release.
+Use `tracker uninstall` after a v1.15.0 install. See verification results on the
+[GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
 
 ## Preview, then apply
 
@@ -52,5 +52,5 @@ owner client.
 ## Compatibility
 
 Removing the binary by hand still works, and your project data still stays in the
-repository. Prefer `tracker uninstall` on the v1.15 candidate so managed service units
+repository. Prefer `tracker uninstall` so managed service units
 and Atlas-owned MCP blocks are included in the plan.

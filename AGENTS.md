@@ -198,23 +198,31 @@ that wait ends in exit 6.
 For clients without a shell. The tools call the same services as the CLI, so nothing here is a
 second source of truth.
 
-On the v1.15 candidate, `tracker init` writes this registration for detected clients:
+`tracker init` writes this registration for detected clients:
 
 ```bash
 <absolute-tracker> mcp serve --global --tool-profile workflow
 ```
 
+Grok's Atlas-managed entry also includes `--tool-name-style portable`, so `tools/list` names are
+`atlas_status` rather than `atlas.status`. Other clients keep canonical dotted names. Payloads
+keep public `atlas.status` terminology.
+
 Do not report the client as connected until it has restarted and MCP initialize succeeds. Exact
 command + args must match; drifted files are `unverified`.
 
-Pinned per-workspace serve is still supported for clients you configure by hand. That form still defaults to `--tool-profile read`:
+CLI `mcp serve`, `mcp tools`, and `mcp schema` default to `--tool-profile workflow` for both
+`--global` and pinned serve. Pass `--tool-profile read` or `--read-only` for inspection only.
+The MCP library still treats empty `Options.Profile` as `read`.
+
+Pinned per-workspace serve is still supported for clients you configure by hand:
 
 ```bash
 # Claude Code, user scope, pinned workspace
-claude mcp add --transport stdio --scope user atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile read
+claude mcp add --transport stdio --scope user atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile workflow
 
 # Codex
-codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile read
+codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile workflow
 
 # OpenClaw (--cwd is its own way of pinning the directory)
 openclaw mcp add atlas --command /usr/local/bin/tracker --arg mcp --arg serve --cwd /path/to/workspace
@@ -222,8 +230,7 @@ openclaw mcp add atlas --command /usr/local/bin/tracker --arg mcp --arg serve --
 
 Global serve lists workspaces and infers the current CWD when it is an unambiguous Atlas root.
 Cross-workspace writes always need explicit `workspace_id`. `tracker mcp tools|schema` (and
-`--global`) must match `tools/list` on that server. Dotted `atlas.*` names only; no underscore
-aliases.
+`--global`) must match `tools/list` on that server.
 
 An uninitialized directory remains an error unless the user explicitly opts into the noninteractive
 bootstrap form:
@@ -240,11 +247,11 @@ Stdio speaks newline-delimited JSON-RPC by default and also accepts LSP-style
 `Content-Length` frames. Prefer the MCP stdio dialect when you control the client.
 
 `--workspace` is what stops the server from answering against whatever directory the client
-happened to start in. Profiles go `read` (default) -> `workflow` -> `delivery` -> `admin`;
-start at `read` and widen to `workflow` for the real agent loop (create/claim/move/review/
-complete). The exact profile counts are read 44, workflow 76, delivery 80 (82 with the danger
-flag), and admin 80 (the full 91 with the flag). Workflow includes
-`atlas.project.create`, `atlas.ticket.heartbeat`, `atlas.ticket.priority`,
+happened to start in. Profiles go `read` -> `workflow` (CLI default) -> `delivery` -> `admin`.
+Use `--tool-profile read` or `--read-only` for inspection; use `workflow` for the real agent
+loop (create/claim/move/review/complete). Do not copy a profile count from an older page — run
+`tracker mcp tools --json --tool-profile <profile>` (add `--global` for the machine server).
+Workflow includes `atlas.project.create`, `atlas.ticket.heartbeat`, `atlas.ticket.priority`,
 `atlas.ticket.label.add`, `atlas.ticket.label.remove`, and `atlas.ticket.edit`; the five ticket
 tools require actor and reason. High-impact tools stay hidden unless the server was started with
 `--dangerously-allow-high-impact-tools`, and executing one still needs a one-time approval a
@@ -274,7 +281,7 @@ Re-running refreshes Atlas-generated files and only the managed block between th
 markers in the instruction file; custom instruction content outside the markers is preserved.
 `--force` is the explicit whole-file replacement option.
 
-On the v1.15 candidate, `tracker init` writes Atlas-managed MCP entries unless you opt out.
+`tracker init` writes Atlas-managed MCP entries unless you opt out.
 `tracker integrations install` still writes skills and instruction blocks only. Advanced
 `tracker setup` can still plan/apply provider files in an existing workspace. Restart the
 client after any registration change.

@@ -1,17 +1,18 @@
-# Migrating to the v1.15 source candidate
+# Migrating to v1.15.0
 
-v1.15 is an implementation candidate in this source tree. It is **not** a published
-GitHub release. `scripts/install.sh` and `go install ...@latest` still install the
-latest published tag. Unstamped builds report `"version": "dev"` from `buildinfo`.
+Atlas Tasker v1.15.0 is available. The one-line installer and
+`go install ...@latest` install the latest GitHub tag. See verification results on the [release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
+Unstamped source builds report `"version": "dev"` from `buildinfo`.
 
-Keep using a published release until you intentionally build this tree.
+Run `tracker init` in each workspace after installing, then restart detected
+coding agents.
 
 ## What changes for ordinary use
 
-| Before (published / v1.14 candidate) | v1.15 candidate |
+| Before (published v1.13 / v1.14 candidate) | v1.15.0 |
 |---|---|
 | `tracker init` then maybe `tracker setup` | `tracker init` then `tracker` |
-| Per-workspace `mcp serve --workspace PATH` (default `--tool-profile read`) | Machine-wide `mcp serve --global --tool-profile workflow`; pinned `--workspace` is still supported |
+| Per-workspace `mcp serve --workspace PATH` (older default `--tool-profile read`) | Machine-wide `mcp serve --global --tool-profile workflow`; pinned `--workspace` still works and also defaults to workflow |
 | `tracker web serve --open` | `tracker` opens Home; `web serve` remains |
 | Default pretty board is an ASCII table | Default is a polished table; `--style kanban` is optional |
 | Local backup after `backup auto enable` | Init starts local checkpoints; remotes stay explicit |

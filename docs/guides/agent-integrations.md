@@ -2,7 +2,7 @@
 
 For the short regular-user path, start with [setup and backup](setup-and-backup.md). This page is the per-target detail.
 
-Install the binary, then in your project run `tracker init`. On the v1.15 candidate that
+Install the binary, then in your project run `tracker init`. That
 detects the coding agents on the machine and, unless you pass `--no-agents`, writes
 Atlas-managed MCP entries pointing at `tracker mcp serve --global --tool-profile workflow` plus the worker
 skill. Restart the client. After that, open the same repo in Claude Code, Codex, Cursor,
@@ -22,7 +22,7 @@ Atlas MCP server for selected providers.
 
 ## Unified setup (advanced / v1.14)
 
-Prefer `tracker init` on the v1.15 candidate. `tracker setup` is the workspace-scoped
+Prefer `tracker init`. `tracker setup` is the workspace-scoped
 planner and apply path for agent guidance and MCP registration when you already have a
 workspace and want the older one-pass refresh. It inspects detected clients, existing managed blocks, and local setup state, prints a
 read-only plan, and applies one provider transaction at a time. Planning never writes. `--yes` is
