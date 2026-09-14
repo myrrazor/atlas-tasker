@@ -6,11 +6,14 @@ The MCP adapter is not a second source of truth. It calls the same service layer
 
 ## Commands
 
-On the v1.15 candidate, `tracker init` registers detected clients with this exact argv:
+`tracker init` registers detected clients with this exact argv:
 
 ```bash
 <absolute-tracker> mcp serve --global --tool-profile workflow
 ```
+
+Grok's Atlas-managed entry also includes `--tool-name-style portable` (`atlas_status`).
+Other clients keep canonical dotted names. Payloads keep public `atlas.status` terminology.
 
 ```bash
 tracker mcp serve --global --tool-profile workflow
@@ -54,8 +57,8 @@ Stdio framing: Atlas speaks newline-delimited JSON-RPC and also accepts LSP-styl
 
 - `read`: read and plan/dry-run tools, including `atlas.context`, `atlas.status`, `atlas.backup.status`, goal brief, agent/team reads, and wake-up inspection. Select it with `--tool-profile read` or `--read-only`.
 - `workflow` is the CLI default for `mcp serve`, `mcp tools`, and `mcp schema`. It adds project creation and the real agent loop: ticket create/edit/assign/link, priority and label changes, claim/heartbeat/move/comment, request review, approve/reject/complete, agent create/edit, team apply, schedule writes, evidence, handoffs, and wake-up ack.
-- `delivery` exposes 80 tools normally and 82 with `--dangerously-allow-high-impact-tools`. It adds run dispatch, change creation, change/check sync, and provider review/merge tools.
-- `admin` exposes 80 tools normally and the complete 91-tool inventory with `--dangerously-allow-high-impact-tools`. Its high-impact sync, import, archive, compact, worktree-cleanup, and gate-waiver tools remain hidden without that flag.
+- `delivery` adds run dispatch, change creation, change/check sync, and provider review/merge tools. The danger flag exposes guarded delivery actions. Run `tracker mcp tools --json --tool-profile delivery` for the live inventory.
+- `admin` adds high-impact sync, import, archive, compact, worktree-cleanup, and gate-waiver tools. Those stay hidden without `--dangerously-allow-high-impact-tools`. Run `tracker mcp tools --json --tool-profile admin` (add the danger flag to inspect the guarded catalog).
 
 High-impact tools are hidden unless both the selected profile and server flag allow them. MCP-first agents should start at `workflow`, not `read`.
 

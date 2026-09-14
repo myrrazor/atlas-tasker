@@ -1,6 +1,6 @@
 # Web Board
 
-On the v1.15 candidate, open **Atlas Home** from anywhere:
+Open **Atlas Home** from anywhere:
 
 ```bash
 tracker

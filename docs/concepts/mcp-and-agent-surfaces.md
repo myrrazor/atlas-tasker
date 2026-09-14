@@ -2,7 +2,7 @@
 
 Atlas can serve an MCP adapter for coding agents, but MCP is not the only or safest way to use Atlas. The CLI, shell, TUI, JSON output, and Markdown artifacts remain first-class.
 
-The default `read` profile focuses on:
+The explicit `read` profile focuses on:
 
 - queue and next work
 - ticket inspect/history
@@ -28,8 +28,9 @@ Use these docs:
 - [MCP Claude Code setup](../mcp-claude-code.md)
 - [Coding-agent integrations](../guides/agent-integrations.md)
 
-On the v1.15 candidate, `tracker init` writes Atlas-managed MCP entries for detected
+`tracker init` writes Atlas-managed MCP entries for detected
 clients (`tracker mcp serve --global --tool-profile workflow`) as well as the worker skill. Restart the client.
 `tracker integrations install` still writes skills only. Pinned
-Pinned `tracker mcp serve --workspace` is still supported and still defaults to
-`--tool-profile read`. Global resources are documented in [MCP overview](../mcp.md).
+`tracker mcp serve --workspace` is still supported and also defaults to
+`--tool-profile workflow`. Pass `--tool-profile read` or `--read-only` for inspection.
+Grok registrations add `--tool-name-style portable`. Global resources are documented in [MCP overview](../mcp.md).

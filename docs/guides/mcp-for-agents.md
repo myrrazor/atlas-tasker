@@ -4,7 +4,7 @@ Atlas MCP is a local stdio adapter for agents that need structured tools instead
 
 ## Start Read-Only
 
-On the v1.15 candidate, `tracker init` already registered detected clients with
+`tracker init` already registered detected clients with
 `tracker mcp serve --global --tool-profile workflow`. Grok's entry also gets
 `--tool-name-style portable` so tools/list names are `atlas_status` rather than
 `atlas.status`; other clients keep the dotted names. Restart the client, then inspect:
@@ -50,7 +50,7 @@ initialized, startup opens it without rerunning initialization.
 
 ## Workflow Sessions
 
-Use the 73-tool workflow profile when the human expects the agent to mutate Atlas state. This is the real agent loop profile — project create; ticket create/edit, assign, link, priority and label changes, claim, heartbeat, release, move, comment, review, approve, reject, and complete; agent/team setup; schedule writes; checkpoints, evidence, handoffs, and wake-up acknowledgement:
+Use the workflow profile when the human expects the agent to mutate Atlas state. This is the real agent loop profile — project create; ticket create/edit, assign, link, priority and label changes, claim, heartbeat, release, move, comment, review, approve, reject, and complete; agent/team setup; schedule writes; checkpoints, evidence, handoffs, and wake-up acknowledgement. Run `tracker mcp tools --json --tool-profile workflow` for the live inventory:
 
 ```bash
 tracker mcp serve --global --tool-profile workflow --max-items 30 --max-result-bytes 65536
@@ -98,8 +98,9 @@ authorized workflow.
 
 ## High-Impact Sessions
 
-Delivery exposes 77 tools normally and 79 with the danger flag. Admin also exposes 77 normally and
-the full 88-tool inventory with the flag.
+Exact delivery and admin counts move as tools are added. Run
+`tracker mcp tools --json --tool-profile <profile>` (add `--dangerously-allow-high-impact-tools`
+when inspecting the guarded catalog) rather than copying a number from an older page.
 
 High-impact tools are hidden unless the selected profile includes them and the server was started with:
 

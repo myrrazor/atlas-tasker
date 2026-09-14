@@ -1,6 +1,6 @@
 # Web Board User Guide
 
-On the v1.15 candidate, start Home from anywhere:
+Start Home from anywhere:
 
 ```bash
 tracker

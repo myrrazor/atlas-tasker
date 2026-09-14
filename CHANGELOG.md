@@ -1,23 +1,25 @@
 # Changelog
 
-## v1.15.0 (release candidate)
+## v1.15.0 - Atlas Home And Agent Setup (2026-09-14)
 
-Atlas Home, simpler first use, and a polished terminal table. This candidate includes the compatible v1.14 implementation and has not been published as a release.
+[Download v1.15.0 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.15.0).
+
+Atlas Home, simpler first use, and a polished terminal table. This release includes the compatible v1.14 implementation.
 
 - `tracker init` creates the first project, registers the workspace, configures supported coding agents, enables local checkpoints, and makes Home available. Repeating setup preserves identities and explicit opt-outs. Bare `tracker` starts or reuses one local Home service from any directory.
 - Home brings workspace discovery, project Kanban boards, attention, search, activity, backup health, and settings together. Registry repairs change pointers; workspace files remain authoritative.
 - Terminal and TUI boards default to aligned, colored ticket tables. Long lists remain navigable; `--style kanban` selects cards and terminal `--style legacy` retains the old grid. JSON and Markdown remain available.
-- Global workflow MCP registration exposes workspace-aware tools, resources, notifications, native Markdown, and a read-only MCP App board for compatible hosts. High-impact operations retain explicit approvals.
+- Global workflow MCP registration exposes workspace-aware tools, resources, notifications, native Markdown, and a read-only MCP App board for compatible hosts. High-impact operations retain explicit approvals. Actor and reason rules are unchanged.
 - Checkpoints stay outside source Git. Existing macOS backup histories remain attached to their original state directory; conflicting histories require repair. Remote verification and restore apply remain bound to the exact checkpoint and stored plan.
 - `tracker uninstall` previews verified Atlas software and managed integration entries; `--yes` applies removal while preserving boards, events, registry pointers, and backups. Provider guidance also supports `/uninstall`.
-- Grok Build registrations use compatible underscore tool names while other clients retain canonical dotted names. Init resolves detected clients from PATH; Home shows user and project registrations with their actual command and restart status. Project commands use bare `tracker` when PATH resolves to the intended executable.
-- `mcp serve` and `mcp tools` default to the workflow profile; explicit read-only operation remains available. Opt-in MCP bootstrap creates a default project and registers it with Home. Long directory names use a readable project key, and nested help such as `tracker ticket help` works outside a workspace.
+- Grok Build registrations use portable underscore tool names (`atlas_status`) via `--tool-name-style portable`. Other clients retain canonical dotted names. Init resolves detected clients from PATH; Home shows user and project registrations with their actual command and restart status. Project commands use bare `tracker` when PATH resolves to the intended executable.
+- `mcp serve`, `mcp tools`, and `mcp schema` default to the workflow profile; explicit `--tool-profile read` / `--read-only` remain available. The MCP library still treats empty profile as `read`. Opt-in MCP bootstrap creates a default project and registers it with Home, including hollow `.tracker` trees. Long directory names use a readable project key, and nested help such as `tracker ticket help` works outside a workspace.
 - Personal queues and `next` include assigned backlog as pending work without claiming or promoting it. Executable ready and unblocked work stays ahead of that category.
 - Source and Go installs can record a verified receipt during init/setup, making software-only uninstall available while preserving other installations and all tracker data.
-- README and website show fresh dark product captures and a real Grok Build MCP status session. The favicon uses the A from the Atlas wordmark.
-- README, migration and command guides, marketing pages, and website documentation cover the candidate. Static site essentials include a favicon, sitemap, robots.txt, social metadata, and a custom 404, with no cookie banner or nonessential tracking.
+- README and website show fresh dark product captures and a real Grok Build MCP status-and-ticket session. That recording used synthetic tickets on a v1.15 source build (Grok Build 4.6 xhigh). The favicon uses the A from the Atlas wordmark.
+- README, migration and command guides, marketing pages, and website documentation describe this release. The one-line installer is the normal install path; each workspace still needs `tracker init` and an agent restart. Static site essentials include a favicon, sitemap, robots.txt, social metadata, and a custom 404, with no cookie banner or nonessential tracking.
 
-See [the v1.15 implementation contract](docs/v1.15-implementation.md) and [local release evidence](docs/release/v1.15.0-release-evidence.md) for verification and remaining release boundaries.
+See [the v1.15 implementation contract](docs/v1.15-implementation.md). The GitHub release page records hosted verification.
 
 ## v1.14.0 (release candidate)
 

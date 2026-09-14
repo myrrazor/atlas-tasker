@@ -1,6 +1,6 @@
 # Atlas Docs
 
-Start here if you are new to Atlas Tasker. This page is the public docs route map for the current source. The [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/latest) lists published builds and their verification; older version plans remain in this directory for reference.
+Start here if you are new to Atlas Tasker. This page is the public docs route map. The [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/latest) lists published builds and their hosted verification; older version plans remain in this directory for reference.
 
 ## First Ten Minutes
 
@@ -77,7 +77,7 @@ Start here if you are new to Atlas Tasker. This page is the public docs route ma
 
 ## Release Status
 
-The latest *published* stable release remains what the installer and `go install ...@latest` give you. This source also contains the v1.15 implementation candidate: `tracker init` + Home, automatic agent MCP pickup, modern default boards, local checkpoints versus verified remotes, global MCP, repair/migration, and software-only uninstall. That candidate is not a published tag. v1.14 `tracker setup` remains documented as an advanced path. See [CHANGELOG.md](../CHANGELOG.md), [v1.15 migration](migration-v1.15.md), and [v1.14 RC evidence](release/v1.14-rc-evidence.md). Local proof and hosted release proof stay separate gates. Read [public release gates](release/public-release-gates.md) before treating a development build as release-ready.
+Atlas Tasker v1.15.0 is available. The one-line installer and `go install ...@latest` install the latest GitHub release. Ordinary use is `tracker init` then `tracker`: Home, automatic agent MCP pickup, modern default boards, local checkpoints versus verified remotes, global MCP, repair/migration, and software-only uninstall. v1.14 `tracker setup` remains documented as an advanced path. See [CHANGELOG.md](../CHANGELOG.md) and [v1.15 migration](migration-v1.15.md). See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest). Local RC reports stay local proof. Read [public release gates](release/public-release-gates.md) before treating a development build as release-ready.
 
 ## Security Boundary
 

@@ -128,17 +128,17 @@
         </div>
         <p>The Grok demonstration reads Atlas through MCP and shows the result in Grok’s terminal interface. A real Grok Build capture lives on the <a href="../#get-started">homepage Get started section</a>.</p>
 
-        <p><strong>v1.15 preview.</strong> This walkthrough uses the current source. The installer downloads the latest published release; the new setup arrives with v1.15. Use the source command below to try it now.</p>
+        <p>The installer places the binary only. Run <code>tracker init</code> in each workspace, then restart detected coding agents so they load Atlas MCP.</p>
 
         <h2>Install</h2>
-        <p>The release installer fetches the latest <strong>published</strong> build, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs the <code>tracker</code> binary. It does not initialize a repository or register coding agents. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>) for attestation checks. Atlas Home, global MCP, and <code>tracker uninstall</code> are in this v1.15 source; build from this tree until a v1.15 tag exists.</p>
+        <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> build, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs the <code>tracker</code> binary. It does not initialize a repository or register coding agents. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>) for attestation checks. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
         <div class="code-block">
           <div class="snippet-title"><span>release installer · macOS or Linux</span><button class="copy-button" type="button" data-copy="gs-install" aria-label="Copy install command">Copy</button></div>
           <pre id="gs-install">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</pre>
         </div>
         <div class="code-block">
-          <div class="snippet-title"><span>v1.15 source preview · Go 1.26.6+</span><button class="copy-button" type="button" data-copy="gs-go" aria-label="Copy go install command">Copy</button></div>
-          <pre id="gs-go">go install github.com/myrrazor/atlas-tasker/cmd/tracker@main</pre>
+          <div class="snippet-title"><span>optional Go install · Go 1.26.6+</span><button class="copy-button" type="button" data-copy="gs-go" aria-label="Copy go install command">Copy</button></div>
+          <pre id="gs-go">go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</pre>
         </div>
         <p>Go installs <code>tracker</code> into <code>$(go env GOPATH)/bin</code> unless <code>GOBIN</code> is set. Add that directory to your <code>PATH</code>.</p>
         <p>Pin a specific release by exporting <code>VERSION</code> before running the installer. Unstamped source builds report <code>version: "dev"</code> in <code>tracker version --json</code>, which is expected.</p>
@@ -151,7 +151,7 @@
 tracker update --yes
 
 <span class="c"># install a specific release</span>
-tracker update --version v1.13.0 --yes</pre>
+tracker update --version v1.15.0 --yes</pre>
         </div>
 
         <h2>Initialize a workspace</h2>

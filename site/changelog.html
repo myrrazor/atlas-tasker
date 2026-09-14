@@ -74,17 +74,18 @@
     </header>
     <div class="legal-content">
       <section class="shell">
-        <h2>v1.15.0 — implementation candidate</h2>
+        <h2>v1.15.0 — Atlas Home and agent setup</h2>
         <ul>
-          <li><code>tracker init</code> then <code>tracker</code> is ordinary onboarding: workspace, default project, local checkpoints, Atlas-managed MCP for detected agents, and Atlas Home on <code>127.0.0.1:7432</code>. This is source in this tree, not a published GitHub release. Unstamped builds report <code>version: "dev"</code>.</li>
+          <li><code>tracker init</code> then <code>tracker</code> is ordinary onboarding: workspace, default project, local checkpoints, Atlas-managed MCP for detected agents, and Atlas Home on <code>127.0.0.1:7432</code>. The one-line installer is the normal path. Unstamped source builds report <code>version: "dev"</code>.</li>
           <li>Terminal and TUI boards default to polished tables, with optional Kanban cards. Browser and MCP App boards keep their Kanban presentation; chat uses native Markdown.</li>
           <li>Global <code>tracker mcp serve --global --tool-profile workflow</code> lists workspaces; cross-workspace writes need <code>workspace_id</code>. Restart the client after init. Pinned <code>--workspace</code> remains.</li>
           <li>Local checkpoints start at init. A named remote is never inferred from Git <code>origin</code>. A push is not verified until Atlas fetches the snapshot. Restore is plan-then-apply.</li>
           <li><code>tracker uninstall</code> and <code>/uninstall</code> remove Atlas software only. Boards, history, backups, and registry pointers stay. Verified source and Go installs can record a receipt during init or setup.</li>
           <li>Grok Build loads compatible underscore tool names. Init finds agent CLIs on PATH, and Home shows the scope and actual command for each registration. MCP defaults to the workflow profile; explicit read-only operation remains available.</li>
           <li>Assigned backlog appears in personal queues without being promoted. Opt-in MCP bootstrap creates a first project and registers with Home. Long project names and nested command help are handled.</li>
-          <li>README and website use current dark screenshots, including a real Grok Build status session. The favicon is the A from the Atlas wordmark.</li>
+          <li>README and website use current dark screenshots, including a real Grok Build status-and-ticket session recorded on a v1.15 source build. The favicon is the A from the Atlas wordmark.</li>
         </ul>
+        <p>See verification results on <a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.15.0">the v1.15.0 release page</a>.</p>
       </section>
       <section class="shell">
         <h2>v1.14.0 — implementation candidate</h2>
