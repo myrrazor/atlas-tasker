@@ -651,6 +651,163 @@ func TestRemoteRecoveryDrill(t *testing.T) {
 	t.Logf("AT114-507 exported-only list remains unrestored and is recreated by init/setup: %s", strings.Join(ExportedOnlyCandidateRoots(), ", "))
 }
 
+func TestRematerializedRemoteArchiveHashIgnoresMtime(t *testing.T) {
+	ctx, source := newCheckpointHarness(t)
+	remote := initBareRemote(t)
+	url := "file://" + remote
+	if _, err := addDisposableTarget(t, source, url, "mtime"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.EnableAutoBackup(ctx, "mtime"); err != nil {
+		t.Fatal(err)
+	}
+	published, err := source.BackupTick(ctx, true)
+	if err != nil || published.State != contracts.BackupOutboxVerified {
+		t.Fatalf("checkpoint+publish: %#v %v", published, err)
+	}
+	dest := newEmptyDest(t)
+	if _, err := addDisposableTarget(t, dest, url, "mtime"); err != nil {
+		t.Fatal(err)
+	}
+	opts := RemoteRestoreOptions{TargetID: "mtime", Checkpoint: published.CheckpointID, AllowWorkspaceMismatch: true}
+	clock := time.Date(2026, 9, 14, 8, 0, 0, 0, time.UTC)
+	dest.Clock = func() time.Time { return clock }
+	_, archive, cleanup, err := dest.fetchAndVerifyRemote(ctx, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	firstHash, err := fileSHA256(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	material := filepath.Join(filepath.Dir(archive), "tree")
+	manifest, manifestRaw, err := loadManifestFromArchive(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := make([]string, 0, len(manifest.Files))
+	for _, item := range manifest.Files {
+		files = append(files, item.Path)
+	}
+	early := time.Date(2020, 1, 2, 3, 4, 5, 123456789, time.UTC)
+	late := time.Date(2026, 9, 14, 22, 23, 24, 987654321, time.UTC)
+	chtimesTree(t, material, early)
+	rebuiltEarly := filepath.Join(t.TempDir(), "early.tar.gz")
+	if err := writeBundleArchiveAtTime(material, rebuiltEarly, manifestRaw, files, manifest.CreatedAt); err != nil {
+		t.Fatal(err)
+	}
+	chtimesTree(t, material, late)
+	rebuiltLate := filepath.Join(t.TempDir(), "late.tar.gz")
+	if err := writeBundleArchiveAtTime(material, rebuiltLate, manifestRaw, files, manifest.CreatedAt); err != nil {
+		t.Fatal(err)
+	}
+	earlyHash, err := fileSHA256(rebuiltEarly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lateHash, err := fileSHA256(rebuiltLate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if earlyHash != lateHash {
+		t.Fatalf("identical rematerialized checkpoint must hash the same across file mtimes\n early %s\n late  %s\n first %s", earlyHash, lateHash, firstHash)
+	}
+	if firstHash != lateHash {
+		t.Fatalf("fetch archive must match a delayed rebuild\n fetch %s\n late  %s", firstHash, lateHash)
+	}
+	// Planning and applying independently fetch the checkpoint. Advancing the
+	// caller's clock must not change either its manifest or its archive bytes.
+	clock = clock.Add(time.Hour)
+	planned, err := dest.RemoteRestorePlan(ctx, RemoteRestoreOptions{
+		TargetID: "mtime", Checkpoint: published.CheckpointID, AllowWorkspaceMismatch: true,
+		Actor: contracts.Actor("human:owner"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if planned.Plan.SourceArchiveHash != lateHash {
+		t.Fatalf("clock advance changed checkpoint archive: plan bound %s, rebuilt %s", planned.Plan.SourceArchiveHash, lateHash)
+	}
+	clock = clock.Add(time.Hour)
+	if _, err := dest.RemoteRestoreApply(ctx, RemoteRestoreOptions{
+		TargetID: "mtime", Checkpoint: published.CheckpointID, AllowWorkspaceMismatch: true,
+		Yes: true, Actor: contracts.Actor("human:owner"), Reason: "mtime-stable drill",
+	}); err != nil {
+		t.Fatalf("apply after delayed rematerialize: %v", err)
+	}
+}
+
+func TestRemoteRestoreApplyRefusesTamperedRematerializedArchive(t *testing.T) {
+	ctx, source := newCheckpointHarness(t)
+	remote := initBareRemote(t)
+	url := "file://" + remote
+	if _, err := addDisposableTarget(t, source, url, "tamper"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.EnableAutoBackup(ctx, "tamper"); err != nil {
+		t.Fatal(err)
+	}
+	published, err := source.BackupTick(ctx, true)
+	if err != nil || published.State != contracts.BackupOutboxVerified {
+		t.Fatalf("checkpoint+publish: %#v %v", published, err)
+	}
+	dest := newEmptyDest(t)
+	if _, err := addDisposableTarget(t, dest, url, "tamper"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dest.RemoteRestorePlan(ctx, RemoteRestoreOptions{
+		TargetID: "tamper", Checkpoint: published.CheckpointID, AllowWorkspaceMismatch: true,
+		Actor: contracts.Actor("human:owner"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, archive, cleanup, err := dest.fetchAndVerifyRemote(ctx, RemoteRestoreOptions{
+		TargetID: "tamper", Checkpoint: published.CheckpointID, AllowWorkspaceMismatch: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	manifest, manifestRaw, err := loadManifestFromArchive(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := make([]string, 0, len(manifest.Files))
+	for _, item := range manifest.Files {
+		files = append(files, item.Path)
+	}
+	material := filepath.Join(filepath.Dir(archive), "tree")
+	ticket := filepath.Join(material, "projects", "APP", "tickets", "APP-1.md")
+	if err := os.WriteFile(ticket, []byte("tampered checkpoint body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tampered := filepath.Join(t.TempDir(), "tampered.tar.gz")
+	if err := writeBundleArchiveAtTime(material, tampered, manifestRaw, files, manifest.CreatedAt); err != nil {
+		t.Fatal(err)
+	}
+	_, err = dest.ApplyRestorePlan(ctx, tampered, contracts.Actor("human:owner"), "tampered rematerialize", true)
+	if err == nil {
+		t.Fatal("tampered rematerialized archive must be refused")
+	}
+	if !strings.Contains(err.Error(), "archive") && !strings.Contains(err.Error(), "content") && !strings.Contains(err.Error(), "integrity") {
+		t.Fatalf("tamper must fail a binding/integrity check, got %v", err)
+	}
+}
+
+func chtimesTree(t *testing.T, root string, mtime time.Time) {
+	t.Helper()
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chtimes(path, mtime, mtime)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRewrittenRemoteHistoryBlocksPublish(t *testing.T) {
 	ctx, actions := newCheckpointHarness(t)
 	remote := initBareRemote(t)

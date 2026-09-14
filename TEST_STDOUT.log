@@ -556,3 +556,85 @@ EXIT 0
 
 $ sh -n scripts/verify-release.sh
 EXIT 0
+
+PR #155 macOS restore correction
+Hosted failure: TestRemoteRecoveryDrill rejected an archive rebuilt with changed timestamps.
+
+Expected failure before tar metadata correction:
+command: python3 <TASK>/run_check.py --cwd <TASK>/integration go test -count=1 -timeout 120s ./internal/service/ -run TestRematerializedRemoteArchiveHashIgnoresMtime
+exit: 1
+--- FAIL: TestRematerializedRemoteArchiveHashIgnoresMtime (1.04s)
+    checkpoint_1145_test.go:712: identical rematerialized checkpoint must hash the same across file mtimes
+         early 57a2e230c42dd580efda9fbe462f46eaa2943267d460dbee145269c45d335da1
+         late  95dfc05ba773fe163e888a11140939fc0c0ab6bbfaeb5fdf0ef9060f18a36446
+         first c22c5a7a2311706cfdf1867bb56be6d4d9fe6f04dd29ab8dbd48d383a208073b
+FAIL
+FAIL	github.com/myrrazor/atlas-tasker/internal/service	1.409s
+FAIL
+
+Expected failure exposing the additional manifest clock dependency:
+--- FAIL: TestRematerializedRemoteArchiveHashIgnoresMtime (1.12s)
+    checkpoint_1145_test.go:730: clock advance changed checkpoint archive: plan bound 9db2902e2d5849f74ce15d6d6401365fc41438c6226b1ab9fab09eff0ed46c73, rebuilt 955e885cad5350316ad0c4966e16ca6d85e8b29f1b1ad9b8c31eb33dbd1f32f4
+FAIL
+FAIL	github.com/myrrazor/atlas-tasker/internal/service	1.450s
+FAIL
+
+EXIT 1
+
+Final clock/mtime, recovery, tamper, and normal-export regressions:
+$ go test -count=1 ./internal/service -run Test(RematerializedRemoteArchiveHashIgnoresMtime|RemoteRestoreApplyRefusesTamperedRematerializedArchive|RemoteRecoveryDrill|RestoreApplyRefusesSwappedBackupContent|BundleArchiveKeepsSourceFileTimestamp)$
+ok  	github.com/myrrazor/atlas-tasker/internal/service	4.576s
+
+EXIT 0
+
+PR155 macOS recovery archive follow-up
+2026-09-14T15:47:44.932002+00:00
+
+$ go vet ./...
+EXIT 0
+
+$ go test ./...
+?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/app	2.468s
+ok  	github.com/myrrazor/atlas-tasker/internal/apperr	(cached)
+?   	github.com/myrrazor/atlas-tasker/internal/buildinfo	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	80.360s
+ok  	github.com/myrrazor/atlas-tasker/internal/config	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/domain	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/all	(cached)
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/claude	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/codex	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/cursor	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/generic	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/grok	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/host	(cached)
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/openclaw	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp	2.398s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/selfprobe	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/testhost	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/render	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/service	40.643s
+ok  	github.com/myrrazor/atlas-tasker/internal/setup	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	(cached)
+?   	github.com/myrrazor/atlas-tasker/internal/testutil/testenv	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/theme	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	3.293s
+ok  	github.com/myrrazor/atlas-tasker/internal/uninstall	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/update	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/web	9.631s
+EXIT 0
+
+$ go test -race ./internal/service
+ok  	github.com/myrrazor/atlas-tasker/internal/service	59.291s
+EXIT 0
+
+$ go build -o <TASK>/evidence/v1.15-tracker ./cmd/tracker
+EXIT 0

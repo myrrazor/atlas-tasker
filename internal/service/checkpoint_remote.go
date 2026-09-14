@@ -315,7 +315,10 @@ func (s *ActionService) fetchAndVerifyRemote(ctx context.Context, opts RemoteRes
 	for _, file := range manifest.Files {
 		files = append(files, file.Path)
 	}
-	bundle, err := buildBundleManifest(material, "remote-"+manifest.CheckpointID, "workspace", s.now(), files)
+	// Plan and apply fetch independently. Both must reconstruct the bytes of
+	// this immutable checkpoint, including the bundle and tar metadata.
+	checkpointTime := manifest.CreatedAt.UTC()
+	bundle, err := buildBundleManifest(material, "remote-"+manifest.CheckpointID, "workspace", checkpointTime, files)
 	if err != nil {
 		cleanup()
 		return RemoteCheckpointRef{}, "", nil, err
@@ -326,7 +329,7 @@ func (s *ActionService) fetchAndVerifyRemote(ctx context.Context, opts RemoteRes
 		return RemoteCheckpointRef{}, "", nil, err
 	}
 	archive := filepath.Join(tmp, "remote-checkpoint.tar.gz")
-	if err := writeBundleArchive(material, archive, raw, files); err != nil {
+	if err := writeBundleArchiveAtTime(material, archive, raw, files, checkpointTime); err != nil {
 		cleanup()
 		return RemoteCheckpointRef{}, "", nil, err
 	}

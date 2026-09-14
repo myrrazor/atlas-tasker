@@ -1451,3 +1451,16 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 - **Confidence:** high
 - **Revisit Trigger:** The document metadata acquires authentication meaning or the scanner reports a different finding.
 - **Affected PRs/Files:** v1.15 main-target PR; `.gitleaksignore`, `TEST_STDOUT.log`, release evidence.
+
+
+## DEC-104 — Reconstruct the same remote checkpoint as the same archive
+
+- **Decision ID:** DEC-104
+- **Date:** 2026-09-14
+- **Question:** How can restore apply validate the archive approved by restore plan after independently fetching the same remote checkpoint again?
+- **Options Considered:** Remove archive binding; cache and trust the previous fetched archive; reconstruct deterministic archive metadata from verified checkpoint data while fetching and verifying again.
+- **Chosen Option:** Derive the reconstructed bundle creation time and archive entry timestamps from the checkpoint's immutable creation time. Keep the normal local export path's metadata behavior and retain manifest, archive, plan-digest, content-hash, and remote-ref validation.
+- **Why We Chose It:** PR #155's macOS recovery drill crossed a clock boundary while rebuilding an unchanged checkpoint archive. Current time and temporary-file mtimes changed its hash, so the correct archive-binding check rejected it. Deterministic reconstruction fixes the cause without accepting changed backup content.
+- **Confidence:** high
+- **Revisit Trigger:** Reconstructed archive bytes change for the same verified checkpoint because of another host-dependent metadata field or serialization change.
+- **Affected PRs/Files:** PR #155; `internal/service/checkpoint_remote.go`, `internal/service/import_export.go`, remote recovery regressions, and local verification evidence.

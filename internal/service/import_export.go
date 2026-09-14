@@ -551,6 +551,12 @@ func buildBundleManifest(root string, bundleID string, scope string, createdAt t
 }
 
 func writeBundleArchive(root string, archivePath string, manifestRaw []byte, files []string) error {
+	return writeBundleArchiveAtTime(root, archivePath, manifestRaw, files, time.Time{})
+}
+
+// A fixed time makes a reconstructed checkpoint independent of extraction time.
+// Zero retains the existing manifest and source-file timestamps for normal exports.
+func writeBundleArchiveAtTime(root string, archivePath string, manifestRaw []byte, files []string, fixedTime time.Time) error {
 	file, err := os.Create(archivePath)
 	if err != nil {
 		return fmt.Errorf("create bundle archive: %w", err)
@@ -562,7 +568,11 @@ func writeBundleArchive(root string, archivePath string, manifestRaw []byte, fil
 	tw := tar.NewWriter(gz)
 	defer tw.Close()
 
-	if err := writeTarEntry(tw, "manifest.json", manifestRaw, timeNowUTC()); err != nil {
+	manifestTime := fixedTime
+	if manifestTime.IsZero() {
+		manifestTime = timeNowUTC()
+	}
+	if err := writeTarEntry(tw, "manifest.json", manifestRaw, manifestTime); err != nil {
 		return err
 	}
 	for _, rel := range files {
@@ -571,11 +581,15 @@ func writeBundleArchive(root string, archivePath string, manifestRaw []byte, fil
 		if err != nil {
 			return fmt.Errorf("read export file %s: %w", rel, err)
 		}
-		info, err := os.Stat(full)
-		if err != nil {
-			return fmt.Errorf("stat export file %s: %w", rel, err)
+		modTime := fixedTime
+		if modTime.IsZero() {
+			info, err := os.Stat(full)
+			if err != nil {
+				return fmt.Errorf("stat export file %s: %w", rel, err)
+			}
+			modTime = info.ModTime()
 		}
-		if err := writeTarEntry(tw, rel, raw, info.ModTime()); err != nil {
+		if err := writeTarEntry(tw, rel, raw, modTime); err != nil {
 			return err
 		}
 	}
