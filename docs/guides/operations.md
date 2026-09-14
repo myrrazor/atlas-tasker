@@ -5,12 +5,15 @@ Atlas is local-first. Operational discipline is mostly about keeping state inspe
 ## Daily Checks
 
 ```bash
+tracker
 tracker doctor --json
 tracker board
 tracker approvals
 tracker inbox
 tracker sync status
 ```
+
+On the v1.15 candidate, `tracker` with no args opens Home (or prints the URL). `doctor` checks the machine even outside a workspace.
 
 ## Before High-Impact Work
 

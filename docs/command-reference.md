@@ -2,7 +2,10 @@
 
 ## Top-Level
 
-- `tracker init [--integrations|--skip-integrations]`
+- `tracker` (no args: ensure Home on `127.0.0.1:7432`, open or print URL/JSON)
+- `tracker init [--no-open|--no-register|--no-agents|--no-backup|--git-mode shared|private|unmanaged|--integrations|--skip-integrations]`
+- `tracker uninstall [--yes|--apply]`
+- `tracker workspaces grant <absolute-directory> [--purpose init|register|repair] [--json]
 - `tracker setup [--plan|--yes] [--agents <list|all>] [--mode guidance|managed|disabled] [--team <POLICY>] [--backup] [--backup-target <ID>]`
 - `tracker setup status`
 - `tracker setup repair [--yes]`
@@ -60,7 +63,7 @@
 - `tracker web status [--pretty|--md|--json]`
 - `tracker update [--check|--dry-run|--yes] [--force] [--version <TAG>] [--skip-attestations] [--json]`
 - `tracker version [--json]`
-- `tracker tui [--actor <ACTOR>]`
+- `tracker tui [--actor <ACTOR>] [--style table|kanban]`
 - `tracker config get [KEY]`
 - `tracker config set <KEY> <VALUE>`
 
@@ -627,7 +630,7 @@ Rules:
 
 ## TUI
 
-- `tracker tui [--actor <ACTOR>]`
+- `tracker tui [--actor <ACTOR>] [--style table|kanban]`
 
 Panels:
 
@@ -738,7 +741,7 @@ Dependency rules:
 
 ## Views
 
-- `tracker board [--view <NAME>]`
+- `tracker board [--view <NAME>] [--style table|kanban|legacy] [--density comfortable|compact|focus]`
 - `tracker backlog`
 - `tracker next [--actor <ACTOR>] [--view <NAME>]`
 - `tracker blocked`
@@ -884,7 +887,7 @@ Slash command examples:
 
 ## MCP Adapter
 
-- `tracker mcp serve [--workspace <ABSOLUTE-PATH>] [--init-if-missing] [--workspace-from-cwd --expected-workspace-id <ID>] [--tool-profile read|workflow|delivery|admin] [--read-only] [--dangerously-allow-high-impact-tools]`
+- `tracker mcp serve [--global] [--workspace <ABSOLUTE-PATH>] [--init-if-missing] [--workspace-from-cwd --expected-workspace-id <ID>] [--tool-profile read|workflow|delivery|admin] [--read-only] [--dangerously-allow-high-impact-tools]` (Atlas-managed global registration is `--global --tool-profile workflow`)
 - `tracker mcp schema --json [--tool-profile <PROFILE>]`
 - `tracker mcp tools --json [--tool-profile <PROFILE>]`
 - `tracker mcp approve-operation --operation <TOOL> --target <ID> --actor <ACTOR> --reason <TEXT> [--ttl 10m]`

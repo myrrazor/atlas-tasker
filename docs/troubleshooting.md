@@ -1,5 +1,12 @@
 # Troubleshooting
 
+## Home will not start
+
+`tracker` with no args binds `127.0.0.1:7432`. If another app owns that port, or a
+different Atlas instance is already there, the command fails instead of moving. Check
+`tracker doctor --json` and stop the conflicting listener. Do not invent a second
+daemon per workspace.
+
 ## `tracker doctor --repair` keeps finding pending work
 
 Start read-only:

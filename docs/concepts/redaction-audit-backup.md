@@ -4,7 +4,7 @@ Classification labels describe how sensitive Atlas-owned data is. Redaction prev
 
 Audit reports are snapshot artifacts. They should explain the source state, policy state, trust state, findings, redaction state, and optional signatures at generation time.
 
-Backups are Atlas-owned snapshots. They intentionally exclude private keys, local trust decisions, redaction previews, runtime/worktree/provider state, remotes, notifiers, and MCP approvals.
+Backups are Atlas-owned snapshots. They intentionally exclude private keys, local trust decisions, redaction previews, runtime/worktree/provider state, remotes, notifiers, and MCP approvals. v1.15 local checkpoints start at `tracker init` unless `--no-backup`. A named remote is separate and is not verified until isolated fetch. Restore is plan-then-apply bound to a stored plan ID and digest. See [setup and backup](../guides/setup-and-backup.md).
 
 Useful commands:
 

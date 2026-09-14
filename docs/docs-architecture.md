@@ -6,9 +6,12 @@ v1.8 changes Atlas docs from implementation-history-first to user-first. Histori
 
 - `README.md`: GitHub landing page, quickstart, major capabilities, release status, security summary, docs links.
 - `docs/README.md`: docs landing page and route map.
-- `docs/getting-started.md`: first ten minutes.
+- `docs/getting-started.md`: first ten minutes (`tracker init` then `tracker`).
 - `docs/installation.md`: install from release, source, and local dev.
 - `docs/quickstart.md`: copyable workspace flow.
+- `docs/guides/home-and-workspaces.md`: Atlas Home, registry, repair.
+- `docs/guides/uninstall.md`: software-only uninstall.
+- `docs/migration-v1.15.md`: compatibility from published tags / v1.14.
 - `docs/first-agent-workflow.md`: ticket to run to evidence to review.
 
 ## User Docs

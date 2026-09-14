@@ -30,19 +30,22 @@ This file is for agents **using** the tracker. If you are contributing to Atlas 
   itself when it is missing or stale (one `[tracker] ...rebuilt it...` line on stderr), and
   `tracker doctor` reports drift as exit 7 instead of `ok`. If you already hand-edited
   something, `tracker doctor --repair` rebuilds the index from markdown and events.
-- **Run tracker from the workspace root.** A directory that never went through `tracker init`
-  is exit 2 — nothing gets scaffolded — and from a subdirectory of a real workspace the error
-  names the root to run from. `init` and explicit `integrations install` can create a workspace.
-  `tracker setup` plans and applies agent guidance and, for selected providers, the matching MCP
-  registration in an already-initialized workspace; it does not initialize the current directory.
-  MCP `--workspace-from-cwd` also never initializes. `--yes` is not consent for backup or for
-  unnamed machine-wide scopes such as OpenClaw. `--team` may apply a named preset and never
-  overwrites existing agent roles.
+- **Run tracker from the workspace root for ticket work.** A directory that never went through
+  `tracker init` is exit 2 for workspace commands — nothing gets scaffolded — and from a
+  subdirectory of a real workspace the error names the root to run from. Bare `tracker` is
+  different: it starts or reuses Atlas Home and does not require an initialized CWD.
+  `tracker init` is the ordinary workspace creator. Explicit `integrations install` can still
+  create one. Advanced `tracker setup` plans and applies agent guidance in an already-initialized
+  workspace; it does not initialize the current directory. MCP `--workspace-from-cwd` also never
+  initializes. `--yes` is not consent for remote backup or for unnamed machine-wide scopes such
+  as OpenClaw. `--team` may apply a named preset and never overwrites existing agent roles.
 - **Claim before you edit code.** A lease is how two agents avoid the same ticket. Claiming a
   ticket someone else holds is exit 4, not a queue.
-- **The browser board is for humans.** `tracker web serve` mints a random session token per
-  process and never persists it; there is no API key and no headless mode. Agents use the CLI
-  or MCP. Do not scrape the board.
+- **The browser board is for humans.** `tracker` opens Atlas Home; `tracker web serve` remains
+  the single-workspace board. Home clears a one-time URL fragment and exchanges it through
+  `POST /session/claim` for an HttpOnly cookie. Pending claims are held in private local state
+  until consumed or expired. Legacy `tracker web serve` still uses `?token=`. There is no API
+  key or headless browser mode. Agents use the CLI or MCP. Do not scrape the board.
 - **`--json` goes to stdout and is the whole of stdout.** Notifications, warnings and errors
   go to stderr. Parse stdout, never the pretty or markdown output.
 
@@ -120,6 +123,8 @@ is never pending.
 
 ```bash
 tracker board --json                       # {"columns": {"ready": [...], ...}}
+tracker board                              # default human board: polished table
+tracker board --style kanban               # optional side-by-side cards
 tracker queue --actor agent:builder-1 --json
 tracker ticket view APP-12 --json
 tracker inspect APP-12 --actor agent:builder-1 --json   # policy + lease + queue + history
@@ -175,8 +180,11 @@ Branch on `error.code` or the exit status, not on the message text.
 Normal tracker commands are non-interactive. Two setup paths can prompt only when both stdin and
 stdout are terminals:
 
-- `tracker init` asks whether to set up coding-agent integrations after initialization. Use
-  `--skip-integrations` to suppress the question or `--integrations` to go straight to the picker.
+- `tracker init` initializes the workspace, writes Atlas-managed MCP entries for detected
+  agents unless `--no-agents` / `--skip-integrations`, and starts local checkpoints unless
+  `--no-backup`. `--integrations` still opens the older TTY picker. JSON and non-TTY runs
+  still perform machine agent setup unless those flags or `settings.agents.auto_install=false`
+  opt out. There is no `--agents` opt-in flag.
 - `tracker integrations install` with no target opens the six-target picker. Use an explicit target
   or `--targets claude,codex,cursor,openclaw,grok,generic` in scripts.
 
@@ -190,8 +198,19 @@ that wait ends in exit 6.
 For clients without a shell. The tools call the same services as the CLI, so nothing here is a
 second source of truth.
 
+On the v1.15 candidate, `tracker init` writes this registration for detected clients:
+
 ```bash
-# Claude Code, user scope
+<absolute-tracker> mcp serve --global --tool-profile workflow
+```
+
+Do not report the client as connected until it has restarted and MCP initialize succeeds. Exact
+command + args must match; drifted files are `unverified`.
+
+Pinned per-workspace serve is still supported for clients you configure by hand. That form still defaults to `--tool-profile read`:
+
+```bash
+# Claude Code, user scope, pinned workspace
 claude mcp add --transport stdio --scope user atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile read
 
 # Codex
@@ -200,6 +219,11 @@ codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/wor
 # OpenClaw (--cwd is its own way of pinning the directory)
 openclaw mcp add atlas --command /usr/local/bin/tracker --arg mcp --arg serve --cwd /path/to/workspace
 ```
+
+Global serve lists workspaces and infers the current CWD when it is an unambiguous Atlas root.
+Cross-workspace writes always need explicit `workspace_id`. `tracker mcp tools|schema` (and
+`--global`) must match `tools/list` on that server. Dotted `atlas.*` names only; no underscore
+aliases.
 
 An uninitialized directory remains an error unless the user explicitly opts into the noninteractive
 bootstrap form:
@@ -250,8 +274,10 @@ Re-running refreshes Atlas-generated files and only the managed block between th
 markers in the instruction file; custom instruction content outside the markers is preserved.
 `--force` is the explicit whole-file replacement option.
 
-The integration installer does not edit MCP client configuration. Register `tracker mcp serve`
-separately if the agent should use Atlas tools over MCP.
+On the v1.15 candidate, `tracker init` writes Atlas-managed MCP entries unless you opt out.
+`tracker integrations install` still writes skills and instruction blocks only. Advanced
+`tracker setup` can still plan/apply provider files in an existing workspace. Restart the
+client after any registration change.
 
 ## More
 

@@ -6,7 +6,16 @@ The MCP adapter is not a second source of truth. It calls the same service layer
 
 ## Commands
 
+On the v1.15 candidate, `tracker init` registers detected clients with this exact argv:
+
 ```bash
+<absolute-tracker> mcp serve --global --tool-profile workflow
+```
+
+```bash
+tracker mcp serve --global --tool-profile workflow
+tracker mcp tools --json --global --tool-profile workflow
+tracker mcp schema --json --global --tool-profile workflow
 tracker mcp serve --tool-profile read
 tracker mcp serve --workspace /path/to/workspace --tool-profile read
 tracker mcp serve --workspace-from-cwd --expected-workspace-id <WORKSPACE-ID> --tool-profile read
@@ -18,7 +27,21 @@ tracker mcp approvals list --json
 tracker mcp approvals revoke <APPROVAL-ID>
 ```
 
-`serve` reads the current directory unless `--workspace` names one. Registrations that live outside a repo — user-scoped `claude mcp add`, a global Codex `mcp_servers` entry — need it, because the client picks the working directory, not you. By default, the workspace must already contain Atlas state from `tracker init`.
+`--global` is the machine-wide server. Atlas-managed client entries include `--tool-profile workflow`. CLI `--global` without an explicit profile also uses workflow. High-impact tools stay hidden. `--global` cannot be combined with `--workspace`,
+`--init-if-missing`, or `--workspace-from-cwd`. Reads may omit `workspace_id` only when
+the process CWD is a unique Atlas root. Cross-workspace writes always need explicit
+`workspace_id`. Explicit IDs go through the registry `Bind` and refuse moved, copied,
+replaced, unavailable, corrupt, or disabled workspaces.
+
+Restart the coding agent after init. File presence is not “connected”: status is
+`missing`, `installed` (command+args match **and** initialize succeeded),
+`pending_restart`, or `unverified`.
+
+Pinned `serve` without `--global` still defaults to `--tool-profile read` and still reads
+the current directory unless `--workspace` names one. Registrations that live outside a
+repo — user-scoped `claude mcp add`, a global Codex `mcp_servers` entry — need the pin,
+because the client picks the working directory, not you. By default, the workspace must
+already contain Atlas state from `tracker init`. Pinned serve is still supported.
 
 `--workspace-from-cwd` plus `--expected-workspace-id` is the portable binding for clients that cannot safely store an absolute machine path (DEC-072, DEC-076). Atlas canonicalizes the current directory, walks only to the nearest real Atlas root, verifies the ID, and refuses nested workspaces, symlink substitution, a replaced directory, and a copied workspace with a stale local registration. It never initializes and never opens a different registered workspace. `--workspace-from-cwd` cannot be combined with `--workspace` or `--init-if-missing`. When `--workspace` is used with `--expected-workspace-id`, the ID is verified on that root.
 
@@ -35,7 +58,23 @@ Stdio framing: Atlas speaks newline-delimited JSON-RPC and also accepts LSP-styl
 
 High-impact tools are hidden unless both the selected profile and server flag allow them. MCP-first agents should start at `workflow`, not `read`.
 
-`atlas.context` and `atlas.status` are read-only. `atlas.backup.status` is the dedicated read-only backup health tool: it never changes targets, disables backup, restores, prunes, or overrides divergence, and it never returns remote URLs or credentials. `atlas.context` returns workspace identity, project inventory, the configured actor, declared and effective managed-mode policy, assigned/available/pending work, active runs, backup health (including automatic local checkpoint state, never remote credentials or URLs), and a state revision. `atlas.status` accepts `workspace`, `project`, `ticket`, `agent`, or `run` scope and returns structured JSON plus deterministic compact Markdown derived from that payload. Unknown projects disambiguate; multiple projects stay a workspace overview unless one is named. Hosts that render MCP Apps also receive a read-only CSP-constrained board document; Markdown remains the universal fallback.
+`atlas.context` and `atlas.status` are read-only. `atlas.backup.status` is the dedicated read-only backup health tool: it never changes targets, disables backup, restores, prunes, or overrides divergence, and it never returns remote URLs or credentials. `atlas.context` returns workspace identity, project inventory, the configured actor, declared and effective managed-mode policy, assigned/available/pending work, active runs, backup health (including automatic local checkpoint state, never remote credentials or URLs), and a state revision. `atlas.status` accepts `workspace`, `project`, `ticket`, `agent`, or `run` scope and returns structured JSON plus deterministic compact Markdown derived from that payload. Unknown projects disambiguate; multiple projects stay a workspace overview unless one is named. Hosts that render MCP Apps also receive a read-only CSP-constrained board document when tool metadata links `_meta.ui.resourceUri` to a `ui://` resource (`text/html;profile=mcp-app`); Markdown remains the universal fallback. An HTML string in `structuredContent` alone is not enough for a conforming Apps host.
+
+Exact profile counts move as tools are added. Run `tracker mcp tools --json --tool-profile <profile>` (add `--global` for the machine server) rather than copying a number from an older page. New v1.15 names are listed in [MCP tools](mcp-tools.md).
+
+## Resources
+
+Subscribe-able JSON resources on the global server:
+
+- `atlas://workspaces`
+- `atlas://attention`
+- `atlas://workspace/<id>`
+- `atlas://workspace/<id>/projects`
+- `atlas://workspace/<id>/project/<key>/board`
+- `atlas://workspace/<id>/backup`
+- `atlas://workspace/<id>/activity`
+
+Notifications are coalesced and carry `_meta` workspace, project, entity, revision, and event. They do not leak secrets or filesystem paths unless `IncludeLocalOnlyPaths` is on.
 
 ## Ordinary Workflow Additions
 

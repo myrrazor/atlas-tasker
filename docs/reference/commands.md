@@ -6,8 +6,11 @@ Core read commands:
 
 - `tracker queue --actor <ACTOR>`
 - `tracker next --actor <ACTOR>`
-- `tracker board`
-- `tracker web serve --open`
+- `tracker` (Home)
+- `tracker init`
+- `tracker board [--style table|kanban|legacy]`
+- `tracker web serve --open` (single-workspace board)
+- `tracker uninstall`
 - `tracker dashboard`
 - `tracker inspect <TICKET-ID> --actor <ACTOR>`
 - `tracker ticket history <TICKET-ID> --json`
@@ -38,8 +41,10 @@ Agent setup and MCP discovery:
 - `tracker integrations detect --json`
 - `tracker integrations install [claude|codex|cursor|openclaw|grok|generic]`
 - `tracker integrations install --targets claude,codex,cursor`
-- `tracker mcp tools --json --tool-profile workflow`
-- `tracker mcp schema --json --tool-profile workflow`
+- `tracker mcp serve --global --tool-profile workflow`
+- `tracker mcp tools --json --global --tool-profile workflow`
+- `tracker mcp schema --global --json --tool-profile workflow`
+- `tracker workspaces grant <absolute-directory> --purpose init --json`
 
 The integration installer writes project instructions and skills; it does not register MCP. See
 [coding-agent integrations](../guides/agent-integrations.md) and [MCP for agents](../guides/mcp-for-agents.md).

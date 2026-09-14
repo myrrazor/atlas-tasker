@@ -1,7 +1,15 @@
-$ tracker board
-Board
-+-----------------+-------+--------+---------------+----------+----------+------------------+
-| Column          | ID    | Type   | Status        | Priority | Assignee | Title            |
-+-----------------+-------+--------+---------------+----------+----------+------------------+
-| In Progress (1) | APP-1 | [task] | [in_progress] | [medium] | -        | Add health check |
-+-----------------+-------+--------+---------------+----------+----------+------------------+
+Board DEMO
+8 tickets · 1 blocked · 2 in review · 10 unbacked events
+Next ready work DEMO-1
+Backup local checkpoints off, 10 unbacked events
+
+  ID      STATUS       PRI       TITLE
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  DEMO-6  Backlog      low       Plan the next release
+  DEMO-1  Ready        high      A calmer board at every width
+  DEMO-3  In Progress            Keep local checkpoints automatic
+  DEMO-2  In Progress  high      Connect the first coding agent
+  DEMO-7  In Review              Welcome to Atlas Tasker
+  DEMO-4  In Review    high      Review restore evidence
+  DEMO-5  Blocked                Handle an unavailable workspace
+  DEMO-8  Canceled               Retired sample task

@@ -4,7 +4,9 @@
 
 The TUI is optimized for scanning queues, boards, ticket details, approvals, inbox items, runs, sync state, and operations dashboards. It uses the same service layer as the CLI.
 
-Repeated items render as bordered tables where the terminal is wide enough, so board, queue, inbox, saved-view, and ops panels line up with the CLI pretty output.
+The Board tab shows an aligned table with readable titles and status colors.
+Keyboard scrolling keeps the selected row visible in long lists. Enter opens the
+Detail tab. Use `tracker tui --style kanban` for the optional card board.
 
 Help is available inside the TUI:
 

@@ -2,21 +2,25 @@
 
 For the short regular-user path, start with [setup and backup](setup-and-backup.md). This page is the per-target detail.
 
-Install the binary, then in your project run `tracker init`. Atlas detects the coding agents on
-the machine, checks the ones it found, and writes the worker skill when you press Enter. After
-that, open the same repo in Claude Code, Codex, Cursor, OpenClaw, or Grok and ask for the
-board — you do not install a second Atlas package inside the agent.
+Install the binary, then in your project run `tracker init`. On the v1.15 candidate that
+detects the coding agents on the machine and, unless you pass `--no-agents`, writes
+Atlas-managed MCP entries pointing at `tracker mcp serve --global --tool-profile workflow` plus the worker
+skill. Restart the client. After that, open the same repo in Claude Code, Codex, Cursor,
+OpenClaw, or Grok and ask for the board — you do not install a second Atlas package
+inside the agent.
 
 Atlas can install project-level instructions and an `atlas-worker` skill for six agent targets. The
 integration pack teaches an agent how to read Atlas work, claim a ticket, record evidence, and request
-review. It does not install an agent, launch one, or grant it permissions. `tracker setup` can also
-register a workspace-bound Atlas MCP server for the selected providers; it never claims that a
-client is connected until a self-probe or the client's own status command succeeds.
+review. It does not install an agent, launch one, or grant it permissions. A written MCP entry is
+`written` or `pending_client_restart`, never “connected” just because a config file exists.
+Advanced `tracker setup` can still register a workspace-bound Atlas MCP server for selected
+providers.
 
-## Unified setup
+## Unified setup (advanced / v1.14)
 
-`tracker setup` is the workspace-scoped planner and apply path for agent guidance and MCP
-registration. It inspects detected clients, existing managed blocks, and local setup state, prints a
+Prefer `tracker init` on the v1.15 candidate. `tracker setup` is the workspace-scoped
+planner and apply path for agent guidance and MCP registration when you already have a
+workspace and want the older one-pass refresh. It inspects detected clients, existing managed blocks, and local setup state, prints a
 read-only plan, and applies one provider transaction at a time. Planning never writes. `--yes` is
 not backup consent and is not consent for unnamed machine-wide scopes. `--team` may apply `solo`,
 `pair`, `swarm`, or `crossfire` and never silently overwrites existing roles.

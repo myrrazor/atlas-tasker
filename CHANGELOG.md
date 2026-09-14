@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.15.0 (release candidate)
+
+Atlas Home, simpler first use, and a polished terminal table. This candidate includes the compatible v1.14 implementation and has not been published as a release.
+
+- `tracker init` creates the first project, registers the workspace, configures supported coding agents, enables local checkpoints, and makes Home available. Repeating setup preserves identities and explicit opt-outs. Bare `tracker` starts or reuses one local Home service from any directory.
+- Home brings workspace discovery, project Kanban boards, attention, search, activity, backup health, and settings together. Registry repairs change pointers; workspace files remain authoritative.
+- Terminal and TUI boards default to aligned, colored ticket tables. Long lists remain navigable; `--style kanban` selects cards and terminal `--style legacy` retains the old grid. JSON and Markdown remain available.
+- Global workflow MCP registration exposes workspace-aware tools, resources, notifications, native Markdown, and a read-only MCP App board for compatible hosts. High-impact operations retain explicit approvals.
+- Checkpoints stay outside source Git. Existing macOS backup histories remain attached to their original state directory; conflicting histories require repair. Remote verification and restore apply remain bound to the exact checkpoint and stored plan.
+- `tracker uninstall` previews verified Atlas software and managed integration entries; `--yes` applies removal while preserving boards, events, registry pointers, and backups. Provider guidance also supports `/uninstall`.
+- README, migration and command guides, marketing pages, and website documentation cover the candidate. Static site essentials include a favicon, sitemap, robots.txt, social metadata, and a custom 404, with no cookie banner or nonessential tracking.
+
+See [the v1.15 implementation contract](docs/v1.15-implementation.md) and [local release evidence](docs/release/v1.15.0-release-evidence.md) for verification and remaining release boundaries.
+
 ## v1.14.0 (release candidate)
 
 Seamless agent setup and automatic verified backup. This is an implementation candidate, not a published release.

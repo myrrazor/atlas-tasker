@@ -7,16 +7,16 @@ go build -o tracker ./cmd/tracker
 ./tracker --help
 ```
 
-Initialize the workspace:
+Initialize the workspace, then open Home:
 
 ```bash
 ./tracker init
+./tracker
 ```
 
-In a terminal, `init` offers to install project guidance for Claude, Codex, Cursor, OpenClaw, Grok,
-or a generic agent. Choose detected agents, enter `none` to skip, or run
-`./tracker init --skip-integrations` when following this tutorial non-interactively. Integration files
-and MCP client registration are separate; see [coding-agent integrations](../guides/agent-integrations.md).
+On the v1.15 candidate, `init` writes Atlas-managed MCP entries for detected agents
+unless you pass `--no-agents` / `--skip-integrations`. Restart the client. `--integrations`
+still opens the older TTY picker. See [coding-agent integrations](../guides/agent-integrations.md).
 
 Check the workspace health in read-only mode:
 

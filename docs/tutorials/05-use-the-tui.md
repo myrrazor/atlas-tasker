@@ -6,7 +6,9 @@ Launch the full-screen interface:
 ./tracker tui --actor human:owner
 ```
 
-The TUI uses the same service layer as the CLI. A ticket mutation from the TUI should produce the same event metadata as the equivalent command.
+The TUI uses the same service layer as the CLI. The Board tab is a polished table,
+matching default `tracker board`. Use `--style kanban` for the optional card layout. A ticket mutation from the TUI
+should produce the same event metadata as the equivalent command.
 
 Once it opens, press `?` for the built-in help guide. The guide explains the tabs, keybindings, bulk flow, and supported palette commands. You can also press `/`, type `/help`, and press enter to open the same guide from the command palette.
 
