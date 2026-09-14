@@ -11,6 +11,8 @@
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/docs/views-and-search.html" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="../styles.css" />
@@ -72,12 +74,14 @@
           <p class="docs-group-label">Start</p>
           <a href="./">Overview</a>
           <a href="getting-started.html">Getting started</a>
+          <a href="home.html">Home and workspaces</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Core</p>
           <a href="tickets-and-workflow.html">Tickets and workflow</a>
           <a href="views-and-search.html" aria-current="page">Views and search</a>
           <a href="web-board.html">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Agents</p>
@@ -89,6 +93,7 @@
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Help</p>
+          <a href="uninstall.html">Uninstall</a>
           <a href="faq.html">FAQ</a>
         </div>
         <div class="docs-side-foot">
@@ -112,7 +117,7 @@
               <tr><th scope="col">Command</th><th scope="col">What it answers</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>tracker board</code></td><td>The kanban, grouped by status. <code>--view</code> replays a saved board.</td></tr>
+              <tr><td><code>tracker board</code></td><td>Default polished table. <code>--style kanban</code> selects optional cards. <code>--view</code> replays a saved board.</td></tr>
               <tr><td><code>tracker backlog</code></td><td>Everything not yet groomed to ready.</td></tr>
               <tr><td><code>tracker blocked</code></td><td>Tickets whose blockers are unresolved right now, derived from live status.</td></tr>
               <tr><td><code>tracker next</code></td><td>The single best next ticket for an actor: ready work first, then backlog whose blockers are all done (<code>unblocked_for_me</code>), then the rest of the queue.</td></tr>
@@ -246,6 +251,11 @@ tracker unwatch ticket APP-1 --actor human:owner</pre>
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -253,6 +263,9 @@ tracker unwatch ticket APP-1 --actor human:owner</pre>
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

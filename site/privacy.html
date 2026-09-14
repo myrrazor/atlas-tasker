@@ -3,30 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Atlas Tasker Privacy — No cookies or tracking</title>
-  <meta name="description" content="Learn how the Atlas Tasker website handles data: no cookies, analytics, tracking, accounts, payments, contact forms, or hosted project information." />
+  <title>Atlas Tasker Privacy — Site vs local app</title>
+  <meta name="description" content="The Atlas Tasker website sets no cookies or trackers. The local app may use one essential loopback session cookie. Project data stays on your machine." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/privacy.html" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="styles.css" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://atlastasker.com/privacy.html" />
-  <meta property="og:title" content="Atlas Tasker Privacy — No cookies or tracking" />
-  <meta property="og:description" content="No cookies, analytics, tracking, accounts, payments, contact forms, or hosted project data." />
+  <meta property="og:title" content="Atlas Tasker Privacy — Site vs local app" />
+  <meta property="og:description" content="The Atlas Tasker website sets no cookies or trackers. The local app may use one essential loopback session cookie. Project data stays on your machine." />
   <meta property="og:image" content="https://atlastasker.com/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="Atlas Tasker: a local issue tracker for you and your coding agents" />
 
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Atlas Tasker Privacy — No cookies or tracking" />
-  <meta name="twitter:description" content="No cookies, analytics, tracking, accounts, payments, contact forms, or hosted project data." />
+  <meta name="twitter:title" content="Atlas Tasker Privacy — Site vs local app" />
+  <meta name="twitter:description" content="The Atlas Tasker website sets no cookies or trackers. The local app may use one essential loopback session cookie. Project data stays on your machine." />
   <meta name="twitter:image" content="https://atlastasker.com/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker: a local issue tracker for you and your coding agents" />
 
@@ -35,7 +37,7 @@
     "@context": "https://schema.org",
     "@type": "WebPage",
     "name": "Atlas Tasker Privacy",
-    "description": "Atlas Tasker's no-cookie, no-tracking privacy policy.",
+    "description": "The Atlas Tasker website sets no cookies or trackers. The local app may use one essential loopback session cookie.",
     "url": "https://atlastasker.com/privacy.html",
     "dateModified": "2026-09-09",
     "isPartOf": {
@@ -75,20 +77,21 @@
     <header class="legal-hero shell">
       <p class="section-label">Privacy</p>
       <h1>No cookies. No tracking. No account.</h1>
-      <p class="legal-summary">This website has no accounts or contact forms. Atlas Tasker keeps project data in your repository. GitHub hosts the public source, issues, and release files.</p>
-      <p class="legal-updated">Last updated September 9, 2026</p>
+      <p class="legal-summary">This website has no accounts or contact forms. Atlas Tasker keeps project data in your repository. The local app may set one essential loopback session cookie; this marketing site sets none.</p>
+      <p class="legal-updated">Last updated September 14, 2026</p>
     </header>
 
     <div class="legal-content">
       <section aria-labelledby="site-data">
         <h2 id="site-data">What this site collects</h2>
-        <p>Nothing through the page itself. The site sets no cookies and runs no analytics, ad pixels, session replay, contact form, or third-party embed. There are no accounts and no payments.</p>
+        <p>Nothing through the page itself. The site sets no cookies and runs no analytics, ad pixels, session replay, contact form, or third-party embed. There are no accounts and no payments. There is no cookie banner because there is nothing to consent to.</p>
         <p>Loading a website sends your IP address and request information to its hosting provider. Following a GitHub link uses GitHub's services and privacy terms.</p>
       </section>
 
       <section aria-labelledby="local-data">
         <h2 id="local-data">What stays on your machine</h2>
         <p>Atlas Tasker stores tickets as Markdown in your repository, with a local event log and rebuildable SQLite index. This marketing site cannot see or receive that project data.</p>
+        <p>The local application (Atlas Home and <code>tracker web serve</code>) may set one essential HttpOnly session cookie on <code>127.0.0.1</code> so the browser can talk to that loopback server. That cookie is not a tracker, is not set by this website, and is used by the loopback app. Home clears a one-time URL fragment before sending the claim to <code>POST /session/claim</code>; the claim is absent from request URLs and JavaScript storage.</p>
       </section>
 
       <section aria-labelledby="contact-data">

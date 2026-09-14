@@ -11,6 +11,8 @@
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/guide.html" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="styles.css" />
@@ -78,18 +80,18 @@
       </section>
       <section class="shell">
         <h2>2 · Minutes to a working board</h2>
-        <p><code>tracker init</code> sets up the workspace in your repo and, in a terminal, offers the agent picker. Detected clients are already checked; press Enter and those agents can read the board. <code>tracker project create APP "My App"</code> makes a project; projects group tickets and get their own board.</p>
+        <p>In a directory named <code>app</code>, <code>tracker init</code> then <code>tracker</code> is the v1.15 path: workspace, default project <code>APP</code>, local checkpoints, Atlas-managed MCP for detected agents, and Home on <code>127.0.0.1:7432</code>. Restart the client. Extra projects are <code>tracker project create AUTH "Auth"</code>.</p>
         <p><code>tracker ticket create --project APP --title "Ship first feature" --type task --actor human:owner --reason "first ticket"</code> creates the first ticket. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code> and fail before writing if none is set. Include a reason so agents and reviewers can understand why the change happened.</p>
-        <p><code>tracker ticket move APP-1 ready --actor human:owner --reason "groomed"</code>, then <code>tracker board</code> for the terminal view, <code>tracker tui</code> for the full-screen one, or <code>tracker web serve --open</code> for the <a href="docs/web-board.html">local kanban board</a>.</p>
+        <p><code>tracker ticket move APP-1 ready --actor human:owner --reason "groomed"</code>, then <code>tracker board</code> for a polished table, <code>tracker tui</code> for the full-screen one, or <code>tracker</code> for <a href="docs/home.html">Atlas Home</a>.</p>
       </section>
       <section class="shell">
         <h2>3 · Hand work to agents</h2>
         <p><code>tracker agent create builder-1 --name "Builder" --provider claude --capability go --actor human:owner --reason "register"</code> registers an agent, and <code>tracker ticket assign APP-2 agent:builder-1 --actor human:owner --reason "agent work"</code> hands a ticket over. Or skip the assembly and apply a preset: <code>tracker team apply pair --actor human:owner --reason "team setup"</code>. The full loop is in <a href="docs/agents-and-dispatch.html">agents and dispatch</a>.</p>
-        <p><code>tracker setup --plan</code> shows the same workspace in one place. <code>tracker setup --yes --agents generic</code> refreshes the existing worker skill and registers MCP where the client supports it. Those commands are in the v1.14 implementation candidate (latest published tag is still v1.13.0). <code>--yes</code> is not backup consent. Follow the <a href="mcp.html#connect">Connect your agent journey</a> or the detailed <a href="docs/mcp-setup.html">MCP setup guide</a>.</p>
+        <p><code>tracker setup --plan</code> remains as an advanced one-pass. <code>--yes</code> is not backup consent. Follow the <a href="mcp.html#connect">Connect your agent journey</a> or the detailed <a href="docs/mcp-setup.html">MCP setup guide</a>. The installer still installs the latest published tag; this Home/MCP path is the v1.15 source candidate.</p>
       </section>
       <section class="shell">
         <h2>4 · Optional Atlas backup</h2>
-        <p>Your tickets already live in Git. Automatic backup is a second, isolated Git repository for Atlas records — not a silent copy of <code>origin</code>. Add a target, then enable it, or pass <code>--backup --backup-target</code> to setup after the target exists. A push is not verified until Atlas checks the remote. Init and setup never install a machine scheduler.</p>
+        <p>Your tickets already live in Git. Init starts local Atlas checkpoints. A remote is a second, isolated Git repository you name — not a silent copy of <code>origin</code>. A push is not verified until Atlas fetches the remote commit. Init and setup never install a machine scheduler. Uninstall with <code>tracker uninstall</code>; boards stay.</p>
       </section>
       <section class="shell">
         <h2>5 · Keep it honest</h2>

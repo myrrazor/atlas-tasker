@@ -11,6 +11,8 @@
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/docs/mcp-setup.html" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="../styles.css" />
@@ -72,12 +74,14 @@
           <p class="docs-group-label">Start</p>
           <a href="./">Overview</a>
           <a href="getting-started.html">Getting started</a>
+          <a href="home.html">Home and workspaces</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Core</p>
           <a href="tickets-and-workflow.html">Tickets and workflow</a>
           <a href="views-and-search.html">Views and search</a>
           <a href="web-board.html">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Agents</p>
@@ -89,6 +93,7 @@
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Help</p>
+          <a href="uninstall.html">Uninstall</a>
           <a href="faq.html">FAQ</a>
         </div>
         <div class="docs-side-foot">
@@ -108,13 +113,13 @@
         <h2>Start the server</h2>
         <div class="code-block">
           <div class="snippet-title"><span>serve, inspect, approve</span><button class="copy-button" type="button" data-copy="ms-serve" aria-label="Copy MCP commands">Copy</button></div>
-          <pre id="ms-serve">tracker mcp serve --tool-profile read
+          <pre id="ms-serve">tracker mcp serve --global --tool-profile workflow
+tracker mcp tools --json --global --tool-profile workflow
 tracker mcp serve --workspace /absolute/path/to/repo --tool-profile read
 tracker mcp serve --workspace /absolute/path/to/existing-directory --tool-profile workflow --init-if-missing
-tracker mcp tools --json --tool-profile read     <span class="c"># what does this profile expose</span>
 tracker mcp schema --json --tool-profile workflow</pre>
         </div>
-        <p><code>serve</code> reads the current directory unless <code>--workspace</code> names one. That flag is load-bearing: user-scoped and global registrations start wherever the client happens to be, and without <code>--workspace</code> the tools answer against that directory. It is the usual reason a tool returns <code>not_found</code> for a ticket you can see in your terminal. By default, a workspace that does not exist or was never through <code>tracker init</code> fails at startup naming the path it tried.</p>
+        <p><code>tracker init</code> registers detected clients with <code>tracker mcp serve --global --tool-profile workflow</code>. Restart the client; a written file is not a live connection. <code>--global</code> cannot be combined with <code>--workspace</code> or <code>--init-if-missing</code>. Cross-workspace writes need <code>workspace_id</code>. Pinned <code>serve</code> without <code>--global</code> still defaults to <code>--tool-profile read</code> and still reads the current directory unless <code>--workspace</code> names one. Without a pin, a user-scoped client starts wherever it happens to be, which is the usual reason a tool returns <code>not_found</code> for a ticket you can see in your terminal.</p>
         <p><code>--init-if-missing</code> is an explicit bootstrap opt-in for a fresh workspace. It requires an absolute path to an existing directory and a write-capable workflow, delivery, or admin profile. Atlas refuses the option with the read profile, <code>--read-only</code>, a nested Atlas root, or redirected initialization outputs. Once startup succeeds, <code>atlas.project.create</code> can create a project container through MCP using only <code>key</code> and <code>name</code>.</p>
 
         <h2>Profiles</h2>
@@ -125,10 +130,10 @@ tracker mcp schema --json --tool-profile workflow</pre>
               <tr><th scope="col">Profile</th><th scope="col">Tools</th><th scope="col">Adds</th></tr>
             </thead>
             <tbody>
-              <tr><td><code>read</code></td><td>41</td><td>Reads and plan/dry-run tools only. The default.</td></tr>
-              <tr><td><code>workflow</code></td><td>73</td><td>Adds 31 attributed writes plus key/name-only project container creation: the full ticket loop, agent/team management, schedules, evidence, handoffs, and wake-up ack.</td></tr>
-              <tr><td><code>delivery</code></td><td>77; 79 with danger flag</td><td>Adds dispatch, change create, change sync, and checks sync. The danger flag exposes two guarded delivery actions.</td></tr>
-              <tr><td><code>admin</code></td><td>77; 88 with danger flag</td><td>The danger flag exposes all 11 high-impact operations: two delivery and nine admin. See <a href="mcp-security.html">MCP security</a>.</td></tr>
+              <tr><td><code>read</code></td><td>live inventory</td><td>Reads, plans, attention, workspace list, backup health. The default.</td></tr>
+              <tr><td><code>workflow</code></td><td>live inventory</td><td>The full ticket loop plus workspace init/repair, views, local checkpoint run, and restore plan. Run <code>tracker mcp tools --json</code>.</td></tr>
+              <tr><td><code>delivery</code></td><td>live inventory</td><td>Adds dispatch, change create, change sync, and checks sync. The danger flag exposes guarded delivery actions.</td></tr>
+              <tr><td><code>admin</code></td><td>live inventory</td><td>The danger flag exposes high-impact operations including backup configure, restore apply, and workspace fork-copy. See <a href="mcp-security.html">MCP security</a>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -242,6 +247,11 @@ args = ["mcp", "serve", "--workspace", "/absolute/path/to/repo", "--tool-profile
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -249,6 +259,9 @@ args = ["mcp", "serve", "--workspace", "/absolute/path/to/repo", "--tool-profile
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

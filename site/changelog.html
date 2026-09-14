@@ -12,6 +12,8 @@
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/changelog.html" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="styles.css" />
@@ -71,6 +73,16 @@
       <p class="legal-summary">Highlights from the repository's changelog. The <a href="https://github.com/myrrazor/atlas-tasker/blob/main/CHANGELOG.md">full history</a> lives with the source.</p>
     </header>
     <div class="legal-content">
+      <section class="shell">
+        <h2>v1.15.0 — implementation candidate</h2>
+        <ul>
+          <li><code>tracker init</code> then <code>tracker</code> is ordinary onboarding: workspace, default project, local checkpoints, Atlas-managed MCP for detected agents, and Atlas Home on <code>127.0.0.1:7432</code>. This is source in this tree, not a published GitHub release. Unstamped builds report <code>version: "dev"</code>.</li>
+          <li>Terminal and TUI boards default to polished tables, with optional Kanban cards. Browser and MCP App boards keep their Kanban presentation; chat uses native Markdown.</li>
+          <li>Global <code>tracker mcp serve --global --tool-profile workflow</code> lists workspaces; cross-workspace writes need <code>workspace_id</code>. Restart the client after init. Pinned <code>--workspace</code> remains.</li>
+          <li>Local checkpoints start at init. A named remote is never inferred from Git <code>origin</code>. A push is not verified until Atlas fetches the snapshot. Restore is plan-then-apply.</li>
+          <li><code>tracker uninstall</code> and <code>/uninstall</code> remove Atlas software only. Boards, history, backups, and registry pointers stay.</li>
+        </ul>
+      </section>
       <section class="shell">
         <h2>v1.14.0 — implementation candidate</h2>
         <ul>

@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Uninstall Atlas Tasker software only</title>
+  <meta name="description" content="tracker uninstall and /uninstall remove Atlas software. Boards, history, backups, and registry pointers stay so a later install can rediscover the work." />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#151517" />
+  <meta name="robots" content="index, follow" />
+  <meta name="googlebot" content="index, follow" />
+  <link rel="canonical" href="https://atlastasker.com/docs/uninstall.html" />
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
+  <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="stylesheet" href="docs.css" />
+
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://atlastasker.com/docs/uninstall.html" />
+  <meta property="og:title" content="Uninstall Atlas Tasker software only" />
+  <meta property="og:description" content="tracker uninstall and /uninstall remove Atlas software. Boards, history, backups, and registry pointers stay so a later install can rediscover the work." />
+  <meta property="og:image" content="https://atlastasker.com/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Uninstall Atlas Tasker software only" />
+  <meta name="twitter:description" content="tracker uninstall and /uninstall remove Atlas software. Boards, history, backups, and registry pointers stay so a later install can rediscover the work." />
+  <meta name="twitter:image" content="https://atlastasker.com/og.png" />
+  <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
+
+  <script type="application/ld+json">
+  {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "name": "Uninstall Atlas Tasker software only",
+  "description": "tracker uninstall and /uninstall remove Atlas software. Boards, history, backups, and registry pointers stay so a later install can rediscover the work.",
+  "url": "https://atlastasker.com/docs/uninstall.html",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "Atlas Tasker",
+    "url": "https://atlastasker.com/"
+  }
+}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="shell nav-inner">
+      <a class="brand" href="../" aria-label="Atlas Tasker home">
+        <img src="../atlas-tasker-terminal-wordmark.svg" width="667" height="94" alt="Atlas Tasker" />
+      </a>
+      <div class="nav-links">
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="./" aria-current="page">Docs</a>
+        <a href="../#install">Install</a>
+      </div>
+      <a class="nav-github" href="https://github.com/myrrazor/atlas-tasker">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </nav>
+
+  <div class="shell docs-shell">
+    <button class="docs-menu-button" type="button" aria-expanded="false" aria-controls="docs-sidebar">Docs menu</button>
+    <aside class="docs-sidebar" id="docs-sidebar">
+      <nav aria-label="Documentation">
+        <div class="docs-group">
+          <p class="docs-group-label">Start</p>
+          <a href="./">Overview</a>
+          <a href="getting-started.html">Getting started</a>
+          <a href="home.html">Home and workspaces</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Core</p>
+          <a href="tickets-and-workflow.html">Tickets and workflow</a>
+          <a href="views-and-search.html">Views and search</a>
+          <a href="web-board.html">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Agents</p>
+          <a href="agents-and-dispatch.html">Agents and dispatch</a>
+          <a href="mcp-setup.html">MCP setup</a>
+          <a href="mcp-tools.html">MCP tools</a>
+          <a href="mcp-security.html">MCP security</a>
+          <a href="json-and-exit-codes.html">JSON and exit codes</a>
+        </div>
+        <div class="docs-group">
+          <p class="docs-group-label">Help</p>
+          <a href="uninstall.html" aria-current="page">Uninstall</a>
+          <a href="faq.html">FAQ</a>
+        </div>
+        <div class="docs-side-foot">
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/command-reference.md">Full command reference ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/blob/main/AGENTS.md">AGENTS.md ↗</a>
+          <a href="https://github.com/myrrazor/atlas-tasker/tree/main/docs">All source docs ↗</a>
+        </div>
+      </nav>
+    </aside>
+
+    <main id="main" class="docs-article">
+      <article>
+        <p class="docs-kicker">Help</p>
+        <h1>Uninstall software only</h1>
+        <p class="docs-lead">Preview the exact Atlas-owned paths, then apply. Your boards and backups are not part of that plan.</p>
+
+        <div class="docs-note">
+          <p><code>tracker uninstall</code> is in the v1.15 source candidate. It removes Atlas-owned software. Boards, history, backups, and registry pointers stay so a later install can rediscover them.</p>
+        </div>
+        <h2>Preview, then apply</h2>
+        <div class="code-block">
+          <div class="snippet-title"><span>software only</span><button class="copy-button" type="button" data-copy="un-cmd" aria-label="Copy uninstall commands">Copy</button></div>
+          <pre id="un-cmd">tracker uninstall
+tracker uninstall --yes</pre>
+        </div>
+        <p><code>--apply</code> is an alias for <code>--yes</code>. Default is a digest-bound preview. Without a verifiable install receipt, uninstall refuses to delete files. Package-manager installs print the manager command instead of unlinking a Cellar path. <code>/uninstall</code> in the tracker shell is the same command.</p>
+        <h2>What stays</h2>
+        <ul>
+          <li>Workspaces, <code>projects/</code>, <code>.tracker/</code>, tickets, events</li>
+          <li>Backup repositories, history, targets</li>
+          <li>Registry pointers</li>
+          <li>Unrelated client config and other agents</li>
+        </ul>
+        <p>Removing the binary by hand still leaves repository data in place. Prefer <code>tracker uninstall</code> so managed Home units and Atlas-owned MCP blocks are in the plan.</p>
+
+      </article>
+      <nav class="docs-pager" aria-label="Docs pages">
+        <a class="pager-prev" href="json-and-exit-codes.html"><span class="pager-label">Previous</span><span class="pager-title">JSON and exit codes</span></a>
+        <a class="pager-next" href="faq.html"><span class="pager-label">Next</span><span class="pager-title">FAQ</span></a>
+      </nav>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="shell footer-inner">
+      <span>Atlas Tasker · MIT</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../cli.html">CLI</a>
+        <a href="../mcp.html">For agents</a>
+        <a href="../changelog.html">Changelog</a>
+        <a href="https://github.com/myrrazor/atlas-tasker">GitHub</a>
+        <a href="../privacy.html">Privacy</a>
+        <a href="../terms.html">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="copy-status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    document.querySelector(".docs-menu-button").addEventListener("click", (event) => {
+      const open = document.body.classList.toggle("docs-open");
+      event.currentTarget.setAttribute("aria-expanded", String(open));
+    });
+
+    const status = document.querySelector(".copy-status");
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("copy failed");
+    }
+
+    document.querySelectorAll("[data-copy]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const command = document.getElementById(button.dataset.copy);
+        const label = button.textContent;
+
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
+        try {
+          await copyText(command.textContent.trim());
+          button.textContent = "Copied";
+          status.textContent = "Command copied to clipboard.";
+        } catch {
+          button.textContent = "Select + copy";
+          status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
+        }
+
+        window.setTimeout(() => {
+          button.textContent = label;
+          status.textContent = "";
+        }, 1800);
+      });
+    });
+  </script>
+</body>
+</html>

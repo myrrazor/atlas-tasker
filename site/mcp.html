@@ -3,30 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Atlas Tasker for AI agents: MCP and JSON</title>
-  <meta name="description" content="Connect Atlas Tasker to coding agents with local stdio MCP, four scoped tool profiles, workspace pinning, installed guidance, and human-approved risky actions." />
+  <title>Atlas Tasker for AI agents: MCP and skills</title>
+  <meta name="description" content="Init writes Atlas-managed MCP entries for detected agents. Global serve lists workspaces; pin workspace_id for writes. Restart the client after setup." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/mcp.html" />
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="styles.css" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://atlastasker.com/mcp.html" />
-  <meta property="og:title" content="Atlas Tasker for AI agents: MCP and JSON" />
-  <meta property="og:description" content="Connect coding agents to the same local tickets humans use, through typed MCP tools or a stable JSON CLI." />
+  <meta property="og:title" content="Atlas Tasker for AI agents: MCP and skills" />
+  <meta property="og:description" content="Init writes Atlas-managed MCP entries for detected agents. Global serve lists workspaces; pin workspace_id for writes. Restart the client after setup." />
   <meta property="og:image" content="https://atlastasker.com/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Atlas Tasker for AI agents: MCP and JSON" />
-  <meta name="twitter:description" content="Connect coding agents to the same local tickets humans use, through typed MCP tools or a stable JSON CLI." />
+  <meta name="twitter:title" content="Atlas Tasker for AI agents: MCP and skills" />
+  <meta name="twitter:description" content="Init writes Atlas-managed MCP entries for detected agents. Global serve lists workspaces; pin workspace_id for writes. Restart the client after setup." />
   <meta name="twitter:image" content="https://atlastasker.com/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
@@ -34,8 +36,8 @@
   {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    "name": "Atlas Tasker for AI agents",
-    "description": "Connect Atlas Tasker to coding agents with local stdio MCP, four scoped tool profiles, workspace pinning, installed guidance, and human-approved risky actions.",
+    "name": "Atlas Tasker for AI agents: MCP and skills",
+    "description": "Init writes Atlas-managed MCP entries for detected agents. Global serve lists workspaces; pin workspace_id for writes. Restart the client after setup.",
     "url": "https://atlastasker.com/mcp.html",
     "isPartOf": {
       "@type": "WebSite",
@@ -67,7 +69,7 @@
     <header class="page-hero shell">
       <p class="kicker">For AI agents</p>
       <h1>Connect your agent to the work.</h1>
-      <p class="lead">Atlas gives coding agents a typed local tool surface over the same tickets, dependencies, runs, evidence, and gates that humans see. Start with read access, open the workflow profile for real ticket work, and keep high-impact operations behind a separate human approval.</p>
+      <p class="lead">On the v1.15 candidate, <code>tracker init</code> writes Atlas-managed MCP entries pointing at <code>tracker mcp serve --global --tool-profile workflow</code>. Restart the client. Workflow writes still need actor and reason. Keep high-impact operations behind a separate human approval.</p>
       <div class="page-hero-actions">
         <a class="button button-primary" href="#connect">Connect your agent</a>
         <a class="button button-secondary" href="docs/mcp-tools.html">Explore MCP tools</a>
@@ -87,7 +89,7 @@
         </li>
         <li>
           <span class="fact-term">MCP server</span>
-          <p><code>tracker mcp serve</code> exposes typed tools over local stdio. There is no HTTP listener or remote client. Every mutation still runs Atlas permission checks, the write lock, and event metadata.</p>
+          <p><code>tracker mcp serve --global --tool-profile workflow</code> is the machine-wide server. Pinned <code>--workspace</code> remains. There is no HTTP listener or remote client. Every mutation still runs Atlas permission checks, the write lock, and event metadata. Cross-workspace writes need <code>workspace_id</code>.</p>
         </li>
         <li>
           <span class="fact-term">Self-describing</span>
@@ -104,7 +106,7 @@
       <div class="section-heading">
         <p class="section-label">Tool profiles</p>
         <h2 id="ladder-title">Four profiles, one explicit boundary.</h2>
-        <p class="section-note">Start the server with the smallest profile that does the job. Each profile includes the tools below it. The counts here match the current source; <code>tracker mcp tools</code> remains the live authority for an installed binary.</p>
+        <p class="section-note">Start the server with the smallest profile that does the job. Each profile includes the tools below it. Counts move as tools are added; <code>tracker mcp tools --json --global</code> is the live authority for an installed binary.</p>
       </div>
       <ol class="ladder">
         <li>
@@ -224,17 +226,21 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
       <p class="section-note">Re-running is idempotent: Atlas updates only its managed blocks and generated files. Whole-file replacement remains opt-in behind <code>--force</code>.</p>
 
       <h3 class="connect-subtitle">Register the MCP server</h3>
-      <p class="section-note">These examples use <code>workflow</code> because an agent doing ticket work needs workflow writes. Use <code>read</code> for inspection-only sessions. The binary path and workspace path must be absolute.</p>
+      <p class="section-note"><code>tracker init</code> writes <code>tracker mcp serve --global --tool-profile workflow</code> for detected clients. Restart the client; a written file is not a live connection. Pinned <code>--workspace</code> serve is still supported and still defaults to <code>--tool-profile read</code>. The snippets below set <code>workflow</code> explicitly when you want ticket writes.</p>
       <div class="code-block">
-        <div class="snippet-title"><span>Claude Code · user scope</span><button class="copy-button" type="button" data-copy="snippet-claude" aria-label="Copy Claude Code setup command">Copy</button></div>
+        <div class="snippet-title"><span>v1.15 global serve</span><button class="copy-button" type="button" data-copy="snippet-global" aria-label="Copy global MCP serve command">Copy</button></div>
+        <pre id="snippet-global">/absolute/path/to/tracker mcp serve --global --tool-profile workflow</pre>
+      </div>
+      <div class="code-block">
+        <div class="snippet-title"><span>Claude Code · pinned workspace</span><button class="copy-button" type="button" data-copy="snippet-claude" aria-label="Copy Claude Code setup command">Copy</button></div>
         <pre id="snippet-claude">claude mcp add --transport stdio --scope user atlas -- /absolute/path/to/tracker mcp serve --workspace /absolute/path/to/repo --tool-profile workflow</pre>
       </div>
       <div class="code-block">
-        <div class="snippet-title"><span>Codex</span><button class="copy-button" type="button" data-copy="snippet-codex" aria-label="Copy Codex setup command">Copy</button></div>
+        <div class="snippet-title"><span>Codex · pinned workspace</span><button class="copy-button" type="button" data-copy="snippet-codex" aria-label="Copy Codex setup command">Copy</button></div>
         <pre id="snippet-codex">codex mcp add atlas -- /absolute/path/to/tracker mcp serve --workspace /absolute/path/to/repo --tool-profile workflow</pre>
       </div>
       <div class="docs-jump">
-        <p><strong>Using another client?</strong> Configure a local stdio command with the same four parts: absolute binary path, <code>mcp serve</code>, absolute <code>--workspace</code>, and a chosen <code>--tool-profile</code>.</p>
+        <p><strong>Using another client?</strong> Prefer the init-written global serve. For a pinned session, configure a local stdio command with an absolute binary path, <code>mcp serve</code>, absolute <code>--workspace</code>, and a chosen <code>--tool-profile</code>.</p>
         <a href="docs/mcp-setup.html">Open the full MCP setup guide →</a>
       </div>
 
@@ -267,7 +273,7 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
       <div class="section-heading">
         <p class="section-label">One boundary</p>
         <h2 id="humans-title">The web board is for humans.</h2>
-        <p class="section-note">The browser board mints a random session token per process and never persists it. There is no API key and no headless mode, on purpose. Agents get the CLI and MCP, which are better interfaces for them anyway. Point people at the board and agents at the tools, and everyone works the same tickets.</p>
+        <p class="section-note">Atlas Home uses a one-time local claim to establish an HttpOnly browser session. Pending claims stay in private local state until consumed or expired. The browser is for people; agents use the CLI or MCP to work with the same tickets.</p>
       </div>
       <div class="support-actions" style="justify-content: flex-start">
         <a class="button button-primary" href="docs/agents-and-dispatch.html">Agent workflow docs</a>
@@ -344,6 +350,11 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -351,6 +362,9 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {

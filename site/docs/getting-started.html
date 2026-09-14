@@ -4,13 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Getting started with Atlas Tasker</title>
-  <meta name="description" content="Install the tracker binary, initialize a workspace, create a project and your first ticket, and open the board in the terminal or the browser." />
+  <meta name="description" content="Install tracker, run init in a repo, then tracker to open Home. Create a ticket, read the board, and let detected coding agents pick up the same workspace." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#151517" />
   <meta name="robots" content="index, follow" />
   <meta name="googlebot" content="index, follow" />
   <link rel="canonical" href="https://atlastasker.com/docs/getting-started.html" />
   <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="../apple-touch-icon.png" sizes="180x180" />
   <link rel="preload" href="../fonts/geist-400.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="../fonts/geist-600.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="../styles.css" />
@@ -19,7 +21,7 @@
   <meta property="og:type" content="article" />
   <meta property="og:url" content="https://atlastasker.com/docs/getting-started.html" />
   <meta property="og:title" content="Getting started with Atlas Tasker" />
-  <meta property="og:description" content="Install the tracker binary, initialize a workspace, create a project and your first ticket, and open the board in the terminal or the browser." />
+  <meta property="og:description" content="Install tracker, run init in a repo, then tracker to open Home. Create a ticket, read the board, and let detected coding agents pick up the same workspace." />
   <meta property="og:image" content="https://atlastasker.com/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -27,7 +29,7 @@
 
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Getting started with Atlas Tasker" />
-  <meta name="twitter:description" content="Install the tracker binary, initialize a workspace, create a project and your first ticket, and open the board in the terminal or the browser." />
+  <meta name="twitter:description" content="Install tracker, run init in a repo, then tracker to open Home. Create a ticket, read the board, and let detected coding agents pick up the same workspace." />
   <meta name="twitter:image" content="https://atlastasker.com/og.png" />
   <meta name="twitter:image:alt" content="Atlas Tasker wordmark beside terminal and web board tickets for AI coding agents" />
 
@@ -36,7 +38,7 @@
     "@context": "https://schema.org",
     "@type": "TechArticle",
     "name": "Getting started with Atlas Tasker",
-    "description": "Install the tracker binary, initialize a workspace, create a project and your first ticket, and open the board in the terminal or the browser.",
+    "description": "Install tracker, run init in a repo, then tracker to open Home. Create a ticket, read the board, and let detected coding agents pick up the same workspace.",
     "url": "https://atlastasker.com/docs/getting-started.html",
     "isPartOf": {
       "@type": "WebSite",
@@ -72,12 +74,14 @@
           <p class="docs-group-label">Start</p>
           <a href="./">Overview</a>
           <a href="getting-started.html" aria-current="page">Getting started</a>
+          <a href="home.html">Home and workspaces</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Core</p>
           <a href="tickets-and-workflow.html">Tickets and workflow</a>
           <a href="views-and-search.html">Views and search</a>
           <a href="web-board.html">The web board</a>
+          <a href="backup.html">Checkpoints and backup</a>
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Agents</p>
@@ -89,6 +93,7 @@
         </div>
         <div class="docs-group">
           <p class="docs-group-label">Help</p>
+          <a href="uninstall.html">Uninstall</a>
           <a href="faq.html">FAQ</a>
         </div>
         <div class="docs-side-foot">
@@ -103,10 +108,10 @@
       <article>
         <p class="docs-kicker">Start</p>
         <h1>Getting started</h1>
-        <p class="docs-lead">From nothing to a groomed board in a few minutes. Everything here runs offline, creates no accounts, and leaves plain files in your repository.</p>
+        <p class="docs-lead">From nothing to a groomed board in two commands: <code>tracker init</code> then <code>tracker</code>. Everything here runs offline, creates no accounts, and leaves plain files in your repository.</p>
 
         <h2>Install</h2>
-        <p>The release installer fetches the latest build, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs the <code>tracker</code> binary. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>) for attestation checks.</p>
+        <p>The release installer fetches the latest <strong>published</strong> build, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs the <code>tracker</code> binary. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>) for attestation checks. Atlas Home, global MCP, and <code>tracker uninstall</code> are in this v1.15 source; build from this tree until a v1.15 tag exists.</p>
         <div class="code-block">
           <div class="snippet-title"><span>release installer · macOS or Linux</span><button class="copy-button" type="button" data-copy="gs-install" aria-label="Copy install command">Copy</button></div>
           <pre id="gs-install">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</pre>
@@ -129,21 +134,22 @@ tracker update --version v1.13.0 --yes</pre>
         </div>
 
         <h2>Initialize a workspace</h2>
-        <p>Run this inside the repository you want Atlas to manage. It writes local tracker state under <code>.tracker/</code>, then asks <code>Set up coding-agent integrations now? [Y/n]</code>. That picker is the whole hookup: Atlas scans for Claude Code, Codex, Cursor, OpenClaw, and Grok, checks the ones it found, and writes the worker skill when you press Enter. Open the same repo in that agent and ask “what's the current status of this project?” — it reads the board. Decline or pass <code>--skip-integrations</code> if you only want the tracker workspace. Later, <code>tracker setup --plan</code> shows skills, MCP, managed mode, and optional backup as one picture without guessing your Git origin.</p>
+        <p>Use a directory named <code>app</code> so init's default project key is <code>APP</code>. In any other directory, use the generated key instead. Init writes <code>.tracker/</code>, local checkpoints, and Atlas-managed MCP entries for detected agents unless you pass <code>--no-agents</code> / <code>--skip-integrations</code>. Then <code>tracker</code> opens Home. Restart the coding agent; a written config is <code>pending_client_restart</code> until it does. There is no silent <code>human:owner</code> fallback on mutations.</p>
         <div class="code-block">
           <div class="snippet-title"><span>one-time setup</span><button class="copy-button" type="button" data-copy="gs-init" aria-label="Copy init command">Copy</button></div>
-          <pre id="gs-init">tracker init
+          <pre id="gs-init">mkdir app &amp;&amp; cd app
+tracker init
+tracker
 
-<span class="c"># never offer agent setup</span>
-tracker init --skip-integrations</pre>
+<span class="c"># skip agent MCP writes</span>
+tracker init --no-agents --no-open</pre>
         </div>
 
-        <h2>Create a project and a ticket</h2>
-        <p>Projects group tickets and get their own board. Project keys are uppercase identifiers like <code>APP</code> or <code>AUTH</code>.</p>
+        <h2>Create a ticket</h2>
+        <p>The <code>app</code> directory yields project <code>APP</code>. Extra projects are still <code>tracker project create AUTH "Auth"</code>. Project keys are uppercase identifiers.</p>
         <div class="code-block">
-          <div class="snippet-title"><span>first project, first ticket</span><button class="copy-button" type="button" data-copy="gs-first" aria-label="Copy project and ticket commands">Copy</button></div>
-          <pre id="gs-first">tracker project create APP "My App"
-tracker ticket create --project APP --title "Ship first feature" \
+          <div class="snippet-title"><span>first ticket</span><button class="copy-button" type="button" data-copy="gs-first" aria-label="Copy ticket commands">Copy</button></div>
+          <pre id="gs-first">tracker ticket create --project APP --title "Ship first feature" \
   --type task --actor human:owner --reason "first ticket"
 tracker ticket move APP-1 ready --actor human:owner --reason "groomed"</pre>
         </div>
@@ -157,9 +163,10 @@ tracker ticket move APP-1 ready --actor human:owner --reason "groomed"</pre>
         <h2>Open the board</h2>
         <div class="code-block">
           <div class="snippet-title"><span>pick a surface</span><button class="copy-button" type="button" data-copy="gs-board" aria-label="Copy board commands">Copy</button></div>
-          <pre id="gs-board">tracker board            <span class="c"># the board, printed in your terminal</span>
+          <pre id="gs-board">tracker                  <span class="c"># Atlas Home on 127.0.0.1:7432</span>
+tracker board            <span class="c"># polished table; --style kanban for optional cards</span>
 tracker tui              <span class="c"># full-screen keyboard-first view</span>
-tracker web serve --open <span class="c"># local kanban in your browser</span></pre>
+tracker web serve --open <span class="c"># single-workspace kanban</span></pre>
         </div>
         <p>All three read the same tickets and enforce the same rules. The <a href="web-board.html">web board page</a> covers the browser side in detail; the <a href="../cli.html">CLI page</a> tours the whole command surface.</p>
 
@@ -185,7 +192,7 @@ tracker web serve --open <span class="c"># local kanban in your browser</span></
 
         <h2>Connect agents in one pass</h2>
         <div class="docs-note">
-          <p><code>tracker setup</code> and automatic Atlas backup are in the v1.14 implementation candidate. Build from this source to try them. The latest published installer tag is still v1.13.0.</p>
+          <p><code>tracker setup</code> remains as an advanced one-pass for an existing workspace. It is not required after <code>tracker init</code>.</p>
         </div>
         <p><code>tracker setup</code> refreshes the existing Atlas worker skill and, where the client supports it, registers a workspace-bound MCP server. It will not rewrite custom text outside the Atlas markers, and it will not rewrite an unmanaged MCP entry named like <code>atlas-legacy</code>.</p>
         <div class="code-block">
@@ -217,7 +224,7 @@ tracker backup run --now</pre>
       </article>
       <nav class="docs-pager" aria-label="Docs pages">
         <a class="pager-prev" href="./"><span class="pager-label">Previous</span><span class="pager-title">Overview</span></a>
-        <a class="pager-next" href="tickets-and-workflow.html"><span class="pager-label">Next</span><span class="pager-title">Tickets and workflow</span></a>
+        <a class="pager-next" href="home.html"><span class="pager-label">Next</span><span class="pager-title">Home and workspaces</span></a>
       </nav>
     </main>
   </div>
@@ -270,6 +277,11 @@ tracker backup run --now</pre>
         const command = document.getElementById(button.dataset.copy);
         const label = button.textContent;
 
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Copying…";
+        status.textContent = "Copying command…";
+
         try {
           await copyText(command.textContent.trim());
           button.textContent = "Copied";
@@ -277,6 +289,9 @@ tracker backup run --now</pre>
         } catch {
           button.textContent = "Select + copy";
           status.textContent = "Automatic copy failed. Select the command and copy it manually.";
+        } finally {
+          button.disabled = false;
+          button.removeAttribute("aria-busy");
         }
 
         window.setTimeout(() => {
