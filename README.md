@@ -40,39 +40,17 @@ You can also ask your agent to “Initialize Atlas Tasker in this project.” To
 
 The installer places the binary; `tracker init` connects the chosen project. See [installation](docs/installation.md) for destinations and PATH, or [client compatibility](docs/v1.16-client-compatibility.md) for tested clients and their approval steps.
 
-### A real Grok Build session
+### A real agent session
 
-[![Poster for a recorded Grok Build walkthrough. Click to watch: ask Atlas for status, create a ticket, then see it on the board.](docs/assets/grok-flow-poster.png)](https://atlastasker.com/#agent-demo)
+[![An agent reads the project board, creates a ticket, and shows the updated status. Watch the recorded walkthrough.](docs/assets/grok-flow-poster.png)](https://atlastasker.com/#agent-demo)
 
-**[Watch the walkthrough](https://atlastasker.com/#agent-demo)**: ask for status, add a high-priority ticket, and see it on the refreshed board. [Download the MP4](site/assets/grok-flow.mp4) · [Read the transcript](docs/examples/grok-video-transcript.md).
-
-Recorded in Grok Build 4.6 (xhigh), using synthetic example tickets on a v1.15 source build. Silent video; pauses shortened. A [status-table screenshot](docs/assets/grok-status.png) is also available.
+Ask for status, add a ticket, and see the board update. [Watch the walkthrough](https://atlastasker.com/#agent-demo) · [Transcript](docs/examples/grok-video-transcript.md).
 
 ### Same board, many agents
 
-Grok Build, Cursor, and Grok Bot can share one Atlas board. Assign each agent its own tickets; leases keep them from grabbing the same work. Recreate the synthetic board used in these captures:
+Give each agent its own tickets on a shared board. Assignees, leases, and review gates keep the work coordinated.
 
-```bash
-TRACKER_BIN=/absolute/path/to/tracker sh examples/create-multi-agent-demo.sh /tmp/atlas-multi-agent
-cd /tmp/atlas-multi-agent
-tracker board
-tracker agent available grok-build
-tracker web serve --no-browser
-```
-
-![Shared web board with Grok Build, Cursor, and Grok Bot assigned to different tickets](docs/assets/multi-agent-board-desktop.png)
-
-![APP-3 drawer assigned to Grok Build](docs/assets/multi-agent-board-grok-build.png)
-
-![APP-2 drawer assigned to Cursor](docs/assets/multi-agent-board-cursor.png)
-
-![APP-4 drawer assigned to Grok Bot as reviewer](docs/assets/multi-agent-board-drawer.png)
-
-![Terminal board showing assignee column for agent:grok-build, agent:cursor, and agent:grok-bot](docs/assets/multi-agent-board.png)
-
-![Each agent queue: Grok Build ready/continue, Cursor continue, Grok Bot review](docs/assets/multi-agent-queues.png)
-
-[Watch the shared-board walkthrough](https://atlastasker.com/#shared-board) · [Download the MP4](site/assets/multi-agent-board.mp4) · [Read the transcript](docs/examples/multi-agent-board.md).
+[See the shared-board walkthrough](https://atlastasker.com/#shared-board) · [Setup and transcript](docs/examples/multi-agent-board.md).
 
 ## Install
 
