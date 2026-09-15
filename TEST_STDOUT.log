@@ -925,3 +925,124 @@ performance_budgets=ok
 rc_validation=ok version=v1.16.0-rc1
 
 EXIT: 0
+
+
+README DEMO AND WEBSITE COPY FOLLOW-UP
+Base: 6d5be52dda216ebe8e1dfd206d109f93a436502c
+Environment: Go 1.26.6 darwin/arm64; GOMAXPROCS=2; GOFLAGS=-p=2
+
+CHECK: go-vet
+COMMAND: go vet ./...
+
+EXIT: 0
+
+CHECK: go-test
+COMMAND: go test ./...
+?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/app	2.996s
+ok  	github.com/myrrazor/atlas-tasker/internal/apperr	0.165s
+?   	github.com/myrrazor/atlas-tasker/internal/buildinfo	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	84.052s
+ok  	github.com/myrrazor/atlas-tasker/internal/config	0.170s
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.170s
+ok  	github.com/myrrazor/atlas-tasker/internal/domain	0.148s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations	0.234s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter	0.177s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/all	2.583s
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/claude	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/codex	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/cursor	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/generic	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/grok	0.162s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/host	0.255s
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/openclaw	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp	1.814s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/selfprobe	1.682s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/testhost	1.554s
+ok  	github.com/myrrazor/atlas-tasker/internal/render	0.225s
+ok  	github.com/myrrazor/atlas-tasker/internal/service	37.807s
+ok  	github.com/myrrazor/atlas-tasker/internal/setup	5.101s
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	0.189s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage	0.144s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	0.267s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	0.264s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	0.374s
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	0.173s
+?   	github.com/myrrazor/atlas-tasker/internal/testutil/testenv	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/theme	0.184s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	1.993s
+ok  	github.com/myrrazor/atlas-tasker/internal/uninstall	0.248s
+ok  	github.com/myrrazor/atlas-tasker/internal/update	0.192s
+ok  	github.com/myrrazor/atlas-tasker/internal/web	10.409s
+
+EXIT: 0
+
+CHECK: site-contracts
+COMMAND: node --test site/_tools/*.test.mjs
+✔ custom 404 assets and recovery links work at nested missing routes (4.824208ms)
+✔ index.html satisfies the public-page SEO contract (2.02675ms)
+✔ cli.html satisfies the public-page SEO contract (0.315292ms)
+✔ mcp.html satisfies the public-page SEO contract (0.384334ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.276334ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.335042ms)
+✔ docs/home.html satisfies the public-page SEO contract (0.339541ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.217709ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.212125ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.241958ms)
+✔ docs/backup.html satisfies the public-page SEO contract (0.159334ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.24575ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.218709ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.340459ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.206208ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.226542ms)
+✔ docs/uninstall.html satisfies the public-page SEO contract (0.151167ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.222542ms)
+✔ changelog.html satisfies the public-page SEO contract (0.254ms)
+✔ guide.html satisfies the public-page SEO contract (0.14575ms)
+✔ privacy.html satisfies the public-page SEO contract (0.132542ms)
+✔ terms.html satisfies the public-page SEO contract (0.129167ms)
+✔ page titles are unique (0.464208ms)
+✔ internal page links, video downloads, and fragments resolve (9.750083ms)
+✔ agent integration tabs expose all six targets with valid relationships (0.824084ms)
+✔ MCP tool page covers every source workflow tool (0.778417ms)
+✔ public workflow guidance matches the v1.16 release contracts (1.808125ms)
+✔ README and site wordmarks match the canonical application wordmark (0.053208ms)
+✔ self-hosted fonts use font-display swap (0.133584ms)
+✔ OG image is a 1200 by 630 PNG (0.440125ms)
+✔ sitemap, robots, and llms cover every public page (0.150375ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.088792ms)
+✔ social card names the configured production domain (0.060125ms)
+✔ visible FAQ questions match FAQPage JSON-LD (5.805208ms)
+✔ custom 404 is a real page with hosting 404 status (0.105209ms)
+✔ first-board copyables use an app directory so APP is the init key (0.415084ms)
+✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.586416ms)
+✔ all local page images exist and declare dimensions (3.258083ms)
+✔ favicon set includes SVG, PNG, and apple-touch icon (0.21225ms)
+✔ copy controls expose loading, success, and error states (0.105958ms)
+✔ mobile navigation stays keyboard reachable (0.076375ms)
+✔ website notices explain actual use without unresolved legal templates (0.22ms)
+✔ public site omits personal author and direct contact metadata (1.461916ms)
+✔ publishes the configured Atlas production domain (0.566125ms)
+✔ keeps every public SEO output on the same origin (0.580125ms)
+✔ normalizes a canonical origin (0.181875ms)
+✔ reads the current origin from the canonical link (0.070167ms)
+✔ replaces every rendered origin reference (0.050792ms)
+ℹ tests 48
+ℹ suites 0
+ℹ pass 48
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 101.998333
+EXIT: 0
+
+CHECK: scope and presentation
+README from Install onward: byte-identical to base
+Demo previews above Install: 7 before, 1 after
+Website headline: Codex, Claude Code, Cursor, and Grok Bot all on one board.
+Local browser: 1440x900 and 390x844; no horizontal overflow; headline visible
+Independent documentation review: no findings; linked examples and anchors resolve
+Decision audit: DEC-119 matches the presentation-only change; no existing decision superseded
+Anti-slop scanner: 0 findings before and after
+EXIT: 0

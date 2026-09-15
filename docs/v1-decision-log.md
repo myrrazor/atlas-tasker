@@ -1653,3 +1653,15 @@ claims, and “no silent arbitrary filesystem write” below remain.
 - **Confidence:** high
 - **Revisit Trigger:** A host that forbids empty `required` arrays; hosted v1.16 assets verified; a named client version that changes the matrix.
 - **Affected PRs/Files:** PR #158; `internal/mcp/schema.go`, `internal/mcp/schema_required_test.go`, `docs/v1.16-client-compatibility.md`, `docs/v1-decision-log.md`.
+
+## DEC-119 — Keep the README demo compact
+
+- **Decision ID:** DEC-119
+- **Date:** 2026-09-15
+- **Question:** How should the README introduce agent workflows without a long screenshot gallery, and how should the website describe the supported agent mix?
+- **Options Considered:** Keep the full screenshot gallery; hide it in a disclosure; keep one walkthrough preview and link to the detailed shared-board example.
+- **Chosen Option:** Keep one recorded walkthrough preview above Install under “A real agent session.” Replace the six-image shared-board gallery and inline recreation commands with a short description and links to the existing walkthrough and setup transcript. Preserve the README from Install onward exactly. Use “Codex, Claude Code, Cursor, and Grok Bot all on one board.” as the website section headline. Keep media and transcript descriptions accurate to their recorded examples.
+- **Why We Chose It:** The owner requested a simpler introduction and the broader agent headline. Detailed examples remain available without dominating the README; the installer, later documentation, and product behavior stay unchanged.
+- **Confidence:** high
+- **Revisit Trigger:** A new primary demo or an owner-requested change to the installation and later README sections.
+- **Affected PRs/Files:** README presentation follow-up to PR #158; `README.md`, `site/index.html`, `docs/v1-decision-log.md`.
