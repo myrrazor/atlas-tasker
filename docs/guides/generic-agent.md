@@ -2,6 +2,10 @@
 
 Any coding agent can use Atlas if it follows a small contract: read before writing, claim before editing, record evidence, and never bypass gates.
 
+`tracker integrations install generic` writes portable instructions and
+`.tracker/integrations/generic-agent-skill/`. That is guidance on disk, not a
+live connection. Atlas does not start the agent.
+
 ## Minimum Contract
 
 ```bash

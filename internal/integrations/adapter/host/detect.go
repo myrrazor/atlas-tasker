@@ -35,15 +35,23 @@ func DetectClient(ctx context.Context, target integrations.Target, input adapter
 	if look == nil {
 		look = LookPath
 	}
-	if caps.ClientExecutable != "" {
-		if exe, err := look(caps.ClientExecutable); err == nil && exe != "" {
-			if abs, err := filepath.Abs(exe); err == nil {
-				cleaned := filepath.Clean(abs)
-				if filepath.IsAbs(cleaned) {
-					out.Installed = true
-					out.ExecutablePath = cleaned
-				}
+	for _, name := range caps.ExecutableNames() {
+		exe, err := look(name)
+		if err != nil || strings.TrimSpace(exe) == "" {
+			continue
+		}
+		abs, err := filepath.Abs(exe)
+		if err != nil {
+			continue
+		}
+		cleaned := filepath.Clean(abs)
+		if filepath.IsAbs(cleaned) {
+			out.Installed = true
+			out.ExecutablePath = cleaned
+			if name != caps.ClientExecutable {
+				out.Reasons = append(out.Reasons, "binary on PATH ("+name+")")
 			}
+			break
 		}
 	}
 	home := detect.Home

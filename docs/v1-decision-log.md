@@ -1392,6 +1392,12 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 
 ## DEC-099 — Purpose-bound path grants and fragment claims
 
+**Partially superseded by DEC-114:** an authenticated Home human may mint a
+purpose-bound one-time grant after preview and exact-path confirmation.
+Terminal-only minting is no longer the only path. Human actor, session, CSRF,
+read-only, grant identity, expiry, purpose, replay, symlink-swap, fragment
+claims, and “no silent arbitrary filesystem write” below remain.
+
 - **Decision ID:** DEC-099
 - **Date:** 2026-09-14
 - **Question:** How can Home safely reuse terminal-authorized directory access and authenticate a browser without URL credential leakage?
@@ -1587,3 +1593,63 @@ these are amendments recorded in `docs/v1.14-automatic-backup-adr.md` §2.1, §2
 7. **Confidence:** high
 8. **Revisit Trigger:** The rehearsal explicitly covers default-project replication or machine settings stop supporting this opt-out.
 9. **Affected PRs/Files:** Release verification procedure in `docs/release.md`, `docs/release/v1.15.0-release-evidence.md`, `TEST_STDOUT.log`; `scripts/release-rehearsal.sh` behavior is unchanged.
+
+## DEC-114 — Home-minted path grants for existing directories
+
+- **Decision ID:** DEC-114
+- **Date:** 2026-09-14
+- **Question:** Must a terminal mint every path grant, or may an authenticated Home human authorize one existing directory after a reviewable confirmation?
+- **Options Considered:** Keep DEC-099 terminal-only minting; let Home POST a raw filesystem path straight to Init/Register; Home preview mints a purpose-bound grant and confirmation consumes it only when `confirm_path` matches the displayed canonical path.
+- **Chosen Option:** The third. This partially supersedes DEC-099’s terminal-only minting. Human actor, session, CSRF, read-only, grant identity, expiry, purpose, replay, symlink-swap, fragment claims, and “no silent arbitrary filesystem write” remain. Home-sourced grants carry `source=home`. Preview does not scaffold. There is no extra JavaScript confirm; the confirm form posts the displayed path. Alternative grant listings stay hidden while a preview is pending. Child folders under Atlas boards / discovery roots stay a one-step authorized-root flow. Raw `path=` on Init/Register is still ignored. Listing and resolve inspect every component from the authorized root and refuse if any is a symlink.
+- **Why We Chose It:** The owner asked to initialize a chosen directory from the UI without crawling the machine or silently granting a parent root. A two-step grant keeps authorization reviewable. Terminal `workspaces grant` remains available as an advanced paste path.
+- **Confidence:** high
+- **Revisit Trigger:** A native OS directory picker with equivalent proofs, or Home confirmation omitting exact-path matching.
+- **Affected PRs/Files:** PR #158; `internal/app/authorized.go`, `internal/app/pathgrant.go`, `internal/web/home_handlers.go`, `internal/web/templates/home.html`, `docs/v1.16-browser-management.md`, `docs/v1-decision-log.md`.
+
+## DEC-115 — Anonymous provenance verification keeps `gh`
+
+- **Decision ID:** DEC-115
+- **Date:** 2026-09-14
+- **Question:** How can the candidate installer prove provenance of a public archive without GitHub login, and what stays a prerequisite?
+- **Options Considered:** Drop `gh`; checksum-only install; unbundled `gh attestation verify` (asks for login in an empty GitHub config); keep `gh` and verify with `--bundle` against pinned repo, signer workflow, and source-ref.
+- **Chosen Option:** `gh` remains a prerequisite. The candidate installer verified a public v1.15.0 archive with an empty GitHub config directory and no GitHub token: checksum plus `gh attestation verify --bundle` against `--repo myrrazor/atlas-tasker`, `--signer-workflow myrrazor/atlas-tasker/.github/workflows/release.yml`, and `--source-ref refs/tags/v1.15.0`. Hosted verification of the new v1.16 `attestation-bundle.jsonl` release asset waits on publication of that tag. `tracker update` still uses online `gh attestation verify` without `--bundle`.
+- **Why We Chose It:** Unbundled verify in an empty `GH_CONFIG_DIR` is not anonymous. The owner kept `gh` as an explicit prerequisite rather than inventing a checksum-only default. Local proof against the published v1.15.0 artifact is not hosted v1.16 proof.
+- **Confidence:** high
+- **Revisit Trigger:** A v1.16 GitHub release publishes the bundle asset, or `gh` is no longer required on the default install path.
+- **Affected PRs/Files:** PR #158; `scripts/install.sh`, `docs/v1.16-installer-contract.md`, `docs/v1.16-client-compatibility.md`.
+
+## DEC-116 — Native skill roots, ownership, and exact leftover migration
+
+- **Decision ID:** DEC-116
+- **Date:** 2026-09-14
+- **Question:** Where should Atlas write skills, who owns shared roots, and when may leftovers be deleted?
+- **Options Considered:** Keep v1.15 write paths; treat `.codex/skills` as dead and always delete it; delete any leftover that still has Atlas markers; write canonical roots and delete only byte-identical known generated leftovers, treating customized files and symlink chains as collisions.
+- **Chosen Option:** Canonical writes are Claude `.claude/skills/atlas-worker/`, Codex and OpenClaw `.agents/skills/atlas-worker/`, Cursor `.cursor/skills/atlas-worker/`, Grok `.grok/skills/atlas-worker/`, generic `.tracker/integrations/generic-agent-skill/`. Codex CLI 0.144.5 still lists `.codex/skills`. Codex and OpenClaw share one `SKILL.md` under `.agents`; Cursor is not given a second Atlas write there. Destructive leftover removal requires a byte-identical match against a known generated Atlas skill (current generator or v1.15 body). Markers plus extra text, unmanaged files, and any symlink on the leftover path or its ancestors are collisions; Atlas does not follow those links. Ordinary refresh of an Atlas-owned skill on the canonical path is still a generated rewrite.
+- **Why We Chose It:** Native `skills/list` on Codex 0.144.5 listed both roots, so calling `.codex/skills` unsupported would be false. Deleting by markers would destroy house-rule edits. Following leftover symlinks would escape the workspace.
+- **Confidence:** high
+- **Revisit Trigger:** A named Codex version stops walking `.codex/skills` or `.agents/skills`, or leftover policy needs merge instead of collide.
+- **Affected PRs/Files:** PR #158; `internal/integrations/native_skills.go`, `internal/integrations/install.go`, `docs/v1.16-client-compatibility.md`, `docs/guides/agent-integrations.md`, `docs/guides/codex.md`.
+
+## DEC-117 — Browser ticket parity and retained Delete
+
+- **Decision ID:** DEC-117
+- **Date:** 2026-09-14
+- **Question:** What everyday ticket work belongs in Home/Kanban, and what does Delete mean?
+- **Options Considered:** Keep ticket edits terminal-only; label the destructive action Archive and invent restore; purge on delete; browser everyday create/edit/assign/claim/review/comment plus Delete as audited soft-delete with retained records.
+- **Chosen Option:** Kanban everyday parity uses existing services: create, register a workspace agent profile, edit assignee/reviewer, claim/release (wrong-assignee rejected; explicit reassignment then claim), ready / in_progress / request-review, comments. The button is **Delete ticket**, not Archive. `DeleteTrackedTicket` sets `canceled` + `archived=true` and keeps markdown, events, and history. There is no restore and no purge. Cancel remains a status move. `?archived=1` lists soft-deleted tickets. Runtime `tracker archive apply/restore` stays CLI-only. Claim and Release are styled drawer actions. Home init may still write workspace guidance when Agents auto-install is on, but `WriteClientCfg=false` so it does not write editor MCP; `tracker integrations install` is guidance only. Browser verification and screenshot provenance are recorded in the release evidence.
+- **Why We Chose It:** The owner asked for everyday browser management without inventing restore/purge or calling Delete “Archive.” Editor MCP stays `tracker init`. Local and hosted evidence remain separate.
+- **Confidence:** high
+- **Revisit Trigger:** An explicit restore-from-delete storage contract, or Home writing editor MCP via an explicit operator action.
+- **Affected PRs/Files:** PR #158; `internal/web/templates/board.html`, `internal/web/handlers.go`, `internal/web/home_handlers.go`, `docs/v1.16-browser-management.md`.
+
+## DEC-118 — MCP required arrays and candidate proof boundaries
+
+- **Decision ID:** DEC-118
+- **Date:** 2026-09-14
+- **Question:** How should tools with no required arguments advertise `inputSchema.required`, and what may v1.16 docs claim before hosted publication?
+- **Options Considered:** Leave Go nil (JSON `null`); omit the key; recursively rewrite nested schemas; emit `[]` when empty and keep named required lists as arrays; claim universal, cloud, or model-workflow proof for every client; wait for hosted v1.16 assets before recording any local proof.
+- **Chosen Option:** `objectSchema` emits `[]` when a tool has no required fields and keeps named required lists as arrays. There is no recursive schema rewrite. CallTool still rejects missing required keys. OpenClaw 2026.9.2 listed 94 tools against the candidate after that fix. Compatibility docs record representative local-client proof on named versions with synthetic isolated configs; global auto-registration remains hermetic-only. Installed guidance, native listing, configured MCP, connected, and model workflow stay distinct. The owner authorized completion through the v1.16 release and website publication via PR #158 to `main`. Local checks are recorded in the release evidence; exact-commit CI and hosted bundle-asset verification are required before stable publication.
+- **Why We Chose It:** v1.15.0 `required: null` failed OpenClaw `tools/list` after argv parsed. Overclaiming cloud, unlisted versions, or refused writes would invent proof. Underclaiming owner authorization would leave current-user docs stuck on “wait for approval” after completion through release was authorized.
+- **Confidence:** high
+- **Revisit Trigger:** A host that forbids empty `required` arrays; hosted v1.16 assets verified; a named client version that changes the matrix.
+- **Affected PRs/Files:** PR #158; `internal/mcp/schema.go`, `internal/mcp/schema_required_test.go`, `docs/v1.16-client-compatibility.md`, `docs/v1-decision-log.md`.

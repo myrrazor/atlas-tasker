@@ -48,6 +48,8 @@ type InstallResult struct {
 	GlobalSkillFiles []string `json:"global_skill_files,omitempty"`
 	Created          []string `json:"created"`
 	Updated          []string `json:"updated"`
+	Collisions       []string `json:"collisions,omitempty"`
+	LegacyRemoved    []string `json:"legacy_removed,omitempty"`
 }
 
 type InstallOptions struct {
@@ -69,9 +71,10 @@ type PlannedInstallFile struct {
 }
 
 const (
-	InstallChangeNone   = "none"
-	InstallChangeCreate = "create"
-	InstallChangeUpdate = "update"
+	InstallChangeNone      = "none"
+	InstallChangeCreate    = "create"
+	InstallChangeUpdate    = "update"
+	InstallChangeCollision = "collision"
 )
 
 func (i Installer) Install(target Target, force bool) (InstallResult, error) {
@@ -105,7 +108,7 @@ func (i Installer) Preview(target Target) ([]PlannedInstallFile, error) {
 		if err := validateInstallPath(root, planned[index].Path); err != nil {
 			return nil, err
 		}
-		planned[index].Change = classifyInstallChange(planned[index].Path, planned[index].Body)
+		planned[index].Change = classifyInstallChange(root, planned[index].Path, planned[index].Body, planned[index].Kind)
 	}
 	return planned, nil
 }
@@ -130,7 +133,7 @@ func previewInstructionFile(spec installSpec) string {
 	return strings.TrimRight(body, "\n") + "\n\n" + managed
 }
 
-func classifyInstallChange(path string, body string) string {
+func classifyInstallChange(root, path, body, kind string) string {
 	current, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return InstallChangeCreate
@@ -140,6 +143,9 @@ func classifyInstallChange(path string, body string) string {
 	}
 	if string(current) == body {
 		return InstallChangeNone
+	}
+	if (kind == "skill" || kind == "command") && ClientSkillCollision(root, path, current) {
+		return InstallChangeCollision
 	}
 	return InstallChangeUpdate
 }
@@ -202,6 +208,16 @@ func (i Installer) InstallOpts(target Target, opts InstallOptions) (InstallResul
 		result.Updated = append(result.Updated, spec.instructionPath)
 	}
 	for _, file := range spec.extraFiles {
+		if current, err := os.ReadFile(file.path); err == nil && string(current) != file.body && ClientSkillCollision(root, file.path, current) {
+			result.Collisions = append(result.Collisions, file.path)
+			switch file.kind {
+			case "skill":
+				result.SkillFiles = append(result.SkillFiles, file.path)
+			case "command":
+				result.CommandFiles = append(result.CommandFiles, file.path)
+			}
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(file.path), 0o755); err != nil {
 			return InstallResult{}, err
 		}
@@ -219,6 +235,12 @@ func (i Installer) InstallOpts(target Target, opts InstallOptions) (InstallResul
 			result.CommandFiles = append(result.CommandFiles, file.path)
 		}
 	}
+	legacyRemoved, legacyCollisions, err := RemoveLegacySkillFiles(root, target)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	result.LegacyRemoved = legacyRemoved
+	result.Collisions = append(result.Collisions, legacyCollisions...)
 	if opts.Global {
 		globalFiles, err := installOpenClawGlobalSkills(spec.extraFiles)
 		if err != nil {
@@ -286,7 +308,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 	case TargetCodex:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "codex-guide.md")
 		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "codex-guide.md"))
-		skillDir := filepath.Join(i.Root, ".codex", "skills", "atlas-worker")
+		skillDir := filepath.Join(i.Root, filepath.FromSlash(AgentsRootSkillDir))
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
@@ -307,7 +329,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "claude-guide.md")
 		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "claude-guide.md"))
 		commandDir := filepath.Join(i.Root, ".claude", "commands")
-		skillDir := filepath.Join(i.Root, ".claude", "skills", "atlas-worker")
+		skillDir := filepath.Join(i.Root, filepath.FromSlash(ClaudeNativeSkillDir))
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "CLAUDE.md"),
 			guidePath:       guidePath,
@@ -330,12 +352,12 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "openclaw-guide.md"))
 		// .agents/skills is OpenClaw's repo-local skill root; ~/.openclaw/skills is
 		// the shared one, and that copy is the user's to install, not ours to write
-		skillDir := filepath.Join(i.Root, ".agents", "skills", "atlas-worker")
+		skillDir := filepath.Join(i.Root, filepath.FromSlash(AgentsRootSkillDir))
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
 			blockBody:       openclawBlock(guideRef),
-			guideBody:       openclawGuide(filepath.ToSlash(filepath.Join(".agents", "skills", "atlas-worker"))),
+			guideBody:       openclawGuide(AgentsRootSkillDir),
 			markers:         openclawMarkers,
 			extraFiles: []managedInstallFile{
 				{path: filepath.Join(skillDir, "SKILL.md"), body: atlasWorkerSkill("openclaw"), kind: "skill"},
@@ -349,7 +371,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 	case TargetGeneric:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "generic-agent-guide.md")
 		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "generic-agent-guide.md"))
-		skillDir := filepath.Join(i.Root, ".tracker", "integrations", "generic-agent-skill")
+		skillDir := filepath.Join(i.Root, filepath.FromSlash(GenericNativeSkillDir))
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
@@ -369,7 +391,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 	case TargetCursor:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "cursor-guide.md")
 		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "cursor-guide.md"))
-		skillDir := filepath.Join(i.Root, ".cursor", "skills", "atlas-worker")
+		skillDir := filepath.Join(i.Root, filepath.FromSlash(CursorNativeSkillDir))
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
@@ -388,7 +410,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 	case TargetGrok:
 		guidePath := filepath.Join(i.Root, ".tracker", "integrations", "grok-guide.md")
 		guideRef := filepath.ToSlash(filepath.Join(".tracker", "integrations", "grok-guide.md"))
-		skillDir := filepath.Join(i.Root, ".tracker", "integrations", "grok-agent-skill")
+		skillDir := filepath.Join(i.Root, filepath.FromSlash(GrokNativeSkillDir))
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
@@ -548,6 +570,7 @@ func codexBlock(guidePath string) string {
 - Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
 - Use `+"`tracker inspect <ID> --actor \"$TRACKER_ACTOR\" --json`"+` when the queue and the ticket detail disagree.
 - TUI is available with `+"`tracker tui --actor \"$TRACKER_ACTOR\"`"+`, but the CLI stays canonical.
+- The `+"`atlas-worker`"+` skill installs under `+"`.agents/skills/`"+`. Codex CLI 0.144.5 also lists `+"`.codex/skills/`"+`; Atlas removes a leftover there only when it still matches a known generated Atlas skill exactly. Customized leftovers stay. Finding the file is not a live MCP connection.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
 }
@@ -605,6 +628,7 @@ Set your real Atlas identity once for this shell, for example `+"`export TRACKER
 - `+"`tracker shell`"+` and `+"`tracker tui`"+` are convenience layers. The CLI remains canonical.
 - Moving a ticket to its current status is a successful no-op across CLI, MCP, bulk, and web paths.
 - The generated block in `+"`AGENTS.md`"+` is managed by Atlas Tasker. Edit around it, not inside it, unless you intend to own the divergence.
+- Native skill path is `+"`.agents/skills/atlas-worker/`"+`. Finding the file is not the same as a live MCP connection.
 `) + "\n"
 }
 

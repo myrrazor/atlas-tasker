@@ -106,6 +106,7 @@ func (s *HomeServer) Handler() http.Handler {
 	mux.HandleFunc("/settings", s.handleHomeSettings)
 	mux.HandleFunc("/actions/workspaces/init", s.handleInitWorkspace)
 	mux.HandleFunc("/actions/workspaces/register", s.handleRegisterWorkspace)
+	mux.HandleFunc("/actions/workspaces/preview-path", s.handlePreviewDirectory)
 	mux.HandleFunc("/w/", s.handleWorkspace)
 	mux.HandleFunc("/api/v1/agents", s.handleAgentsAPI)
 	mux.HandleFunc("/api/v1/grants", s.handleGrantsAPI)

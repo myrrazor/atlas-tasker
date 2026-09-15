@@ -174,8 +174,8 @@
         <p class="section-note">Agent guidance and MCP registration solve different problems. Guidance teaches the Atlas workflow inside a repository. MCP registration gives a compatible client typed tools. Use either surface or both.</p>
       </div>
       <ol class="connect-steps">
-        <li><span>01</span><div><h3>Install and initialize</h3><p>The verified release installer installs the binary. In an interactive terminal it may offer optional agent setup for the current directory; the prompt defaults to No. Unattended installs and <code>SKIP_INTEGRATIONS=1</code> skip it.</p></div></li>
-        <li><span>02</span><div><h3>Teach the repository</h3><p><code>tracker init</code> offers detected integrations in an interactive terminal. Or run <code>tracker integrations install</code> later and choose among all six targets.</p></div></li>
+        <li><span>01</span><div><h3>Install and initialize</h3><p>The verified release installer installs the published binary (v1.16.0). Needs <code>curl</code>, <code>tar</code>, and <code>gh</code>. In an interactive terminal it may offer optional <code>tracker init</code> for the displayed current directory; the prompt defaults to No. Unattended installs and <code>SKIP_INTEGRATIONS=1</code> skip it.</p></div></li>
+        <li><span>02</span><div><h3>Teach the repository</h3><p><code>tracker init</code> configures detected agents without a picker. Restart the client; Grok also needs project trust. Or run <code>tracker integrations install</code> later. The picker is <code>tracker init --integrations</code> or bare <code>tracker integrations install</code>.</p></div></li>
         <li><span>03</span><div><h3>Register MCP</h3><p>For MCP clients, register an absolute <code>tracker</code> path and pin the workspace. Choose <code>workflow</code> when the agent is expected to work tickets. A fresh existing directory can opt into initialization with <code>--init-if-missing</code>.</p></div></li>
         <li><span>04</span><div><h3>Verify the surface</h3><p>Open the client’s MCP status, then ask for <code>atlas.agent.available</code> or inspect the live profile with <code>tracker mcp tools</code>.</p></div></li>
       </ol>
@@ -204,11 +204,11 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
         </div>
         <div class="runtime-panel" role="tabpanel" id="panel-codex" aria-labelledby="tab-codex" hidden>
           <strong><code>tracker integrations install codex</code></strong>
-          <p>Adds a managed Atlas block to <code>AGENTS.md</code>, a project skill under <code>.codex/skills/atlas-worker/</code>, command templates, and a generated guide. Existing non-Atlas instructions stay in place.</p>
+          <p>Adds a managed Atlas block to <code>AGENTS.md</code>, a project skill under <code>.agents/skills/atlas-worker/</code>, command templates, and a generated guide. Codex CLI 0.144.5 still lists leftover <code>.codex/skills</code>; Atlas-managed duplicates are removed on re-install. Existing non-Atlas instructions stay in place.</p>
         </div>
         <div class="runtime-panel" role="tabpanel" id="panel-cursor" aria-labelledby="tab-cursor" hidden>
           <strong><code>tracker integrations install cursor</code></strong>
-          <p>Adds a separately marked Atlas block to <code>AGENTS.md</code>, plus the worker skill and commands under <code>.cursor/skills/atlas-worker/</code>.</p>
+          <p>Adds a separately marked Atlas block to <code>AGENTS.md</code>, plus the worker skill and commands under <code>.cursor/skills/atlas-worker/</code>. Detection accepts <code>cursor</code> or <code>cursor-agent</code>.</p>
         </div>
         <div class="runtime-panel" role="tabpanel" id="panel-openclaw" aria-labelledby="tab-openclaw" hidden>
           <strong><code>tracker integrations install openclaw</code></strong>
@@ -216,7 +216,7 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
         </div>
         <div class="runtime-panel" role="tabpanel" id="panel-grok" aria-labelledby="tab-grok" hidden>
           <strong><code>tracker integrations install grok</code></strong>
-          <p>Adds a distinct Atlas block to <code>AGENTS.md</code> and writes the portable worker skill under <code>.tracker/integrations/atlas-agent-skill/</code>.</p>
+          <p>Adds a distinct Atlas block to <code>AGENTS.md</code> and writes the portable worker skill under <code>.grok/skills/atlas-worker/</code>. Grok lists that skill only after you trust the project in its own UI.</p>
         </div>
         <div class="runtime-panel" role="tabpanel" id="panel-generic" aria-labelledby="tab-generic" hidden>
           <strong><code>tracker integrations install generic</code></strong>
@@ -226,9 +226,9 @@ tracker integrations install --targets claude,codex,cursor,openclaw,grok,generic
       <p class="section-note">Re-running is idempotent: Atlas updates only its managed blocks and generated files. Whole-file replacement remains opt-in behind <code>--force</code>.</p>
 
       <h3 class="connect-subtitle">Register the MCP server</h3>
-      <p class="section-note"><code>tracker init</code> writes <code>tracker mcp serve --global --tool-profile workflow</code> for detected clients. Restart the client; a written file is not a live connection. Global and pinned serve default to <code>workflow</code>. Choose <code>--tool-profile read</code> or <code>--read-only</code> for inspection only. Grok setup adds <code>--tool-name-style portable</code> so it can load names such as <code>atlas_status</code>.</p>
+      <p class="section-note"><code>tracker init</code> writes user-scoped <code>atlas-tasker</code> as <code>tracker mcp serve --global --tool-profile workflow</code> for detected clients. Restart the client; a written file is not a live connection. Global and pinned serve default to <code>workflow</code>. Choose <code>--tool-profile read</code> or <code>--read-only</code> for inspection only. Grok setup adds <code>--tool-name-style portable</code> so it can load names such as <code>atlas_status</code>. Pinned <code>--workspace</code> snippets below are the advanced alternative.</p>
       <div class="code-block">
-        <div class="snippet-title"><span>v1.15 global serve</span><button class="copy-button" type="button" data-copy="snippet-global" aria-label="Copy global MCP serve command">Copy</button></div>
+        <div class="snippet-title"><span>atlas-tasker global serve</span><button class="copy-button" type="button" data-copy="snippet-global" aria-label="Copy global MCP serve command">Copy</button></div>
         <pre id="snippet-global">/absolute/path/to/tracker mcp serve --global --tool-profile workflow</pre>
       </div>
       <div class="code-block">

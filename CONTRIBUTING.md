@@ -78,4 +78,4 @@ Maintainers review for correctness, storage compatibility, security wording, doc
 
 ## Release-Candidate Rule
 
-Do not describe a change as shipped or stable unless the release evidence says so. `docs/release/public-release-gates.md` is the source of truth.
+Do not describe a change as shipped or stable unless the release evidence says so. `docs/release/public-release-gates.md` is the source of truth. v1.16 copy in this tree is a candidate; the published installer remains v1.15.0 until the owner tags it. Public identity stays `myrrazor` / GitHub noreply.

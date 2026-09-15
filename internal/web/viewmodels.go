@@ -50,12 +50,16 @@ type BoardPage struct {
 	Error         string
 	ShowNew       bool
 	BackupHealth  *service.BackupHealthSummary
-	BoardPath     string `json:"-"`
-	ActionPrefix  string `json:"-"`
-	HomePath      string `json:"-"`
-	SchedulePath  string `json:"-"`
-	NewTicketPath string `json:"-"`
-	WorkspaceID   string `json:"-"`
+	BoardPath     string                `json:"-"`
+	ActionPrefix  string                `json:"-"`
+	HomePath      string                `json:"-"`
+	SchedulePath  string                `json:"-"`
+	NewTicketPath string                `json:"-"`
+	WorkspaceID   string                `json:"-"`
+	ActorOptions  []string              `json:"-"`
+	SavedViews    []contracts.SavedView `json:"-"`
+	ShowArchived  bool                  `json:"-"`
+	Archived      []TicketCard          `json:"-"`
 }
 
 type WelcomePage struct {
@@ -216,6 +220,7 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		Flash:           strings.TrimSpace(query.Get("flash")),
 		Error:           strings.TrimSpace(query.Get("error_flash")),
 		ShowNew:         query.Get("new") == "1",
+		ShowArchived:    query.Get("archived") == "1",
 		LocationName:    locationName(s.cfg.Location, s.cfg.Clock()),
 	}
 	board, err := s.loadBoard(ctx, page)
@@ -247,6 +252,17 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 	if s.queries != nil {
 		if health, err := s.queries.BackupHealth(ctx); err == nil {
 			page.BackupHealth = &health
+		}
+		page.ActorOptions = s.actorOptions(ctx, page.Actor)
+		if views, err := s.queries.ListSavedViews(); err == nil {
+			for _, view := range views {
+				if view.Kind == contracts.SavedViewKindBoard {
+					page.SavedViews = append(page.SavedViews, view)
+				}
+			}
+		}
+		if page.ShowArchived {
+			page.Archived = s.archivedCards(ctx, page, cfg.Web.AgentColors)
 		}
 	}
 	return page, nil
@@ -409,6 +425,68 @@ func agentColorClass(color string) string {
 	default:
 		return "chip--plain"
 	}
+}
+
+func (s *Server) actorOptions(ctx context.Context, current contracts.Actor) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 8)
+	add := func(raw string) {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			return
+		}
+		if !contracts.Actor(raw).IsValid() {
+			return
+		}
+		if _, ok := seen[raw]; ok {
+			return
+		}
+		seen[raw] = struct{}{}
+		out = append(out, raw)
+	}
+	add("human:owner")
+	add(string(current))
+	if s.queries == nil {
+		return out
+	}
+	agents, err := s.queries.ListAgents(ctx)
+	if err != nil {
+		return out
+	}
+	for _, agent := range agents {
+		add("agent:" + strings.TrimSpace(agent.Profile.AgentID))
+	}
+	return out
+}
+
+func (s *Server) archivedCards(ctx context.Context, page BoardPage, agentColors map[string]string) []TicketCard {
+	if s.queries == nil || s.queries.Tickets == nil {
+		return nil
+	}
+	tickets, err := s.queries.Tickets.ListTickets(ctx, contracts.TicketListOptions{
+		Project:         page.Project,
+		IncludeArchived: true,
+	})
+	if err != nil {
+		return nil
+	}
+	out := make([]TicketCard, 0)
+	for _, ticket := range tickets {
+		if !ticket.Archived {
+			continue
+		}
+		agentName, colorClass := agentChipForAssignee(ticket.Assignee, agentColors)
+		out = append(out, TicketCard{
+			Ticket:            ticket,
+			EffectiveReviewer: ticket.Reviewer,
+			BoardStatus:       ticket.Status,
+			StatusLabel:       statusLabel(ticket.Status),
+			AgentName:         agentName,
+			AgentColorClass:   colorClass,
+			BoardPath:         page.BoardPath,
+		})
+	}
+	return out
 }
 
 func (s *Server) loadBoard(ctx context.Context, page BoardPage) (contracts.BoardView, error) {

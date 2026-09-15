@@ -150,6 +150,9 @@ func planSkillOnly(workspaceRoot, workspaceID, home, stateDir, trackerPath strin
 		if file.Change == integrations.InstallChangeNone {
 			continue
 		}
+		if file.Change == integrations.InstallChangeCollision {
+			continue
+		}
 		kind := adapter.StepWriteManagedFile
 		if file.Kind == "instruction" && file.Change == integrations.InstallChangeUpdate {
 			kind = adapter.StepUpdateManagedBlock
@@ -169,6 +172,19 @@ func planSkillOnly(workspaceRoot, workspaceID, home, stateDir, trackerPath strin
 			Mode:          0o644,
 		})
 		payloads[stepID] = []byte(file.Body)
+		writes++
+	}
+	remove, _ := integrations.LegacySkillRemovals(workspaceRoot, target)
+	for _, path := range remove {
+		stepID := "legacy-" + shortHash([]byte(path))
+		steps = append(steps, adapter.PlanStep{
+			StepID:        stepID,
+			Kind:          adapter.StepRemoveManagedFile,
+			Description:   "remove Atlas-managed legacy skill file for " + string(target),
+			Path:          path,
+			Reversibility: adapter.Reversible,
+			Rollback:      &adapter.RollbackAction{Kind: adapter.RollbackRestoreSnapshot, Path: path},
+		})
 		writes++
 	}
 	needState := existing == nil || existing.SkillVersion != skillVersion || existing.ManagedBlockVersion != blockVersion || existing.State != resulting
@@ -321,6 +337,9 @@ func planSkillRemoval(workspaceRoot, workspaceID, home, stateDir string, target 
 		if string(current) != file.Body && !confirmDrift {
 			return preparedProvider{}, fmt.Errorf("ambiguous ownership: %s was changed after Atlas wrote it; removal requires confirmation", file.Path)
 		}
+		if integrations.KeepSharedAgentsSkill(workspaceRoot, target, file.Path) {
+			continue
+		}
 		stepID := "remove-" + shortHash([]byte(file.Path))
 		steps = append(steps, adapter.PlanStep{
 			StepID:        stepID,
@@ -369,36 +388,17 @@ func toAdapterDetection(target integrations.Target, found integrations.Detection
 		VersionSupport: adapter.VersionUnknown,
 		Reasons:        found.Reasons,
 	}
-	name := clientExecutableName(target)
-	if name != "" && lookPath != nil {
-		if exe, err := lookPath(name); err == nil && exe != "" {
-			if abs, err := filepath.Abs(exe); err == nil {
-				cleaned := filepath.Clean(abs)
-				if filepath.IsAbs(cleaned) {
-					detection.Installed = true
-					detection.ExecutablePath = cleaned
-				}
+	exe := integrations.LookClientExecutable(lookPath, target)
+	if exe != "" {
+		if abs, err := filepath.Abs(exe); err == nil {
+			cleaned := filepath.Clean(abs)
+			if filepath.IsAbs(cleaned) {
+				detection.Installed = true
+				detection.ExecutablePath = cleaned
 			}
 		}
 	}
 	return detection
-}
-
-func clientExecutableName(target integrations.Target) string {
-	switch target {
-	case integrations.TargetCodex:
-		return "codex"
-	case integrations.TargetClaude:
-		return "claude"
-	case integrations.TargetCursor:
-		return "cursor"
-	case integrations.TargetOpenClaw:
-		return "openclaw"
-	case integrations.TargetGrok:
-		return "grok"
-	default:
-		return ""
-	}
 }
 
 func shortHash(data []byte) string {

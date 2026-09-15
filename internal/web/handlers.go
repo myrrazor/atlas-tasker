@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/domain"
 	"github.com/myrrazor/atlas-tasker/internal/service"
 )
 
@@ -282,6 +285,48 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, home+"?flash="+url.QueryEscape("created project "+project.Key), http.StatusSeeOther)
 }
 
+func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+	if s.cfg.ReadOnly {
+		s.writeActionError(w, r, apperr.New(apperr.CodePermissionDenied, "web board is read-only"), "")
+		return
+	}
+	actor := s.actorFromForm(r)
+	reason := reasonFromForm(r, "web register agent")
+	profile := contracts.AgentProfile{
+		AgentID:     strings.TrimSpace(r.Form.Get("agent_id")),
+		DisplayName: strings.TrimSpace(r.Form.Get("name")),
+		Provider:    contracts.AgentProvider(strings.TrimSpace(r.Form.Get("provider"))),
+		Enabled:     true,
+	}
+	if profile.Provider == "" {
+		profile.Provider = contracts.AgentProviderCustom
+	}
+	if err := profile.Validate(); err != nil {
+		s.writeActionError(w, r, apperr.New(apperr.CodeInvalidInput, err.Error()), "")
+		return
+	}
+	var saved contracts.AgentProfile
+	err := service.WithWriteLock(s.mutationContext(r, actor), s.actions.LockManager, "register agent", func(ctx context.Context) error {
+		if _, err := s.actions.Agents.LoadAgent(ctx, profile.AgentID); err == nil {
+			return apperr.New(apperr.CodeConflict, "agent ID already exists; choose a different ID")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		var err error
+		saved, err = s.actions.SaveAgentProfile(ctx, profile, actor, reason)
+		return err
+	})
+	if err != nil {
+		s.writeActionError(w, r, err, "")
+		return
+	}
+	s.actionSuccess(w, r, "", "registered agent "+saved.AgentID)
+}
+
 func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
@@ -364,6 +409,26 @@ func (s *Server) runTicketAction(w http.ResponseWriter, r *http.Request, ctx con
 			ticket.Labels = next
 			return nil
 		})
+	case "claim":
+		ticket, err = s.actions.ClaimTicket(ctx, id, actor, reason)
+	case "release":
+		ticket, err = s.actions.ReleaseTicket(ctx, id, actor, reason)
+	case "archive", "delete":
+		ticket, err = s.actions.DeleteTrackedTicket(ctx, id, actor, reason)
+	case "link":
+		kind := domain.LinkKind(strings.TrimSpace(r.Form.Get("kind")))
+		if kind == "" {
+			kind = domain.LinkBlockedBy
+		}
+		_, err = s.actions.LinkTickets(ctx, id, strings.TrimSpace(r.Form.Get("other_id")), kind, actor, reason)
+		if err == nil {
+			ticket, err = s.actions.Tickets.GetTicket(ctx, id)
+		}
+	case "unlink":
+		_, err = s.actions.UnlinkTickets(ctx, id, strings.TrimSpace(r.Form.Get("other_id")), actor, reason)
+		if err == nil {
+			ticket, err = s.actions.Tickets.GetTicket(ctx, id)
+		}
 	default:
 		err = apperr.New(apperr.CodeInvalidInput, "unknown web ticket action: "+action)
 	}

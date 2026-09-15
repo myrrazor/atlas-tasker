@@ -145,7 +145,7 @@ func TestManagedFileStepsCannotTouchClientConfiguration(t *testing.T) {
 		"arbitrary workspace file":  testRoot + "/README.md",
 		"another target's skill":    testRoot + "/.cursor/skills/atlas-worker/SKILL.md",
 		"another target's commands": testRoot + "/.claude/commands/atlas-next.md",
-		"skill dir itself":          testRoot + "/.codex/skills/atlas-worker",
+		"skill dir itself":          testRoot + "/.agents/skills/atlas-worker",
 	} {
 		plan := codexPlan(t)
 		plan.Steps[1].Path = path
@@ -153,7 +153,8 @@ func TestManagedFileStepsCannotTouchClientConfiguration(t *testing.T) {
 		mustReject(t, name, plan, "")
 	}
 	for name, path := range map[string]string{
-		"own skill file":        testRoot + "/.codex/skills/atlas-worker/references/loop.md",
+		"own skill file":        testRoot + "/.agents/skills/atlas-worker/references/loop.md",
+		"legacy skill file":     testRoot + "/.codex/skills/atlas-worker/references/loop.md",
 		"generated guide":       testRoot + "/.tracker/integrations/codex-guide.md",
 		"codex command prompts": testRoot + "/.tracker/integrations/commands/atlas-next.md",
 	} {
@@ -475,7 +476,7 @@ func TestRegistryRejectsAnyMatrixDeviation(t *testing.T) {
 		"version args":      func(c *Capabilities) { c.VersionArgs = []string{"-V"} },
 		"unverified list":   func(c *Capabilities) { c.Unverified = nil },
 		"instruction file":  func(c *Capabilities) { c.InstructionFile = "CLAUDE.md" },
-		"skill dir":         func(c *Capabilities) { c.SkillDir = ".agents/skills/atlas-worker" },
+		"skill dir":         func(c *Capabilities) { c.SkillDir = ".codex/skills/atlas-worker" },
 		"command dir":       func(c *Capabilities) { c.CommandDir = ".codex/commands" },
 		"mcp support":       func(c *Capabilities) { c.MCPSupport = MCPSupportClientCLI },
 		"display name":      func(c *Capabilities) { c.DisplayName = "Codex CLI" },

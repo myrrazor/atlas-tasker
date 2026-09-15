@@ -95,13 +95,16 @@ func detectOne(opts DetectOptions, target Target) Detection {
 		}
 		detection.Reasons = appendDirReason(detection.Reasons, opts, filepath.Join(opts.Workspace, ".codex"), ".codex/")
 	case TargetCursor:
-		detection.Reasons = appendBinReason(detection.Reasons, opts, "cursor")
+		for _, name := range ClientExecutableNames(TargetCursor) {
+			detection.Reasons = appendBinReason(detection.Reasons, opts, name)
+		}
 		detection.Reasons = appendDirReason(detection.Reasons, opts, filepath.Join(opts.Home, ".cursor"), "~/.cursor")
 		detection.Reasons = appendDirReason(detection.Reasons, opts, filepath.Join(opts.Workspace, ".cursor"), ".cursor/")
 	case TargetOpenClaw:
 		detection.Reasons = appendBinReason(detection.Reasons, opts, "openclaw")
 		detection.Reasons = appendDirReason(detection.Reasons, opts, filepath.Join(opts.Home, ".openclaw"), "~/.openclaw")
-		detection.Reasons = appendDirReason(detection.Reasons, opts, filepath.Join(opts.Workspace, ".agents"), ".agents/")
+		// Workspace .agents/skills is a shared Codex/OpenClaw/Cursor skill root,
+		// not an OpenClaw install signal. Codex writes there too.
 		detection.Reasons = appendDirReason(detection.Reasons, opts, filepath.Join(opts.Workspace, ".openclaw"), ".openclaw/")
 	case TargetGrok:
 		detection.Reasons = appendBinReason(detection.Reasons, opts, "grok")

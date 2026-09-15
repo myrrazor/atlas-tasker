@@ -9,10 +9,13 @@ v1.8 changes Atlas docs from implementation-history-first to user-first. Histori
 - `docs/getting-started.md`: first ten minutes (`tracker init` then `tracker`).
 - `docs/installation.md`: install from release, source, and local dev.
 - `docs/quickstart.md`: copyable workspace flow.
-- `docs/guides/home-and-workspaces.md`: Atlas Home, registry, repair.
+- `docs/guides/home-and-workspaces.md`: Atlas Home, registry, repair, create/attach.
 - `docs/guides/uninstall.md`: software-only uninstall.
 - `docs/migration-v1.15.md`: compatibility from published tags / v1.14.
-- `docs/first-agent-workflow.md`: ticket to run to evidence to review.
+- `docs/migration-v1.16.md`: v1.16 upgrade (skills refresh, browser, compatibility).
+- `docs/v1.16-client-compatibility.md`: skill roots vs live connection.
+- `docs/v1.16-browser-management.md`: Home/Kanban everyday management.
+- `docs/first-agent-workflow.md`: init and ask, then optional dispatch.
 
 ## User Docs
 

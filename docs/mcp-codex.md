@@ -2,7 +2,10 @@
 
 Use an absolute path to the built `tracker` binary.
 
-CLI setup. Serve defaults to `--tool-profile workflow`; pass `--tool-profile read` or `--read-only` for inspection only:
+Ordinary init already wrote user-scoped **`atlas-tasker`**
+(`mcp serve --global --tool-profile workflow`). The snippet below is the
+advanced pinned-workspace alternative. Serve defaults to `--tool-profile workflow`;
+pass `--tool-profile read` or `--read-only` for inspection only:
 
 ```bash
 codex mcp add atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile workflow

@@ -431,6 +431,9 @@ func (a *Adapter) Remove(ctx context.Context, state adapter.IntegrationState) (a
 		if string(current) != file.Body {
 			ownership = false
 		}
+		if integrations.KeepSharedAgentsSkill(state.WorkspaceRoot, a.target, file.Path) {
+			continue
+		}
 		steps = append(steps, adapter.PlanStep{
 			StepID: "remove-" + shortHash([]byte(file.Path)), Kind: adapter.StepRemoveManagedFile,
 			Description: "remove Atlas-owned " + file.Kind, Path: file.Path,

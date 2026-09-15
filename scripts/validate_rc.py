@@ -656,4 +656,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Executable RC fixtures must never register clients or a Home service in
+    # the release operator's real profile. Keep normal project defaults.
+    from atlas_test_env import isolated_atlas_environment
+
+    with isolated_atlas_environment():
+        raise SystemExit(main())

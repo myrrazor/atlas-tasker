@@ -96,6 +96,19 @@ func TestCodexWritesProjectTOMLAndKeepsTrustPending(t *testing.T) {
 	if !found {
 		t.Fatal("expected Codex config write")
 	}
+	skill := filepath.Join(root, ".agents", "skills", "atlas-worker", "SKILL.md")
+	hasSkill := false
+	for _, step := range plan.Steps {
+		if step.Kind == adapter.StepWriteManagedFile && step.Path == skill {
+			hasSkill = true
+		}
+		if strings.Contains(step.Path, "/.codex/skills/") && step.Kind == adapter.StepWriteManagedFile {
+			t.Fatalf("codex must not write the legacy skill root: %s", step.Path)
+		}
+	}
+	if !hasSkill {
+		t.Fatal("expected Codex skill at .agents/skills/atlas-worker")
+	}
 }
 
 func TestCursorRejectsDuplicateJSONAndUnmanagedName(t *testing.T) {

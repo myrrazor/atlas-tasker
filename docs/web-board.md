@@ -7,7 +7,9 @@ tracker
 ```
 
 Home is the machine-wide loopback UI (`127.0.0.1:7432`): workspaces, projects, attention,
-search, backup health, and settings. See [Home and workspaces](guides/home-and-workspaces.md).
+search, backup health, and settings. See [Home and workspaces](guides/home-and-workspaces.md)
+and [v1.16 browser management](v1.16-browser-management.md) (create/attach and
+Delete ticket). The screenshots below show the v1.16 implementation in dark mode with synthetic tickets.
 
 `tracker web serve --open` is still supported:
 
@@ -28,9 +30,11 @@ The browser workspace supports:
 - viewing workflow columns
 - opening ticket detail
 - creating and editing tickets
+- assigning, claiming, releasing, and setting reviewers
 - adding comments
 - moving tickets through workflow states
 - request-review, approve, and complete actions where policy allows
+- archive (`ticket delete` alias); canceled stays on the board; `?archived=1` lists archived work; no restore
 - project, actor, saved-view, and search/filter URL state
 - drag/drop where JavaScript is available, plus button-based fallbacks (keyboard: `n` new ticket, `/` search)
 - creating projects from the welcome page through the same `ActionService` and browser security gates

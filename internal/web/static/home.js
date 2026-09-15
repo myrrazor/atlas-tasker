@@ -11,4 +11,15 @@
       console.debug('home dialog:', err);
     }
   });
+
+  document.querySelectorAll('form[data-busy]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      if (event.defaultPrevented) return;
+      form.classList.add('is-busy');
+      form.querySelectorAll('button[type="submit"]').forEach((button) => {
+        button.disabled = true;
+      });
+    });
+  });
+
 })();

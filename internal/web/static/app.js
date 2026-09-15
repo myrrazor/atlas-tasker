@@ -571,7 +571,8 @@
 
   function setupFormBusy() {
     document.querySelectorAll('form[method="post"]').forEach((form) => {
-      form.addEventListener('submit', () => {
+      form.addEventListener('submit', (event) => {
+        if (event.defaultPrevented) return;
         form.classList.add('is-saving');
         form.querySelectorAll('button[type="submit"], button:not([type])').forEach((button) => {
           button.disabled = true;
@@ -586,9 +587,19 @@
     selected?.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'center' });
   }
 
+  function setupBusyForms() {
+    document.querySelectorAll('form[method="post"]').forEach((form) => {
+      form.addEventListener('submit', (event) => {
+        if (event.defaultPrevented) return;
+        form.classList.add('is-busy');
+      });
+    });
+  }
+
   setupTabs();
   setupKeyboardHints();
   setupDialogs();
+  setupBusyForms();
   setupSortable();
   setupCardPreviews();
   rewriteCardHrefs();

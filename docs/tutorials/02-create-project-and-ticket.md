@@ -1,5 +1,10 @@
 # Tutorial 2: Create A Project And Ticket
 
+**Source-build walkthrough.** Tutorial 1 left `./tracker` in this checkout. If
+`tracker` is already on your `PATH`, drop the `./`. Init in a directory named
+`app` already created project `APP`; the `project create` below is for a
+fresh extra key or a checkout that skipped the default project.
+
 Create a project key:
 
 ```bash

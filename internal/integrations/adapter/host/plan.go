@@ -239,6 +239,10 @@ func addSkillSteps(bc *BuildContext) error {
 		if file.Change == integrations.InstallChangeNone {
 			continue
 		}
+		if file.Change == integrations.InstallChangeCollision {
+			bc.Warnings = append(bc.Warnings, "leaving unmanaged skill file "+file.Path)
+			continue
+		}
 		kind := adapter.StepWriteManagedFile
 		if file.Kind == "instruction" && file.Change == integrations.InstallChangeUpdate {
 			kind = adapter.StepUpdateManagedBlock
@@ -252,6 +256,13 @@ func addSkillSteps(bc *BuildContext) error {
 			created := len(current) == 0
 			addFileStep(bc, "context-"+string(bc.Input.Detection.Target), adapter.StepWriteManagedFile, "write generated provider/actor context", contextPath, []byte(contextBody), created)
 		}
+	}
+	remove, collisions := integrations.LegacySkillRemovals(bc.Input.WorkspaceRoot, bc.Input.Detection.Target)
+	for _, path := range collisions {
+		bc.Warnings = append(bc.Warnings, "leaving customized or unsafe legacy skill file "+path)
+	}
+	for _, path := range remove {
+		addFileStep(bc, "legacy-"+shortHash([]byte(path)), adapter.StepRemoveManagedFile, "remove Atlas-managed legacy skill file", path, nil, false)
 	}
 	return nil
 }

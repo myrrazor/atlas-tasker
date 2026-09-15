@@ -18,42 +18,48 @@ import (
 )
 
 type HomePage struct {
-	Page           string
-	Workspace      string
-	Host           string
-	Actor          string
-	CSRFToken      string
-	ReadOnly       bool
-	HomePath       string
-	BoardPath      string
-	ActionPrefix   string
-	Flash          string
-	Error          string
-	Workspaces     []app.WorkspaceRecord
-	Rows           []HomeWorkspaceRow
-	Attention      []app.AttentionItem
-	Hits           []app.SearchHit
-	Query          string
-	Sort           string
-	Settings       app.MachineSettings
-	Agents         []app.AgentClientReport
-	Backup         *service.BackupHealthSummary
-	BackupView     HomeBackupView
-	Projects       []ProjectRow
-	Recent         []RecentChange
-	WorkspaceID    string
-	DisplayName    string
-	Health         app.Health
-	HealthLabel    string
-	HealthDetail   string
-	Path           string
-	Location       string
-	Visibility     app.Visibility
-	FindHits       []HomeGrantHit
-	ShowFind       bool
-	ShowInit       bool
-	ShowNewProject bool
-	ShowHidden     bool
+	Page            string
+	Workspace       string
+	Host            string
+	Actor           string
+	CSRFToken       string
+	ReadOnly        bool
+	HomePath        string
+	BoardPath       string
+	ActionPrefix    string
+	Flash           string
+	Error           string
+	Workspaces      []app.WorkspaceRecord
+	Rows            []HomeWorkspaceRow
+	Attention       []app.AttentionItem
+	Hits            []app.SearchHit
+	Query           string
+	Sort            string
+	Settings        app.MachineSettings
+	Agents          []app.AgentClientReport
+	Backup          *service.BackupHealthSummary
+	BackupView      HomeBackupView
+	Projects        []ProjectRow
+	Recent          []RecentChange
+	WorkspaceID     string
+	DisplayName     string
+	Health          app.Health
+	HealthLabel     string
+	HealthDetail    string
+	Path            string
+	Location        string
+	Visibility      app.Visibility
+	FindHits        []HomeGrantHit
+	ShowFind        bool
+	ShowInit        bool
+	ShowNewProject  bool
+	ShowHidden      bool
+	Form            url.Values
+	AuthorizedRoots []app.AuthorizedRoot
+	BrowseRef       string
+	BrowseRel       string
+	BrowseChildren  []app.AuthorizedChild
+	PendingGrant    *app.PathGrant
 }
 
 type HomeWorkspaceRow struct {
@@ -132,6 +138,11 @@ func (s *HomeServer) handleHome(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	page := s.buildHomeListing(r)
+	s.renderHome(w, r, page, http.StatusOK)
+}
+
+func (s *HomeServer) buildHomeListing(r *http.Request) HomePage {
 	page := s.pageBase("home")
 	page.Flash = r.URL.Query().Get("flash")
 	page.Sort = homeSort(r.URL.Query().Get("sort"))
@@ -152,15 +163,29 @@ func (s *HomeServer) handleHome(w http.ResponseWriter, r *http.Request) {
 	}
 	page.Rows = s.decorateWorkspaceRows(r, listed, page.Attention)
 	sortHomeRows(page.Rows, page.Sort)
-	if page.ShowFind || page.ShowInit {
-		purpose := app.PathGrantRegister
-		if page.ShowInit {
-			purpose = app.PathGrantInit
-		}
-		page.FindHits = s.discoveryGrants(r, page.ShowInit)
-		page.FindHits = append(page.FindHits, pendingGrantHits(s.application.ListPendingGrants(), purpose)...)
+	s.decorateHomeCreate(r, &page)
+	return page
+}
+
+func (s *HomeServer) decorateHomeCreate(r *http.Request, page *HomePage) {
+	page.AuthorizedRoots = s.application.AuthorizedRoots()
+	if !page.ShowFind && !page.ShowInit {
+		return
 	}
-	s.renderHome(w, r, page, http.StatusOK)
+	page.BrowseRef = strings.TrimSpace(firstNonEmpty(r.Form.Get("root_ref"), r.URL.Query().Get("root"), app.BoardsRootRef))
+	page.BrowseRel = strings.TrimSpace(firstNonEmpty(r.Form.Get("folder"), r.URL.Query().Get("dir")))
+	if page.BrowseRef == "" {
+		page.BrowseRef = app.BoardsRootRef
+	}
+	if children, err := s.application.ListAuthorizedChildren(page.BrowseRef, page.BrowseRel); err == nil {
+		page.BrowseChildren = children
+	}
+	purpose := app.PathGrantRegister
+	if page.ShowInit {
+		purpose = app.PathGrantInit
+	}
+	page.FindHits = s.discoveryGrants(r, page.ShowInit)
+	page.FindHits = append(page.FindHits, pendingGrantHits(s.application.ListPendingGrants(), purpose)...)
 }
 
 func (s *HomeServer) handleAttention(w http.ResponseWriter, r *http.Request) {
@@ -231,57 +256,190 @@ func (s *HomeServer) handleSettingsWorkspaces(w http.ResponseWriter, r *http.Req
 }
 
 func (s *HomeServer) handleInitWorkspace(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.renderWorkspaceFormError(w, r, err, "init")
 		return
 	}
-	grantID := strings.TrimSpace(r.Form.Get("grant_id"))
-	if grantID == "" {
-		http.Error(w, "grant_id is required; the browser cannot invent filesystem paths", http.StatusBadRequest)
+	projectKey := strings.TrimSpace(r.Form.Get("project_key"))
+	projectName := strings.TrimSpace(r.Form.Get("project_name"))
+	if projectKey != "" {
+		project := contracts.NormalizeProject(contracts.Project{
+			Key:           projectKey,
+			Name:          firstNonEmpty(projectName, projectKey),
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		})
+		if err := project.Validate(); err != nil {
+			s.renderWorkspaceFormError(w, r, apperr.New(apperr.CodeInvalidInput, err.Error()), "init")
+			return
+		}
+		projectKey = project.Key
+		if projectName == "" {
+			projectName = project.Name
+		}
+	}
+	if err := requireHumanActor(s.cfg.Actor); err != nil {
+		s.renderWorkspaceFormError(w, r, err, "init")
 		return
 	}
-	grant, err := s.application.ConsumeGrantFor(r.Context(), grantID, app.PathGrantInit)
+	grant, err := s.resolvePathGrant(r, app.PathGrantInit, true)
 	if err != nil {
-		http.Error(w, err.Error(), statusForError(err))
+		s.renderWorkspaceFormError(w, r, err, "init")
 		return
 	}
+	settings := s.application.Settings()
 	result, err := s.application.Init(r.Context(), app.InitOptions{
-		Root:           grant.Path,
-		Register:       true,
-		Agents:         s.application.Settings().Agents.AutoInstall,
-		Backup:         s.application.Settings().LocalCheckpoints,
-		DefaultProject: s.application.Settings().DefaultProject,
-		WriteClientCfg: false,
-		Actor:          s.cfg.Actor,
+		Root:            grant.Path,
+		Register:        true,
+		Agents:          settings.Agents.AutoInstall,
+		Backup:          settings.LocalCheckpoints,
+		DefaultProject:  settings.DefaultProject,
+		ProjectKey:      projectKey,
+		ProjectName:     projectName,
+		WriteClientCfg:  false,
+		SkipHomeService: true,
+		Actor:           s.cfg.Actor,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), statusForError(err))
+		s.renderWorkspaceFormError(w, r, err, "init")
 		return
 	}
-	http.Redirect(w, r, "/w/"+url.PathEscape(result.WorkspaceID)+"?flash="+url.QueryEscape(firstNonEmpty(result.Summary, "workspace ready")), http.StatusSeeOther)
+	next := "/w/" + url.PathEscape(result.WorkspaceID)
+	if result.DefaultProject != "" {
+		next += "/projects/" + url.PathEscape(result.DefaultProject)
+	}
+	message := "Board created and added to Home"
+	if result.DefaultProject != "" {
+		message += "; project " + result.DefaultProject + " is ready"
+	}
+	http.Redirect(w, r, next+"?flash="+url.QueryEscape(message), http.StatusSeeOther)
 }
 
 func (s *HomeServer) handleRegisterWorkspace(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.renderWorkspaceFormError(w, r, err, "register")
 		return
 	}
-	grantID := strings.TrimSpace(r.Form.Get("grant_id"))
-	if grantID == "" {
-		http.Error(w, "grant_id is required", http.StatusBadRequest)
+	if err := requireHumanActor(s.cfg.Actor); err != nil {
+		s.renderWorkspaceFormError(w, r, err, "register")
 		return
 	}
-	grant, err := s.application.ConsumeGrantFor(r.Context(), grantID, app.PathGrantRegister)
+	grant, err := s.resolvePathGrant(r, app.PathGrantRegister, false)
 	if err != nil {
-		http.Error(w, err.Error(), statusForError(err))
+		s.renderWorkspaceFormError(w, r, err, "register")
 		return
 	}
 	rec, err := s.application.Register(r.Context(), app.RegisterOptions{Root: grant.Path})
 	if err != nil {
-		http.Error(w, err.Error(), statusForError(err))
+		s.renderWorkspaceFormError(w, r, err, "register")
 		return
 	}
 	http.Redirect(w, r, "/w/"+url.PathEscape(rec.WorkspaceID)+"?flash="+url.QueryEscape("registered "+workspaceTitle(rec)), http.StatusSeeOther)
+}
+
+func (s *HomeServer) handlePreviewDirectory(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.renderWorkspaceFormError(w, r, err, previewIntent(r))
+		return
+	}
+	if err := requireHumanActor(s.cfg.Actor); err != nil {
+		s.renderWorkspaceFormError(w, r, err, previewIntent(r))
+		return
+	}
+	purpose := strings.TrimSpace(r.Form.Get("purpose"))
+	if purpose == "" {
+		purpose = app.PathGrantInit
+	}
+	grant, err := s.application.PreviewDirectoryGrant(r.Context(), r.Form.Get("directory"), purpose)
+	if err != nil {
+		s.renderWorkspaceFormError(w, r, err, previewIntent(r))
+		return
+	}
+	page := s.buildHomeListing(r)
+	page.Form = r.Form
+	page.ShowInit = purpose == app.PathGrantInit
+	page.ShowFind = purpose == app.PathGrantRegister
+	page.PendingGrant = &grant
+	s.decorateHomeCreate(r, &page)
+	s.renderHome(w, r, page, http.StatusOK)
+}
+
+func previewIntent(r *http.Request) string {
+	if strings.TrimSpace(r.Form.Get("purpose")) == app.PathGrantRegister {
+		return "register"
+	}
+	return "init"
+}
+
+func requireHumanActor(actor contracts.Actor) error {
+	if !actor.IsValid() || !strings.HasPrefix(string(actor), "human:") {
+		return apperr.New(apperr.CodePermissionDenied, "directory authorization requires a human session actor")
+	}
+	return nil
+}
+
+func (s *HomeServer) resolvePathGrant(r *http.Request, purpose string, create bool) (app.PathGrant, error) {
+	grantID := strings.TrimSpace(r.Form.Get("grant_id"))
+	rootRef := strings.TrimSpace(r.Form.Get("root_ref"))
+	folder := strings.TrimSpace(r.Form.Get("folder"))
+	if grantID == "" && rootRef == "" {
+		if purpose == app.PathGrantInit {
+			return app.PathGrant{}, apperr.New(apperr.CodeInvalidInput, "grant_id is required; the browser cannot invent filesystem paths")
+		}
+		return app.PathGrant{}, apperr.New(apperr.CodeInvalidInput, "grant_id is required")
+	}
+	if grantID != "" {
+		pending, err := s.application.LookupPendingGrant(grantID)
+		if err == nil && pending.Source == app.PathGrantSourceHome {
+			confirm := strings.TrimSpace(r.Form.Get("confirm_path"))
+			if confirm == "" || confirm != pending.Path {
+				return app.PathGrant{}, apperr.New(apperr.CodeInvalidInput, "confirm the exact directory shown before initializing")
+			}
+		} else if err != nil && !strings.Contains(strings.ToLower(err.Error()), "missing") {
+			return app.PathGrant{}, err
+		}
+		return s.application.ConsumeGrantFor(r.Context(), grantID, purpose)
+	}
+	target, err := s.application.ResolveAuthorizedDir(rootRef, folder, create)
+	if err != nil {
+		return app.PathGrant{}, err
+	}
+	if purpose == app.PathGrantInit {
+		if err := app.RefuseNestedWorkspaceInit(target); err != nil {
+			return app.PathGrant{}, err
+		}
+	}
+	grant, err := s.application.GrantPath(r.Context(), target, purpose)
+	if err != nil {
+		return app.PathGrant{}, err
+	}
+	return s.application.ConsumeGrantFor(r.Context(), grant.ID, purpose)
+}
+
+func (s *HomeServer) renderWorkspaceFormError(w http.ResponseWriter, r *http.Request, err error, intent string) {
+	page := s.buildHomeListing(r)
+	page.Error = err.Error()
+	page.Form = r.Form
+	page.ShowInit = intent == "init" || page.ShowInit
+	page.ShowFind = intent == "register" || page.ShowFind
+	if id := strings.TrimSpace(r.Form.Get("grant_id")); id != "" {
+		if grant, lookupErr := s.application.LookupPendingGrant(id); lookupErr == nil {
+			page.PendingGrant = &grant
+		}
+	}
+	s.decorateHomeCreate(r, &page)
+	s.renderHome(w, r, page, statusForError(err))
 }
 
 func (s *HomeServer) handleRepairWorkspace(w http.ResponseWriter, r *http.Request) {
@@ -415,6 +573,10 @@ func (s *HomeServer) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		}
 		if parts[2] == "projects" && len(parts) > 3 && parts[3] == "create" {
 			inner.handleCreateProject(w, r2)
+			return
+		}
+		if parts[2] == "agents" && len(parts) > 3 && parts[3] == "create" {
+			inner.handleCreateAgent(w, r2)
 			return
 		}
 		if parts[2] == "tickets" && len(parts) > 3 && parts[3] == "create" {
@@ -687,6 +849,10 @@ func (s *HomeServer) discoveryRepairGrants(r *http.Request) []HomeGrantHit {
 func pendingGrantHits(grants []app.PathGrant, purpose string) []HomeGrantHit {
 	out := make([]HomeGrantHit, 0, len(grants))
 	for _, grant := range grants {
+		// Home previews must return through their exact-directory confirmation form.
+		if grant.Source == app.PathGrantSourceHome {
+			continue
+		}
 		if purpose != "" && grant.Purpose != purpose {
 			continue
 		}
@@ -988,4 +1154,41 @@ func (p HomePage) ProjectHref(key string) string {
 		return "/board?project=" + url.QueryEscape(key)
 	}
 	return "/w/" + url.PathEscape(p.WorkspaceID) + "/projects/" + url.PathEscape(key)
+}
+
+func (p HomePage) FormValue(name, fallback string) string {
+	if p.Form != nil && p.Form.Has(name) {
+		return p.Form.Get(name)
+	}
+	return fallback
+}
+
+func (p HomePage) BrowseHref(ref, rel string) string {
+	q := url.Values{}
+	if p.ShowInit {
+		q.Set("init", "1")
+	} else {
+		q.Set("find", "1")
+	}
+	if ref != "" && ref != app.BoardsRootRef {
+		q.Set("root", ref)
+	} else if ref == app.BoardsRootRef {
+		q.Set("root", ref)
+	}
+	if strings.TrimSpace(rel) != "" {
+		q.Set("dir", rel)
+	}
+	return "/?" + q.Encode()
+}
+
+func (p HomePage) ParentBrowseRel() string {
+	rel := strings.TrimSpace(p.BrowseRel)
+	if rel == "" {
+		return ""
+	}
+	parent := filepath.Dir(rel)
+	if parent == "." {
+		return ""
+	}
+	return parent
 }

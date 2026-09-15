@@ -47,8 +47,12 @@ jobs:
           python3 scripts/test-install.py --tracker "$RUNNER_TEMP/tracker"
       - name: Check MCP stdio workflow and profiles
         run: python3 scripts/verify-mcp-workflow.py --tracker "$RUNNER_TEMP/tracker"
+      - name: Check managed workflow and native integration contracts
+        run: |
+          python3 scripts/verify-managed-workflow.py --tracker "$RUNNER_TEMP/tracker"
+          python3 scripts/verify-integration-discovery.py --tracker "$RUNNER_TEMP/tracker"
       - name: Check browser and site contracts
-        run: node --test internal/web/testdata/refresh_board.test.mjs site/_tools/*.test.mjs
+        run: node --test internal/web/testdata/*.test.mjs site/_tools/*.test.mjs
 
   stability:
     needs: workflow-policy

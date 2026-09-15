@@ -63,13 +63,14 @@ NL_SCENARIOS = (
     "Hand this off to Claude.",
 )
 SKILL_PATHS = {
-    "codex": Path(".codex/skills/atlas-worker/SKILL.md"),
+    "codex": Path(".agents/skills/atlas-worker/SKILL.md"),
     "claude": Path(".claude/skills/atlas-worker/SKILL.md"),
     "openclaw": Path(".agents/skills/atlas-worker/SKILL.md"),
     "generic": Path(".tracker/integrations/generic-agent-skill/SKILL.md"),
     "cursor": Path(".cursor/skills/atlas-worker/SKILL.md"),
-    "grok": Path(".tracker/integrations/grok-agent-skill/SKILL.md"),
+    "grok": Path(".grok/skills/atlas-worker/SKILL.md"),
 }
+SHARED_AGENTS_IDENTITY = "from coding-agent sessions that load project .agents/skills"
 
 
 class Failure(RuntimeError):
@@ -215,10 +216,13 @@ def inspect_skills(workspace: Path) -> dict[str, Any]:
         cores[provider] = core
         for needle in LIFECYCLE_NEEDLES:
             require(needle in core, f"{provider} lifecycle missing {needle!r}")
-        require(
-            PROVIDER_LABELS[provider] in body,
-            f"{provider} skill omitted identity {PROVIDER_LABELS[provider]!r}",
-        )
+        if provider in ("codex", "openclaw"):
+            require(SHARED_AGENTS_IDENTITY in body, f"{provider} missing shared .agents identity")
+        else:
+            require(
+                PROVIDER_LABELS[provider] in body,
+                f"{provider} skill omitted identity {PROVIDER_LABELS[provider]!r}",
+            )
         proof["providers"][provider] = {"skill": str(SKILL_PATHS[provider]), "lifecycle_bytes": len(core)}
     first = cores["codex"]
     for provider, core in cores.items():

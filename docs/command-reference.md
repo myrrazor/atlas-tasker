@@ -192,7 +192,7 @@ Setup and update behavior:
 - `tracker setup status` and `tracker integrations status` report skill/block versions, workspace binding, integration state, and repair reasons
 - `tracker integrations repair <target>` refreshes drifted Atlas-owned files and MCP registration; `disconnect` removes only matching Atlas-owned entries and requires confirmation after manual edits
 - The shell installer may offer `tracker setup` after an explicit TTY yes; unattended install never initializes the current directory
-- plain `tracker init` can offer the six-target integration picker only when stdin and stdout are TTYs; `--skip-integrations` suppresses it
+- plain `tracker init` configures detected agents without a picker; `tracker init --integrations` opens the six-target picker only when stdin and stdout are TTYs; `--skip-integrations` / `--no-agents` skip agent writes
 - `tracker integrations install` accepts `claude`, `codex`, `cursor`, `openclaw`, `grok`, and `generic`; scripts should pass one target or `--targets <list>`
 - `none` and `q` leave integration installation skipped; JSON and non-TTY invocations never prompt
 - integration installation writes project guidance and skills but does not register an MCP client

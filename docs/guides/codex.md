@@ -28,9 +28,22 @@ Install the project skill pack with:
 tracker integrations install codex
 ```
 
-That writes the `atlas-worker` skill under `.codex/skills/`, an Atlas-managed block in `AGENTS.md`,
-and generated command prompts under `.tracker/integrations/commands/`. It does not add an MCP server
-to Codex. Use [Codex MCP setup](../mcp-codex.md) separately when structured tools are wanted.
+That writes the `atlas-worker` skill under `.agents/skills/`, an Atlas-managed block in `AGENTS.md`,
+and generated command prompts under `.tracker/integrations/commands/`. Codex CLI 0.144.5 still
+lists leftover `.codex/skills/atlas-worker/` if that copy remains. Re-install deletes that leftover
+only when the file is byte-identical to a known generated Atlas skill (current or v1.15 body).
+Changed files stay and are reported as collisions. A leftover whose path or ancestor is a symlink
+is also a collision; Atlas does not follow those links. That is canonicalization, not a repair of
+unsupported Codex. See `internal/integrations/native_skills.go`.
+
+The install does not add an MCP server. `tracker init` writes user-scoped `atlas-tasker`. Use
+[Codex MCP setup](../mcp-codex.md) for pinned `--workspace` serve. Codex workspace trust is
+client-owned; Atlas never writes a trust bypass.
+
+On Codex CLI 0.144.5, native `skills/list` listed both roots. An ephemeral
+`--ignore-user-config` session with explicit fixture MCP completed `status` and
+`project.list`. The client canceled `ticket.create`; there is no successful write
+proof on that run. Details: [v1.16 client compatibility](../v1.16-client-compatibility.md).
 
 If Atlas creates a wake-up after a blocker reaches `done`, read it with:
 

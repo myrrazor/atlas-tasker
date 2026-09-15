@@ -100,12 +100,27 @@ jobs:
           cat dist/*.sha256 > dist/checksums.txt
           shasum -a 256 "dist/sbom-${GITHUB_REF_NAME}.cdx.json" >> dist/checksums.txt
       - name: Attest release archives
+        id: attest
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
           subject-path: |
             dist/*.tar.gz
             dist/sbom-*.cdx.json
             dist/checksums.txt
+      - name: Export attestation bundle
+        run: |
+          set -eu
+          bundle="${{ steps.attest.outputs.bundle-path }}"
+          if [ -z "$bundle" ]; then
+            echo "attestation bundle-path output is empty" >&2
+            exit 1
+          fi
+          if [ ! -f "$bundle" ]; then
+            echo "attestation bundle output is not a file: $bundle" >&2
+            exit 1
+          fi
+          cp "$bundle" dist/attestation-bundle.jsonl
+          test -s dist/attestation-bundle.jsonl
       - name: Publish release assets
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
@@ -114,4 +129,5 @@ jobs:
             dist/*.tar.gz
             dist/sbom-*.cdx.json
             dist/checksums.txt
+            dist/attestation-bundle.jsonl
             scripts/install.sh

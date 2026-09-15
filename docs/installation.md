@@ -2,15 +2,16 @@
 
 Atlas ships one `tracker` binary for macOS and Linux on Intel/AMD and ARM64. The
 [release page](https://github.com/myrrazor/atlas-tasker/releases/latest) lists the
-current stable archives and their hosted verification. The one-line installer is
-the normal path. Ordinary use is `tracker init` then `tracker` in each workspace,
-then restart detected coding agents. Unstamped source builds report `"version": "dev"`.
+current **published** archives and their hosted verification. Ordinary
+use is `tracker init` then `tracker` in each workspace, then restart detected
+coding agents. Unstamped source builds report `"version": "dev"`.
 
 ## Install a release
 
 Install `curl`, `tar`, a SHA-256 utility, and the GitHub CLI (`gh`) first. The
-installer verifies the archive checksum and GitHub build attestation before
-writing the executable:
+installer verifies the archive checksum and a local GitHub attestation bundle
+before writing the executable. That `gh` check does not need a GitHub login.
+Missing `gh` fails early, before a long download.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
@@ -30,11 +31,15 @@ tracker version --json
 a checked-out installer, for example:
 
 ```bash
-VERSION=v1.15.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=v1.16.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 ```
 
 Inspect installer scripts before running them. Use repository or release URLs,
 and do not run commands copied from untrusted issues or comments.
+
+Checksum mismatch, missing bundle, or identity failure refuses the install.
+There is no checksum-only fallback. `VERIFY_ATTESTATIONS=0` is an explicit
+local-fixture override, not a normal install.
 
 ## Uninstall
 
@@ -51,15 +56,19 @@ Removing the binary by hand still leaves repository data in place.
 ## Set up your agents
 
 The verified installer only places the `tracker` binary. It does not initialize
-the directory `curl | sh` happened to run in. If stdout is a terminal and the
-current directory is already an Atlas workspace, it may offer `tracker setup`
-and defaults to **no**. `SKIP_INTEGRATIONS=1` skips that offer.
+the directory `curl | sh` happened to run in without consent. When an interactive
+terminal is available, it shows the current directory and offers `tracker init`,
+defaulting to **no**. Accepting runs `tracker init --no-open`. Unattended installs
+never prompt or initialize. `SKIP_INTEGRATIONS=1` skips that offer.
 
-The short path is `tracker init` inside your project, which
-writes Atlas-managed MCP entries for detected agents unless you pass `--no-agents`.
-Restart the client afterward.
+The short path is `tracker init` inside your project. That writes Atlas-managed
+MCP entries named `atlas-tasker` (`mcp serve --global --tool-profile workflow`)
+for detected agents unless you pass `--no-agents`. Restart the client afterward.
+Grok also needs its own project-trust prompt before local skills appear.
 
-The older Herder-style picker is still `--integrations`:
+Ordinary init does **not** open a picker. Detected agents are configured
+automatically. The older Herder-style picker is still `--integrations` or
+bare `tracker integrations install`:
 
 ```text
 Set up coding-agent integrations now? [Y/n]
@@ -82,7 +91,7 @@ You can always set up later from your project:
 
 ```bash
 tracker init
-# Or go directly to the picker after initialization:
+# Open the picker after initialization (TTY only):
 tracker init --integrations
 # Inspect detection without writing anything:
 tracker integrations detect --json
@@ -92,8 +101,8 @@ tracker integrations install
 tracker integrations install --targets claude,codex,cursor
 ```
 
-Interactive `tracker init` also offers agent setup. `tracker init --skip-integrations`
-disables that offer. The curl installer supports `SKIP_INTEGRATIONS=1`:
+`tracker init --skip-integrations` disables automatic agent writes. The curl
+installer supports `SKIP_INTEGRATIONS=1`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | SKIP_INTEGRATIONS=1 sh
@@ -117,10 +126,11 @@ With Go 1.26.6 or newer:
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest
 ```
 
-Add the Go binary directory to `PATH`, then run `tracker init` in your project to
-get the agent setup offer. `go install` itself does not prompt for integrations.
+Add the Go binary directory to `PATH`, then run `tracker init` in your project.
+`go install` itself does not prompt for integrations.
 
-From a source checkout:
+From a source checkout (**source-build walkthrough** — use `./tracker` until
+the binary is on `PATH`):
 
 ```bash
 go build -o tracker ./cmd/tracker
@@ -148,8 +158,9 @@ planned archive and destination. Neither downloads or replaces the executable.
 `--yes` downloads the archive, checks the checksum and GitHub attestation, then
 atomically replaces the executable that ran the command. That destination must
 be writable. The updater does not change tickets, workspaces, guidance files, or
-MCP client configuration. See [updating and recovery](guides/updating.md) for
-pinned versions, reinstalling with `--force`, and failure behavior.
+MCP client configuration. After a binary replace, re-run `tracker init` or the
+documented scoped setup **inside each workspace** to refresh managed skills.
+See [updating and recovery](guides/updating.md).
 
 ## Verify a downloaded archive
 
@@ -167,7 +178,8 @@ installation instructions.
 
 ## If setup fails
 
-- A missing archive or checksum entry stops installation before the binary is written.
+- A missing archive, checksum entry, attestation bundle, or `gh` stops
+  installation before the binary is written.
 - A checksum or attestation failure stops installation; retry from the trusted release.
 - An unwritable destination requires a writable `BIN_DIR`, not a change to your workspace permissions.
 - If optional agent setup fails after installation, the binary remains installed. Read the error, then run `tracker integrations install` in the intended project.

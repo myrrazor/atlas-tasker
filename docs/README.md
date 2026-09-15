@@ -7,12 +7,15 @@ Start here if you are new to Atlas Tasker. This page is the public docs route ma
 - [Installation](installation.md): source builds, release installs, and verification.
 - [Updating](guides/updating.md): check, preview, and safely replace the current binary.
 - [Getting started](getting-started.md): `tracker init` then `tracker`.
-- [Home and workspaces](guides/home-and-workspaces.md): global Home, registry, repair.
+- [v1.16 migration](migration-v1.16.md): upgrade notes for existing workspaces.
+- [Home and workspaces](guides/home-and-workspaces.md): global Home, registry, repair, create/attach.
+- [Browser management](v1.16-browser-management.md): Home/Kanban everyday ticket management.
 - [Setup and backup](guides/setup-and-backup.md): local checkpoints vs named remotes; advanced `tracker setup`.
 - [Uninstall](guides/uninstall.md): software-only removal that keeps boards and backups.
 - [Coding-agent integrations](guides/agent-integrations.md): the six project skill targets and their generated files.
+- [Client compatibility](v1.16-client-compatibility.md): guidance vs listing vs configured MCP vs live connection.
 - [Quickstart](quickstart.md): one copyable terminal flow.
-- [First agent workflow](first-agent-workflow.md): register an agent, dispatch work, attach evidence, and hand off for review.
+- [First agent workflow](first-agent-workflow.md): init, ask for status, then the advanced dispatch loop.
 - [Scheduled work](scheduling.md): one-time human reminders, agent wakeups, ticking, and completion history.
 
 ## Tutorials
@@ -77,7 +80,7 @@ Start here if you are new to Atlas Tasker. This page is the public docs route ma
 
 ## Release Status
 
-Atlas Tasker v1.15.0 is available. The one-line installer and `go install ...@latest` install the latest GitHub release. Ordinary use is `tracker init` then `tracker`: Home, automatic agent MCP pickup, modern default boards, local checkpoints versus verified remotes, global MCP, repair/migration, and software-only uninstall. v1.14 `tracker setup` remains documented as an advanced path. See [CHANGELOG.md](../CHANGELOG.md) and [v1.15 migration](migration-v1.15.md). See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest). Local RC reports stay local proof. Read [public release gates](release/public-release-gates.md) before treating a development build as release-ready.
+Atlas Tasker v1.16 adds anonymous verified installation, native client skills, and browser management. The one-line installer selects the latest published release. See [CHANGELOG.md](../CHANGELOG.md) and [v1.16 migration](migration-v1.16.md). Ordinary use is `tracker init` then `tracker`: Home, automatic agent MCP pickup, modern default boards, local checkpoints versus verified remotes, global MCP, repair/migration, and software-only uninstall. v1.14 `tracker setup` remains documented as an advanced path. See [v1.15 migration](migration-v1.15.md) when upgrading an older workspace. See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest). Local RC reports stay local proof. Read [public release gates](release/public-release-gates.md) before treating a development build as release-ready.
 
 ## Security Boundary
 

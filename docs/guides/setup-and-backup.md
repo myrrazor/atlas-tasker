@@ -14,13 +14,14 @@ tracker init
 tracker
 ```
 
-Init detects installed coding agents and writes Atlas-managed MCP entries pointing at
-`tracker mcp serve --global --tool-profile workflow`, unless `--no-agents` / `--skip-integrations`. It also
-starts **local checkpoints** unless `--no-backup`. Restart the client; `written` is not
-the same as a live MCP session.
+Init detects installed coding agents and writes Atlas-managed MCP entries named
+`atlas-tasker` pointing at `tracker mcp serve --global --tool-profile workflow`,
+unless `--no-agents` / `--skip-integrations`. Detected agents are configured
+without a picker. It also starts **local checkpoints** unless `--no-backup`.
+Restart the client; `written` is not the same as a live MCP session.
 
-`--integrations` still opens the TTY picker. `tracker integrations install` writes skills
-later. Details: [coding-agent integrations](agent-integrations.md).
+`--integrations` still opens the TTY picker. `tracker integrations install`
+writes skills later. Details: [coding-agent integrations](agent-integrations.md).
 
 ## Local checkpoints vs a named remote
 

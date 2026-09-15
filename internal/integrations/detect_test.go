@@ -65,6 +65,59 @@ func TestDetectFindsClaudeCodexCursorOpenClaw(t *testing.T) {
 	}
 }
 
+func TestDetectCursorAgentCLIOnly(t *testing.T) {
+	got := Detect(DetectOptions{
+		Workspace: t.TempDir(),
+		Home:      t.TempDir(),
+		LookPath: func(name string) (string, error) {
+			if name == "cursor-agent" {
+				return "/usr/local/bin/cursor-agent", nil
+			}
+			return "", os.ErrNotExist
+		},
+		Stat: func(string) (os.FileInfo, error) { return nil, os.ErrNotExist },
+	})
+	byTarget := map[Target]Detection{}
+	for _, item := range got {
+		byTarget[item.Target] = item
+	}
+	if !byTarget[TargetCursor].Found {
+		t.Fatalf("cursor-agent on PATH must detect Cursor: %+v", byTarget[TargetCursor])
+	}
+	foundAgent := false
+	for _, reason := range byTarget[TargetCursor].Reasons {
+		if strings.Contains(reason, "cursor-agent") {
+			foundAgent = true
+		}
+	}
+	if !foundAgent {
+		t.Fatalf("expected cursor-agent reason, got %v", byTarget[TargetCursor].Reasons)
+	}
+	if byTarget[TargetOpenClaw].Found {
+		t.Fatalf("OpenClaw must not be inferred from cursor-agent: %+v", byTarget[TargetOpenClaw])
+	}
+}
+
+func TestDetectOpenClawIgnoresWorkspaceAgentsDir(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, ".agents", "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := Detect(DetectOptions{
+		Workspace: workspace,
+		Home:      t.TempDir(),
+		LookPath:  func(string) (string, error) { return "", os.ErrNotExist },
+	})
+	for _, item := range got {
+		if item.Target == TargetOpenClaw && item.Found {
+			t.Fatalf("workspace .agents must not detect OpenClaw: %+v", item)
+		}
+		if item.Target == TargetCodex && item.Found {
+			t.Fatalf("workspace .agents must not detect Codex: %+v", item)
+		}
+	}
+}
+
 func TestDetectedTargetsOmitsGenericAndMissing(t *testing.T) {
 	got := DetectedTargets(DetectOptions{
 		Workspace: t.TempDir(),
