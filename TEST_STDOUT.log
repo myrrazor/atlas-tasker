@@ -832,3 +832,96 @@ CWD: /tmp/atlas-v116-evidence/integration
 10:43PM INF no leaks found
 
 EXIT: 0
+
+Final documentation examples now pin v1.16.0. The existing site-contract assertion was updated from its old v1.15 pin.
+
+CHECK: final-site-contracts
+COMMAND: ["sh", "-c", "node --test internal/web/testdata/*.test.mjs site/_tools/*.test.mjs"]
+CWD: /tmp/atlas-v116-evidence/integration
+✔ ticketHref keeps the explicit project filter (4.028ms)
+✔ ticketHref uses a Home-prefixed board path (0.802583ms)
+✔ Home clears a new-tab claim before sending it in a POST body (2.258375ms)
+✔ Home consumes a claim added to an already-open sign-in tab only once (0.751792ms)
+✔ canceling a Home confirmation prompts once and leaves the form usable (1.784042ms)
+✔ a successful refresh preserves the move confirmation without retrying (5.317166ms)
+✔ an expired session shows recovery guidance without replacing the board (0.929333ms)
+✔ a transient failure retries and keeps the move confirmation after recovery (1.579833ms)
+✔ custom 404 assets and recovery links work at nested missing routes (10.711708ms)
+✔ index.html satisfies the public-page SEO contract (2.7965ms)
+✔ cli.html satisfies the public-page SEO contract (0.36725ms)
+✔ mcp.html satisfies the public-page SEO contract (0.447583ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.294792ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.394583ms)
+✔ docs/home.html satisfies the public-page SEO contract (0.429292ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.3555ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.290625ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.286208ms)
+✔ docs/backup.html satisfies the public-page SEO contract (0.190792ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.28425ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.245792ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.364583ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.200541ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.210209ms)
+✔ docs/uninstall.html satisfies the public-page SEO contract (0.163917ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.237208ms)
+✔ changelog.html satisfies the public-page SEO contract (0.285667ms)
+✔ guide.html satisfies the public-page SEO contract (0.161916ms)
+✔ privacy.html satisfies the public-page SEO contract (0.148583ms)
+✔ terms.html satisfies the public-page SEO contract (0.141209ms)
+✔ page titles are unique (0.581583ms)
+✔ internal page links, video downloads, and fragments resolve (10.923625ms)
+✔ agent integration tabs expose all six targets with valid relationships (1.024625ms)
+✔ MCP tool page covers every source workflow tool (0.898584ms)
+✔ public workflow guidance matches the v1.16 release contracts (1.946375ms)
+✔ README and site wordmarks match the canonical application wordmark (0.042334ms)
+✔ self-hosted fonts use font-display swap (0.121917ms)
+✔ OG image is a 1200 by 630 PNG (0.693625ms)
+✔ sitemap, robots, and llms cover every public page (0.203375ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.10025ms)
+✔ social card names the configured production domain (0.077375ms)
+✔ visible FAQ questions match FAQPage JSON-LD (6.086625ms)
+✔ custom 404 is a real page with hosting 404 status (0.13925ms)
+✔ first-board copyables use an app directory so APP is the init key (0.470583ms)
+✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.671125ms)
+✔ all local page images exist and declare dimensions (3.097042ms)
+✔ favicon set includes SVG, PNG, and apple-touch icon (0.323375ms)
+✔ copy controls expose loading, success, and error states (0.115416ms)
+✔ mobile navigation stays keyboard reachable (0.08875ms)
+✔ website notices explain actual use without unresolved legal templates (0.216625ms)
+✔ public site omits personal author and direct contact metadata (1.792583ms)
+✔ publishes the configured Atlas production domain (1.191ms)
+✔ keeps every public SEO output on the same origin (1.151875ms)
+✔ normalizes a canonical origin (0.323917ms)
+✔ reads the current origin from the canonical link (0.193125ms)
+✔ replaces every rendered origin reference (0.168083ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 148.797
+
+EXIT: 0
+
+CHECK: final-docs-validation
+COMMAND: ["sh", "scripts/validate-rc.sh"]
+CWD: /tmp/atlas-v116-evidence/integration
+version_contract=ok
+docs_links=ok
+snippets=ok
+stale_versions=ok
+leakage=ok
+readme_quickstart=ok
+terminal_accessibility=ok
+mcp_stdio_workspace=ok
+cross_surface_parity=ok
+performance_version_json_ms=13 budget_ms=2000
+performance_board_json_ms=15 budget_ms=3000
+performance_dashboard_json_ms=52 budget_ms=3000
+performance_goal_brief_md_ms=15 budget_ms=3000
+performance_budgets=ok
+rc_validation=ok version=v1.16.0-rc1
+
+EXIT: 0

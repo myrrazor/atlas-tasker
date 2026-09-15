@@ -167,7 +167,7 @@ See [updating and recovery](guides/updating.md).
 For a pinned published release:
 
 ```bash
-VERSION=v1.15.0 ./scripts/verify-release.sh ./tracker_1.15.0_darwin_arm64.tar.gz
+VERSION=v1.16.0 ./scripts/verify-release.sh ./tracker_1.16.0_darwin_arm64.tar.gz
 ```
 
 The script checks `checksums.txt` and GitHub artifact attestations. Authentication
