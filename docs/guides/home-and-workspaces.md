@@ -1,7 +1,7 @@
 # Atlas Home, workspaces, and projects
 
-This is the v1.15 source candidate. The latest published installer tag is still whatever
-[releases/latest](https://github.com/myrrazor/atlas-tasker/releases/latest) shows.
+Ordinary use is `tracker init` then `tracker`. The one-line installer places the
+binary; hosted verification is on the [latest release](https://github.com/myrrazor/atlas-tasker/releases/latest).
 
 ## Open Home
 

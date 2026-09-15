@@ -4,8 +4,8 @@ Install the binary, initialize Atlas in the project you care about, restart
 the coding agent so it loads Atlas MCP, then ask for ticket status.
 
 The [latest published release](https://github.com/myrrazor/atlas-tasker/releases/latest)
-is what the installer installs. Home, global MCP, and software-only uninstall are
-the v1.15 source candidate; unstamped builds report `"version": "dev"`.
+is what the one-line installer installs. See verification results on that release
+page. Unstamped source builds report `"version": "dev"`.
 
 ## The short path
 
@@ -21,7 +21,7 @@ In the project you want tracked, ask your coding agent:
 Initialize Atlas Tasker in this project.
 ```
 
-With v1.15, Atlas sets up the board, local checkpoints, and integrations for
+Atlas sets up the board, local checkpoints, and integrations for
 supported agents installed on your machine. Restart your coding agent to load
 the integration.
 
@@ -32,7 +32,7 @@ What's the current status of this project?
 ```
 
 A real Grok Build status capture is in the README. It uses synthetic sample
-tickets and a v1.15 source build. Grok reads Atlas through MCP and renders a
+tickets and was recorded on a v1.15 source build. Grok reads Atlas through MCP and renders a
 ticket table in its own terminal interface.
 
 ## 1. Install The CLI
@@ -44,7 +44,7 @@ curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/
 tracker version --json
 ```
 
-From this source (v1.15 candidate):
+Optional, from this source:
 
 ```bash
 go build -o tracker ./cmd/tracker

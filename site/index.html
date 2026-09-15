@@ -93,7 +93,7 @@
         "name": "How do coding agents use it?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "On the v1.15 candidate, tracker init writes Atlas-managed MCP entries pointing at tracker mcp serve --global --tool-profile workflow. Restart the client. Agents can also drive the CLI with JSON output and stable exit codes. The For agents page covers global serve, pinned --workspace, and the six skill targets."
+          "text": "tracker init writes Atlas-managed MCP entries pointing at tracker mcp serve --global --tool-profile workflow. Restart the client. Agents can also drive the CLI with JSON output and stable exit codes. The For agents page covers global serve, pinned --workspace, and the six skill targets."
         }
       },
       {
@@ -133,7 +133,7 @@
         "name": "How do I uninstall it?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "On the v1.15 candidate, run tracker uninstall to preview Atlas-owned software, then tracker uninstall --yes to apply. Boards, history, backups, and registry pointers stay. Removing the binary by hand also leaves repository data in place."
+          "text": "Run tracker uninstall to preview Atlas-owned software, then tracker uninstall --yes to apply. Boards, history, backups, and registry pointers stay. Removing the binary by hand also leaves repository data in place."
         }
       },
       {
@@ -242,7 +242,7 @@
           </li>
         </ol>
 
-        <p class="requirements"><strong>v1.15 preview.</strong> This walkthrough uses the current source. The installer downloads the latest published release; the new setup arrives with v1.15. <a href="#install">Build from source to try it now.</a></p>
+        <p class="requirements">The installer places the binary only. Run <code>tracker init</code> in each workspace, then restart detected coding agents so they load Atlas MCP.</p>
 
         <figure class="terminal-shot get-started-shot" id="agent-demo">
           <div class="terminal-bar">
@@ -441,7 +441,7 @@
         <div class="section-heading install-heading">
           <p class="section-label">Install</p>
           <h2>One binary. Then initialize here.</h2>
-          <p>The installer fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. It does not initialize a repository or register coding agents. Atlas Home, global MCP, and software-only uninstall are in this v1.15 source; build from this tree until a v1.15 tag exists.</p>
+          <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. It does not initialize a repository or register coding agents. After install, run <code>tracker init</code> in each workspace and restart those agents. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
           <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification. Unstamped source builds report <code>version: "dev"</code>.</p>
         </div>
 
@@ -461,15 +461,15 @@
 
           <div class="install-option">
             <div class="install-meta">
-              <strong>Build the v1.15 preview</strong>
+              <strong>Optional Go install</strong>
               <span>Go 1.26.6+</span>
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
-              <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@main</code>
+              <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>
               <button class="copy-button" type="button" data-copy="go-install" aria-label="Copy Go install command">Copy</button>
             </div>
-            <p class="requirements">Add <code>$(go env GOPATH)/bin</code> to your <code>PATH</code> if needed. This builds current main; it is not a published release.</p>
+            <p class="requirements">Add <code>$(go env GOPATH)/bin</code> to your <code>PATH</code> if needed. Unstamped source builds report <code>version: "dev"</code>.</p>
           </div>
 
           <a class="release-row" href="https://github.com/myrrazor/atlas-tasker/releases/latest">
@@ -510,7 +510,7 @@
               <code id="first-board" tabindex="0">tracker board</code>
               <button class="copy-button" type="button" data-copy="first-board" aria-label="Copy board command">Copy</button>
             </div>
-            <p class="requirements"><code>tracker init</code> then <code>tracker</code> is the v1.15 workspace path: default project, local checkpoints, Atlas-managed MCP for detected agents, and Home on <code>127.0.0.1:7432</code>. Restart the coding agent after init so it loads Atlas MCP. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
+            <p class="requirements"><code>tracker init</code> then <code>tracker</code> is the workspace path: default project, local checkpoints, Atlas-managed MCP for detected agents, and Home on <code>127.0.0.1:7432</code>. Restart the coding agent after init so it loads Atlas MCP. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
           </div>
         </div>
       </div>
@@ -540,7 +540,7 @@
         </details>
         <details>
           <summary>How do coding agents use it?</summary>
-          <p>On the v1.15 candidate, tracker init writes Atlas-managed MCP entries pointing at tracker mcp serve --global --tool-profile workflow. Restart the client. Agents can also drive the CLI with JSON output and stable exit codes. The <a href="mcp.html">For agents</a> page covers global serve, pinned --workspace, and the six skill targets.</p>
+          <p>tracker init writes Atlas-managed MCP entries pointing at tracker mcp serve --global --tool-profile workflow. Restart the client. Agents can also drive the CLI with JSON output and stable exit codes. The <a href="mcp.html">For agents</a> page covers global serve, pinned --workspace, and the six skill targets.</p>
         </details>
         <details>
           <summary>Do I wire each coding agent by hand?</summary>
@@ -560,7 +560,7 @@
         </details>
         <details>
           <summary>How do I uninstall it?</summary>
-          <p>On the v1.15 candidate, run tracker uninstall to preview Atlas-owned software, then tracker uninstall --yes to apply. Boards, history, backups, and registry pointers stay. Removing the binary by hand also leaves repository data in place.</p>
+          <p>Run tracker uninstall to preview Atlas-owned software, then tracker uninstall --yes to apply. Boards, history, backups, and registry pointers stay. Removing the binary by hand also leaves repository data in place.</p>
         </details>
         <details>
           <summary>How do I delete my data?</summary>

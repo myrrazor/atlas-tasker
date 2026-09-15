@@ -1,9 +1,9 @@
 # Quickstart
 
-Copy this into a directory named `app` after a v1.15 `tracker` is on your `PATH`.
+Copy this into a directory named `app` after `tracker` is on your `PATH`.
 The directory name is the default project key, so `--project APP` is valid. The
-curl installer still installs the latest published tag; build this tree for Home
-and global MCP until a v1.15 release exists.
+one-line installer is the normal path; it does not initialize this directory.
+Run `tracker init` here, then restart detected coding agents.
 
 ```bash
 mkdir app && cd app
