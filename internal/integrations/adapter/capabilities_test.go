@@ -75,6 +75,47 @@ func TestMatrixInvariants(t *testing.T) {
 	}
 }
 
+func TestNativeSkillRootsAndCursorAgent(t *testing.T) {
+	codex, err := CapabilitiesFor(integrations.TargetCodex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if codex.SkillDir != integrations.AgentsRootSkillDir {
+		t.Fatalf("codex skill dir %s", codex.SkillDir)
+	}
+	if len(codex.LegacySkillDirs) != 1 || codex.LegacySkillDirs[0] != integrations.CodexLegacySkillDir {
+		t.Fatalf("codex legacy %v", codex.LegacySkillDirs)
+	}
+	grok, err := CapabilitiesFor(integrations.TargetGrok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if grok.SkillDir != integrations.GrokNativeSkillDir {
+		t.Fatalf("grok skill dir %s", grok.SkillDir)
+	}
+	cursor, err := CapabilitiesFor(integrations.TargetCursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := cursor.ExecutableNames()
+	if len(names) != 2 || names[0] != "cursor" || names[1] != "cursor-agent" {
+		t.Fatalf("cursor executables %v", names)
+	}
+	if cursor.SkillDir != integrations.CursorNativeSkillDir {
+		t.Fatalf("cursor skill dir %s", cursor.SkillDir)
+	}
+}
+
+func TestClientExecutableNamesMatchMatrix(t *testing.T) {
+	for _, row := range Matrix() {
+		got := integrations.ClientExecutableNames(row.Target)
+		want := row.ExecutableNames()
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("%s executables %v want %v", row.Target, got, want)
+		}
+	}
+}
+
 func TestCapabilitiesForUnknownTarget(t *testing.T) {
 	if _, err := CapabilitiesFor("vim"); err == nil {
 		t.Fatal("unknown target must error")

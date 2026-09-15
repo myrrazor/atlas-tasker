@@ -85,8 +85,8 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 	}
 	defer func() { _ = ws.Close() }()
 
-	if opts.DefaultProject && settings.DefaultProject {
-		key, err := ensureDefaultProject(ctx, ws, root)
+	if strings.TrimSpace(opts.ProjectKey) != "" || (opts.DefaultProject && settings.DefaultProject) {
+		key, err := ensureInitProject(ctx, ws, root, opts.ProjectKey, opts.ProjectName)
 		if err != nil {
 			result.Steps = append(result.Steps, InitStep{Name: "default_project", Status: InitStepFailed, Detail: err.Error()})
 		} else {
@@ -196,7 +196,7 @@ func (a *App) EnsureDefaultProjectAndRegister(ctx context.Context, root string) 
 	settings := a.snapshotSettings()
 	var key string
 	if settings.DefaultProject {
-		key, err = ensureDefaultProject(ctx, ws, root)
+		key, err = ensureInitProject(ctx, ws, root, "", "")
 		if err != nil {
 			return "", WorkspaceRecord{}, err
 		}
@@ -242,7 +242,7 @@ func (a *App) initHomeService(ctx context.Context, opts InitOptions, steps []Ini
 	return &status, append(steps, InitStep{Name: "service", Status: InitStepDone, Detail: status.URL})
 }
 
-func ensureDefaultProject(ctx context.Context, ws *Workspace, root string) (string, error) {
+func ensureInitProject(ctx context.Context, ws *Workspace, root, key, name string) (string, error) {
 	projects, err := ws.Actions.Projects.ListProjects(ctx)
 	if err != nil {
 		return "", err
@@ -250,8 +250,15 @@ func ensureDefaultProject(ctx context.Context, ws *Workspace, root string) (stri
 	if len(projects) > 0 {
 		return "", nil
 	}
-	key := DefaultProjectKey(filepath.Base(root))
-	name := filepath.Base(root)
+	key = strings.TrimSpace(key)
+	name = strings.TrimSpace(name)
+	fallback := filepath.Base(root)
+	if key == "" {
+		key = DefaultProjectKey(fallback)
+	}
+	if name == "" {
+		name = fallback
+	}
 	if strings.TrimSpace(name) == "" {
 		name = key
 	}
@@ -259,16 +266,19 @@ func ensureDefaultProject(ctx context.Context, ws *Workspace, root string) (stri
 	if ws.Actions != nil && ws.Actions.Clock != nil {
 		now = ws.Actions.Clock().UTC()
 	}
-	err = ws.Actions.CreateProject(ctx, contracts.Project{
+	project := contracts.NormalizeProject(contracts.Project{
 		Key:           key,
 		Name:          name,
 		CreatedAt:     now,
 		SchemaVersion: contracts.CurrentSchemaVersion,
 	})
-	if err != nil {
+	if err := project.Validate(); err != nil {
+		return "", apperr.New(apperr.CodeInvalidInput, err.Error())
+	}
+	if err := ws.Actions.CreateProject(ctx, project); err != nil {
 		return "", err
 	}
-	return key, nil
+	return project.Key, nil
 }
 
 func (a *App) initLocalBackup(ctx context.Context, ws *Workspace) BackupInitReport {

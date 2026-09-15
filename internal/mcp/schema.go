@@ -41,6 +41,11 @@ func objectSchema(required []string, props map[string]any) map[string]any {
 	if props == nil {
 		props = map[string]any{}
 	}
+	if required == nil {
+		// Strict MCP hosts (OpenClaw 2026.9.2) reject JSON null here.
+		// An empty array is "no required fields"; named required lists are unchanged.
+		required = []string{}
+	}
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,

@@ -163,6 +163,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/schedule", s.handleScheduleAPI)
 	mux.HandleFunc("/api/tickets/", s.handleTicketAPI)
 	mux.HandleFunc("/actions/projects/create", s.handleCreateProject)
+	mux.HandleFunc("/actions/agents/create", s.handleCreateAgent)
 	mux.HandleFunc("/actions/tickets/create", s.handleCreateTicket)
 	mux.HandleFunc("/actions/tickets/", s.handleTicketAction)
 	mux.HandleFunc("/actions/schedule/", s.handleScheduleAction)
@@ -406,7 +407,7 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 	}
 	page.Error = err.Error()
 	switch target {
-	case "create", "edit", "comment", "schedule":
+	case "create", "edit", "comment", "schedule", "link", "unlink", "archive", "claim", "assign":
 		page.Form = r.Form
 		page.FormTarget = target
 	}

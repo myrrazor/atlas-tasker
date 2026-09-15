@@ -339,7 +339,7 @@ test("MCP tool page covers every source workflow tool", () => {
   }
 });
 
-test("public workflow guidance matches the v1.15 release contracts", () => {
+test("public workflow guidance matches the v1.16 release contracts", () => {
   const home = textContent(pages.get("index.html"));
   const cli = textContent(pages.get("cli.html"));
   const gettingStarted = textContent(pages.get("docs/getting-started.html"));
@@ -371,7 +371,7 @@ test("public workflow guidance matches the v1.15 release contracts", () => {
   assert.match(changelog, /v1\.12\.0 — Agent Setup And Documentation/i);
   assert.doesNotMatch(changelog, /v1\.12\.0 remains the latest published stable version/i);
   assert.match(pages.get("changelog.html"), /releases\/tag\/v1\.13\.0/i);
-  assert.match(gettingStarted, /tracker update --version v1\.15\.0 --yes/);
+  assert.match(gettingStarted, /tracker update --version v1\.16\.0 --yes/);
   const homeWorkspaces = textContent(pages.get("docs/home.html"));
   const backup = textContent(pages.get("docs/backup.html"));
   const uninstall = textContent(pages.get("docs/uninstall.html"));

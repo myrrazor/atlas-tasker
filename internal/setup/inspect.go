@@ -25,6 +25,7 @@ type Inspection struct {
 	RequiredReviewer string                   `json:"required_reviewer,omitempty"`
 	Detections       []integrations.Detection `json:"detections"`
 	ManagedBlocks    []ManagedBlockSighting   `json:"managed_blocks"`
+	SkillSightings   []SkillSighting          `json:"skill_sightings,omitempty"`
 	MCPSightings     []MCPSighting            `json:"existing_mcp_registrations"`
 	Manifest         *Manifest                `json:"setup_manifest,omitempty"`
 	Backup           BackupInspection         `json:"backup"`
@@ -36,6 +37,17 @@ type ManagedBlockSighting struct {
 	Target  integrations.Target `json:"target"`
 	Path    string              `json:"path"`
 	Present bool                `json:"present"`
+}
+
+// SkillSighting is a read-only observation that an atlas-worker file exists
+// on disk. Present is installation, not a native client skills/list result
+// and not a live MCP connection.
+type SkillSighting struct {
+	Target       integrations.Target `json:"target"`
+	Path         string              `json:"path"`
+	Kind         string              `json:"kind"`
+	Present      bool                `json:"present"`
+	AtlasManaged bool                `json:"atlas_managed,omitempty"`
 }
 
 // MCPSighting is a read-only observation of an atlas-* server name in a
@@ -62,11 +74,12 @@ type SchedulerInspection struct {
 
 func inspectWorkspace(workspaceRoot, home, stateDir string, lookPath func(string) (string, error), getenv func(string) string) (Inspection, error) {
 	inspection := Inspection{
-		WorkspaceRoot: workspaceRoot,
-		Projects:      []string{},
-		Agents:        []string{},
-		ManagedBlocks: []ManagedBlockSighting{},
-		MCPSightings:  []MCPSighting{},
+		WorkspaceRoot:  workspaceRoot,
+		Projects:       []string{},
+		Agents:         []string{},
+		ManagedBlocks:  []ManagedBlockSighting{},
+		SkillSightings: []SkillSighting{},
+		MCPSightings:   []MCPSighting{},
 	}
 	if info, err := os.Stat(storage.TrackerDir(workspaceRoot)); err == nil && info.IsDir() {
 		inspection.Initialized = true
@@ -103,6 +116,7 @@ func inspectWorkspace(workspaceRoot, home, stateDir string, lookPath func(string
 		inspection.ManagedBlocks = append(inspection.ManagedBlocks, ManagedBlockSighting{
 			Target: target, Path: instruction, Present: present,
 		})
+		inspection.SkillSightings = append(inspection.SkillSightings, skillSightings(workspaceRoot, target, caps)...)
 		for _, rel := range knownMCPConfigRels(target) {
 			path := rel
 			if !filepath.IsAbs(path) {
@@ -224,4 +238,32 @@ func listStemNames(dir, ext string) []string {
 
 func managedModePath(root string) string {
 	return storage.ManagedModeFile(root)
+}
+
+func skillSightings(root string, target integrations.Target, caps adapter.Capabilities) []SkillSighting {
+	var out []SkillSighting
+	add := func(rel, kind string) {
+		if rel == "" {
+			return
+		}
+		path := filepath.Join(root, filepath.FromSlash(rel), "SKILL.md")
+		item := SkillSighting{Target: target, Path: path, Kind: kind}
+		raw, err := os.ReadFile(path)
+		if err == nil {
+			item.Present = true
+			item.AtlasManaged = integrations.AtlasManagedSkillFile(path, raw)
+		}
+		out = append(out, item)
+	}
+	add(caps.SkillDir, "native")
+	for _, rel := range caps.LegacySkillDirs {
+		add(rel, "legacy")
+	}
+	for _, rel := range caps.SkillDiscoverDirs {
+		if rel == caps.SkillDir {
+			continue
+		}
+		add(filepath.Join(rel, "atlas-worker"), "compatibility_root")
+	}
+	return out
 }

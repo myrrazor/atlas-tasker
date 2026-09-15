@@ -52,10 +52,13 @@ identifies the current stable version and records its hosted verification.
 ## What Update Does Not Change
 
 The command replaces only the running `tracker` binary. It does not edit workspaces, refresh
-agent-integration files, register MCP clients, or change agent/provider configuration. To refresh an
-installed `atlas-worker` pack after upgrading, re-run its explicit install command:
+agent-integration files, register MCP clients, or change agent/provider configuration. Skills do
+not refresh automatically. After a binary replace, re-run `tracker init` **inside each
+workspace**, or the documented scoped setup / explicit install:
 
 ```bash
+tracker init
+# or one target:
 tracker integrations install codex
 ```
 

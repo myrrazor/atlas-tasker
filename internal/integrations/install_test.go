@@ -1,6 +1,7 @@
 package integrations
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,12 +33,15 @@ func TestInstallCodexCreatesManagedFiles(t *testing.T) {
 	if !strings.Contains(string(guide), "tracker ticket claim <ID>") || !strings.Contains(string(guide), "tracker run launch <RUN-ID>") || !strings.Contains(string(guide), "tracker goal brief <ID> --md") || !strings.Contains(string(guide), "--type test_result") {
 		t.Fatalf("unexpected guide content: %s", string(guide))
 	}
-	skill, err := os.ReadFile(filepath.Join(root, ".codex", "skills", "atlas-worker", "SKILL.md"))
+	skill, err := os.ReadFile(filepath.Join(root, ".agents", "skills", "atlas-worker", "SKILL.md"))
 	if err != nil {
 		t.Fatalf("read codex skill: %v", err)
 	}
 	if !strings.Contains(string(skill), "name: atlas-worker") || !strings.Contains(string(skill), "tracker agent available <agent-id> --json") || !strings.Contains(string(skill), "tracker run dispatch <ID> --agent agent:<agent-id>") {
 		t.Fatalf("unexpected skill content: %s", string(skill))
+	}
+	if _, err := os.Stat(filepath.Join(root, ".codex", "skills", "atlas-worker", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatal("fresh Codex install must not write the legacy .codex/skills root")
 	}
 	if len(result.SkillFiles) == 0 || len(result.CommandFiles) == 0 {
 		t.Fatalf("install result should list skill and command files: %#v", result)
@@ -181,7 +185,11 @@ func TestAllProviderSkillsShareManagedLifecycle(t *testing.T) {
 		if strings.Contains(body, "atlas-manager") || strings.Contains(body, "atlas-board") && !strings.Contains(body, "atlas.board") {
 			t.Fatalf("%s invented a second skill name", provider)
 		}
-		if !strings.Contains(body, "from "+skillProviderLabel(provider)) {
+		if provider == "codex" || provider == "openclaw" {
+			if !strings.Contains(body, "from coding-agent sessions that load project .agents/skills") {
+				t.Fatalf("%s shared agents-root skill missing identity:\n%s", provider, body)
+			}
+		} else if !strings.Contains(body, "from "+skillProviderLabel(provider)) {
 			t.Fatalf("%s skill should name its provider identity", provider)
 		}
 		for _, needle := range needles {
@@ -255,7 +263,7 @@ func TestGenericAndGrokKeepDistinctSkillsAndPreserveLegacyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read generic skill: %v", err)
 	}
-	grokSkill, err := os.ReadFile(filepath.Join(root, ".tracker", "integrations", "grok-agent-skill", "SKILL.md"))
+	grokSkill, err := os.ReadFile(filepath.Join(root, ".grok", "skills", "atlas-worker", "SKILL.md"))
 	if err != nil {
 		t.Fatalf("read grok skill: %v", err)
 	}
@@ -338,8 +346,8 @@ func TestSkillFrontmatterParses(t *testing.T) {
 				t.Fatalf("%s skill description is missing %q:\n%s", provider, trigger, parsed.Description)
 			}
 		}
-		if provider == "openclaw" && parsed.Metadata["openclaw"] == nil {
-			t.Fatalf("openclaw skill should carry its gating metadata:\n%s", frontmatter)
+		if (provider == "openclaw" || provider == "codex") && parsed.Metadata["openclaw"] == nil {
+			t.Fatalf("%s shared agents-root skill should carry OpenClaw gating metadata:\n%s", provider, frontmatter)
 		}
 	}
 }
@@ -455,5 +463,213 @@ func TestInstallForceOverwritesInstructionFile(t *testing.T) {
 	}
 	if !strings.HasPrefix(content, managedBegin) {
 		t.Fatalf("expected managed-only file after force install: %s", content)
+	}
+}
+
+func TestInstallMigratesAtlasManagedLegacySkills(t *testing.T) {
+	// Codex 0.144.5 still lists .codex/skills; removing the Atlas-managed copy
+	// after writing .agents is canonicalization so the same skill is not listed
+	// twice, not repair of a dead path.
+	root := t.TempDir()
+	legacyCodex := filepath.Join(root, ".codex", "skills", "atlas-worker", "SKILL.md")
+	legacyGrok := filepath.Join(root, ".tracker", "integrations", "grok-agent-skill", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(legacyCodex), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyCodex, []byte(v115ProviderSkill("codex")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyGrok), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyGrok, []byte(atlasWorkerSkill("grok")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Installer{Root: root}).Install(TargetCodex, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Installer{Root: root}).Install(TargetGrok, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agents", "skills", "atlas-worker", "SKILL.md")); err != nil {
+		t.Fatalf("codex native skill missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".grok", "skills", "atlas-worker", "SKILL.md")); err != nil {
+		t.Fatalf("grok native skill missing: %v", err)
+	}
+	if _, err := os.Stat(legacyCodex); !os.IsNotExist(err) {
+		t.Fatal("Atlas-managed legacy Codex skill should have been removed")
+	}
+	if _, err := os.Stat(legacyGrok); !os.IsNotExist(err) {
+		t.Fatal("Atlas-managed legacy Grok skill should have been removed")
+	}
+}
+
+func TestInstallKeepsCustomizedLegacySkillWithMarkers(t *testing.T) {
+	root := t.TempDir()
+	legacy := filepath.Join(root, ".codex", "skills", "atlas-worker", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	custom := v115ProviderSkill("codex") + "\n## House rule\nAlways run tracker inspect before claiming a ticket.\n"
+	if err := os.WriteFile(legacy, []byte(custom), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := (Installer{Root: root}).Install(TargetCodex, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != custom {
+		t.Fatalf("customized leftover was rewritten:\n%s", got)
+	}
+	found := false
+	for _, path := range result.Collisions {
+		if filepath.Base(path) == "SKILL.md" && strings.Contains(path, string(filepath.Separator)+filepath.FromSlash(CodexLegacySkillDir)+string(filepath.Separator)) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("customized leftover must be reported as a collision: %+v", result.Collisions)
+	}
+	for _, path := range result.LegacyRemoved {
+		if strings.Contains(path, string(filepath.Separator)+filepath.FromSlash(CodexLegacySkillDir)+string(filepath.Separator)) {
+			t.Fatal("customized leftover must not be deleted")
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agents", "skills", "atlas-worker", "SKILL.md")); err != nil {
+		t.Fatal("canonical Codex skill missing")
+	}
+}
+
+func TestInstallDoesNotFollowLegacySymlinks(t *testing.T) {
+	t.Run("legacy-root", func(t *testing.T) {
+		root, outside := t.TempDir(), t.TempDir()
+		payload := []byte(v115ProviderSkill("codex"))
+		outsideSkill := filepath.Join(outside, "SKILL.md")
+		if err := os.WriteFile(outsideSkill, payload, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(root, ".codex", "skills"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(root, ".codex", "skills", "atlas-worker")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (Installer{Root: root}).Install(TargetCodex, false); err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(outsideSkill)
+		if err != nil || !bytes.Equal(got, payload) {
+			t.Fatalf("outside fixture changed: %s %v", got, err)
+		}
+		info, err := os.Lstat(filepath.Join(root, ".codex", "skills", "atlas-worker"))
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Fatal("legacy-root symlink must be preserved")
+		}
+	})
+	t.Run("ancestor", func(t *testing.T) {
+		root, outside := t.TempDir(), t.TempDir()
+		payload := []byte(v115ProviderSkill("codex"))
+		outsideDir := filepath.Join(outside, "atlas-worker")
+		if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		outsideSkill := filepath.Join(outsideDir, "SKILL.md")
+		if err := os.WriteFile(outsideSkill, payload, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(root, ".codex"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(root, ".codex", "skills")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (Installer{Root: root}).Install(TargetCodex, false); err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(outsideSkill)
+		if err != nil || !bytes.Equal(got, payload) {
+			t.Fatalf("outside fixture changed: %s %v", got, err)
+		}
+		info, err := os.Lstat(filepath.Join(root, ".codex", "skills"))
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			t.Fatal("ancestor symlink must be preserved")
+		}
+	})
+}
+
+func TestInstallPreservesUnmanagedSkillCollision(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".cursor", "skills", "atlas-worker", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const custom = "this is my own atlas-worker, hands off\n"
+	if err := os.WriteFile(path, []byte(custom), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := (Installer{Root: root}).Install(TargetCursor, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Collisions) == 0 {
+		t.Fatal("expected collision on unmanaged skill")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != custom {
+		t.Fatalf("unmanaged skill was overwritten: %q", got)
+	}
+}
+
+func TestCodexAndOpenClawShareAgentsRootSkill(t *testing.T) {
+	root := t.TempDir()
+	for _, target := range []Target{TargetCodex, TargetOpenClaw} {
+		if _, err := (Installer{Root: root}).Install(target, false); err != nil {
+			t.Fatalf("install %s: %v", target, err)
+		}
+	}
+	shared := filepath.Join(root, ".agents", "skills", "atlas-worker", "SKILL.md")
+	body, err := os.ReadFile(shared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != atlasWorkerSkill("codex") || string(body) != atlasWorkerSkill("openclaw") {
+		t.Fatal("shared SKILL.md must be identical for Codex and OpenClaw")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agents", "skills", "atlas-worker", "agents", "openai.yaml")); err != nil {
+		t.Fatal("codex extras missing")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agents", "skills", "atlas-worker", "commands", "atlas-take.md")); err != nil {
+		t.Fatal("openclaw extras missing")
+	}
+	agents, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(agents), "Atlas Tasker (Codex)") || !strings.Contains(string(agents), "Atlas Tasker (OpenClaw)") {
+		t.Fatalf("expected both instruction blocks:\n%s", agents)
+	}
+}
+
+func TestUninstallCodexKeepsSharedSkillWhileOpenClawRemains(t *testing.T) {
+	root := t.TempDir()
+	for _, target := range []Target{TargetCodex, TargetOpenClaw} {
+		if _, err := (Installer{Root: root}).Install(target, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shared := filepath.Join(root, ".agents", "skills", "atlas-worker", "SKILL.md")
+	if !KeepSharedAgentsSkill(root, TargetCodex, shared) {
+		t.Fatal("OpenClaw block is present; Codex uninstall must keep the shared SKILL.md")
+	}
+	if KeepSharedAgentsSkill(root, TargetCodex, filepath.Join(root, ".agents", "skills", "atlas-worker", "agents", "openai.yaml")) {
+		t.Fatal("Codex-only extras must not be retained for OpenClaw")
 	}
 }

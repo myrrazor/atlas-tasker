@@ -191,9 +191,18 @@ type Capabilities struct {
 	Target           integrations.Target `json:"target"`
 	DisplayName      string              `json:"display_name"`
 	ClientExecutable string              `json:"client_executable,omitempty"`
-	VersionArgs      []string            `json:"version_args,omitempty"`
-	InstructionFile  string              `json:"instruction_file"`
-	SkillDir         string              `json:"skill_dir"`
+	// AlternateExecutables are extra PATH names that count as this client.
+	// Cursor CLI is cursor-agent; the GUI binary remains cursor.
+	AlternateExecutables []string `json:"alternate_executables,omitempty"`
+	VersionArgs          []string `json:"version_args,omitempty"`
+	InstructionFile      string   `json:"instruction_file"`
+	SkillDir             string   `json:"skill_dir"`
+	// LegacySkillDirs are previous Atlas write locations. Plans may remove
+	// Atlas-managed files there; they are not the native install root.
+	LegacySkillDirs []string `json:"legacy_skill_dirs,omitempty"`
+	// SkillDiscoverDirs are extra project skill roots this client also loads.
+	// Atlas does not write this target's skill there unless it is SkillDir.
+	SkillDiscoverDirs []string `json:"skill_discover_dirs,omitempty"`
 	// CommandDir is the client-native command template directory Atlas owns,
 	// when it is not inside SkillDir (Claude Code's .claude/commands).
 	CommandDir      string               `json:"command_dir,omitempty"`
@@ -242,7 +251,23 @@ func (c Capabilities) ManagedRoots() []string {
 	if c.CommandDir != "" {
 		roots = append(roots, c.CommandDir)
 	}
+	roots = append(roots, c.LegacySkillDirs...)
 	return roots
+}
+
+// ExecutableNames is PATH lookup order: preferred binary then alternates.
+func (c Capabilities) ExecutableNames() []string {
+	names := make([]string, 0, 1+len(c.AlternateExecutables))
+	if c.ClientExecutable != "" {
+		names = append(names, c.ClientExecutable)
+	}
+	for _, alt := range c.AlternateExecutables {
+		if strings.TrimSpace(alt) == "" || alt == c.ClientExecutable {
+			continue
+		}
+		names = append(names, alt)
+	}
+	return names
 }
 
 // Validate enforces the matrix invariants every row must satisfy.
@@ -253,7 +278,7 @@ func (c Capabilities) Validate() error {
 	if c.DisplayName == "" || c.InstructionFile == "" || c.SkillDir == "" {
 		return fmt.Errorf("%s: display name, instruction file, and skill dir are required", c.Target)
 	}
-	for _, rel := range c.ManagedRoots() {
+	for _, rel := range append(append([]string{}, c.ManagedRoots()...), c.SkillDiscoverDirs...) {
 		if filepath.IsAbs(rel) || filepath.ToSlash(filepath.Clean(rel)) != rel || strings.HasPrefix(rel, "..") || strings.HasPrefix(rel, "~") {
 			return fmt.Errorf("%s: managed root %q must be a clean workspace-relative path", c.Target, rel)
 		}
@@ -361,7 +386,8 @@ func codexCapabilities() Capabilities {
 		ClientExecutable: "codex",
 		VersionArgs:      []string{"--version"},
 		InstructionFile:  "AGENTS.md",
-		SkillDir:         ".codex/skills/atlas-worker",
+		SkillDir:         integrations.AgentsRootSkillDir,
+		LegacySkillDirs:  []string{integrations.CodexLegacySkillDir},
 		MCPSupport:       MCPSupportNativeConfigFile,
 		Scopes: []ScopeCapability{
 			{
@@ -382,6 +408,7 @@ func codexCapabilities() Capabilities {
 		MaxPlannedState: StateConnected,
 		VersionPolicy:   "codex --version must parse; the adapter pins the verified range from Sprint 114.2 real-client runs and reports unsupported_client_version otherwise.",
 		Sources: []string{
+			"https://learn.chatgpt.com/docs/build-skills",
 			"https://learn.chatgpt.com/docs/extend/mcp",
 			"https://learn.chatgpt.com/docs/config-file/config-reference",
 		},
@@ -389,6 +416,7 @@ func codexCapabilities() Capabilities {
 			"Effective precedence when the same server name exists in user and project files (official reference calls project files overrides; third-party sources disagree).",
 			"Whether a running Codex session reloads .codex/config.toml without a new session.",
 			"MCP Apps rendering.",
+			"Whether Cursor compatibility loading of leftover .codex/skills plus .cursor/skills and .agents/skills lists duplicate atlas-worker names. Duplicate avoidance is verified only for Codex 0.144.5 listing both .codex and .agents when both Atlas copies remain.",
 		},
 	}
 }
@@ -400,7 +428,7 @@ func claudeCapabilities() Capabilities {
 		ClientExecutable: "claude",
 		VersionArgs:      []string{"--version"},
 		InstructionFile:  "CLAUDE.md",
-		SkillDir:         ".claude/skills/atlas-worker",
+		SkillDir:         integrations.ClaudeNativeSkillDir,
 		CommandDir:       ".claude/commands",
 		MCPSupport:       MCPSupportClientCLI,
 		Scopes: []ScopeCapability{
@@ -438,13 +466,15 @@ func claudeCapabilities() Capabilities {
 
 func cursorCapabilities() Capabilities {
 	return Capabilities{
-		Target:           integrations.TargetCursor,
-		DisplayName:      "Cursor",
-		ClientExecutable: "cursor",
-		VersionArgs:      []string{"--version"},
-		InstructionFile:  "AGENTS.md",
-		SkillDir:         ".cursor/skills/atlas-worker",
-		MCPSupport:       MCPSupportNativeConfigFile,
+		Target:               integrations.TargetCursor,
+		DisplayName:          "Cursor",
+		ClientExecutable:     "cursor",
+		AlternateExecutables: []string{"cursor-agent"},
+		VersionArgs:          []string{"--version"},
+		InstructionFile:      "AGENTS.md",
+		SkillDir:             integrations.CursorNativeSkillDir,
+		SkillDiscoverDirs:    []string{".agents/skills", ".claude/skills", ".codex/skills"},
+		MCPSupport:           MCPSupportNativeConfigFile,
 		Scopes: []ScopeCapability{
 			{
 				Scope: ScopeProjectShared, Path: ".cursor/mcp.json", Format: ConfigFormatJSON, WriteMethod: WriteMethodAtlasFileEdit,
@@ -462,8 +492,9 @@ func cursorCapabilities() Capabilities {
 		MCPApps:         SupportYes,
 		SafeRemoval:     SupportYes,
 		MaxPlannedState: StateConnected,
-		VersionPolicy:   "cursor --version must parse; Sprint 114.2 pins the verified range.",
+		VersionPolicy:   "cursor --version or cursor-agent --version must parse; Sprint 114.2 pins the verified GUI range. CLI-only cursor-agent is a valid detection.",
 		Sources: []string{
+			"https://cursor.com/docs/skills",
 			"https://cursor.com/docs/mcp",
 		},
 		Unverified: []string{
@@ -471,6 +502,9 @@ func cursorCapabilities() Capabilities {
 			"Whether a project-scope server needs an explicit enable step in Customize.",
 			"MCP App rendering for project-scope servers (known limitation noted in the plan).",
 			"A Cursor CLI listing command usable for client_cli_list.",
+			"Whether a given cursor-agent build loads project .cursor/mcp.json without the GUI binary.",
+			"Cloud Cursor receiving repo skills; global ~/.cursor files do not automatically travel to cloud agents.",
+			"Whether Cursor lists duplicate atlas-worker entries when .cursor/skills, .agents/skills, and leftover .codex/skills all exist. Atlas does not claim duplicate avoidance across Cursor compatibility roots.",
 		},
 	}
 }
@@ -482,7 +516,7 @@ func openclawCapabilities() Capabilities {
 		ClientExecutable: "openclaw",
 		VersionArgs:      []string{"--version"},
 		InstructionFile:  "AGENTS.md",
-		SkillDir:         ".agents/skills/atlas-worker",
+		SkillDir:         integrations.AgentsRootSkillDir,
 		MCPSupport:       MCPSupportClientCLI,
 		Scopes: []ScopeCapability{
 			{
@@ -504,6 +538,7 @@ func openclawCapabilities() Capabilities {
 			"Exact --version output format.",
 			"Whether the Gateway needs a restart or only a reload after add/unset.",
 			"MCP Apps rendering.",
+			"OpenClaw 2026.9.2 native mcp add reaches tools/list; v1.15.0 rejected required JSON null. Candidate emits [] for empty required. Codex reruns native add after integrate.",
 		},
 	}
 }
@@ -515,7 +550,8 @@ func grokCapabilities() Capabilities {
 		ClientExecutable: "grok",
 		VersionArgs:      []string{"version"},
 		InstructionFile:  "AGENTS.md",
-		SkillDir:         ".tracker/integrations/grok-agent-skill",
+		SkillDir:         integrations.GrokNativeSkillDir,
+		LegacySkillDirs:  []string{integrations.GrokLegacySkillDir},
 		MCPSupport:       MCPSupportClientCLI,
 		Scopes: []ScopeCapability{
 			{
@@ -537,6 +573,7 @@ func grokCapabilities() Capabilities {
 		MaxPlannedState: StateConnected,
 		VersionPolicy:   "grok version must parse; Sprint 114.2 pins the verified range.",
 		Sources: []string{
+			"https://docs.x.ai/build/features/skills-plugins-marketplaces",
 			"https://docs.x.ai/build/features/mcp-servers",
 			"https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/05-configuration.md",
 		},
@@ -546,6 +583,7 @@ func grokCapabilities() Capabilities {
 			"Whether a running session reloads after config edits without the TUI refresh.",
 			"MCP Apps rendering.",
 			"Compatibility loading of .cursor/mcp.json and .mcp.json passes other clients' placeholders (${workspaceFolder}) literally: ${VAR} expansion is documented for Grok's own config only, so an imported Cursor entry fails closed at --expected-workspace-id rather than serving another workspace (AT114-207/209 duplicate handling).",
+			"Grok 1.0.30 inspect is empty for project .grok/skills until the native TUI trust prompt is accepted (projectTrusted=true). Atlas does not write that trust. User ~/.agents is client-owned; Atlas does not write it or repo .agents for Grok.",
 		},
 	}
 }
@@ -555,7 +593,7 @@ func genericCapabilities() Capabilities {
 		Target:          integrations.TargetGeneric,
 		DisplayName:     "Generic agent",
 		InstructionFile: "AGENTS.md",
-		SkillDir:        ".tracker/integrations/generic-agent-skill",
+		SkillDir:        integrations.GenericNativeSkillDir,
 		MCPSupport:      MCPSupportPortableDescriptor,
 		Scopes: []ScopeCapability{
 			{

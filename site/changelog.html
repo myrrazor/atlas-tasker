@@ -74,6 +74,18 @@
     </header>
     <div class="legal-content">
       <section class="shell">
+        <h2>v1.16.0 — First-use and browser management</h2>
+        <ul>
+          <li><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.16.0">Download v1.16.0 and read its verification results</a>.</li>
+          <li>Install needs <code>curl</code>, <code>tar</code>, and <code>gh</code>. Local attestation-bundle verify does not need a GitHub login.</li>
+          <li>Ordinary path: install → <code>tracker init</code> → restart the client → ask for status. Init configures detected agents without a picker. The picker is <code>tracker init --integrations</code>.</li>
+          <li>Native skill roots: Grok <code>.grok/skills</code> (project trust first), Codex <code>.agents/skills</code> (legacy <code>.codex/skills</code> still lists on 0.144.5), Cursor detects <code>cursor-agent</code>, OpenClaw shares <code>.agents/skills</code>.</li>
+          <li>Home can create or attach a board and Kanban covers everyday tickets including Delete ticket, which retains files and history. Home init does not write client MCP files. A written config is not a live connection.</li>
+          <li><code>tracker update</code> still replaces only the binary. Re-run <code>tracker init</code> in each workspace to refresh managed skills.</li>
+        </ul>
+        <p>See the <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/migration-v1.16.md">v1.16 upgrade guide</a> for refreshing existing workspaces.</p>
+      </section>
+      <section class="shell">
         <h2>v1.15.0 — Atlas Home and agent setup</h2>
         <ul>
           <li><code>tracker init</code> then <code>tracker</code> is ordinary onboarding: workspace, default project, local checkpoints, Atlas-managed MCP for detected agents, and Atlas Home on <code>127.0.0.1:7432</code>. The one-line installer is the normal path. Unstamped source builds report <code>version: "dev"</code>.</li>

@@ -2,7 +2,12 @@
 
 Claude Code manages MCP servers with `/mcp` and `claude mcp` commands. Use an absolute `tracker` binary path and avoid shell wrappers.
 
-A user-scoped server starts wherever Claude Code happens to be, so pin the workspace with `--workspace`. CLI serve defaults to `--tool-profile workflow`; pass `--tool-profile read` or `--read-only` for inspection only:
+Ordinary `tracker init` already wrote user-scoped **`atlas-tasker`**
+(`mcp serve --global --tool-profile workflow`). The snippet below is the
+advanced pinned-workspace alternative. A user-scoped server starts wherever
+Claude Code happens to be, so pin the workspace with `--workspace`. CLI serve
+defaults to `--tool-profile workflow`; pass `--tool-profile read` or
+`--read-only` for inspection only:
 
 ```bash
 claude mcp add --transport stdio --scope user atlas -- /usr/local/bin/tracker mcp serve --workspace /path/to/workspace --tool-profile workflow

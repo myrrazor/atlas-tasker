@@ -93,7 +93,7 @@
         "name": "How do coding agents use it?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "tracker init writes Atlas-managed MCP entries pointing at tracker mcp serve --global --tool-profile workflow. Restart the client. Agents can also drive the CLI with JSON output and stable exit codes. The For agents page covers global serve, pinned --workspace, and the six skill targets."
+          "text": "tracker init writes Atlas-managed MCP entries named atlas-tasker pointing at tracker mcp serve --global --tool-profile workflow. Restart the client. A written file is not a live connection. Agents can also drive the CLI with JSON output and stable exit codes. The For agents page covers global serve, pinned --workspace, and the six skill targets."
         }
       },
       {
@@ -101,7 +101,7 @@
         "name": "Do I wire each coding agent by hand?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "No. The installer only places the binary; it does not initialize a repo or register agents. After install, tracker init detects Claude Code, Codex, Cursor, OpenClaw, and Grok on this machine and writes Atlas-managed MCP entries plus the worker skill unless you pass --no-agents. Restart the client. Open the repo in the agent and ask for the board. There is no second Atlas install inside Claude, Codex, Cursor, or Grok."
+          "text": "No. The installer only places the binary; it does not initialize a repo or register agents. After install, tracker init detects Claude Code, Codex, Cursor (including cursor-agent), OpenClaw, and Grok and writes Atlas-managed MCP entries plus the worker skill unless you pass --no-agents. Restart the client. Grok needs its own project-trust prompt before local skills appear. Atlas does not start those agents. Open the repo and ask for the board. There is no second Atlas install inside the client."
         }
       },
       {
@@ -117,7 +117,7 @@
         "name": "How do I update Atlas Tasker?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Run tracker update --check, then tracker update --yes to verify checksums/attestations and replace the binary. Use --version to pin a release, or re-run the curl installer."
+          "text": "Run tracker update --check, then tracker update --yes to verify checksums/attestations and replace the binary. Update replaces the binary only; re-run tracker init in each workspace to refresh managed skills. Use --version to pin a release, or re-run the curl installer."
         }
       },
       {
@@ -190,7 +190,7 @@
           <code id="hero-install" tabindex="0">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
         </div>
         <button class="copy-button" type="button" data-copy="hero-install" aria-label="Copy curl install command">Copy command</button>
-        <p class="command-note">macOS or Linux · arm64 or amd64 · MIT</p>
+        <p class="command-note">Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) · macOS or Linux · v1.16</p>
       </aside>
     </header>
 
@@ -212,7 +212,7 @@
                 <code id="gs-curl" tabindex="0">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
                 <button class="copy-button" type="button" data-copy="gs-curl" aria-label="Copy curl install command">Copy</button>
               </div>
-              <p>One small CLI, with a verified checksum and build attestation.</p>
+              <p>One small CLI. Needs <code>curl</code>, <code>tar</code>, and <code>gh</code>. Checksum plus a local attestation bundle; no GitHub login.</p>
             </div>
           </li>
           <li>
@@ -225,7 +225,7 @@
                 <code id="gs-init-ask" tabindex="0">Initialize Atlas Tasker in this project.</code>
                 <button class="copy-button" type="button" data-copy="gs-init-ask" aria-label="Copy initialize prompt">Copy</button>
               </div>
-              <p>Atlas creates your board, local checkpoints, and integrations for supported agents installed on your machine. Restart your agent to load the integration.</p>
+              <p>That is <code>tracker init</code>: board, local checkpoints, and integrations for agents already on this machine. No picker. Restart the agent. Grok also needs you to trust this project before local skills appear.</p>
             </div>
           </li>
           <li>
@@ -242,7 +242,7 @@
           </li>
         </ol>
 
-        <p class="requirements">The installer places the binary only. Run <code>tracker init</code> in each workspace, then restart detected coding agents so they load Atlas MCP.</p>
+        <p class="requirements">The installer places the binary only. Run <code>tracker init</code> in each workspace, then restart detected coding agents so they load Atlas MCP. A written config is not a live connection. Open <code>tracker</code> to create a board or manage tickets in the browser.</p>
 
         <figure class="terminal-shot get-started-shot" id="agent-demo">
           <div class="terminal-bar">
@@ -262,9 +262,58 @@
             <source src="assets/grok-flow.mp4" type="video/mp4" />
             <a href="assets/grok-flow.mp4">Download the Grok Build walkthrough</a>.
           </video>
-          <figcaption>50 seconds in Grok Build 4.6 (xhigh). Real session, synthetic tickets, v1.15 source build. Silent; pauses shortened.</figcaption>
+          <figcaption>Recorded in Grok Build 4.6 (xhigh). Real session, synthetic tickets, v1.15 source build. Silent; pauses shortened.</figcaption>
         </figure>
         <p id="agent-demo-summary" class="agent-demo-summary">Ask for status, add a high-priority task, and see it on the refreshed board. Grok reads eight tickets through Atlas MCP, creates APP-9, then confirms all nine. <a href="assets/grok-flow.mp4" download>Download video</a> · <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/examples/grok-video-transcript.md">Read the transcript</a>.</p>
+      </div>
+    </section>
+
+    <section id="shared-board" class="shared-board-section" aria-labelledby="shared-board-title">
+      <div class="shell">
+        <div class="section-heading get-started-heading">
+          <p class="section-label">Same board, many agents</p>
+          <h2 id="shared-board-title">Grok Build, Cursor, and Grok Bot on one board.</h2>
+          <p>Assign each coding agent its own tickets. They read the same Markdown board, claim with leases, and hand work to a reviewer without a second tracker.</p>
+        </div>
+        <figure class="terminal-shot get-started-shot" id="shared-board-demo">
+          <div class="terminal-bar">
+            <span class="terminal-title">Shared board</span>
+            <span class="terminal-state">Grok Build · Cursor · Grok Bot</span>
+          </div>
+          <video
+            width="1440"
+            height="900"
+            controls
+            playsinline
+            preload="none"
+            poster="assets/multi-agent-board-poster.webp"
+            aria-label="Atlas Tasker shared board walkthrough: tickets assigned to Grok Build, Cursor, and Grok Bot"
+            aria-describedby="shared-board-summary"
+          >
+            <source src="assets/multi-agent-board.mp4" type="video/mp4" />
+            <a href="assets/multi-agent-board.mp4">Download the shared-board walkthrough</a>.
+          </video>
+          <figcaption>Synthetic Example App board. Three agents, one project, local v1.15.0. Silent.</figcaption>
+        </figure>
+        <p id="shared-board-summary" class="agent-demo-summary">Grok Build owns the upgrade test, Cursor drafts the MCP guide, and Grok Bot reviews the retry fix on the same board. <a href="assets/multi-agent-board.mp4" download>Download video</a> · <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/examples/multi-agent-board.md">Read the transcript</a>.</p>
+        <div class="shared-board-stills">
+          <figure class="terminal-shot">
+            <div class="terminal-bar">
+              <span class="terminal-title">tracker web serve</span>
+              <span class="terminal-state">assignees visible</span>
+            </div>
+            <img src="assets/multi-agent-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Synthetic Atlas Tasker web board with tickets assigned to agent:grok-build, agent:cursor, and agent:grok-bot" />
+            <figcaption>Each card names its assignee. Grok Build, Cursor, and Grok Bot share the columns.</figcaption>
+          </figure>
+          <figure class="terminal-shot">
+            <div class="terminal-bar">
+              <span class="terminal-title">tracker board</span>
+              <span class="terminal-state">terminal table</span>
+            </div>
+            <img src="assets/multi-agent-terminal.webp" width="1152" height="330" loading="lazy" decoding="async" alt="Terminal board table showing assignee column for Grok Build, Cursor, and Grok Bot" />
+            <figcaption>The terminal table shows the same assignees and statuses as the browser board.</figcaption>
+          </figure>
+        </div>
       </div>
     </section>
 
@@ -280,7 +329,7 @@
             <span class="terminal-title">tracker web serve</span>
             <span class="terminal-state">127.0.0.1 · local only</span>
           </div>
-          <img src="assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Synthetic local review capture of the Atlas Tasker web board with six workflow columns and a separate Canceled disclosure" />
+          <img src="assets/web-board.png" width="1440" height="900" loading="lazy" decoding="async" alt="Atlas Tasker v1.16 in dark mode, showing example tickets and agent assignments across the Kanban columns" />
           <figcaption>A local Kanban board with six workflow columns and a separate Canceled disclosure. Synthetic review data.</figcaption>
         </figure>
         <div class="surface-stack">
@@ -392,8 +441,8 @@
         <div class="section-heading install-heading">
           <p class="section-label">Install</p>
           <h2>One binary. Then initialize here.</h2>
-          <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. It does not initialize a repository or register coding agents. After install, run <code>tracker init</code> in each workspace and restart those agents. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
-          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification. Unstamped source builds report <code>version: "dev"</code>.</p>
+          <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. Workspace initialization is a separate, explicit step. After install, run <code>tracker init</code> in each workspace and restart those agents. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
+          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification. <code>gh</code> does not need a GitHub login for the local bundle check. Unstamped source builds report <code>version: "dev"</code>.</p>
         </div>
 
         <div class="install-options">
@@ -461,7 +510,7 @@
               <code id="first-board" tabindex="0">tracker board</code>
               <button class="copy-button" type="button" data-copy="first-board" aria-label="Copy board command">Copy</button>
             </div>
-            <p class="requirements"><code>tracker init</code> then <code>tracker</code> is the workspace path: default project, local checkpoints, Atlas-managed MCP for detected agents, and Home on <code>127.0.0.1:7432</code>. Restart the coding agent after init so it loads Atlas MCP. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
+            <p class="requirements"><code>tracker init</code> then <code>tracker</code> is the workspace path: default project, local checkpoints, Atlas-managed MCP named <code>atlas-tasker</code> for detected agents (no picker), and Home on <code>127.0.0.1:7432</code>. Restart the coding agent after init so it loads Atlas MCP. Mutation commands resolve identity from <code>--actor</code>, <code>TRACKER_ACTOR</code>, or <code>actor.default</code>; without one, they exit before writing. Include <code>--reason</code> to preserve why the change happened. The <a href="docs/getting-started.html">getting started guide</a> walks the whole path.</p>
           </div>
         </div>
       </div>
@@ -491,11 +540,11 @@
         </details>
         <details>
           <summary>How do coding agents use it?</summary>
-          <p>tracker init writes Atlas-managed MCP entries pointing at tracker mcp serve --global --tool-profile workflow. Restart the client. Agents can also drive the CLI with JSON output and stable exit codes. The <a href="mcp.html">For agents</a> page covers global serve, pinned --workspace, and the six skill targets.</p>
+          <p>tracker init writes Atlas-managed MCP entries named atlas-tasker pointing at tracker mcp serve --global --tool-profile workflow. Restart the client. A written file is not a live connection. Agents can also drive the CLI with JSON output and stable exit codes. The <a href="mcp.html">For agents</a> page covers global serve, pinned --workspace, and the six skill targets.</p>
         </details>
         <details>
           <summary>Do I wire each coding agent by hand?</summary>
-          <p>No. The installer only places the binary; it does not initialize a repo or register agents. After install, tracker init detects Claude Code, Codex, Cursor, OpenClaw, and Grok on this machine and writes Atlas-managed MCP entries plus the worker skill unless you pass --no-agents. Restart the client. Open the repo in the agent and ask for the board. There is no second Atlas install inside Claude, Codex, Cursor, or Grok.</p>
+          <p>No. The installer only places the binary; it does not initialize a repo or register agents. After install, tracker init detects Claude Code, Codex, Cursor (including cursor-agent), OpenClaw, and Grok and writes Atlas-managed MCP entries plus the worker skill unless you pass --no-agents. Restart the client. Grok needs its own project-trust prompt before local skills appear. Atlas does not start those agents. Open the repo and ask for the board. There is no second Atlas install inside the client.</p>
         </details>
         <details>
           <summary>How do I get support?</summary>
@@ -503,7 +552,7 @@
         </details>
         <details>
           <summary>How do I update Atlas Tasker?</summary>
-          <p>Run tracker update --check, then tracker update --yes to verify checksums/attestations and replace the binary. Use --version to pin a release, or re-run the curl installer.</p>
+          <p>Run tracker update --check, then tracker update --yes to verify checksums/attestations and replace the binary. Update replaces the binary only; re-run tracker init in each workspace to refresh managed skills. Use --version to pin a release, or re-run the curl installer.</p>
         </details>
         <details>
           <summary>Why not just use Jira?</summary>

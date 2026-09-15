@@ -1,5 +1,10 @@
 # Tutorial 3: Run Your First Agent Ticket
 
+**Source-build walkthrough, advanced dispatch.** Everyday start is
+[tutorial 1](01-install-and-init.md) plus asking the agent for status. This
+page registers a profile and dispatches a tracked run. Atlas does not spawn
+the provider.
+
 Register an agent profile:
 
 ```bash

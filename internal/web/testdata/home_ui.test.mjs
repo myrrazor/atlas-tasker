@@ -75,3 +75,42 @@ test('Home consumes a claim added to an already-open sign-in tab only once', asy
   assert.equal(app.calls.filter(call => call[0] === 'post').length, 1);
   assert.equal(app.location.hash, '');
 });
+
+const homeScript = readFileSync(new URL('../static/home.js', import.meta.url), 'utf8');
+test('canceling a Home confirmation prompts once and leaves the form usable', () => {
+  const listeners = [];
+  const button = { disabled: false };
+  const classes = new Set();
+  const form = {
+    dataset: { confirm: 'Create this project?' },
+    classList: { add: value => classes.add(value), remove: value => classes.delete(value) },
+    querySelectorAll: () => [button],
+    addEventListener(name, handler) { if (name === 'submit') listeners.push(handler); },
+  };
+  const document = {
+    body: { dataset: { page: 'home' }, classList: { contains: value => value === 'home-body' } },
+    querySelector: () => null,
+    querySelectorAll(selector) { return selector.startsWith('form[') ? [form] : []; },
+    addEventListener() {},
+  };
+  let prompts = 0;
+  let accepted = false;
+  const window = {
+    location: new URL('http://127.0.0.1/'),
+    matchMedia: () => ({ matches: false }), addEventListener() {},
+    setTimeout() {}, confirm() { prompts++; return accepted; },
+  };
+  const context = { window, document, URL, URLSearchParams, console };
+  vm.runInNewContext(script, context);
+  vm.runInNewContext(homeScript, context);
+  const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+  for (const handler of listeners) handler(event);
+  assert.equal(prompts, 1);
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(button.disabled, false);
+  assert.equal(classes.size, 0);
+  accepted = true;
+  for (const handler of listeners) handler({ defaultPrevented: false });
+  assert.equal(prompts, 2);
+  assert.equal(button.disabled, true);
+});

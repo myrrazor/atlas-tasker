@@ -21,7 +21,7 @@
         {{/* only echo an explicit project — the server default must not become
              an explicit filter that empties saved views on the next submit */}}
         <label>{{t "board.field.project"}} <input name="project" value="{{if .ProjectExplicit}}{{.Project}}{{end}}" placeholder="{{if .Project}}{{.Project}}{{else}}APP{{end}}"></label>
-        <label>{{t "board.field.view"}} <input name="view" value="{{.View}}" placeholder="web-board"></label>
+        <label>{{t "board.field.view"}} <input name="view" value="{{.View}}" placeholder="web-board" list="saved-view-options"></label>
         <label>{{t "board.field.assignee"}} <input name="assignee" value="{{.Assignee}}" placeholder="agent:builder-1"></label>
         <label>{{t "board.field.reviewer"}} <input name="reviewer" value="{{.Reviewer}}" placeholder="agent:reviewer-1"></label>
         <label>{{t "board.field.label"}} <input name="label" value="{{.Label}}" placeholder="security"></label>
@@ -44,9 +44,48 @@
             <option value="subtask" {{if eq .Type "subtask"}}selected{{end}}>{{t "board.type.subtask"}}</option>
           </select>
         </label>
+        <label>Archived
+          <select name="archived">
+            <option value="">Hide archived</option>
+            <option value="1" {{if .ShowArchived}}selected{{end}}>Show archived</option>
+          </select>
+        </label>
         <button type="submit">{{t "board.filters.apply"}}</button>
       </form>
+      {{if .SavedViews}}
+        <p class="form-help">Saved views
+          {{range .SavedViews}}
+            <a href="{{$.BoardPath}}?view={{urlquery .Name}}{{if $.ProjectExplicit}}&amp;project={{$.Project}}{{end}}">{{if .Title}}{{.Title}}{{else}}{{.Name}}{{end}}</a>
+          {{end}}
+        </p>
+      {{else}}
+        <p class="form-help">Save a reusable filter with <code>tracker views save</code>; it will appear here.</p>
+      {{end}}
+      <datalist id="saved-view-options">{{range .SavedViews}}<option value="{{.Name}}"></option>{{end}}</datalist>
     </details>
+    {{if not .ReadOnly}}
+    <details class="filters-shell">
+      <summary>Register agent</summary>
+      <form class="filters" method="post" action="{{.ActionPrefix}}/actions/agents/create">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="actor" value="{{.Actor}}">
+        {{if .Project}}<input type="hidden" name="return_project" value="{{.Project}}">{{end}}
+        <label>Agent id <input name="agent_id" placeholder="builder-1" required></label>
+        <label>Name <input name="name" placeholder="Builder" required></label>
+        <label>Provider
+          <select name="provider">
+            <option value="codex">codex</option>
+            <option value="claude">claude</option>
+            <option value="custom">custom</option>
+            <option value="human">human</option>
+          </select>
+        </label>
+        <label>{{t "board.field.reason"}} <input name="reason" value="web register agent"></label>
+        <button type="submit">Save agent profile</button>
+      </form>
+      <p class="form-help">Add an agent to the assignee and reviewer lists. Use Custom for Grok, Cursor, or another client. People can be assigned with a <code>human:</code> ID.</p>
+    </details>
+    {{end}}
     {{if not .ReadOnly}}
     <details class="filters-shell bulk-shell">
       <summary>Bulk</summary>
@@ -121,6 +160,20 @@
         </details>
       {{end}}
     {{end}}
+    {{if .ShowArchived}}
+      <details class="canceled-lane" open>
+        <summary>Deleted tickets <span>{{len .Archived}}</span></summary>
+        <p class="form-help">Deleted tickets stay here with their files and history intact. Deletion is permanent in the workflow; tickets cannot be restored.</p>
+        {{if .Archived}}
+          <div class="ticket-list">
+            {{range .Archived}}{{template "card" .}}{{end}}
+          </div>
+        {{else}}
+          <p class="form-help">No archived tickets in this project.</p>
+        {{end}}
+      </details>
+    {{end}}
+    <datalist id="actor-options">{{range .ActorOptions}}<option value="{{.}}"></option>{{end}}</datalist>
     <footer class="board-footer">
       <div class="keyboard-help" aria-label="{{t "board.shortcuts.aria"}}">
         <span>{{t "board.shortcuts.new_ticket"}}</span>
@@ -231,8 +284,9 @@
       </select>
     </label>
   </div>
-  <label>{{t "board.field.assignee"}} <input name="assignee" value="{{formValue $cf "assignee" ""}}" placeholder="agent:builder-1"></label>
-  <label>{{t "board.field.reviewer"}} <input name="reviewer" value="{{formValue $cf "reviewer" ""}}" placeholder="agent:reviewer-1"></label>
+  <label>{{t "board.field.assignee"}} <input name="assignee" value="{{formValue $cf "assignee" ""}}" list="actor-options" placeholder="human:owner or agent:builder-1"></label>
+  <label>{{t "board.field.reviewer"}} <input name="reviewer" value="{{formValue $cf "reviewer" ""}}" list="actor-options" placeholder="human:owner or agent:reviewer-1"></label>
+  <p class="form-help">Pick a registered agent or type a valid <code>human:</code> / <code>agent:</code> id.</p>
   <label>{{t "board.field.labels"}} <input name="labels" value="{{formValue $cf "labels" ""}}" placeholder="web, ui"></label>
   <label>{{t "board.field.description"}} <textarea name="description" rows="4">{{formValue $cf "description" ""}}</textarea></label>
   <label>{{t "board.field.acceptance_criteria"}} <textarea name="acceptance" rows="5" placeholder="{{t "board.new.acceptance_placeholder"}}">{{formValue $cf "acceptance" ""}}</textarea></label>
@@ -247,7 +301,7 @@
   <div>
     <span class="eyeline">{{$d.Ticket.ID}} <span class="priority {{priorityDot $d.Ticket.Priority}}">{{t (priorityMessageKey $d.Ticket.Priority)}}</span></span>
     <h1 tabindex="-1">{{$d.Ticket.Title}}</h1>
-    <p class="drawer-meta"><span class="status-pill st-{{statusKey $d.BoardStatus}}">{{t (statusMessageKey $d.BoardStatus)}}</span>{{if $d.Ticket.Assignee}} <span class="meta-pair">{{t "board.field.assignee"}} <b>{{$d.Ticket.Assignee}}</b></span>{{end}}{{if $d.EffectiveReviewer}} <span class="meta-pair">{{t "board.field.reviewer"}} <b>{{$d.EffectiveReviewer}}</b></span>{{end}}</p>
+    <p class="drawer-meta"><span class="status-pill st-{{statusKey $d.BoardStatus}}">{{t (statusMessageKey $d.BoardStatus)}}</span>{{if $d.Ticket.Assignee}} <span class="meta-pair">{{t "board.field.assignee"}} <b>{{$d.Ticket.Assignee}}</b></span>{{end}}{{if $d.EffectiveReviewer}} <span class="meta-pair">{{t "board.field.reviewer"}} <b>{{$d.EffectiveReviewer}}</b></span>{{end}}{{if $d.Ticket.Lease.Actor}} <span class="meta-pair">Claimed <b>{{$d.Ticket.Lease.Actor}}</b></span>{{end}}{{if $d.Ticket.Archived}} <span class="mode-chip readonly">Archived</span>{{end}}</p>
     {{if $d.Ticket.Labels}}<div class="drawer-labels" aria-label="{{t "board.field.labels"}}">{{range $d.Ticket.Labels}}<span>{{.}}</span>{{end}}</div>{{end}}
   </div>
   <a href="{{.BoardPath}}?ticket=" class="close-button" aria-label="{{t "common.close"}}">×</a>
@@ -343,9 +397,9 @@
             <option value="critical" {{if eq $eprio "critical"}}selected{{end}}>{{t "board.priority.critical"}}</option>
           </select>
         </label>
-        <label>{{t "board.field.assignee"}} <input name="assignee" value="{{formValue $ef "assignee" (printf "%s" $d.Ticket.Assignee)}}" placeholder="agent:builder-1"></label>
+        <label>{{t "board.field.assignee"}} <input name="assignee" value="{{formValue $ef "assignee" (printf "%s" $d.Ticket.Assignee)}}" list="actor-options" placeholder="human:owner or agent:builder-1"></label>
       </div>
-      <label>{{t "board.field.reviewer"}} <input name="reviewer" value="{{formValue $ef "reviewer" (printf "%s" $d.Ticket.Reviewer)}}" placeholder="agent:reviewer-1"></label>
+      <label>{{t "board.field.reviewer"}} <input name="reviewer" value="{{formValue $ef "reviewer" (printf "%s" $d.Ticket.Reviewer)}}" list="actor-options" placeholder="human:owner or agent:reviewer-1"></label>
       <label>{{t "board.field.labels"}} <input name="labels" value="{{formValue $ef "labels" (join $d.Ticket.Labels ", ")}}"></label>
       <label>{{t "board.field.reason"}} <input name="reason" value="{{formValue $ef "reason" "web ticket edit"}}"></label>
       <button type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.section.save"}}</button>
@@ -383,9 +437,28 @@
     <span>{{t "board.section.open_gates"}}</span><strong>{{len $d.Gates}}</strong>
   </div>
   <h2>{{t "board.section.blockers"}}</h2>
-  <ul class="check-list">{{range $d.Ticket.BlockedBy}}<li>{{.}}</li>{{else}}<li>{{t "board.section.no_blockers"}}</li>{{end}}</ul>
+  <ul class="check-list">{{range $d.Ticket.BlockedBy}}<li>{{.}} <form class="inline-grant" method="post" action="{{$.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/unlink"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><input type="hidden" name="actor" value="{{$.Actor}}">{{template "revInput" $d.Ticket}}<input type="hidden" name="other_id" value="{{.}}"><input type="hidden" name="reason" value="web unlink ticket"><button type="submit" {{if $.ReadOnly}}disabled{{end}}>Unlink</button></form></li>{{else}}<li>{{t "board.section.no_blockers"}}</li>{{end}}</ul>
   <h2>Depends on this</h2>
   <ul class="check-list">{{range $d.Ticket.Blocks}}<li>{{.}}</li>{{else}}<li>No downstream tickets recorded.</li>{{end}}</ul>
+  {{if $d.Ticket.Parent}}<p class="form-help">Parent {{$d.Ticket.Parent}}</p>{{end}}
+  <form class="drawer-form compact" method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/link">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <input type="hidden" name="actor" value="{{$.Actor}}">
+    {{template "revInput" $d.Ticket}}
+    {{$lf := $.FormFor "link"}}
+    <div class="form-row">
+      <label>Other ticket <input name="other_id" value="{{formValue $lf "other_id" ""}}" placeholder="APP-2" required></label>
+      <label>Link
+        <select name="kind">
+          <option value="blocked_by" {{if eq (formValue $lf "kind" "blocked_by") "blocked_by"}}selected{{end}}>Blocked by</option>
+          <option value="blocks" {{if eq (formValue $lf "kind" "blocked_by") "blocks"}}selected{{end}}>Blocks</option>
+          <option value="parent" {{if eq (formValue $lf "kind" "blocked_by") "parent"}}selected{{end}}>Parent</option>
+        </select>
+      </label>
+    </div>
+    <label>{{t "board.field.reason"}} <input name="reason" value="{{formValue $lf "reason" "web link ticket"}}"></label>
+    <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Link tickets</button>
+  </form>
   {{if $d.Gates}}
   <h2>Open gates</h2>
   <ul class="check-list">{{range $d.Gates}}<li>{{.GateID}} {{.Kind}}</li>{{end}}</ul>
@@ -433,6 +506,20 @@
     <input type="hidden" name="reason" value="web complete">
     <button class="complete-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.action.complete"}}</button>
   </form>
+  <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/claim">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <input type="hidden" name="actor" value="{{$.Actor}}">
+    {{template "revInput" $d.Ticket}}
+    <input type="hidden" name="reason" value="web claim ticket">
+    <button class="secondary-action" type="submit" {{if or $.ReadOnly $d.Ticket.Archived}}disabled{{end}}>Claim</button>
+  </form>
+  <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/release">
+    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+    <input type="hidden" name="actor" value="{{$.Actor}}">
+    {{template "revInput" $d.Ticket}}
+    <input type="hidden" name="reason" value="web release ticket">
+    <button class="secondary-action" type="submit" {{if or $.ReadOnly (not $d.Ticket.Lease.Actor)}}disabled{{end}}>Release</button>
+  </form>
   <details class="more-actions">
     <summary>{{t "board.action.more"}}</summary>
     <div class="more-panel">
@@ -441,7 +528,7 @@
       <input type="hidden" name="actor" value="{{$.Actor}}">
       {{template "revInput" $d.Ticket}}
       <input type="hidden" name="reason" value="web move">
-      <select name="status">
+      <select name="status" aria-label="New status">
         <option value="backlog">{{t "board.column.backlog"}}</option>
         <option value="ready">{{t "board.column.ready"}}</option>
         <option value="in_progress">{{t "board.column.in_progress"}}</option>
@@ -457,7 +544,7 @@
       <input type="hidden" name="actor" value="{{$.Actor}}">
       {{template "revInput" $d.Ticket}}
       <input type="hidden" name="reason" value="web assign">
-      <label>{{t "board.field.assignee"}} <input name="assignee" value="{{$d.Ticket.Assignee}}" placeholder="human:owner"></label>
+      <label>{{t "board.field.assignee"}} <input name="assignee" value="{{$d.Ticket.Assignee}}" list="actor-options" placeholder="human:owner"></label>
       <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Assign</button>
     </form>
     <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/label/add">
@@ -468,13 +555,20 @@
       <label>{{t "board.field.label"}} <input name="label" placeholder="security" required></label>
       <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Add label</button>
     </form>
-    <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/move" data-confirm="Cancel this ticket? The canonical record stays on disk; it is hidden from the default board.">
+    <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/move" data-confirm="Cancel {{$d.Ticket.ID}}? It will move to Canceled.">
       <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
       <input type="hidden" name="actor" value="{{$.Actor}}">
       {{template "revInput" $d.Ticket}}
       <input type="hidden" name="status" value="canceled">
       <input type="hidden" name="reason" value="web cancel ticket">
-      <button type="submit" {{if $.ReadOnly}}disabled{{end}}>Cancel ticket</button>
+      <button type="submit" {{if or $.ReadOnly $d.Ticket.Archived}}disabled{{end}}>Cancel ticket</button>
+    </form>
+    <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/delete" data-confirm="Delete {{$d.Ticket.ID}} “{{$d.Ticket.Title}}”? It will leave the active board. Files and history are kept, but the ticket cannot be restored.">
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="actor" value="{{$.Actor}}">
+      {{template "revInput" $d.Ticket}}
+      <input type="hidden" name="reason" value="web delete ticket">
+      <button type="submit" {{if or $.ReadOnly $d.Ticket.Archived}}disabled{{end}}>Delete ticket</button>
     </form>
     </div>
   </details>

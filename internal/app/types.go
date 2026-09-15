@@ -137,6 +137,8 @@ type InitOptions struct {
 	Agents         bool
 	Backup         bool
 	DefaultProject bool
+	ProjectKey     string
+	ProjectName    string
 	OpenHome       bool
 	WriteClientCfg bool
 	Actor          contracts.Actor
@@ -191,18 +193,20 @@ const (
 )
 
 type AgentClientReport struct {
-	Target        integrations.Target `json:"target"`
-	Status        AgentClientStatus   `json:"status"`
-	Command       string              `json:"command,omitempty"`
-	Args          []string            `json:"args,omitempty"`
-	ConfigPath    string              `json:"config_path,omitempty"`
-	Detail        string              `json:"detail,omitempty"`
-	Scope         string              `json:"scope,omitempty"`
-	WorkspaceID   string              `json:"workspace_id,omitempty"`
-	WorkspaceRoot string              `json:"workspace_root,omitempty"`
-	Binding       string              `json:"binding,omitempty"`
-	Provenance    string              `json:"provenance,omitempty"`
-	ServerName    string              `json:"server_name,omitempty"`
+	Target         integrations.Target `json:"target"`
+	Status         AgentClientStatus   `json:"status"`
+	Command        string              `json:"command,omitempty"`
+	Args           []string            `json:"args,omitempty"`
+	ConfigPath     string              `json:"config_path,omitempty"`
+	Detail         string              `json:"detail,omitempty"`
+	Scope          string              `json:"scope,omitempty"`
+	WorkspaceID    string              `json:"workspace_id,omitempty"`
+	WorkspaceRoot  string              `json:"workspace_root,omitempty"`
+	Binding        string              `json:"binding,omitempty"`
+	Provenance     string              `json:"provenance,omitempty"`
+	ServerName     string              `json:"server_name,omitempty"`
+	SkillDir       string              `json:"skill_dir,omitempty"`
+	SkillInstalled bool                `json:"skill_installed,omitempty"`
 }
 
 const (
@@ -279,6 +283,10 @@ type PathGrant struct {
 	ExpiresAt time.Time `json:"expires_at"`
 	Dev       uint64    `json:"dev,omitempty"`
 	Ino       uint64    `json:"ino,omitempty"`
+	// Source is "home" when Atlas Home minted the grant after a reviewed
+	// directory preview. CLI grants omit it. Home-sourced grants require
+	// confirm_path to match Path before consume.
+	Source string `json:"source,omitempty"`
 }
 
 type DiscoverOptions struct {
@@ -291,6 +299,30 @@ type DiscoveryHit struct {
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	DisplayName string `json:"display_name,omitempty"`
 	Registered  bool   `json:"registered"`
+}
+
+const (
+	BoardsRootRef         = "boards"
+	BoardsRootKind        = "atlas_boards"
+	DiscoveryRootKind     = "discovery"
+	maxAuthorizedRelDepth = 8
+	maxAuthorizedChildren = 200
+)
+
+// AuthorizedRoot is a directory Home may create or attach under. The browser
+// never posts the Path; it posts Ref plus a relative folder.
+type AuthorizedRoot struct {
+	Ref   string `json:"ref"`
+	Kind  string `json:"kind"`
+	Title string `json:"title"`
+	Path  string `json:"-"`
+}
+
+type AuthorizedChild struct {
+	Name       string `json:"name"`
+	Rel        string `json:"rel"`
+	Workspace  bool   `json:"workspace,omitempty"`
+	Registered bool   `json:"registered,omitempty"`
 }
 
 type DoctorOptions struct {
@@ -456,6 +488,7 @@ const (
 	PathGrantInit                  = "init"
 	PathGrantRegister              = "register"
 	PathGrantRepair                = "repair"
+	PathGrantSourceHome            = "home"
 	HomeLaunchdLabel               = "com.atlas-tasker.home"
 	HomeSystemdService             = "atlas-home.service"
 	HomeServiceMarker              = "Atlas-owned Home service. Do not edit by hand."

@@ -68,6 +68,33 @@ tracker queue --actor agent:builder-1
 TRACKER_ACTOR=agent:builder-1 tracker tui
 ```
 
+## The coding agent does not see Atlas
+
+A file on disk is not a live connection. Check in this order:
+
+1. `tracker init` actually ran in this workspace (not only the installer).
+2. Restart the client. Home → Settings → Agents should move off
+   `pending_client_restart` after a real initialize.
+3. Grok: accept the client's project-trust prompt. Untrusted projects hide
+   local instructions and `.grok/skills`.
+4. Codex 0.144.5: skills live under `.agents/skills/atlas-worker/`. Leftover
+   `.codex/skills` still lists; both copies duplicate the name.
+5. Cursor: `cursor` or `cursor-agent` on PATH is enough for Atlas to write
+   `mcp.json`. Restart is still yours.
+6. After `tracker update`, re-run `tracker init` in each workspace. The
+   updater replaces the binary only.
+
+Atlas does not start agents or grant client trust. See
+[compatibility](v1.16-client-compatibility.md).
+
+## Home will not create a board
+
+Use **Initialize board**. Default location is Atlas boards on this machine, not
+`$HOME`. For a directory outside Atlas boards or discovery roots, preview the
+exact path and purpose, then confirm; preview does not initialize. Raw path
+POSTs are ignored. Home init does not write client MCP files. Details:
+[browser management](v1.16-browser-management.md).
+
 ## `tracker web open` says the board is not running
 
 `tracker web open` reuses the last recorded server and health-checks it before opening anything. Recorded state outlives crashed or stopped servers, so a fail-fast here just means that server is gone:

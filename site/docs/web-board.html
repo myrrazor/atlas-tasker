@@ -115,7 +115,7 @@
             <span class="terminal-title">tracker web serve</span>
             <span class="terminal-state">127.0.0.1 · local only</span>
           </div>
-          <img src="../assets/web-board.webp" width="1440" height="900" loading="lazy" decoding="async" alt="Synthetic local review capture of the Atlas Tasker web board showing six workflow columns and a separate Canceled disclosure" />
+          <img src="../assets/web-board.png" width="1440" height="900" loading="lazy" decoding="async" alt="Atlas Tasker v1.16 in dark mode, showing example tickets and agent assignments across the Kanban columns" />
           <figcaption>The board with a ticket drawer open: Overview, Notes &amp; activity, Policy/Gates, and Evidence in one place.</figcaption>
         </figure>
 
@@ -141,11 +141,11 @@ tracker web open                              <span class="c"># reopen the last 
           <li>The board shows Backlog, Ready, In Progress, In Review, Blocked, and Done; a disclosure opens Canceled. Done and Canceled stay separate because canceled work neither satisfies dependencies nor counts as completed. Drag cards between legal states: dropping a card on its own column is a no-op, and every move runs the same status-edge rules as the CLI. On a phone the board shows one column at a time and a strip above it switches between them.</li>
           <li>The board uses the available width until you select a card. The ticket drawer then opens over the board, with a full-width layout on phones. Close it with the visible Close link or <code>Escape</code>. Four tabs group the details: Overview (description, acceptance criteria, schedule, and editing, including saved notes), Notes &amp; activity (comments and history), Policy/Gates, and Evidence. Saving keeps you in the same project. If another session changes the ticket, Atlas shows a conflict and preserves your typed form values for review.</li>
           <li>Each card shows its assignee on its face. Hover for a couple of seconds and a preview adds reviewer, priority, labels, and the blocker, gate, and comment counts without changing the drawer.</li>
-          <li>Create and edit tickets, comment, move through workflow states, and run request-review, approve, or complete where policy allows. For <code>review_gate</code>, reviewer approval is the transition to Done; it is not followed by a separate completion.</li>
+          <li>Create and edit tickets, assign, claim, release, comment, move through workflow states, and run request-review, approve, or complete where policy allows. For <code>review_gate</code>, reviewer approval is the transition to Done; it is not followed by a separate completion. Delete ticket uses <code>tracker ticket delete</code> (<code>ticket archive</code> is an alias): confirm names the ticket, history stays, there is no restore. Cancel is a status move, not archive. Show archived work with <code>?archived=1</code>.</li>
           <li>Filter by project, assignee, reviewer, label, priority, and type; search; and load saved views. The state lives in the URL, so a filtered board is a shareable local link.</li>
           <li>Keyboard: <code>n</code> for a new ticket, <code>/</code> for search. Every drag action also exists as a button for non-drag users.</li>
         </ul>
-        <p>If a dependency, reviewer gate, owner gate, or read-only mode blocks an action, the page shows the service error instead of bypassing policy. The board mirrors the tracker; it never gets its own rules.</p>
+        <p>If a dependency, reviewer gate, owner gate, or read-only mode blocks an action, the page shows the service error instead of bypassing policy and keeps typed values. Stale edits conflict. The board mirrors the tracker; it never gets its own rules.</p>
 
         <h2>The other pages</h2>
         <p>The board lives at <code>/board</code>; the same server renders three more pages:</p>

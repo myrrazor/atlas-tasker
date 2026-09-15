@@ -1107,6 +1107,23 @@ figcaption {
   text-underline-offset: 0.2em;
 }
 
+.shared-board-section {
+  padding-block: 88px 96px;
+  border-top: 1px solid var(--line);
+}
+
+#shared-board-demo {
+  scroll-margin-top: 76px;
+}
+
+.shared-board-stills {
+  display: grid;
+  margin-top: 28px;
+  align-items: start;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+  gap: 28px;
+}
+
 /* --- subpage hero (cli, mcp, docs landing) --- */
 
 .page-hero {
@@ -1633,8 +1650,13 @@ figcaption {
     scroll-margin-top: 64px;
   }
 
-  #agent-demo {
+  #agent-demo,
+  #shared-board-demo {
     scroll-margin-top: 120px;
+  }
+
+  .shared-board-stills {
+    grid-template-columns: 1fr;
   }
 
   .nav-inner {
@@ -1807,6 +1829,7 @@ figcaption {
   .features-section,
   .install-section,
   .get-started-section,
+  .shared-board-section,
   .faq-section {
     padding-block: 78px;
   }

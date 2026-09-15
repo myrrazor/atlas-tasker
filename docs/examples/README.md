@@ -27,3 +27,5 @@ Use `--check` in review to prove the checked-in assets are fresh.
 - [Terminal transcript](transcripts/demo-workspace.md)
 - [Screenshot fixtures](screenshot-fixtures.md)
 - [Workspace fixture notes](fixtures/demo-workspace.md)
+- [Grok Build walkthrough transcript](grok-video-transcript.md)
+- [Multi-agent shared board](multi-agent-board.md)

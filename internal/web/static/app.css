@@ -1982,6 +1982,23 @@ form.is-saving {
   gap: 8px;
 }
 
+form.is-busy button {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.check-list form {
+  display: inline-flex;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.check-list form button {
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;

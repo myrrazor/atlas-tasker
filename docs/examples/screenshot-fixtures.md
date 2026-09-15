@@ -43,6 +43,20 @@ capture of the current dark-mode UI. Recapture rather than restyle an old
 light-mode or stale-chrome frame. Do not author simulated chat or board pixels
 and present them as output.
 
+## Multi-agent shared board
+
+Seed a board where Grok Build, Cursor, and Grok Bot each own tickets:
+
+```bash
+TRACKER_BIN=/absolute/path/to/tracker sh examples/create-multi-agent-demo.sh /tmp/atlas-multi-agent
+cd /tmp/atlas-multi-agent
+/absolute/path/to/tracker web serve --no-browser
+```
+
+Capture `/board` at 1440 × 900 as `docs/assets/multi-agent-board-desktop.png` and encode
+`site/assets/multi-agent-board.webp`. Capture `tracker board` as
+`docs/assets/multi-agent-board.png`. Keep session URLs and tokens out of public files.
+
 ## Grok Build status
 
 Capture a real Grok Build session after `tracker init` on a v1.15 source build,

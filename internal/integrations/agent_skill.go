@@ -13,7 +13,7 @@ func openclawBlock(guidePath string) string {
 - Claim before editing: `+"`tracker ticket claim <ID> --actor agent:<agent-id> --reason \"start work\"`"+`.
 - Exit 4 on a status change means the transition is forbidden, not that the command broke. Read `+"`tracker inspect <ID> --json`"+` before retrying.
 - Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
-- The `+"`atlas-worker`"+` skill installs under `+"`.agents/skills/`"+`; confirm it loaded with `+"`openclaw skills list`"+`.
+- The `+"`atlas-worker`"+` skill installs under `+"`.agents/skills/`"+` (shared with Codex). Confirm it loaded with `+"`openclaw skills list`"+`. Finding the skill is not a live MCP connection.
 - The browser board (`+"`tracker web serve`"+`) is for humans. Agents use the CLI or `+"`tracker mcp serve`"+`.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
@@ -22,13 +22,14 @@ func openclawBlock(guidePath string) string {
 func openclawGuide(skillDir string) string {
 	return strings.TrimSpace(fmt.Sprintf(`# Atlas Tasker OpenClaw Guide
 
-OpenClaw reads `+"`AGENTS.md`"+` into every session and loads skills from four roots. Atlas installs into the repo-local one.
+OpenClaw reads `+"`AGENTS.md`"+` into every session and loads skills from several roots. Atlas installs into the repo-local `+"`.agents/skills`"+` root, which Codex also uses.
 
 ## Where things land
 
 - `+"`AGENTS.md`"+` gets an Atlas block between `+"`atlas-tasker:openclaw`"+` markers. Codex writes its own block with different markers, so both can live in the same file.
-- The `+"`atlas-worker`"+` skill goes to `+"`%s`"+`, which OpenClaw picks up as a project-agent skill for this repo only.
+- The `+"`atlas-worker`"+` skill goes to `+"`%s`"+`. Codex and OpenClaw share that directory; uninstall of one keeps the shared SKILL.md while the other still has a managed block.
 - The skill is gated on the `+"`tracker`"+` binary, so it stays out of the prompt in workspaces that do not have Atlas installed.
+- Installed guidance, a configured MCP entry, a discovered skill path, and a live connection are four different facts. `+"`openclaw skills list`"+` is discovery, not a probe.
 
 ## Confirm it loaded
 
@@ -121,6 +122,7 @@ func cursorBlock(guidePath string) string {
 - Use explicit review commands: `+"`request-review`"+`, `+"`approve`"+`, `+"`complete`"+`.
 - Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
 - Prefer `+"`tracker mcp serve --tool-profile workflow --workspace <path>`"+` when the session is MCP-first.
+- Cursor CLI is `+"`cursor-agent`"+`. A GUI `+"`cursor`"+` binary is optional. Restart the client after MCP file changes. Global `+"`.cursor`"+` skills do not automatically travel to cloud agents.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
 }
@@ -128,7 +130,7 @@ func cursorBlock(guidePath string) string {
 func cursorGuide() string {
 	return strings.TrimSpace(`# Atlas Tasker Cursor Guide
 
-Cursor loads root `+"`AGENTS.md`"+`. Atlas installs a managed block there and a repo-local skill under `+"`.cursor/skills/atlas-worker/`"+`.
+Cursor loads root `+"`AGENTS.md`"+`. Atlas installs a managed block there and a repo-local skill under `+"`.cursor/skills/atlas-worker/`"+`. Cursor also discovers project `+"`.agents/skills`"+` and compatibility `+"`.claude/skills`"+` / `+"`.codex/skills`"+`; Atlas does not write a second Cursor copy into `+"`.agents`"+`. Cloud agents do not automatically receive global `+"`.cursor`"+` files.
 
 ## Recommended loop
 
@@ -143,6 +145,7 @@ Cursor loads root `+"`AGENTS.md`"+`. Atlas installs a managed block there and a 
 - The managed block in `+"`AGENTS.md`"+` uses `+"`atlas-tasker:cursor`"+` markers so Codex/OpenClaw/Grok blocks can coexist.
 - Keep custom house rules outside the managed markers.
 - Moving a ticket to its current status is a successful no-op across CLI, MCP, bulk, and web paths.
+- A written `+"`.cursor/mcp.json`"+` entry is configured, not connected. Restart `+"`cursor`"+` or `+"`cursor-agent`"+` and confirm MCP initialize before calling it live.
 `) + "\n"
 }
 
@@ -155,6 +158,7 @@ func grokBlock(guidePath string) string {
 - Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
 - Prefer JSON reads; treat exit 4 as a forbidden workflow edge, not a crash.
 - Grok MCP tools use underscore names (`+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`). Call those; they map to the canonical Atlas tools.
+- The `+"`atlas-worker`"+` skill installs under `+"`.grok/skills/`"+` (walked from the repo root). Atlas does not write repo `+"`.agents`"+` for Grok; user `+"`.agents`"+` under the home directory is client-owned.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
 }
@@ -162,7 +166,7 @@ func grokBlock(guidePath string) string {
 func grokGuide() string {
 	return strings.TrimSpace(`# Atlas Tasker Grok Guide
 
-Grok-style agents that load root `+"`AGENTS.md`"+` get the managed Atlas block from `+"`tracker integrations install grok`"+`.
+Grok-style agents that load root `+"`AGENTS.md`"+` get the managed Atlas block from `+"`tracker integrations install grok`"+`. The native skill is `+"`.grok/skills/atlas-worker/`"+`. Grok 1.0.30 does not list project skills until its native trust prompt is accepted; Atlas does not write that trust. A leftover under `+"`.tracker/integrations/grok-agent-skill/`"+` is removed on re-install only when it still matches a known generated Atlas skill exactly. User `+"~/.agents`"+` is not an Atlas write target.
 
 ## MCP tool names
 
@@ -184,15 +188,35 @@ Grok skips dotted MCP names. Atlas registers this client with `+"`--tool-name-st
 }
 
 func atlasWorkerSkill(provider string) string {
+	shared := provider == "codex" || provider == "openclaw"
+	return atlasWorkerSkillVariant(provider, shared)
+}
+
+// v115ProviderSkill is the per-provider SKILL.md Atlas wrote before the
+// shared .agents/skills copy. Destructive legacy migration treats these
+// exact bytes as still Atlas-owned.
+func v115ProviderSkill(provider string) string {
+	return atlasWorkerSkillVariant(provider, false)
+}
+
+func atlasWorkerSkillVariant(provider string, sharedAgentsRoot bool) string {
 	// keep the description free of ": " -- a plain YAML scalar cannot hold one and
 	// a skill whose frontmatter will not parse never loads
 	label := skillProviderLabel(provider)
+	from := "from " + label + " sessions"
 	frontmatter := fmt.Sprintf(`---
 name: atlas-worker
-description: Use inside an Atlas Tasker workspace -- "what should I work on", "pick up the next ticket", "claim APP-12", "why is this blocked", "ready for review", "hand this off", "current status", "show the board". Drives the tracker from %s sessions; finds available work, claims tickets, respects dependency and policy blockers, records evidence, and requests review.`, label)
-	if provider == "openclaw" {
-		// keeps the skill out of the prompt in workspaces with no tracker binary
+description: Use inside an Atlas Tasker workspace -- "what should I work on", "pick up the next ticket", "claim APP-12", "why is this blocked", "ready for review", "hand this off", "current status", "show the board". Drives the tracker %s; finds available work, claims tickets, respects dependency and policy blockers, records evidence, and requests review.`, from)
+	if sharedAgentsRoot {
+		// Shared .agents/skills copy. OpenClaw gates on tracker; Codex ignores
+		// unknown metadata. Identity stays provider-neutral so last-writer
+		// does not flip the SKILL.md between the two installs.
+		from = "from coding-agent sessions that load project .agents/skills"
+		frontmatter = fmt.Sprintf(`---
+name: atlas-worker
+description: Use inside an Atlas Tasker workspace -- "what should I work on", "pick up the next ticket", "claim APP-12", "why is this blocked", "ready for review", "hand this off", "current status", "show the board". Drives the tracker %s; finds available work, claims tickets, respects dependency and policy blockers, records evidence, and requests review.`, from)
 		frontmatter += "\nmetadata: { \"openclaw\": { \"requires\": { \"bins\": [\"tracker\"] } } }"
+		label = "a local coding agent that loads project `.agents/skills`"
 	}
 	more := `
 ## More Detail

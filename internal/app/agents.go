@@ -58,6 +58,9 @@ func (a *App) setupAgents(ctx context.Context, ws *Workspace) AgentSetupReport {
 	if err := a.installWorkspaceSkills(ws, detections); err != nil {
 		report.Notes = append(report.Notes, "workspace skills: "+err.Error())
 	}
+	for i := range report.Clients {
+		attachSkillReport(&report.Clients[i], ws.Root, report.Clients[i].Target)
+	}
 	if wrote {
 		_ = a.recordUninstallClientActions(command, GlobalMCPArgs(), report.Clients)
 	}
@@ -66,13 +69,7 @@ func (a *App) setupAgents(ctx context.Context, ws *Workspace) AgentSetupReport {
 
 func (a *App) registerDetectedClient(ctx context.Context, target integrations.Target, command string, args []string) AgentClientReport {
 	client := AgentClientReport{Target: target, Command: command, Args: args}
-	look := a.lookPath()
-	exe := ""
-	if look != nil {
-		if path, err := look(clientExecutableName(target)); err == nil {
-			exe = path
-		}
-	}
+	exe := integrations.LookClientExecutable(a.lookPath(), target)
 	switch target {
 	case integrations.TargetCursor:
 		path := filepath.Join(a.home, ".cursor", "mcp.json")
@@ -123,20 +120,17 @@ func GlobalMCPArgsFor(target integrations.Target) []string {
 	return args
 }
 
-func clientExecutableName(target integrations.Target) string {
-	switch target {
-	case integrations.TargetCodex:
-		return "codex"
-	case integrations.TargetClaude:
-		return "claude"
-	case integrations.TargetCursor:
-		return "cursor"
-	case integrations.TargetOpenClaw:
-		return "openclaw"
-	case integrations.TargetGrok:
-		return "grok"
-	default:
-		return ""
+func attachSkillReport(client *AgentClientReport, root string, target integrations.Target) {
+	if client == nil {
+		return
+	}
+	dir := integrations.NativeSkillDir(target)
+	if dir == "" {
+		return
+	}
+	client.SkillDir = dir
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(dir), "SKILL.md")); err == nil {
+		client.SkillInstalled = true
 	}
 }
 

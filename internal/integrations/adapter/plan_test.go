@@ -55,7 +55,7 @@ func codexPlan(t *testing.T) IntegrationPlan {
 		Registration:    &reg,
 		Steps: []PlanStep{
 			{StepID: "block", Kind: StepUpdateManagedBlock, Description: "refresh codex managed block", Path: testRoot + "/AGENTS.md", Reversibility: Reversible, Rollback: snapshotRollback(testRoot + "/AGENTS.md"), Mode: 0o644},
-			{StepID: "skill", Kind: StepWriteManagedFile, Description: "write atlas-worker skill", Path: testRoot + "/.codex/skills/atlas-worker/SKILL.md", Reversibility: Reversible, Rollback: &RollbackAction{Kind: RollbackDeleteCreated, Path: testRoot + "/.codex/skills/atlas-worker/SKILL.md"}, Mode: 0o644},
+			{StepID: "skill", Kind: StepWriteManagedFile, Description: "write atlas-worker skill", Path: testRoot + "/.agents/skills/atlas-worker/SKILL.md", Reversibility: Reversible, Rollback: &RollbackAction{Kind: RollbackDeleteCreated, Path: testRoot + "/.agents/skills/atlas-worker/SKILL.md"}, Mode: 0o644},
 			{StepID: "config", Kind: StepWriteConfigEntry, Description: "add [mcp_servers." + reg.ServerName + "]", Path: testRoot + "/.codex/config.toml", Scope: ScopeProjectShared, Reversibility: Reversible, Rollback: snapshotRollback(testRoot + "/.codex/config.toml"), Mode: 0o644},
 			{StepID: "inspect", Kind: StepRunClientCommand, Description: "list servers", Command: &inspect},
 			{StepID: "state", Kind: StepRecordLocalState, Description: "record integration state", Path: testStateRoot + "/workspaces/" + testWorkspaceID + "/codex.json", Reversibility: Reversible, Rollback: snapshotRollback(testStateRoot + "/workspaces/" + testWorkspaceID + "/codex.json"), Mode: 0o600},

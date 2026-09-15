@@ -2,25 +2,29 @@
 
 Atlas MCP is a local stdio adapter for agents that need structured tools instead of shelling out to the CLI. It is not a separate authority layer.
 
-## Start Read-Only
+## Start the server
 
-`tracker init` already registered detected clients with
+`tracker init` already registered detected clients as **`atlas-tasker`** with
 `tracker mcp serve --global --tool-profile workflow`. Grok's entry also gets
 `--tool-name-style portable` so tools/list names are `atlas_status` rather than
-`atlas.status`; other clients keep the dotted names. Restart the client, then inspect:
+`atlas.status`; other clients keep the dotted names. Restart the client (Grok:
+also trust the project), then inspect. A matching file is not a live connection.
+
+CLI `mcp serve`, `mcp tools`, and `mcp schema` default to `--tool-profile workflow`.
+Pass `--tool-profile read` or `--read-only` for inspection only.
 
 ```bash
 tracker mcp serve --global --tool-profile workflow
-tracker mcp tools --json --global --tool-profile read
-tracker mcp schema --json --global --tool-profile read
+tracker mcp tools --json --global --tool-profile workflow
+tracker mcp schema --json --global --tool-profile workflow
 ```
 
-Pinned per-workspace serve remains:
+Pinned per-workspace serve remains (advanced). It also defaults to workflow:
 
 ```bash
-tracker mcp serve --tool-profile read
-tracker mcp tools --json --tool-profile read
-tracker mcp schema --json --tool-profile read
+tracker mcp serve --workspace /path/to/workspace --tool-profile workflow
+tracker mcp tools --json --tool-profile workflow
+tracker mcp schema --json --tool-profile workflow
 ```
 
 The read profile is inspection, queues, plans, context, status, backup health, and

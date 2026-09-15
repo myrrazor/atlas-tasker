@@ -6,7 +6,7 @@ The MCP adapter is not a second source of truth. It calls the same service layer
 
 ## Commands
 
-`tracker init` registers detected clients with this exact argv:
+`tracker init` registers detected clients as **`atlas-tasker`** with this exact argv:
 
 ```bash
 <absolute-tracker> mcp serve --global --tool-profile workflow

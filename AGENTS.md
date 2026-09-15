@@ -180,11 +180,14 @@ Branch on `error.code` or the exit status, not on the message text.
 Normal tracker commands are non-interactive. Two setup paths can prompt only when both stdin and
 stdout are terminals:
 
-- `tracker init` initializes the workspace, writes Atlas-managed MCP entries for detected
+- `tracker init` initializes the workspace, writes Atlas-managed MCP entries named
+  `atlas-tasker` (`mcp serve --global --tool-profile workflow`) for detected
   agents unless `--no-agents` / `--skip-integrations`, and starts local checkpoints unless
-  `--no-backup`. `--integrations` still opens the older TTY picker. JSON and non-TTY runs
+  `--no-backup`. Detected agents are configured without a picker. `--integrations` still
+  opens the older TTY picker. JSON and non-TTY runs
   still perform machine agent setup unless those flags or `settings.agents.auto_install=false`
-  opt out. There is no `--agents` opt-in flag.
+  opt out. There is no `--agents` opt-in flag. A written file is not a live connection;
+  Grok also needs the user to trust the project before local skills appear.
 - `tracker integrations install` with no target opens the six-target picker. Use an explicit target
   or `--targets claude,codex,cursor,openclaw,grok,generic` in scripts.
 
@@ -215,7 +218,9 @@ CLI `mcp serve`, `mcp tools`, and `mcp schema` default to `--tool-profile workfl
 `--global` and pinned serve. Pass `--tool-profile read` or `--read-only` for inspection only.
 The MCP library still treats empty `Options.Profile` as `read`.
 
-Pinned per-workspace serve is still supported for clients you configure by hand:
+Ordinary init writes the user-scoped server **`atlas-tasker`**. Pinned
+per-workspace serve is still supported for clients you configure by hand
+(advanced; setup uses `atlas-<workspace-id>`):
 
 ```bash
 # Claude Code, user scope, pinned workspace
@@ -272,7 +277,10 @@ Full detail: [docs/mcp.md](docs/mcp.md).
 
 `tracker integrations install <claude|codex|cursor|openclaw|grok|generic>` writes agent-specific
 project instructions, a generated guide under `.tracker/integrations/`, and the supported skill or
-command files. All six targets are documented in
+command files. Canonical skill dirs: Claude `.claude/skills/atlas-worker/`, Codex and OpenClaw
+`.agents/skills/atlas-worker/` (Codex 0.144.5 still lists leftover `.codex/skills`), Cursor
+`.cursor/skills/atlas-worker/`, Grok `.grok/skills/atlas-worker/` (needs project trust before
+inspect lists it). All six targets are documented in
 [docs/guides/agent-integrations.md](docs/guides/agent-integrations.md). It writes only inside the
 workspace by default; `tracker integrations install openclaw --global` is the one explicit option
 that also copies the OpenClaw skill into `~/.openclaw/skills`.
@@ -291,6 +299,7 @@ client after any registration change.
 - [README](README.md) — what Atlas is, install, the tour
 - [docs/command-reference.md](docs/command-reference.md) — every command and flag
 - [docs/reference/json-output.md](docs/reference/json-output.md) — envelope shapes
-- [docs/first-agent-workflow.md](docs/first-agent-workflow.md) — the same loop, narrated
+- [docs/first-agent-workflow.md](docs/first-agent-workflow.md) — init, ask, then the advanced dispatch loop
 - [docs/guides/agent-integrations.md](docs/guides/agent-integrations.md) — all six setup targets
+- [docs/v1.16-client-compatibility.md](docs/v1.16-client-compatibility.md) — skill roots vs live connection
 - [docs/guides/claude-code.md](docs/guides/claude-code.md), [docs/guides/codex.md](docs/guides/codex.md), [docs/guides/generic-agent.md](docs/guides/generic-agent.md)

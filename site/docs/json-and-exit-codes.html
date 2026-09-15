@@ -159,7 +159,7 @@
         </div>
 
         <h2>Automation stays non-interactive</h2>
-        <p>Only setup paths prompt: <code>tracker init</code> may offer agent integrations in a TTY, and bare <code>tracker integrations install</code> opens its picker in a TTY. JSON mode, non-TTY execution, explicit <code>--targets</code>, and <code>tracker init --skip-integrations</code> avoid prompts. Other missing required flags fail immediately naming the flag, for example <code>required flag(s) "body" not set</code>. A command waiting for the workspace write lock ends in exit 6.</p>
+        <p>Only setup paths prompt: ordinary <code>tracker init</code> configures detected agents without a picker; <code>tracker init --integrations</code> and bare <code>tracker integrations install</code> open the picker in a TTY. JSON mode, non-TTY execution, explicit <code>--targets</code>, and <code>tracker init --skip-integrations</code> avoid prompts. Other missing required flags fail immediately naming the flag, for example <code>required flag(s) "body" not set</code>. A command waiting for the workspace write lock ends in exit 6.</p>
 
         <h2>Pending reason codes</h2>
         <p><code>tracker agent pending --json</code> explains blocked work with stable codes, so agents branch instead of guessing:</p>

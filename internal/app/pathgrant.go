@@ -42,7 +42,10 @@ func (a *App) GrantPath(ctx context.Context, absPath, purpose string) (PathGrant
 	if !filepath.IsAbs(absPath) {
 		return PathGrant{}, apperr.New(apperr.CodeInvalidInput, "path grant requires an absolute path")
 	}
-	clean := filepath.Clean(absPath)
+	return a.writePathGrant(filepath.Clean(absPath), purpose, "")
+}
+
+func (a *App) writePathGrant(clean, purpose, source string) (PathGrant, error) {
 	info, err := os.Lstat(clean)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -67,6 +70,7 @@ func (a *App) GrantPath(ctx context.Context, absPath, purpose string) (PathGrant
 		ExpiresAt: a.now().Add(10 * time.Minute),
 		Dev:       dev,
 		Ino:       ino,
+		Source:    strings.TrimSpace(source),
 	}
 	if err := os.MkdirAll(a.grantsDir(), 0o700); err != nil {
 		return PathGrant{}, err
@@ -103,6 +107,25 @@ func (a *App) ListPendingGrants() []PathGrant {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ExpiresAt.Before(out[j].ExpiresAt) })
 	return out
+}
+
+func (a *App) LookupPendingGrant(id string) (PathGrant, error) {
+	id = strings.TrimSpace(id)
+	if id == "" || strings.Contains(id, "/") || strings.Contains(id, "..") {
+		return PathGrant{}, apperr.New(apperr.CodeInvalidInput, "grant id is required")
+	}
+	raw, err := os.ReadFile(a.grantFile(id))
+	if err != nil {
+		return PathGrant{}, apperr.New(apperr.CodeNotFound, "path grant is missing or already used")
+	}
+	var grant PathGrant
+	if json.Unmarshal(raw, &grant) != nil || grant.ID != id {
+		return PathGrant{}, apperr.New(apperr.CodeInvalidInput, "path grant is unreadable")
+	}
+	if !grant.ExpiresAt.IsZero() && a.now().After(grant.ExpiresAt) {
+		return PathGrant{}, apperr.New(apperr.CodeInvalidInput, "path grant expired")
+	}
+	return grant, nil
 }
 
 func (a *App) ConsumeGrant(ctx context.Context, id string) (PathGrant, error) {
@@ -161,6 +184,12 @@ func (a *App) consumeGrant(ctx context.Context, id, requiredPurpose string) (Pat
 }
 
 func bindGrantPath(grant PathGrant) error {
+	if grant.Source == PathGrantSourceHome {
+		canonical, err := CanonicalExistingDir(grant.Path)
+		if err != nil || canonical != grant.Path {
+			return apperr.New(apperr.CodeInvalidInput, "selected directory changed; review it again")
+		}
+	}
 	info, err := os.Lstat(grant.Path)
 	if err != nil {
 		return apperr.New(apperr.CodeInvalidInput, "path grant directory is missing")

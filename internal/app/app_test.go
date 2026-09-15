@@ -502,6 +502,94 @@ func TestGrokUserScopeCLIRegistrationUsesPortableToolNames(t *testing.T) {
 	}
 }
 
+func TestCursorAgentOnlyWritesUserMCPJSON(t *testing.T) {
+	home := t.TempDir()
+	agent := filepath.Join(home, "bin", "cursor-agent")
+	if err := os.MkdirAll(filepath.Dir(agent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(agent, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tracker := filepath.Join(home, "bin", "tracker")
+	a, err := Open(Options{
+		Home:     home,
+		StateDir: filepath.Join(home, "state"),
+		LookPath: func(name string) (string, error) {
+			if name == "cursor-agent" {
+				return agent, nil
+			}
+			return "", os.ErrNotExist
+		},
+		CommandRunner:   SilentRunner{},
+		SkipHostInstall: true,
+		WriteClientCfg:  true,
+		Executable:      tracker,
+		Now:             func() time.Time { return time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var running atomic.Bool
+	a.opts.Process = &RecordingSpawner{OnStart: func() { running.Store(true) }}
+	a.opts.Probe = LatchProber{Instance: a.Settings().InstanceID, Running: running.Load}
+	t.Cleanup(func() { _ = a.Close() })
+	root := filepath.Join(home, "repo")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	result, err := a.Init(context.Background(), InitOptions{Root: root, Agents: true, WriteClientCfg: true, Register: true})
+	if err != nil && !IsPartial(err) {
+		t.Fatal(err)
+	}
+	var cursor *AgentClientReport
+	for i := range result.Agents.Clients {
+		if result.Agents.Clients[i].Target == integrations.TargetCursor {
+			cursor = &result.Agents.Clients[i]
+		}
+	}
+	if cursor == nil {
+		t.Fatal("cursor-agent detection did not register Cursor")
+	}
+	if cursor.Status == AgentNotDetected {
+		t.Fatalf("CLI-only Cursor treated as missing: %+v", cursor)
+	}
+	if cursor.Status != AgentPendingClientRestart && cursor.Status != AgentWritten {
+		t.Fatalf("status %s", cursor.Status)
+	}
+	if cursor.StatusLabel() == "connected" || strings.Contains(strings.ToLower(cursor.Detail), "connected") {
+		t.Fatalf("file write claimed a live connection: %+v", cursor)
+	}
+	wantArgs := GlobalMCPArgsFor(integrations.TargetCursor)
+	if strings.Join(cursor.Args, " ") != strings.Join(wantArgs, " ") {
+		t.Fatalf("cursor argv %v want %v", cursor.Args, wantArgs)
+	}
+	raw, err := os.ReadFile(filepath.Join(home, ".cursor", "mcp.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"atlas-tasker"`) || !strings.Contains(string(raw), `--global`) {
+		t.Fatalf("mcp.json:\n%s", raw)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".cursor", "skills", "atlas-worker", "SKILL.md")); err != nil {
+		t.Fatalf("cursor native skill missing: %v", err)
+	}
+	if !cursor.SkillInstalled || cursor.SkillDir != integrations.CursorNativeSkillDir {
+		t.Fatalf("skill report %+v", cursor)
+	}
+}
+
+func TestInitArgvNeverClaimsLiveConnection(t *testing.T) {
+	canonical := GlobalMCPArgs()
+	if len(canonical) != 5 || canonical[0] != "mcp" || canonical[1] != "serve" || canonical[2] != "--global" || canonical[3] != "--tool-profile" || canonical[4] != "workflow" {
+		t.Fatalf("init argv drifted: %v", canonical)
+	}
+	grok := GlobalMCPArgsFor(integrations.TargetGrok)
+	if strings.Join(grok[:5], " ") != strings.Join(canonical, " ") {
+		t.Fatalf("grok init argv must start with the shared global argv: %v", grok)
+	}
+}
+
 func TestGlobalMCPArgsForOnlyChangesGrok(t *testing.T) {
 	canonical := strings.Join(GlobalMCPArgs(), " ")
 	if strings.Contains(canonical, GlobalMCPToolNameStyleFlag) {

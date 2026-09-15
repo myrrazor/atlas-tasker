@@ -154,7 +154,7 @@
             </tr>
           {{else}}
             <tr class="empty-projects">
-              <td colspan="3">No registered workspaces. Run <code>tracker init</code> in a repo, or initialize from an approved discovery result. Home will not take a typed filesystem path.</td>
+              <td colspan="3">No boards on this computer yet. Use <a href="/?init=1">Initialize board</a> to create one under Atlas boards or to review an existing directory on this machine.</td>
             </tr>
           {{end}}
         </tbody>
@@ -435,33 +435,122 @@
 {{end}}
 
 {{define "homeFindDialog"}}
-<dialog class="project-dialog" id="find-workspace-dialog" open aria-labelledby="find-title">
+<dialog class="project-dialog home-create-dialog" id="find-workspace-dialog" open aria-labelledby="find-title">
   <div class="dialog-head">
     <div>
-      <p class="section-kicker">{{if .ShowInit}}Initialize{{else}}Register{{end}}</p>
-      <h2 id="find-title">{{if .ShowInit}}Initialize a board{{else}}Find an existing workspace{{end}}</h2>
+      <p class="section-kicker">This computer</p>
+      <h2 id="find-title">{{if .ShowInit}}Create a board{{else}}Attach an existing board{{end}}</h2>
     </div>
     <a class="close-button" href="/" data-dialog-close aria-label="Close">×</a>
   </div>
-  {{if .FindHits}}
-    {{range .FindHits}}
-      <form class="project-form" method="post" action="{{if eq .Purpose "init"}}/actions/workspaces/init{{else}}/actions/workspaces/register{{end}}">
-        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-        <input type="hidden" name="grant_id" value="{{.GrantID}}">
-        <p><strong>{{.Title}}</strong> <span class="form-help">{{.Location}}</span></p>
-        <button class="primary-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>{{if eq .Purpose "init"}}Initialize{{else}}Register{{end}}</button>
-      </form>
-    {{end}}
-  {{else}}
-    <p class="form-help">Home does not accept a typed filesystem path. Run <code>tracker init</code> in the folder, or enable discovery roots in machine settings and reopen this dialog. A CLI path grant can also be pasted below.</p>
-    <form class="project-form" method="post" action="{{if .ShowInit}}/actions/workspaces/init{{else}}/actions/workspaces/register{{end}}">
+  <p class="form-help">Create a new folder in Atlas boards, or choose an existing project directory below. To connect your coding agents afterward, run <code>tracker init</code> in that directory and restart the client.</p>
+  {{if .PendingGrant}}
+  <div class="grant-confirm" role="region" aria-labelledby="grant-confirm-title">
+    <h3 id="grant-confirm-title">Confirm this directory</h3>
+    <p class="form-help">Review the folder below, then confirm to continue. No files have changed yet.</p>
+    <dl class="settings-list">
+      <div><dt>Directory</dt><dd><code>{{.PendingGrant.Path}}</code></dd></div>
+      <div><dt>Action</dt><dd>{{if eq .PendingGrant.Purpose "register"}}Attach existing board{{else}}Initialize a board{{end}}</dd></div>
+    </dl>
+    <form class="project-form" method="post" action="{{if eq .PendingGrant.Purpose "register"}}/actions/workspaces/register{{else}}/actions/workspaces/init{{end}}" data-busy>
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <label>Path grant <input name="grant_id" autocomplete="off" required placeholder="grant id from tracker"></label>
+      <input type="hidden" name="grant_id" value="{{.PendingGrant.ID}}">
+      <input type="hidden" name="confirm_path" value="{{.PendingGrant.Path}}">
+      {{if .ShowInit}}
+        <div class="form-row">
+          <label>Project key <input name="project_key" value="{{.FormValue "project_key" ""}}" placeholder="APP" autocomplete="off"></label>
+          <label>Project name <input name="project_name" value="{{.FormValue "project_name" ""}}" placeholder="App" autocomplete="off"></label>
+        </div>
+      {{end}}
       <div class="dialog-actions">
         <a class="secondary-action" href="/" data-dialog-close>Cancel</a>
-        <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>{{if .ShowInit}}Initialize{{else}}Register{{end}}</button>
+        <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>{{if eq .PendingGrant.Purpose "register"}}Confirm and attach{{else}}Confirm and create{{end}}</button>
       </div>
     </form>
+  </div>
+  {{end}}
+  {{if not .PendingGrant}}
+  <form class="project-form" method="post" action="{{if .ShowInit}}/actions/workspaces/init{{else}}/actions/workspaces/register{{end}}" data-busy>
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <label>Location
+      <select name="root_ref" required>
+        {{range .AuthorizedRoots}}
+          <option value="{{.Ref}}" {{if eq $.BrowseRef .Ref}}selected{{end}}>{{.Title}}</option>
+        {{end}}
+      </select>
+    </label>
+    {{range .AuthorizedRoots}}{{if eq .Ref $.BrowseRef}}<p class="form-help">{{if eq .Kind "atlas_boards"}}Boards directory: {{end}}<code>{{.Path}}</code></p>{{end}}{{end}}
+    <label>Folder
+      <input name="folder" value="{{.FormValue "folder" .BrowseRel}}" autocomplete="off" {{if .ShowInit}}placeholder="my-app" required{{else}}placeholder="existing-workspace" required{{end}}>
+    </label>
+    {{if .BrowseChildren}}
+      <p class="form-help">Folders under this location</p>
+      <ul class="browse-list">
+        {{if .BrowseRel}}
+          <li><a href="{{.BrowseHref .BrowseRef .ParentBrowseRel}}">Up</a></li>
+        {{end}}
+        {{range .BrowseChildren}}
+          <li>
+            <a href="{{$.BrowseHref $.BrowseRef .Rel}}">{{.Name}}</a>
+            {{if .Workspace}}<span class="mode-chip">workspace{{if .Registered}} · registered{{end}}</span>{{end}}
+          </li>
+        {{end}}
+      </ul>
+    {{else if .BrowseRel}}
+      <p class="form-help">No subfolders. <a href="{{.BrowseHref .BrowseRef .ParentBrowseRel}}">Up</a></p>
+    {{end}}
+    {{if .ShowInit}}
+      <div class="form-row">
+        <label>Project key <input name="project_key" value="{{.FormValue "project_key" ""}}" placeholder="APP" autocomplete="off"></label>
+        <label>Project name <input name="project_name" value="{{.FormValue "project_name" ""}}" placeholder="App" autocomplete="off"></label>
+      </div>
+      <p class="form-help">Optional. Atlas can name the first project from your folder.</p>
+    {{end}}
+    <div class="dialog-actions">
+      <a class="secondary-action" href="/" data-dialog-close>Cancel</a>
+      <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>{{if .ShowInit}}Create board{{else}}Attach board{{end}}</button>
+    </div>
+  </form>
+  {{if .FindHits}}
+    <h3 class="browse-heading">Approved listings</h3>
+    <p class="form-help">Boards found in locations you have approved.</p>
+    {{range .FindHits}}
+      <form class="inline-grant" method="post" action="{{if eq .Purpose "init"}}/actions/workspaces/init{{else}}/actions/workspaces/register{{end}}" data-busy>
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="grant_id" value="{{.GrantID}}">
+        <button type="submit" {{if $.ReadOnly}}disabled{{end}}>{{if eq .Purpose "init"}}Initialize{{else}}Attach{{end}} {{.Title}}</button>
+      </form>
+    {{end}}
+  {{end}}
+  <details class="pointer-box" {{if .FormValue "directory" ""}}open{{end}}>
+    <summary>Existing directory on this computer</summary>
+    <p class="form-help">Enter the full path to your project folder. You’ll review the exact directory before Atlas makes changes.</p>
+    <form class="project-form" method="post" action="/actions/workspaces/preview-path" data-busy>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="purpose" value="{{if .ShowInit}}init{{else}}register{{end}}">
+      <label>Absolute directory <input name="directory" value="{{.FormValue "directory" ""}}" autocomplete="off" required placeholder="/absolute/path/to/project"></label>
+      {{if .ShowInit}}
+        <div class="form-row">
+          <label>Project key <input name="project_key" value="{{.FormValue "project_key" ""}}" placeholder="APP" autocomplete="off"></label>
+          <label>Project name <input name="project_name" value="{{.FormValue "project_name" ""}}" placeholder="App" autocomplete="off"></label>
+        </div>
+      {{end}}
+      <div class="dialog-actions">
+        <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>Review directory</button>
+      </div>
+    </form>
+  </details>
+  <details class="pointer-box">
+    <summary>Paste a CLI path grant</summary>
+    <p class="form-help">Optional. <code>tracker workspaces grant</code> still works if you already minted a grant in a terminal. Home-minted grants from Review directory need the confirmation step above, not this paste box.</p>
+    <form class="project-form" method="post" action="{{if .ShowInit}}/actions/workspaces/init{{else}}/actions/workspaces/register{{end}}" data-busy>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <label>Path grant <input name="grant_id" value="{{if not .PendingGrant}}{{.FormValue "grant_id" ""}}{{end}}" autocomplete="off" required placeholder="grant id from tracker"></label>
+      <div class="dialog-actions">
+        <button class="primary-action" type="submit" {{if .ReadOnly}}disabled{{end}}>Use grant</button>
+      </div>
+    </form>
+  </details>
   {{end}}
 </dialog>
 {{end}}
@@ -543,15 +632,15 @@
       {{if .Settings.Discovery.Roots}}
         <ul class="check-list">{{range .Settings.Discovery.Roots}}<li>{{.}}</li>{{end}}</ul>
       {{else}}
-        <p class="form-help">No discovery roots. Atlas never crawls the whole home directory. Add roots from the CLI; the browser will not take an arbitrary path.</p>
+        <p class="form-help">No discovery roots. Atlas never crawls the whole home directory. You can still create a board under Atlas boards on this machine. Widening discovery is a CLI/high-impact MCP grant, not a browser setting.</p>
       {{end}}
     </section>
   {{end}}
   {{if eq .Page "settings-agents"}}
     <section class="settings-section agent-settings">
       <h2>Agents</h2>
-      <p>Atlas registrations for your coding agents. Restart the client after setup, then ask for project status to confirm the connection.</p>
-      <p class="form-help">Automatic setup is {{if .Settings.Agents.AutoInstall}}on{{else}}off{{end}}. Project-scoped setup serves one workspace; user-scoped setup can use Home’s registered workspaces.</p>
+      <p>These rows are coding-agent <em>client</em> registrations (Cursor, Claude, Codex, and the portable descriptor). Browser <strong>Initialize board</strong> does not write those files. Run <code>tracker init</code> in the workspace, then restart the client. A written config is not a live connection.</p>
+      <p class="form-help">Automatic client install is {{if .Settings.Agents.AutoInstall}}on{{else}}off{{end}} for CLI init. Project-scoped setup serves one workspace; user-scoped setup can use Home’s registered workspaces. Ticket assignment uses workspace agent profiles on the Kanban, which you can register from the board without touching editor config.</p>
       {{if .Agents}}
       <table class="project-table home-table agent-clients">
         <thead><tr><th scope="col">Client</th><th scope="col">Scope</th><th scope="col">Status</th></tr></thead>
@@ -578,9 +667,9 @@
         </tbody>
       </table>
       {{else}}
-      <p class="settings-note">No Atlas registrations found. Run <code>tracker init</code> in your project to set up detected coding agents.</p>
+      <p class="settings-note">No editor client registrations found. Browser init does not create them. Run <code>tracker init</code> in the project, then restart the client.</p>
       {{end}}
-      <p class="settings-note">Configured means the saved command matches Atlas. A successful tool call confirms the live connection. Change automatic setup in General settings or use <code>tracker init --no-agents</code>.</p>
+      <p class="settings-note">Configured means the saved command matches Atlas. A successful tool call confirms the live connection. Change automatic CLI setup in General settings or use <code>tracker init --no-agents</code>.</p>
     </section>
   {{end}}
   {{if eq .Page "settings-workspaces"}}

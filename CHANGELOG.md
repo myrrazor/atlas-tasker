@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.16.0 - First-use and browser management (2026-09-15)
+
+[Download v1.16.0 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.16.0).
+
+- Provenance-verified install stays anonymous: GitHub CLI (`gh`) is required; local
+  bundle verification does not need a GitHub login. Checksum or attestation failure
+  still refuses the install. No checksum-only fallback.
+- Ordinary path is install → `tracker init` → restart the client → ask for status or
+  create a ticket. Init configures detected agents without a picker. The TTY picker
+  is `tracker init --integrations` or bare `tracker integrations install`.
+- Native skill roots: Grok `.grok/skills/atlas-worker/` (needs Grok project trust
+  before inspect lists it), Codex `.agents/skills/atlas-worker/` (`.codex/skills`
+  still lists on Codex CLI 0.144.5; migration removes byte-identical known generated duplicates, it
+  is not a repair of unsupported Codex), Cursor detection accepts `cursor-agent`,
+  OpenClaw shares `.agents/skills` with Codex.
+- User-scoped MCP server name is `atlas-tasker` with `--global --tool-profile workflow`.
+  Pinned `--workspace` serve remains the advanced alternative. A written file is
+  configured or `pending_client_restart`, never connected. Atlas does not start
+  agents or grant client trust.
+- Atlas Home can create or attach a board (Atlas boards, discovery roots, or an
+  existing directory after exact-path/purpose confirmation) and Kanban covers
+  everyday tickets including **Delete ticket**, which retains the files and audit history (no restore).
+  Home init does not write client MCP files.
+- `tracker update` still replaces only the binary. Re-run `tracker init` or the
+  documented scoped setup inside each workspace to refresh managed skills.
+- Compatibility matrix and operator checks:
+  [v1.16 client compatibility](docs/v1.16-client-compatibility.md). Browser
+  contract: [v1.16 browser management](docs/v1.16-browser-management.md). Native discovery, MCP connection and actual model workflows are recorded separately for each tested client.
+
+PR #158 multi-agent demo assets and the v1.15 Grok recording provenance are
+unchanged.
+
 ## v1.15.0 - Atlas Home And Agent Setup (2026-09-14)
 
 [Download v1.15.0 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.15.0).
