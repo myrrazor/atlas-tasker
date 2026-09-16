@@ -38,6 +38,9 @@ type statusPayload struct {
 	MCPApp            *mcpAppDocument             `json:"mcp_app,omitempty"`
 	Pagination        map[string]any              `json:"pagination,omitempty"`
 	Markdown          string                      `json:"markdown"`
+	Presentation      string                      `json:"presentation,omitempty"`
+	Chat              string                      `json:"chat,omitempty"`
+	ChatHint          string                      `json:"chat_hint,omitempty"`
 }
 
 type statusChange struct {
@@ -445,4 +448,95 @@ func backupSignalFromHealth(h service.BackupHealthSummary) render.BackupSignal {
 		LastRemoteCheckpointID: h.LastRemoteCheckpointID,
 		Notes:                  append([]string(nil), h.Notes...),
 	}
+}
+
+func parseFormatArg(args map[string]any) (string, error) {
+	switch strings.ToLower(stringArg(args, "format")) {
+	case "", "markdown", "md":
+		return "markdown", nil
+	case "chat":
+		return "chat", nil
+	default:
+		return "", apperr.New(apperr.CodeInvalidInput, "format must be markdown or chat")
+	}
+}
+
+func attachChatPresentation(paged map[string]any, args map[string]any, board render.CompactBoard) error {
+	format, err := parseFormatArg(args)
+	if err != nil {
+		return err
+	}
+	if format != "chat" {
+		return nil
+	}
+	paged["presentation"] = "chat"
+	paged["chat"] = render.CompactBoardChat(board)
+	paged["chat_hint"] = render.ChatPasteHint
+	return nil
+}
+
+func attachStatusChat(status *statusPayload, args map[string]any) error {
+	format, err := parseFormatArg(args)
+	if err != nil {
+		return err
+	}
+	if format != "chat" {
+		return nil
+	}
+	board := status.Board
+	if !boardHasCards(board) {
+		board = boardFromStatusLists(*status)
+	}
+	status.Presentation = "chat"
+	status.Chat = render.StatusChat(render.StatusChatView{
+		Scope:           status.Scope,
+		Project:         status.Project,
+		TicketID:        status.TicketID,
+		AgentID:         status.AgentID,
+		RunID:           status.RunID,
+		Actor:           status.Actor,
+		UnknownProject:  status.UnknownProject,
+		Disambiguation:  append([]string(nil), status.Disambiguation...),
+		SetupErrors:     append([]string(nil), status.SetupErrors...),
+		Board:           board,
+		RecommendedNext: append([]string(nil), status.RecommendedNext...),
+	})
+	status.ChatHint = render.ChatPasteHint
+	return nil
+}
+
+func boardHasCards(board render.CompactBoard) bool {
+	for _, col := range board.Columns {
+		if len(col.Cards) > 0 || col.Total > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func boardFromStatusLists(status statusPayload) render.CompactBoard {
+	columns := map[contracts.Status][]contracts.TicketSnapshot{}
+	add := func(st contracts.Status, refs []service.TicketRef) {
+		for _, ref := range refs {
+			statusName := contracts.Status(strings.TrimSpace(ref.Status))
+			if statusName == "" {
+				statusName = st
+			}
+			columns[st] = append(columns[st], contracts.TicketSnapshot{
+				ID:       ref.ID,
+				Project:  ref.Project,
+				Title:    ref.Title,
+				Status:   statusName,
+				Priority: contracts.Priority(ref.Priority),
+				Type:     contracts.TicketType(ref.Type),
+				Assignee: contracts.Actor(ref.Assignee),
+			})
+		}
+	}
+	add(contracts.StatusReady, status.Ready)
+	add(contracts.StatusInProgress, status.InProgress)
+	add(contracts.StatusBlocked, status.Blocked)
+	add(contracts.StatusInReview, status.InReview)
+	add(contracts.StatusDone, status.RecentlyCompleted)
+	return render.NewCompactBoard(status.Project, columns, -1, nil)
 }

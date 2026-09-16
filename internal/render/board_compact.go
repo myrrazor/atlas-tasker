@@ -346,9 +346,11 @@ func populatedColumns(board CompactBoard) []CompactColumn {
 	return out
 }
 
-// CompactBoardMarkdown is the native chat board: heading, counts, attention,
-// one next action, backup, populated lanes. Ticket text is escaped so titles
-// cannot inject images, HTML, or links. CLI `--md` does not use this.
+// CompactBoardMarkdown is the ANSI-free chat board for Slack, Teams, and
+// coding-agent transcripts: heading, counts, attention, one next action,
+// backup, populated lanes. Ticket text is escaped so titles cannot inject
+// images, HTML, or links. Discord/Grokbot color uses CompactBoardChat.
+// CLI `--md` does not use this.
 func CompactBoardMarkdown(board CompactBoard) string {
 	var b strings.Builder
 	b.WriteString("# ")

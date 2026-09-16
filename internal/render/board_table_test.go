@@ -26,6 +26,10 @@ func TestParseBoardStyleDefaultsToTable(t *testing.T) {
 	if err != nil || legacy != BoardStyleLegacy {
 		t.Fatalf("legacy: %q err=%v", legacy, err)
 	}
+	chat, err := ParseBoardStyle("chat")
+	if err != nil || chat != BoardStyleChat {
+		t.Fatalf("chat: %q err=%v", chat, err)
+	}
 	if _, err := ParseBoardStyle("neon"); err == nil {
 		t.Fatal("expected invalid style error")
 	}

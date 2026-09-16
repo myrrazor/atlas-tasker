@@ -741,7 +741,7 @@ Dependency rules:
 
 ## Views
 
-- `tracker board [--view <NAME>] [--style table|kanban|legacy] [--density comfortable|compact|focus]`
+- `tracker board [--view <NAME>] [--style table|kanban|legacy|chat] [--density comfortable|compact|focus]` (`chat` is a paste-ready Discord/Grokbot `ansi` block; `--json` is unchanged)
 - `tracker backlog`
 - `tracker next [--actor <ACTOR>] [--view <NAME>]`
 - `tracker blocked`

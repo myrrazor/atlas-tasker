@@ -13,6 +13,9 @@ func TestSharedSkillPresentsStatusBoardAsCompactMarkdownTable(t *testing.T) {
 		"unbounded catalog",
 		"atlas.board",
 		"atlas.status",
+		"format",
+		"chat",
+		"paste the `chat` field verbatim",
 		"Never invent tickets",
 	}
 	core := lifecycleSection(atlasWorkerSkill("claude"))
