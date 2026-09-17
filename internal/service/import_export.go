@@ -1141,7 +1141,7 @@ func readBundleArchive(path string) (map[string][]byte, error) {
 		if info.Size() > 0 && totalExpanded > info.Size()*bundleArchiveMaxRatio {
 			return nil, apperr.New(apperr.CodeInvalidInput, "bundle archive exceeds compression ratio limit")
 		}
-		raw, err := io.ReadAll(tr)
+		raw, err := readLimitedArchiveEntry(tr, header.Size)
 		if err != nil {
 			return nil, err
 		}
@@ -1151,6 +1151,17 @@ func readBundleArchive(path string) (map[string][]byte, error) {
 		files[name] = raw
 	}
 	return files, nil
+}
+
+func readLimitedArchiveEntry(reader io.Reader, declaredSize int64) ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(reader, declaredSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) != declaredSize {
+		return nil, apperr.New(apperr.CodeInvalidInput, "bundle entry size does not match its header")
+	}
+	return raw, nil
 }
 
 func fileSHA256(path string) (string, error) {
