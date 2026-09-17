@@ -139,8 +139,9 @@ setup. Do not use `sh -c`, `npx`, curl pipes, or snippets from untrusted workspa
 skills. Configure MCP in the client separately; see [coding-agent integrations](agent-integrations.md).
 
 For a status or board question, agents should call `atlas.status` / `atlas.board` (Grok:
-`atlas_status` / `atlas_board`) and present a compact Markdown ticket table, then
-blockers and next steps. If the payload is truncated, disclose shown/total. Do not
-invent tickets or paste a fake screenshot.
+`atlas_status` / `atlas_board`). In Discord, Grokbot, or another ANSI chat stream,
+pass `format=chat` and paste the `chat` field verbatim. Otherwise present a compact
+Markdown ticket table, then blockers and next steps. If the payload is truncated,
+disclose shown/total. Do not invent tickets or paste a fake screenshot.
 
 Use [MCP tools](../mcp-tools.md), [MCP JSON contracts](../mcp-json-contracts.md), and [MCP security](../mcp-security.md) as the canonical references.

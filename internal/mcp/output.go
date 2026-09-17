@@ -107,7 +107,7 @@ func (w *limitWriter) Write(p []byte) (int, error) {
 }
 
 func textFallback(kind string, payload any, truncated bool, maxTokensEstimate int) string {
-	if markdown := extractMarkdown(payload); markdown != "" {
+	if markdown := extractDisplayText(payload); markdown != "" {
 		text := markdown
 		maxChars := 1200
 		if maxTokensEstimate > 0 {
@@ -160,18 +160,30 @@ func truncateRunes(text string, maxRunes int) string {
 }
 
 func extractMarkdown(payload any) string {
-	obj, ok := payload.(map[string]any)
+	return firstPayloadString(payload, "markdown")
+}
+
+func extractDisplayText(payload any) string {
+	if chat := firstPayloadString(payload, "chat"); chat != "" {
+		return chat
+	}
+	return extractMarkdown(payload)
+}
+
+func firstPayloadString(payload any, key string) string {
+	raw := asJSONValue(payload)
+	obj, ok := raw.(map[string]any)
 	if !ok {
 		return ""
 	}
-	if text, ok := obj["markdown"].(string); ok && strings.TrimSpace(text) != "" {
+	if text, ok := obj[key].(string); ok && strings.TrimSpace(text) != "" {
 		return text
 	}
 	inner, ok := obj["payload"].(map[string]any)
 	if !ok {
 		return ""
 	}
-	text, _ := inner["markdown"].(string)
+	text, _ := inner[key].(string)
 	return strings.TrimSpace(text)
 }
 

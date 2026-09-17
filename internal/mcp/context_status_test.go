@@ -231,6 +231,62 @@ func TestBoardToolIncludesSharedPresentation(t *testing.T) {
 	}
 }
 
+func TestBoardAndStatusChatPresentation(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 9, 16, 18, 0, 0, 0, time.UTC)
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	workspace, err := OpenWorkspace(root, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer workspace.Close()
+	ctx := context.Background()
+	if err := workspace.Actions.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	workflow := NewServer(workspace, Options{Profile: ProfileWorkflow, Now: func() time.Time { return now }}.Normalized())
+	if _, err := workflow.CallTool(ctx, "atlas.ticket.create", map[string]any{
+		"project": "APP", "title": "Ship first feature", "type": "task", "status": "ready",
+		"actor": "human:owner", "reason": "seed",
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	server := NewServer(workspace, Options{Profile: ProfileRead, Now: func() time.Time { return now }}.Normalized())
+	board, err := server.CallTool(ctx, "atlas.board", map[string]any{"project": "APP", "format": "chat"})
+	if err != nil {
+		t.Fatalf("board chat: %v", err)
+	}
+	inner, _ := board["payload"].(map[string]any)
+	chat, _ := inner["chat"].(string)
+	if !strings.Contains(chat, "```ansi") || !strings.Contains(chat, "APP-1") || !strings.ContainsRune(chat, 0x1b) {
+		t.Fatalf("board chat payload:\n%s", chat)
+	}
+	md, _ := inner["markdown"].(string)
+	if strings.ContainsRune(md, 0x1b) {
+		t.Fatalf("markdown must stay ANSI-free when format=chat: %q", md)
+	}
+	status, err := server.CallTool(ctx, "atlas.status", map[string]any{"project": "APP", "format": "chat"})
+	if err != nil {
+		t.Fatalf("status chat: %v", err)
+	}
+	payload := mustPayload[statusPayload](t, status)
+	if payload.Presentation != "chat" || !strings.Contains(payload.Chat, "```ansi") || !strings.Contains(payload.Chat, "APP-1") {
+		t.Fatalf("status chat: %#v", payload)
+	}
+	if strings.ContainsRune(payload.Markdown, 0x1b) {
+		t.Fatal("status markdown must stay ANSI-free")
+	}
+	text := textFallback("atlas.status", status, false, 400)
+	if strings.TrimSpace(text) != strings.TrimSpace(payload.Chat) {
+		t.Fatalf("MCP text fallback should be the chat field, got:\n%s", text)
+	}
+	if _, err := server.CallTool(ctx, "atlas.board", map[string]any{"project": "APP", "format": "neon"}); err == nil {
+		t.Fatal("invalid format should fail")
+	}
+}
+
 func TestReadInventoryIncludesContextAndStatus(t *testing.T) {
 	read := Inventory(Options{Profile: ProfileRead}.Normalized())
 	if !toolEnabled(read, "atlas.context") || !toolEnabled(read, "atlas.status") || !toolEnabled(read, "atlas.backup.status") {

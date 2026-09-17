@@ -157,7 +157,7 @@ func grokBlock(guidePath string) string {
 - Pass `+"`--actor`"+` and `+"`--reason`"+` on every write.
 - Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
 - Prefer JSON reads; treat exit 4 as a forbidden workflow edge, not a crash.
-- Grok MCP tools use underscore names (`+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`). Call those; they map to the canonical Atlas tools.
+- Grok MCP tools use underscore names (`+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`). Call those; they map to the canonical Atlas tools. For Discord or Grokbot board status, pass `+"`format=chat`"+` and paste the `+"`chat`"+` field verbatim.
 - The `+"`atlas-worker`"+` skill installs under `+"`.grok/skills/`"+` (walked from the repo root). Atlas does not write repo `+"`.agents`"+` for Grok; user `+"`.agents`"+` under the home directory is client-owned.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
@@ -170,7 +170,7 @@ Grok-style agents that load root `+"`AGENTS.md`"+` get the managed Atlas block f
 
 ## MCP tool names
 
-Grok skips dotted MCP names. Atlas registers this client with `+"`--tool-name-style portable`"+`, so the live tools are `+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`, and the rest of the catalog with dots turned into one underscore. Call those names. JSON/Markdown still talk about `+"`atlas.status`"+` and friends.
+Grok skips dotted MCP names. Atlas registers this client with `+"`--tool-name-style portable`"+`, so the live tools are `+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`, and the rest of the catalog with dots turned into one underscore. Call those names. JSON/Markdown still talk about `+"`atlas.status`"+` and friends. In Discord or Grokbot, call `+"`atlas_status`"+` / `+"`atlas_board`"+` with `+"`format=chat`"+` and paste the `+"`chat`"+` field verbatim.
 
 ## Recommended loop
 
@@ -228,7 +228,7 @@ Read ` + "`references/workflow.md`" + ` when you need the full loop, blocker han
 
 ## Grok MCP tool names
 
-Grok skips dotted MCP tool names. This session advertises Atlas tools with a single underscore: call ` + "`atlas_status`" + `, ` + "`atlas_board`" + `, and ` + "`atlas_context`" + ` (and the rest of the catalog the same way). They dispatch to the canonical Atlas tools ` + "`atlas.status`" + `, ` + "`atlas.board`" + `, and ` + "`atlas.context`" + `. JSON and Markdown still use the canonical names.
+Grok skips dotted MCP tool names. This session advertises Atlas tools with a single underscore: call ` + "`atlas_status`" + `, ` + "`atlas_board`" + `, and ` + "`atlas_context`" + ` (and the rest of the catalog the same way). They dispatch to the canonical Atlas tools ` + "`atlas.status`" + `, ` + "`atlas.board`" + `, and ` + "`atlas.context`" + `. JSON and Markdown still use the canonical names. For Discord or Grokbot status, pass ` + "`format=chat`" + ` and paste the ` + "`chat`" + ` field verbatim.
 ` + more
 	}
 	return strings.TrimSpace(fmt.Sprintf(`%s
@@ -259,7 +259,7 @@ If the workspace has no agent profiles yet (` + "`tracker agent list --json`" + 
 ## MCP first
 
 - Prefer Atlas MCP tools when this session has them. Call ` + "`atlas.context`" + ` when starting material work. Call ` + "`atlas.status`" + ` or ` + "`atlas.board`" + ` before every status or board question.
-- For a status or board question, query Atlas and present a compact Markdown ticket TABLE (ID, title, status, assignee) from that payload, then blockers and next steps. Do not dump an unbounded catalog. If the board is large, use the tool's filters or pagination and disclose shown/total.
+- For a status or board question, query Atlas first. In Discord, Grokbot, or another chat stream that renders ANSI code blocks, call ` + "`atlas.status`" + ` or ` + "`atlas.board`" + ` with ` + "`format`" + ` ` + "`chat`" + ` and paste the ` + "`chat`" + ` field verbatim — do not rewrite colors or turn it into a different table. In Slack, Teams, coding-agent transcripts, or any host that does not color ANSI, present a compact Markdown ticket TABLE (ID, title, status, assignee) from that payload, then blockers and next steps. Do not dump an unbounded catalog. If the board is large, use the tool's filters or pagination and disclose shown/total.
 - If MCP is unavailable (guidance mode, the server is not registered, or a tool call failed), fall back to the CLI commands in this skill and format the same compact table from JSON. Do not invent Atlas state from conversational memory. Report a failed read instead of guessing.
 - Do not invoke high-impact Atlas operations. Do not tell the user to run low-level tracker internals as a required step.
 
@@ -298,6 +298,7 @@ Classify the user request before creating or attaching a ticket.
 
 - Query Atlas before every status report. Never answer "what is the status" from memory.
 - Default display for a status or board question is a compact Markdown ticket table, then blockers and next steps. Disclose shown/total when the payload is truncated. Never invent tickets, statuses, or a screenshot.
+- When the user is reading in Discord, Grokbot, or a similar chat stream, request ` + "`format=chat`" + ` and paste the ` + "`chat`" + ` field verbatim.
 - Reconcile Atlas state before final completion messaging. The board and ticket view must already show the new status.
 `)
 }
