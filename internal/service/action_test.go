@@ -129,7 +129,6 @@ func TestActionServiceReviewAndPolicyFlow(t *testing.T) {
 	if err := projectStore.CreateProject(ctx, project); err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-
 	actions := NewActionService(root, projectStore, ticketStore, eventsLog, projection, func() time.Time { return clock }, FileLockManager{Root: root}, nil, nil)
 	updatedProject, err := actions.SetProjectPolicy(ctx, "APP", contracts.ProjectDefaults{
 		CompletionMode:   contracts.CompletionModeDualGate,

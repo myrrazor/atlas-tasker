@@ -74,6 +74,47 @@ func TestCollaboratorGateApprovalRequiresTrustAndMatchingRole(t *testing.T) {
 	}
 }
 
+func TestPermissionsDenyUnmappedActorsButAllowRegisteredLocalAgents(t *testing.T) {
+	ctx := context.Background()
+	root, actions, queries, projectStore, _, _ := newImportExportHarness(t)
+	now := actions.now()
+	if err := projectStore.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket, err := actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project: "APP", Title: "Guard identities", Type: contracts.TicketTypeTask,
+		Status: contracts.StatusReady, Priority: contracts.PriorityMedium,
+		CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}, contracts.Actor("human:owner"), "seed ticket")
+	if err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	if _, err := actions.AddCollaborator(ctx, contracts.CollaboratorProfile{
+		CollaboratorID: "reviewer", DisplayName: "Reviewer",
+	}, contracts.Actor("human:owner"), "enable collaboration identity mapping"); err != nil {
+		t.Fatalf("add collaborator: %v", err)
+	}
+	for _, actor := range []contracts.Actor{"human:outsider", "agent:unknown"} {
+		view, err := queries.PermissionsView(ctx, ticket.ID, actor, contracts.PermissionActionDispatch)
+		if err != nil {
+			t.Fatalf("permissions for %s: %v", actor, err)
+		}
+		if len(view.Decisions) != 1 || view.Decisions[0].Allowed || !slices.Contains(view.Decisions[0].ReasonCodes, "collaborator_unmapped") {
+			t.Fatalf("expected %s to be denied as unmapped, got %#v", actor, view.Decisions)
+		}
+	}
+	if err := (AgentStore{Root: root}).SaveAgent(ctx, contracts.AgentProfile{AgentID: "builder-1", DisplayName: "Builder", Provider: contracts.AgentProviderCodex, Enabled: true}); err != nil {
+		t.Fatalf("save local agent: %v", err)
+	}
+	view, err := queries.PermissionsView(ctx, ticket.ID, contracts.Actor("agent:builder-1"), contracts.PermissionActionDispatch)
+	if err != nil {
+		t.Fatalf("permissions for local agent: %v", err)
+	}
+	if len(view.Decisions) != 1 || !view.Decisions[0].Allowed {
+		t.Fatalf("expected registered local agent to remain allowed, got %#v", view.Decisions)
+	}
+}
+
 func TestMembershipProfilesApplyToMappedCollaborators(t *testing.T) {
 	ctx := context.Background()
 	_, actions, queries, projectStore, _, _ := newImportExportHarness(t)
