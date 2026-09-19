@@ -77,6 +77,7 @@
 - temp-dir staging is required before apply
 - import preview and apply are persistent audited jobs, not ephemeral shell output
 - Atlas bundle import rejects absolute paths and `..` traversal anywhere in the archive
+- Atlas bundle import writes only export-candidate Atlas paths and rejects `.git/`, `.ssh/`, and similar planted entries even when they are relative and free of `..`
 - `export verify` validates archive checksum, manifest checksum, unexpected bundle entries, and missing bundle entries
 
 ## Idempotency
