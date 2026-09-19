@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type pageResult struct {
@@ -106,19 +107,16 @@ func (w *limitWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+const (
+	ansiChatOpen  = "```ansi\n"
+	ansiChatClose = "\n```"
+	ansiReset     = "\x1b[0m"
+)
+
 func textFallback(kind string, payload any, truncated bool, maxTokensEstimate int) string {
-	if markdown := extractDisplayText(payload); markdown != "" {
-		text := markdown
-		maxChars := 1200
-		if maxTokensEstimate > 0 {
-			maxChars = maxTokensEstimate * 4
-		}
-		if maxChars < 200 {
-			maxChars = 200
-		}
-		if len([]rune(text)) > maxChars {
-			text = truncateRunes(text, maxChars)
-		}
+	maxChars := fallbackMaxChars(maxTokensEstimate)
+	if display := extractDisplayText(payload); display != "" {
+		text := limitDisplayText(display, maxChars)
 		if truncated {
 			return fmt.Sprintf("%s returned a truncated result:\n%s", kind, text)
 		}
@@ -128,7 +126,14 @@ func textFallback(kind string, payload any, truncated bool, maxTokensEstimate in
 	if err != nil {
 		return kind
 	}
-	text := string(raw)
+	text := limitPlainText(string(raw), maxChars)
+	if truncated {
+		return fmt.Sprintf("%s returned a truncated result: %s", kind, text)
+	}
+	return fmt.Sprintf("%s returned: %s", kind, text)
+}
+
+func fallbackMaxChars(maxTokensEstimate int) int {
 	maxChars := 1200
 	if maxTokensEstimate > 0 {
 		maxChars = maxTokensEstimate * 4
@@ -136,13 +141,94 @@ func textFallback(kind string, payload any, truncated bool, maxTokensEstimate in
 	if maxChars < 200 {
 		maxChars = 200
 	}
-	if len([]rune(text)) > maxChars {
-		text = truncateRunes(text, maxChars)
+	return maxChars
+}
+
+func limitDisplayText(text string, maxChars int) string {
+	if utf8.RuneCountInString(text) <= maxChars {
+		return text
 	}
-	if truncated {
-		return fmt.Sprintf("%s returned a truncated result: %s", kind, text)
+	if isANSIChatFence(text) {
+		return truncateANSIChatFence(text, maxChars)
 	}
-	return fmt.Sprintf("%s returned: %s", kind, text)
+	return truncateRunes(text, maxChars)
+}
+
+func limitPlainText(text string, maxChars int) string {
+	if utf8.RuneCountInString(text) <= maxChars {
+		return text
+	}
+	return truncateRunes(text, maxChars)
+}
+
+func isANSIChatFence(text string) bool {
+	return strings.HasPrefix(strings.TrimSpace(text), "```ansi")
+}
+
+// truncateANSIChatFence keeps a paste-ready ```ansi block: never cut inside
+// an SGR sequence, and always finish with a reset plus a closing fence.
+func truncateANSIChatFence(text string, maxRunes int) string {
+	body := unwrapANSIChat(text)
+	suffix := "..." + ansiReset + ansiChatClose + "\n"
+	overhead := utf8.RuneCountInString(ansiChatOpen + suffix)
+	budget := maxRunes - overhead
+	if budget < 0 {
+		budget = 0
+	}
+	return ansiChatOpen + truncateANSIBody(body, budget) + suffix
+}
+
+func unwrapANSIChat(text string) string {
+	text = strings.TrimSpace(text)
+	text = strings.TrimPrefix(text, "```ansi")
+	text = strings.TrimPrefix(text, "\n")
+	text = strings.TrimSuffix(text, "```")
+	return strings.TrimRight(text, "\n")
+}
+
+func truncateANSIBody(body string, maxRunes int) string {
+	if maxRunes <= 0 || body == "" {
+		return ""
+	}
+	runes := []rune(body)
+	if len(runes) <= maxRunes {
+		return body
+	}
+	out := make([]rune, 0, maxRunes)
+	for i := 0; i < len(runes); {
+		if runes[i] == 0x1b {
+			end, ok := sgrSequenceEnd(runes, i)
+			if !ok || len(out)+(end-i+1) > maxRunes {
+				break
+			}
+			out = append(out, runes[i:end+1]...)
+			i = end + 1
+			continue
+		}
+		if len(out)+1 > maxRunes {
+			break
+		}
+		out = append(out, runes[i])
+		i++
+	}
+	return string(out)
+}
+
+func sgrSequenceEnd(runes []rune, start int) (int, bool) {
+	i := start + 1
+	if i >= len(runes) || runes[i] != '[' {
+		return 0, false
+	}
+	for i++; i < len(runes); i++ {
+		switch {
+		case runes[i] == 'm':
+			return i, true
+		case (runes[i] >= '0' && runes[i] <= '9') || runes[i] == ';' || runes[i] == ':':
+		default:
+			return 0, false
+		}
+	}
+	return 0, false
 }
 
 func truncateRunes(text string, maxRunes int) string {
