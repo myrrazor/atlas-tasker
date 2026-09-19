@@ -1272,7 +1272,7 @@ func allowedAtlasBundleImportPath(raw string) bool {
 		return false
 	}
 	for _, part := range strings.Split(clean, "/") {
-		switch part {
+		switch strings.ToLower(part) {
 		case ".git", ".ssh", ".gnupg", ".hg", ".svn":
 			return false
 		}
