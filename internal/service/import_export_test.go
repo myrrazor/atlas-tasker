@@ -372,6 +372,8 @@ func TestAllowedAtlasBundleImportPathRejectsHooksAndSSH(t *testing.T) {
 		{path: "projects/.GnuPG/secring.gpg", want: false},
 		{path: "projects/.HG/store", want: false},
 		{path: "projects/.SVN/entries", want: false},
+		{path: "projects/APP/.git./hooks/pre-commit", want: false},
+		{path: "projects/APP/.ssh /authorized_keys", want: false},
 		{path: "AGENTS.md", want: false},
 		{path: "../escape.txt", want: false},
 		{path: "/escape.txt", want: false},
@@ -455,6 +457,48 @@ func TestApplyAtlasBundleImportRejectsExtraArchiveHooks(t *testing.T) {
 		t.Fatalf("expected extra hook rejection, got %v", err)
 	}
 	assertNotPlanted(t, root, filepath.Join(".git", "hooks", "post-checkout"), filepath.Join("projects", "APP", "tickets", "APP-1.md"))
+}
+
+func TestApplyAtlasBundleImportRejectsExistingDestinationSymlink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "projects"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "projects", "escape")); err != nil {
+		t.Fatal(err)
+	}
+	ticket := []byte("---\nid: ESC-1\nproject: escape\ntitle: planted\n---\n")
+	archivePath := filepath.Join(t.TempDir(), "symlink-escape.tar.gz")
+	if err := writeTestBundle(archivePath, map[string][]byte{
+		"manifest.json": mustJSON(t, bundleManifest{
+			FormatVersion: "v1",
+			BundleID:      "bundle_symlink_escape",
+			Scope:         "workspace",
+			CreatedAt:     time.Date(2026, 3, 27, 9, 0, 0, 0, time.UTC),
+			Files: []bundleFileRecord{
+				{Path: "projects/escape/tickets/ESC-1.md", SHA256: strings.Repeat("0", 64), Size: int64(len(ticket))},
+			},
+		}),
+		"projects/escape/tickets/ESC-1.md": ticket,
+	}); err != nil {
+		t.Fatalf("write symlink-escape bundle: %v", err)
+	}
+
+	err := applyAtlasBundleImport(context.Background(), root, ImportPlan{
+		SourcePath: archivePath,
+		SourceType: contracts.ImportSourceAtlasBundle,
+	})
+	if err == nil {
+		t.Fatal("expected destination symlink rejection")
+	}
+	if !strings.Contains(err.Error(), "symlink_rejected") && !strings.Contains(err.Error(), "path escapes the workspace") {
+		t.Fatalf("expected destination symlink rejection, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "tickets", "ESC-1.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected outside target not to be written, stat err=%v", err)
+	}
+	assertNotPlanted(t, root, filepath.Join("projects", "escape", "tickets", "ESC-1.md"))
 }
 
 func hasImportPlanErrorPrefix(errors []string, prefix string) bool {

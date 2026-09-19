@@ -854,7 +854,10 @@ func applyAtlasBundleImport(ctx context.Context, root string, plan ImportPlan) e
 		if !allowedAtlasBundleImportPath(rel) {
 			return apperr.New(apperr.CodeInvalidInput, "disallowed_bundle_path:"+rel)
 		}
-		target := filepath.Join(root, filepath.FromSlash(rel))
+		target, err := resolveContainedPath(root, filepath.FromSlash(rel))
+		if err != nil {
+			return err
+		}
 		if _, err := os.Stat(target); err == nil {
 			return apperr.New(apperr.CodeConflict, "import would overwrite existing path: "+rel)
 		}
@@ -870,7 +873,10 @@ func applyAtlasBundleImport(ctx context.Context, root string, plan ImportPlan) e
 			return apperr.New(apperr.CodeInvalidInput, "disallowed_bundle_path:"+rel)
 		}
 		source := filepath.Join(staging, filepath.FromSlash(rel))
-		target := filepath.Join(root, filepath.FromSlash(rel))
+		target, err := resolveContainedPath(root, filepath.FromSlash(rel))
+		if err != nil {
+			return err
+		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
@@ -1272,6 +1278,9 @@ func allowedAtlasBundleImportPath(raw string) bool {
 		return false
 	}
 	for _, part := range strings.Split(clean, "/") {
+		if strings.TrimRight(part, ". ") != part {
+			return false
+		}
 		switch strings.ToLower(part) {
 		case ".git", ".ssh", ".gnupg", ".hg", ".svn":
 			return false
