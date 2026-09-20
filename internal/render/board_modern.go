@@ -20,6 +20,8 @@ const (
 	BoardStyleModern BoardStyle = "modern"
 	// BoardStyleLegacy is the old boxed ASCII grid; CLI-only via --style legacy.
 	BoardStyleLegacy BoardStyle = "legacy"
+	// BoardStyleChat is the paste-ready Discord/Grokbot ANSI board.
+	BoardStyleChat BoardStyle = "chat"
 )
 
 type BoardDensity string
@@ -53,7 +55,7 @@ func (o BoardRenderOptions) normalized() BoardRenderOptions {
 		o.Width = 80
 	}
 	switch o.Style {
-	case BoardStyleTable, BoardStyleKanban, BoardStyleModern, BoardStyleLegacy:
+	case BoardStyleTable, BoardStyleKanban, BoardStyleModern, BoardStyleLegacy, BoardStyleChat:
 	default:
 		o.Style = BoardStyleTable
 	}
@@ -73,8 +75,10 @@ func ParseBoardStyle(raw string) (BoardStyle, error) {
 		return BoardStyleKanban, nil
 	case "legacy", "grid":
 		return BoardStyleLegacy, nil
+	case "chat", "discord", "ansi":
+		return BoardStyleChat, nil
 	default:
-		return "", fmt.Errorf("board style must be table, kanban, or legacy")
+		return "", fmt.Errorf("board style must be table, kanban, legacy, or chat")
 	}
 }
 
@@ -99,6 +103,9 @@ func ParseBoardDensity(raw string) (BoardDensity, error) {
 // callers should not go through here — they already have structured fields.
 func RenderBoard(board CompactBoard, opts BoardRenderOptions) string {
 	opts = opts.normalized()
+	if opts.Style == BoardStyleChat {
+		return CompactBoardChat(board)
+	}
 	if opts.Style.IsKanban() {
 		return renderModernBoard(board, opts)
 	}

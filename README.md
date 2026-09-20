@@ -74,7 +74,7 @@ go build -o tracker ./cmd/tracker
 
 Mutation commands resolve `--actor`, then `TRACKER_ACTOR`, then `actor.default`, and exit 2 before writing if none is set. There is no silent `human:owner` fallback.
 
-Default `tracker board` is a polished table. `--style kanban` is optional cards. The browser stays Kanban. `--json` is the machine contract.
+Default `tracker board` is a polished table. `--style kanban` is optional cards. `--style chat` is a paste-ready Discord/Grokbot ANSI board. The browser stays Kanban. `--json` is the machine contract.
 
 ![Polished ticket table in the terminal](docs/assets/board.png)
 

@@ -125,6 +125,7 @@ is never pending.
 tracker board --json                       # {"columns": {"ready": [...], ...}}
 tracker board                              # default human board: polished table
 tracker board --style kanban               # optional side-by-side cards
+tracker board --style chat                 # Discord/Grokbot paste-ready ANSI board
 tracker queue --actor agent:builder-1 --json
 tracker ticket view APP-12 --json
 tracker inspect APP-12 --actor agent:builder-1 --json   # policy + lease + queue + history

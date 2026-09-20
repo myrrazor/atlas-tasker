@@ -34,9 +34,9 @@ func ToolSpecs() []ToolSpec {
 		readTool("atlas.goal.brief", "Read a pasteable goal brief for a ticket or run.", readProfiles, objectSchema([]string{"target"}, map[string]any{"target": stringProp("Ticket ID or run ID.")}), "ActionService.GoalBrief", goalBriefTool),
 		readTool("atlas.search", "Search tickets with Atlas query syntax.", readProfiles, objectSchema([]string{"query"}, mergeProps(commonReadProps(), map[string]any{"query": stringProp("Atlas ticket search query.")})), "QueryService.Search", searchTool),
 		readTool("atlas.context", "Read workspace identity, managed-mode policy, assigned work, and backup health.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"project": stringProp("Optional project key."), "actor": stringProp("Optional Atlas actor for this integration.")})), "QueryService.ManagedModeView", contextTool),
-		readTool("atlas.status", "Read a fresh workspace, project, ticket, agent, or run status with compact Markdown.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"scope": stringProp("Optional scope: workspace, project, ticket, agent, or run."), "project": stringProp("Optional project key."), "ticket_id": stringProp("Optional ticket ID for ticket scope."), "agent_id": stringProp("Optional agent ID for agent scope."), "run_id": stringProp("Optional run ID for run scope."), "actor": stringProp("Optional Atlas actor.")})), "QueryService.Board", wrapStatusTool),
+		readTool("atlas.status", "Read a fresh workspace, project, ticket, agent, or run status with compact Markdown. Use format=chat when answering in Discord, Grokbot, or another ANSI chat stream.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"scope": stringProp("Optional scope: workspace, project, ticket, agent, or run."), "project": stringProp("Optional project key."), "ticket_id": stringProp("Optional ticket ID for ticket scope."), "agent_id": stringProp("Optional agent ID for agent scope."), "run_id": stringProp("Optional run ID for run scope."), "actor": stringProp("Optional Atlas actor."), "format": stringProp("Presentation: markdown (default, ANSI-free) or chat (Discord/Grokbot paste-ready ```ansi block).")})), "QueryService.Board", wrapStatusTool),
 		readTool("atlas.backup.status", "Read automatic backup health without target URLs, credentials, or mutation.", readProfiles, objectSchema(nil, map[string]any{}), "QueryService.AutoBackupStatus", backupStatusTool),
-		readTool("atlas.board", "Read the board grouped by status.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_status", "Optional per-status cursors keyed by Atlas status."), map[string]any{"project": stringProp("Optional project key."), "assignee": stringProp("Optional assignee actor."), "type": stringProp("Optional ticket type.")})), "QueryService.Board", boardTool),
+		readTool("atlas.board", "Read the board grouped by status. Use format=chat when answering in Discord, Grokbot, or another ANSI chat stream.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_status", "Optional per-status cursors keyed by Atlas status."), map[string]any{"project": stringProp("Optional project key."), "assignee": stringProp("Optional assignee actor."), "type": stringProp("Optional ticket type."), "format": stringProp("Presentation: markdown (default, ANSI-free) or chat (Discord/Grokbot paste-ready ```ansi block).")})), "QueryService.Board", boardTool),
 		readTool("atlas.ticket.view", "Read one ticket detail view.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID.")}), "QueryService.TicketDetail", ticketViewTool),
 		readTool("atlas.ticket.history", "Read ticket event history.", readProfiles, objectSchema([]string{"ticket_id"}, mergeProps(commonReadProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "QueryService.History", ticketHistoryTool),
 		readTool("atlas.ticket.inspect", "Inspect a ticket, policy, links, and git context.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID."), "actor": stringProp("Optional actor for policy context.")}), "QueryService.InspectTicket", ticketInspectTool),
@@ -332,6 +332,9 @@ func boardTool(tc ToolContext, args map[string]any) (any, error) {
 	paged["markdown"] = render.CompactBoardMarkdown(board)
 	paged["mcp_app"] = newBoardApp(board)
 	paged["board_url"] = board.BoardURL
+	if err := attachChatPresentation(paged, args, board); err != nil {
+		return nil, err
+	}
 	return paged, nil
 }
 
@@ -354,6 +357,9 @@ func wrapStatusTool(tc ToolContext, args map[string]any) (any, error) {
 		status.MCPApp = newBoardApp(status.Board)
 	}
 	status.Markdown = statusMarkdown(status)
+	if err := attachStatusChat(&status, args); err != nil {
+		return nil, err
+	}
 	return status, nil
 }
 

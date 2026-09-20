@@ -77,6 +77,19 @@ Grouped reads use independent cursors so short sections do not disappear when a 
 
 Dashboard pagination uses the same shape with `cursor_by_section`.
 
+`atlas.board` and `atlas.status` accept optional `format`:
+
+```json
+{
+  "project": "APP",
+  "format": "chat"
+}
+```
+
+`markdown` (default) keeps the ANSI-free compact Markdown field. `chat` adds `chat`,
+`presentation`, and `chat_hint`: `chat` is a fenced `ansi` block for Discord and Grokbot.
+The MCP text fallback prefers `chat` when that field is present.
+
 Every tracked mutation requires:
 
 ```json

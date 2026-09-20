@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Chat presentation for board and status: `tracker board --style chat` and MCP
+  `atlas.board` / `atlas.status` `format=chat` (Grok: `atlas_board` /
+  `atlas_status`) return a paste-ready Discord/Grokbot `ansi` code block with
+  status colors. Default compact Markdown stays ANSI-free. Agents paste the
+  `chat` field verbatim in chat streams and keep the Markdown table for Slack,
+  Teams, and coding-agent transcripts.
+
 ## v1.16.0 - First-use and browser management (2026-09-15)
 
 [Download v1.16.0 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.16.0).

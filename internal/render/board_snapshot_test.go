@@ -79,5 +79,6 @@ func TestWritePresentationSnapshots(t *testing.T) {
 		contracts.StatusReady: {{ID: "APP-1", Status: contracts.StatusReady, Priority: contracts.PriorityHigh, Title: "Fix login", Assignee: "agent:builder-1"}},
 	}}, 80))
 	write("board-markdown.md", CompactBoardMarkdown(unicodeBoard))
+	write("board-chat.ansi", CompactBoardChat(unicodeBoard))
 	write("board-app.html", CompactBoardAppHTML(unicodeBoard))
 }

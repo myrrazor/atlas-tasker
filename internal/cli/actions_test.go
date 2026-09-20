@@ -154,6 +154,10 @@ func TestPrettyListCommandsUseTableOutput(t *testing.T) {
 	if strings.Contains(kanban, "+---") || !strings.Contains(kanban, "APP-1") {
 		t.Fatalf("expected --style kanban to keep lanes, got:\n%s", kanban)
 	}
+	chat := must("board", "--pretty", "--style", "chat")
+	if !strings.Contains(chat, "```ansi") || !strings.Contains(chat, "APP-1") || !strings.Contains(chat, "ATLAS") {
+		t.Fatalf("expected --style chat to be a paste-ready ansi board, got:\n%s", chat)
+	}
 	available := must("agent", "available", "builder-1", "--pretty")
 	if !strings.Contains(available, "Agent Available") || !strings.Contains(available, "+") || !strings.Contains(available, "APP-1") {
 		t.Fatalf("expected agent available pretty output to use a table, got:\n%s", available)
