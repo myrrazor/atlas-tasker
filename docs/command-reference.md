@@ -599,7 +599,7 @@ Rules:
 - Atlas bundle import is snapshot-first: it restores canonical markdown snapshots into the target workspace, but it does not copy the source workspace's `.tracker/events/` files into the live target workspace
 - structured Jira CSV and GitHub JSON imports are create-only in v1.5; existing ticket ids are reported as conflicts during preview and block apply
 - GitHub JSON import is metadata-link import only; it creates Atlas tickets and preserves the external source URL as import provenance
-- Atlas bundle import rejects path traversal and staged-copy conflicts before canonical writes land
+- Atlas bundle import rejects path traversal, non-allowlisted paths (including `.git/hooks` and `.ssh`), and staged-copy conflicts before canonical writes land
 
 ## Evidence
 
