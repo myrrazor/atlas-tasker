@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -712,20 +713,42 @@ func previewAtlasBundle(root string, sourcePath string) (ImportPlan, error) {
 		return ImportPlan{}, err
 	}
 	plan := ImportPlan{SourcePath: sourcePath, SourceType: contracts.ImportSourceAtlasBundle, Fingerprint: fingerprint, FileCount: len(manifest.Files)}
+	archiveFiles, err := readBundleArchive(sourcePath)
+	if err != nil {
+		return ImportPlan{}, err
+	}
+	seen := map[string]struct{}{}
+	checkPath := func(filePath string) {
+		if filePath == "manifest.json" {
+			return
+		}
+		if _, ok := seen[filePath]; ok {
+			return
+		}
+		seen[filePath] = struct{}{}
+		if skipAtlasBundleImportPath(filePath) {
+			return
+		}
+		if invalidImportPath(filePath) {
+			plan.Errors = append(plan.Errors, "invalid_bundle_path:"+filePath)
+			return
+		}
+		if !allowedAtlasBundleImportPath(filePath) {
+			plan.Errors = append(plan.Errors, "disallowed_bundle_path:"+filePath)
+			return
+		}
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(filePath))); err == nil {
+			plan.Conflicts = append(plan.Conflicts, "path_conflict:"+filePath)
+		}
+		if projectKey, ticketID, ok := parseTicketPath(filePath); ok {
+			plan.Items = append(plan.Items, ImportPlanItem{ProjectKey: projectKey, TicketID: ticketID, SourceRef: filePath})
+		}
+	}
 	for _, file := range manifest.Files {
-		if skipAtlasBundleImportPath(file.Path) {
-			continue
-		}
-		if invalidImportPath(file.Path) {
-			plan.Errors = append(plan.Errors, "invalid_bundle_path:"+file.Path)
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(file.Path))); err == nil {
-			plan.Conflicts = append(plan.Conflicts, "path_conflict:"+file.Path)
-		}
-		if projectKey, ticketID, ok := parseTicketPath(file.Path); ok {
-			plan.Items = append(plan.Items, ImportPlanItem{ProjectKey: projectKey, TicketID: ticketID, SourceRef: file.Path})
-		}
+		checkPath(file.Path)
+	}
+	for filePath := range archiveFiles {
+		checkPath(filePath)
 	}
 	if hasAtlasBundleEventHistory(manifest.Files) {
 		plan.Warnings = append(plan.Warnings, "atlas_bundle_event_history_not_imported")
@@ -800,17 +823,20 @@ func applyAtlasBundleImport(ctx context.Context, root string, plan ImportPlan) e
 		return err
 	}
 	defer os.RemoveAll(staging)
-	for path, raw := range files {
-		if path == "manifest.json" {
+	for rel, raw := range files {
+		if rel == "manifest.json" {
 			continue
 		}
-		if skipAtlasBundleImportPath(path) {
+		if skipAtlasBundleImportPath(rel) {
 			continue
 		}
-		if invalidImportPath(path) {
+		if invalidImportPath(rel) {
 			return apperr.New(apperr.CodeInvalidInput, "path traversal detected in bundle")
 		}
-		target := filepath.Join(staging, filepath.FromSlash(path))
+		if !allowedAtlasBundleImportPath(rel) {
+			return apperr.New(apperr.CodeInvalidInput, "disallowed_bundle_path:"+rel)
+		}
+		target := filepath.Join(staging, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
@@ -818,27 +844,39 @@ func applyAtlasBundleImport(ctx context.Context, root string, plan ImportPlan) e
 			return err
 		}
 	}
-	for path := range files {
-		if path == "manifest.json" {
+	for rel := range files {
+		if rel == "manifest.json" {
 			continue
 		}
-		if skipAtlasBundleImportPath(path) {
+		if skipAtlasBundleImportPath(rel) {
 			continue
 		}
-		target := filepath.Join(root, filepath.FromSlash(path))
+		if !allowedAtlasBundleImportPath(rel) {
+			return apperr.New(apperr.CodeInvalidInput, "disallowed_bundle_path:"+rel)
+		}
+		target, err := resolveContainedPath(root, filepath.FromSlash(rel))
+		if err != nil {
+			return err
+		}
 		if _, err := os.Stat(target); err == nil {
-			return apperr.New(apperr.CodeConflict, "import would overwrite existing path: "+path)
+			return apperr.New(apperr.CodeConflict, "import would overwrite existing path: "+rel)
 		}
 	}
-	for path := range files {
-		if path == "manifest.json" {
+	for rel := range files {
+		if rel == "manifest.json" {
 			continue
 		}
-		if skipAtlasBundleImportPath(path) {
+		if skipAtlasBundleImportPath(rel) {
 			continue
 		}
-		source := filepath.Join(staging, filepath.FromSlash(path))
-		target := filepath.Join(root, filepath.FromSlash(path))
+		if !allowedAtlasBundleImportPath(rel) {
+			return apperr.New(apperr.CodeInvalidInput, "disallowed_bundle_path:"+rel)
+		}
+		source := filepath.Join(staging, filepath.FromSlash(rel))
+		target, err := resolveContainedPath(root, filepath.FromSlash(rel))
+		if err != nil {
+			return err
+		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
@@ -1236,6 +1274,50 @@ func invalidImportPath(path string) bool {
 func skipAtlasBundleImportPath(path string) bool {
 	path = filepath.ToSlash(strings.TrimSpace(path))
 	return strings.HasPrefix(path, ".tracker/events/") || strings.HasPrefix(path, ".tracker/imports/")
+}
+
+func allowedAtlasBundleImportPath(raw string) bool {
+	if invalidImportPath(raw) {
+		return false
+	}
+	slashed := filepath.ToSlash(strings.TrimSpace(raw))
+	if strings.Contains(slashed, "\x00") {
+		return false
+	}
+	clean := path.Clean(slashed)
+	if clean != slashed || clean == "." {
+		return false
+	}
+	for _, part := range strings.Split(clean, "/") {
+		if strings.TrimRight(part, ". ") != part {
+			return false
+		}
+		switch strings.ToLower(part) {
+		case ".git", ".ssh", ".gnupg", ".hg", ".svn":
+			return false
+		}
+	}
+	return isExportCandidateRel(clean)
+}
+
+func isExportCandidateRel(rel string) bool {
+	for _, candidate := range ExportCandidateRoots() {
+		candidate = filepath.ToSlash(strings.TrimSpace(candidate))
+		if candidate == "" {
+			continue
+		}
+		if rel == candidate {
+			return true
+		}
+		base := path.Base(candidate)
+		if strings.Contains(base, ".") {
+			continue
+		}
+		if strings.HasPrefix(rel, candidate+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func hasAtlasBundleEventHistory(files []bundleFileRecord) bool {

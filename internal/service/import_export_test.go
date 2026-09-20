@@ -361,6 +361,174 @@ func TestPreviewImportRejectsPathTraversalBundle(t *testing.T) {
 	}
 }
 
+func TestAllowedAtlasBundleImportPathRejectsHooksAndSSH(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{path: "projects/APP/tickets/APP-1.md", want: true},
+		{path: ".tracker/config.toml", want: true},
+		{path: ".tracker/managed-mode.json", want: true},
+		{path: ".tracker/agents/builder-1.md", want: true},
+		{path: ".tracker/events/workspace.jsonl", want: true},
+		{path: ".git/hooks/pre-commit", want: false},
+		{path: ".ssh/authorized_keys", want: false},
+		{path: "projects/.git/hooks/post-checkout", want: false},
+		{path: ".gnupg/secring.gpg", want: false},
+		{path: "projects/.hg/store", want: false},
+		{path: "projects/.svn/entries", want: false},
+		{path: "projects/APP/.GiT/hooks/pre-commit", want: false},
+		{path: "projects/.SSH/authorized_keys", want: false},
+		{path: "projects/.GnuPG/secring.gpg", want: false},
+		{path: "projects/.HG/store", want: false},
+		{path: "projects/.SVN/entries", want: false},
+		{path: "projects/APP/.git./hooks/pre-commit", want: false},
+		{path: "projects/APP/.ssh /authorized_keys", want: false},
+		{path: "AGENTS.md", want: false},
+		{path: "../escape.txt", want: false},
+		{path: "/escape.txt", want: false},
+		{path: ".tracker/config.toml/extra", want: false},
+	}
+	for _, tc := range cases {
+		if got := allowedAtlasBundleImportPath(tc.path); got != tc.want {
+			t.Fatalf("allowedAtlasBundleImportPath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestPreviewAndApplyRejectGitHooksAndSSH(t *testing.T) {
+	root, actions, _, _, _, _ := newImportExportHarness(t)
+	ctx := context.Background()
+	ticket := []byte("---\nid: SRC-1\nproject: SRC\ntitle: Import me\n---\n")
+	hook := []byte("#!/bin/sh\necho planted\n")
+	key := []byte("ssh-ed25519 AAAA planted-key\n")
+	archivePath := filepath.Join(t.TempDir(), "plant.tar.gz")
+	if err := writeTestBundle(archivePath, map[string][]byte{
+		"manifest.json": mustJSON(t, bundleManifest{
+			FormatVersion: "v1",
+			BundleID:      "bundle_plant",
+			Scope:         "workspace",
+			CreatedAt:     actions.now(),
+			Files: []bundleFileRecord{
+				{Path: "projects/SRC/tickets/SRC-1.md", SHA256: strings.Repeat("0", 64), Size: int64(len(ticket))},
+				{Path: ".git/hooks/pre-commit", SHA256: strings.Repeat("1", 64), Size: int64(len(hook))},
+				{Path: ".ssh/authorized_keys", SHA256: strings.Repeat("2", 64), Size: int64(len(key))},
+			},
+		}),
+		"projects/SRC/tickets/SRC-1.md": ticket,
+		".git/hooks/pre-commit":         hook,
+		".ssh/authorized_keys":          key,
+	}); err != nil {
+		t.Fatalf("write planted bundle: %v", err)
+	}
+
+	preview, err := actions.PreviewImport(ctx, archivePath, contracts.Actor("human:owner"), "preview planted bundle")
+	if err != nil {
+		t.Fatalf("preview planted bundle: %v", err)
+	}
+	if !hasImportPlanErrorPrefix(preview.Plan.Errors, "disallowed_bundle_path:.git/hooks/pre-commit") {
+		t.Fatalf("expected hook allowlist error, got %#v", preview.Plan.Errors)
+	}
+	if !hasImportPlanErrorPrefix(preview.Plan.Errors, "disallowed_bundle_path:.ssh/authorized_keys") {
+		t.Fatalf("expected ssh allowlist error, got %#v", preview.Plan.Errors)
+	}
+	if _, err := actions.ApplyImport(ctx, preview.Job.JobID, contracts.Actor("human:owner"), "apply planted bundle"); err == nil {
+		t.Fatal("expected apply to refuse a planted hook/ssh bundle")
+	}
+	assertNotPlanted(t, root, filepath.Join(".git", "hooks", "pre-commit"), filepath.Join(".ssh", "authorized_keys"))
+}
+
+func TestApplyAtlasBundleImportRejectsExtraArchiveHooks(t *testing.T) {
+	root := t.TempDir()
+	ticket := []byte("---\nid: APP-1\nproject: APP\ntitle: Keep me\n---\n")
+	hook := []byte("#!/bin/sh\necho extra\n")
+	archivePath := filepath.Join(t.TempDir(), "extra-hook.tar.gz")
+	if err := writeTestBundle(archivePath, map[string][]byte{
+		"manifest.json": mustJSON(t, bundleManifest{
+			FormatVersion: "v1",
+			BundleID:      "bundle_extra_hook",
+			Scope:         "workspace",
+			CreatedAt:     time.Date(2026, 3, 27, 9, 0, 0, 0, time.UTC),
+			Files: []bundleFileRecord{
+				{Path: "projects/APP/tickets/APP-1.md", SHA256: strings.Repeat("0", 64), Size: int64(len(ticket))},
+			},
+		}),
+		"projects/APP/tickets/APP-1.md": ticket,
+		".git/hooks/post-checkout":      hook,
+	}); err != nil {
+		t.Fatalf("write extra-hook bundle: %v", err)
+	}
+
+	err := applyAtlasBundleImport(context.Background(), root, ImportPlan{
+		SourcePath: archivePath,
+		SourceType: contracts.ImportSourceAtlasBundle,
+	})
+	if err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput || !strings.Contains(err.Error(), "disallowed_bundle_path:.git/hooks/post-checkout") {
+		t.Fatalf("expected extra hook rejection, got %v", err)
+	}
+	assertNotPlanted(t, root, filepath.Join(".git", "hooks", "post-checkout"), filepath.Join("projects", "APP", "tickets", "APP-1.md"))
+}
+
+func TestApplyAtlasBundleImportRejectsExistingDestinationSymlink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "projects"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "projects", "escape")); err != nil {
+		t.Fatal(err)
+	}
+	ticket := []byte("---\nid: ESC-1\nproject: escape\ntitle: planted\n---\n")
+	archivePath := filepath.Join(t.TempDir(), "symlink-escape.tar.gz")
+	if err := writeTestBundle(archivePath, map[string][]byte{
+		"manifest.json": mustJSON(t, bundleManifest{
+			FormatVersion: "v1",
+			BundleID:      "bundle_symlink_escape",
+			Scope:         "workspace",
+			CreatedAt:     time.Date(2026, 3, 27, 9, 0, 0, 0, time.UTC),
+			Files: []bundleFileRecord{
+				{Path: "projects/escape/tickets/ESC-1.md", SHA256: strings.Repeat("0", 64), Size: int64(len(ticket))},
+			},
+		}),
+		"projects/escape/tickets/ESC-1.md": ticket,
+	}); err != nil {
+		t.Fatalf("write symlink-escape bundle: %v", err)
+	}
+
+	err := applyAtlasBundleImport(context.Background(), root, ImportPlan{
+		SourcePath: archivePath,
+		SourceType: contracts.ImportSourceAtlasBundle,
+	})
+	if err == nil {
+		t.Fatal("expected destination symlink rejection")
+	}
+	if !strings.Contains(err.Error(), "symlink_rejected") && !strings.Contains(err.Error(), "path escapes the workspace") {
+		t.Fatalf("expected destination symlink rejection, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "tickets", "ESC-1.md")); !os.IsNotExist(err) {
+		t.Fatalf("expected outside target not to be written, stat err=%v", err)
+	}
+	assertNotPlanted(t, root, filepath.Join("projects", "escape", "tickets", "ESC-1.md"))
+}
+
+func hasImportPlanErrorPrefix(errors []string, prefix string) bool {
+	for _, item := range errors {
+		if item == prefix || strings.HasPrefix(item, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func assertNotPlanted(t *testing.T, root string, rels ...string) {
+	t.Helper()
+	for _, rel := range rels {
+		if _, err := os.Stat(filepath.Join(root, rel)); !os.IsNotExist(err) {
+			t.Fatalf("expected %s not to be written, stat err=%v", rel, err)
+		}
+	}
+}
+
 func TestPreviewImportRejectsAbsolutePathBundle(t *testing.T) {
 	_, actions, _, _, _, _ := newImportExportHarness(t)
 	ctx := context.Background()
