@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path"
 	"sort"
 	"strings"
@@ -200,9 +202,18 @@ func (e permissionEvaluator) evaluate(ctx context.Context, input permissionEvalI
 	if input.Action == "" {
 		return decision, apperr.New(apperr.CodeInvalidInput, "permission action is required")
 	}
-	collaborator, memberships, hasCollaborator, err := e.collaboratorForActor(ctx, input.Actor)
+	collaborator, memberships, hasCollaborator, collaborationConfigured, err := e.collaboratorForActor(ctx, input.Actor)
 	if err != nil {
 		return PermissionDecisionView{}, err
+	}
+	if collaborationConfigured && !hasCollaborator && input.Actor != contracts.Actor("human:owner") && input.Actor != contracts.ActorAtlasSystem {
+		knownAgent, err := e.actorIsKnownAgent(ctx, input.Actor)
+		if err != nil {
+			return PermissionDecisionView{}, err
+		}
+		if !knownAgent {
+			decision.ReasonCodes = append(decision.ReasonCodes, "collaborator_unmapped")
+		}
 	}
 	if hasCollaborator {
 		activeMemberships := activeMembershipsForProject(memberships, input.Ticket.Project)
@@ -283,6 +294,24 @@ func (e permissionEvaluator) evaluate(ctx context.Context, input permissionEvalI
 	return decision, nil
 }
 
+func (e permissionEvaluator) actorIsKnownAgent(ctx context.Context, actor contracts.Actor) (bool, error) {
+	if !strings.HasPrefix(string(actor), "agent:") {
+		return false, nil
+	}
+	agentID := strings.TrimSpace(strings.TrimPrefix(string(actor), "agent:"))
+	if agentID == "" {
+		return false, nil
+	}
+	_, err := e.agents.LoadAgent(ctx, agentID)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
+}
+
 func (e permissionEvaluator) applicableProfiles(ctx context.Context, ticket contracts.TicketSnapshot, actor contracts.Actor, actorAgent *contracts.AgentProfile, runbook string) ([]PermissionProfileMatch, error) {
 	profiles, err := e.profiles.ListPermissionProfiles(ctx)
 	if err != nil {
@@ -326,7 +355,7 @@ func (e permissionEvaluator) applicableProfiles(ctx context.Context, ticket cont
 		}
 		return permissionStringSliceContains(profile.Projects, ticket.Project)
 	})
-	collaborator, memberships, hasCollaborator, err := e.collaboratorForActor(ctx, actor)
+	collaborator, memberships, hasCollaborator, _, err := e.collaboratorForActor(ctx, actor)
 	if err != nil {
 		return nil, err
 	}
@@ -356,14 +385,15 @@ func (e permissionEvaluator) applicableProfiles(ctx context.Context, ticket cont
 	return result, nil
 }
 
-func (e permissionEvaluator) collaboratorForActor(ctx context.Context, actor contracts.Actor) (contracts.CollaboratorProfile, []contracts.MembershipBinding, bool, error) {
+func (e permissionEvaluator) collaboratorForActor(ctx context.Context, actor contracts.Actor) (contracts.CollaboratorProfile, []contracts.MembershipBinding, bool, bool, error) {
 	if actor == "" || actor == contracts.Actor("human:owner") {
-		return contracts.CollaboratorProfile{}, nil, false, nil
+		return contracts.CollaboratorProfile{}, nil, false, false, nil
 	}
 	collaborators, err := e.collaborators.ListCollaborators(ctx)
 	if err != nil {
-		return contracts.CollaboratorProfile{}, nil, false, err
+		return contracts.CollaboratorProfile{}, nil, false, false, err
 	}
+	configured := len(collaborators) > 0
 	for _, collaborator := range collaborators {
 		for _, mappedActor := range collaborator.AtlasActors {
 			if mappedActor != actor {
@@ -371,12 +401,12 @@ func (e permissionEvaluator) collaboratorForActor(ctx context.Context, actor con
 			}
 			memberships, err := e.memberships.ListMemberships(ctx, collaborator.CollaboratorID)
 			if err != nil {
-				return contracts.CollaboratorProfile{}, nil, false, err
+				return contracts.CollaboratorProfile{}, nil, false, configured, err
 			}
-			return collaborator, memberships, true, nil
+			return collaborator, memberships, true, configured, nil
 		}
 	}
-	return contracts.CollaboratorProfile{}, nil, false, nil
+	return contracts.CollaboratorProfile{}, nil, false, configured, nil
 }
 
 func collaboratorActionNeedsProjectMembership(action contracts.PermissionAction) bool {

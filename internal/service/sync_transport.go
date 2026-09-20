@@ -175,6 +175,12 @@ func (s *ActionService) AddSyncRemote(ctx context.Context, remote contracts.Sync
 }
 
 func (s *ActionService) EditSyncRemote(ctx context.Context, remoteID string, kind contracts.SyncRemoteKind, location string, defaultAction contracts.SyncDefaultAction, enabled bool, actor contracts.Actor, reason string) (contracts.SyncRemote, error) {
+	return s.EditSyncRemoteFields(ctx, remoteID, kind, location, defaultAction, &enabled, actor, reason)
+}
+
+// EditSyncRemoteFields applies only the optional fields supplied by a partial
+// edit surface. A nil enabled value preserves the remote's current state.
+func (s *ActionService) EditSyncRemoteFields(ctx context.Context, remoteID string, kind contracts.SyncRemoteKind, location string, defaultAction contracts.SyncDefaultAction, enabled *bool, actor contracts.Actor, reason string) (contracts.SyncRemote, error) {
 	return withWriteLock(ctx, s.LockManager, "edit sync remote", func(ctx context.Context) (contracts.SyncRemote, error) {
 		if !actor.IsValid() {
 			return contracts.SyncRemote{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", actor))
@@ -192,7 +198,9 @@ func (s *ActionService) EditSyncRemote(ctx context.Context, remoteID string, kin
 		if defaultAction != "" {
 			remote.DefaultAction = defaultAction
 		}
-		remote.Enabled = enabled
+		if enabled != nil {
+			remote.Enabled = *enabled
+		}
 		normalized, err := normalizeSyncRemoteLocation(s.Root, remote.Kind, remote.Location)
 		if err != nil {
 			return contracts.SyncRemote{}, err
@@ -1050,10 +1058,16 @@ func fetchPathRemotePublicationsToMirror(_ string, remote contracts.SyncRemote, 
 			continue
 		}
 		workspaceID := entry.Name()
+		if !validBackupWorkspaceID(workspaceID) {
+			return nil, apperr.New(apperr.CodeInvalidInput, "sync publication workspace path is not portable")
+		}
 		publicationPath := filepath.Join(remote.Location, workspaceID, "publication.json")
 		publication, err := readSyncPublication(publicationPath)
 		if err != nil {
 			continue
+		}
+		if err := validateSyncPublication(publication, workspaceID); err != nil {
+			return nil, err
 		}
 		publication.SourceRemoteID = remote.RemoteID
 		publication.FetchedAt = timeNowUTC()
@@ -1081,6 +1095,9 @@ func fetchPathRemotePublicationsToMirror(_ string, remote contracts.SyncRemote, 
 }
 
 func publishPathRemoteBundle(root string, remote contracts.SyncRemote, publication SyncPublication, artifactPath string) error {
+	if err := validateSyncPublication(publication, publication.WorkspaceID); err != nil {
+		return err
+	}
 	remoteDir := filepath.Join(remote.Location, publication.WorkspaceID)
 	if err := os.MkdirAll(remoteDir, 0o755); err != nil {
 		return fmt.Errorf("create path remote publication dir: %w", err)
@@ -1136,6 +1153,9 @@ func fetchGitRemotePublicationsToMirror(root string, remote contracts.SyncRemote
 		if strings.TrimSpace(workspaceID) == "" || workspaceID == refName {
 			continue
 		}
+		if !validBackupWorkspaceID(workspaceID) {
+			return nil, apperr.New(apperr.CodeInvalidInput, "sync publication workspace ref is not portable")
+		}
 		localRef := "refs/remotes/atlas-sync/" + workspaceID
 		publicationRaw, err := gitSyncShowFile(repoDir, localRef, "publication.json")
 		if err != nil {
@@ -1144,6 +1164,9 @@ func fetchGitRemotePublicationsToMirror(root string, remote contracts.SyncRemote
 		var publication SyncPublication
 		if err := json.Unmarshal(publicationRaw, &publication); err != nil {
 			return nil, fmt.Errorf("decode git sync publication for %s: %w", workspaceID, err)
+		}
+		if err := validateSyncPublication(publication, workspaceID); err != nil {
+			return nil, err
 		}
 		publication.SourceRemoteID = remote.RemoteID
 		publication.SourceRef = refName
@@ -1190,6 +1213,9 @@ func fetchGitRemotePublicationsToMirror(root string, remote contracts.SyncRemote
 }
 
 func publishGitRemoteBundle(root string, remote contracts.SyncRemote, publication SyncPublication, artifactPath string) error {
+	if err := validateSyncPublication(publication, publication.WorkspaceID); err != nil {
+		return err
+	}
 	stagingDir := filepath.Join(storage.SyncStagingDir(root), "git-"+remote.RemoteID+"-"+publication.WorkspaceID)
 	if err := os.RemoveAll(stagingDir); err != nil {
 		return fmt.Errorf("reset git sync staging dir: %w", err)
@@ -1265,6 +1291,9 @@ func cachedRemotePublications(root string, remoteID string) ([]SyncPublication, 
 		if err != nil {
 			continue
 		}
+		if err := validateSyncPublication(publication, entry.Name()); err != nil {
+			continue
+		}
 		items = append(items, publication)
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -1287,6 +1316,9 @@ func selectFetchedPublicationFromMirror(mirrorBase string, sourceWorkspaceID str
 	if strings.TrimSpace(sourceWorkspaceID) != "" {
 		for _, publication := range publications {
 			if publication.WorkspaceID == strings.TrimSpace(sourceWorkspaceID) {
+				if err := validateSyncPublication(publication, publication.WorkspaceID); err != nil {
+					return SyncPublication{}, "", err
+				}
 				artifactPath := filepath.Join(mirrorBase, publication.WorkspaceID, publication.ArtifactName)
 				return publication, artifactPath, nil
 			}
@@ -1297,11 +1329,17 @@ func selectFetchedPublicationFromMirror(mirrorBase string, sourceWorkspaceID str
 		return SyncPublication{}, "", apperr.New(apperr.CodeInvalidInput, "multiple remote publications found; specify --workspace")
 	}
 	publication := publications[0]
+	if err := validateSyncPublication(publication, publication.WorkspaceID); err != nil {
+		return SyncPublication{}, "", err
+	}
 	artifactPath := filepath.Join(mirrorBase, publication.WorkspaceID, publication.ArtifactName)
 	return publication, artifactPath, nil
 }
 
 func promoteFetchedPublication(durableMirrorBase string, stagingMirrorBase string, publication SyncPublication) error {
+	if err := validateSyncPublication(publication, publication.WorkspaceID); err != nil {
+		return err
+	}
 	sourceDir := filepath.Join(stagingMirrorBase, publication.WorkspaceID)
 	targetDir := filepath.Join(durableMirrorBase, publication.WorkspaceID)
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
@@ -1339,6 +1377,37 @@ func readSyncPublication(path string) (SyncPublication, error) {
 		return SyncPublication{}, fmt.Errorf("decode sync publication: %w", err)
 	}
 	return publication, nil
+}
+
+func validateSyncPublication(publication SyncPublication, expectedWorkspaceID string) error {
+	if !validBackupWorkspaceID(publication.WorkspaceID) {
+		return apperr.New(apperr.CodeInvalidInput, "sync publication workspace_id is not portable")
+	}
+	if expectedWorkspaceID != "" && publication.WorkspaceID != expectedWorkspaceID {
+		return apperr.New(apperr.CodeInvalidInput, "sync publication workspace_id does not match its remote path")
+	}
+	if !validBackupWorkspaceID(publication.BundleID) {
+		return apperr.New(apperr.CodeInvalidInput, "sync publication bundle_id is not portable")
+	}
+	if publication.Format != syncBundleFormatV1 {
+		return apperr.New(apperr.CodeInvalidInput, "sync publication format is unsupported")
+	}
+	want := map[string]string{
+		"artifact": publication.BundleID + ".tar.gz",
+		"manifest": publication.BundleID + ".manifest.json",
+		"checksum": publication.BundleID + ".sha256",
+	}
+	got := map[string]string{
+		"artifact": publication.ArtifactName,
+		"manifest": publication.ManifestName,
+		"checksum": publication.ChecksumName,
+	}
+	for kind, expected := range want {
+		if got[kind] != expected {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("sync publication %s name is not the allowed bundle path", kind))
+		}
+	}
+	return nil
 }
 
 func copySyncFile(src string, dst string) error {

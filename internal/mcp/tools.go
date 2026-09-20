@@ -950,7 +950,15 @@ func runCheckpointTool(tc ToolContext, args map[string]any) (any, error) {
 }
 
 func evidenceAddTool(tc ToolContext, args map[string]any) (any, error) {
-	return tc.Server.Workspace.Actions.AddEvidence(tc.Context, stringArg(args, "run_id"), contracts.EvidenceType(stringArg(args, "type")), stringArg(args, "title"), stringArg(args, "body"), stringArg(args, "artifact_source"), stringArg(args, "supersedes_evidence_id"), contracts.Actor(tc.Actor), tc.Reason, contracts.EventRunEvidenceAdded)
+	artifactSource := stringArg(args, "artifact_source")
+	if strings.TrimSpace(artifactSource) != "" {
+		var err error
+		artifactSource, err = service.ResolveWorkspaceInputPath(tc.Server.Workspace.Root, artifactSource)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return tc.Server.Workspace.Actions.AddEvidence(tc.Context, stringArg(args, "run_id"), contracts.EvidenceType(stringArg(args, "type")), stringArg(args, "title"), stringArg(args, "body"), artifactSource, stringArg(args, "supersedes_evidence_id"), contracts.Actor(tc.Actor), tc.Reason, contracts.EventRunEvidenceAdded)
 }
 
 func handoffCreateTool(tc ToolContext, args map[string]any) (any, error) {
@@ -958,7 +966,11 @@ func handoffCreateTool(tc ToolContext, args map[string]any) (any, error) {
 }
 
 func importPreviewTool(tc ToolContext, args map[string]any) (any, error) {
-	return tc.Server.Workspace.Actions.PreviewImport(tc.Context, stringArg(args, "source_path"), contracts.Actor(tc.Actor), tc.Reason)
+	sourcePath, err := service.ResolveWorkspaceInputPath(tc.Server.Workspace.Root, stringArg(args, "source_path"))
+	if err != nil {
+		return nil, err
+	}
+	return tc.Server.Workspace.Actions.PreviewImport(tc.Context, sourcePath, contracts.Actor(tc.Actor), tc.Reason)
 }
 
 func dispatchRunTool(tc ToolContext, args map[string]any) (any, error) {

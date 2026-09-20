@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/buildinfo"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -61,6 +62,29 @@ func TestInventoryProfilesGateHighImpactTools(t *testing.T) {
 	}
 	if !toolProviderSideEffect(danger, "atlas.import.preview") {
 		t.Fatalf("import preview writes an import job and must be marked as a live side effect")
+	}
+}
+
+func TestWorkspaceFileInputsCannotEscapeMCPWorkspace(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.json")
+	if err := os.WriteFile(outside, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(&Workspace{Root: root}, Options{Profile: ProfileWorkflow}.Normalized())
+	tests := []struct {
+		name string
+		args map[string]any
+	}{
+		{name: "atlas.import.preview", args: map[string]any{"source_path": outside, "actor": "human:owner", "reason": "test sandbox"}},
+		{name: "atlas.evidence.add", args: map[string]any{"run_id": "run-1", "type": "note", "title": "proof", "body": "", "artifact_source": outside, "actor": "human:owner", "reason": "test sandbox"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := server.CallTool(context.Background(), tc.name, tc.args); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput {
+				t.Fatalf("expected outside MCP path to be rejected, got %v", err)
+			}
+		})
 	}
 }
 

@@ -76,6 +76,21 @@ func TestRemoteSyncAndBundleCommands(t *testing.T) {
 	if edited.Payload.Remote.DefaultAction != "pull" || edited.Payload.Remote.Enabled {
 		t.Fatalf("expected edited remote to be disabled pull, got %#v", edited)
 	}
+	preservedOut := must("remote", "edit", "origin", "--default-action", "fetch", "--actor", "human:owner", "--json")
+	var preserved struct {
+		Payload struct {
+			Remote struct {
+				DefaultAction string `json:"default_action"`
+				Enabled       bool   `json:"enabled"`
+			} `json:"remote"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(preservedOut), &preserved); err != nil {
+		t.Fatalf("parse remote edit without enabled: %v\nraw=%s", err, preservedOut)
+	}
+	if preserved.Payload.Remote.DefaultAction != "fetch" || preserved.Payload.Remote.Enabled {
+		t.Fatalf("editing another field must preserve disabled state, got %#v", preserved)
+	}
 	must("remote", "edit", "origin", "--default-action", "push", "--enabled=true", "--actor", "human:owner")
 
 	createOut := must("bundle", "create", "--actor", "human:owner", "--json")
