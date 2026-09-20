@@ -483,9 +483,13 @@ func runRemoteEdit(cmd *cobra.Command, args []string) error {
 	location, _ := cmd.Flags().GetString("location")
 	defaultActionRaw, _ := cmd.Flags().GetString("default-action")
 	enabled, _ := cmd.Flags().GetBool("enabled")
+	var enabledUpdate *bool
+	if cmd.Flags().Changed("enabled") {
+		enabledUpdate = &enabled
+	}
 	actorRaw, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
-	remote, err := workspace.actions.EditSyncRemote(commandContext(cmd), args[0], contracts.SyncRemoteKind(strings.TrimSpace(kindRaw)), strings.TrimSpace(location), contracts.SyncDefaultAction(strings.TrimSpace(defaultActionRaw)), enabled, normalizeActor(actorRaw), reason)
+	remote, err := workspace.actions.EditSyncRemoteFields(commandContext(cmd), args[0], contracts.SyncRemoteKind(strings.TrimSpace(kindRaw)), strings.TrimSpace(location), contracts.SyncDefaultAction(strings.TrimSpace(defaultActionRaw)), enabledUpdate, normalizeActor(actorRaw), reason)
 	if err != nil {
 		return err
 	}

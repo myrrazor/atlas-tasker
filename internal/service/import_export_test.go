@@ -61,6 +61,16 @@ func TestBundleArchiveKeepsSourceFileTimestamp(t *testing.T) {
 	}
 }
 
+func TestReadLimitedArchiveEntryRejectsBytesBeyondDeclaredSize(t *testing.T) {
+	if _, err := readLimitedArchiveEntry(strings.NewReader("four"), 3); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("expected declared-size boundary rejection, got %v", err)
+	}
+	got, err := readLimitedArchiveEntry(strings.NewReader("three"), 5)
+	if err != nil || string(got) != "three" {
+		t.Fatalf("expected exact declared-size read, got %q err=%v", got, err)
+	}
+}
+
 func TestCreateAndVerifyExportBundleRoundTrip(t *testing.T) {
 	root, actions, queries, projectStore, _, eventsLog := newImportExportHarness(t)
 	ctx := context.Background()

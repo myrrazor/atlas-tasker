@@ -527,7 +527,10 @@ func launchAgentWakeupCommand(ctx context.Context, wakeup AgentWakeup, config Ag
 		wakeup.Error = err.Error()
 		return wakeup
 	}
-	cmd := exec.CommandContext(ctx, wakeup.Command[0], wakeup.Command[1:]...)
+	// Wakeups are post-commit background work. A request or CLI context may be
+	// canceled as soon as the triggering response is returned, so do not let
+	// that cancellation kill the newly launched agent process.
+	cmd := exec.CommandContext(context.WithoutCancel(ctx), wakeup.Command[0], wakeup.Command[1:]...)
 	if err := cmd.Start(); err != nil {
 		wakeup.State = AgentWakeupFailed
 		wakeup.Error = err.Error()
