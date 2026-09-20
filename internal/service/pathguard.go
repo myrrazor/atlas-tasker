@@ -36,11 +36,16 @@ func rejectUnsafeRelPath(root string, rel string) error {
 // rejectSymlinkComponents walks each path component under root with Lstat and
 // fails closed if any component is a symlink.
 func rejectSymlinkComponents(root string, absPath string) error {
-	// Canonicalize before Rel so macOS /var vs /private/var aliases do not
-	// look like containment escapes. Walk the resolved tree with Lstat so
-	// symlinks under root still fail closed.
-	root = canonicalComparablePath(root)
-	absPath = canonicalComparablePath(absPath)
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	absPath, err = filepath.Abs(absPath)
+	if err != nil {
+		return err
+	}
+	// Keep the target path lexical while walking it. Resolving absPath before
+	// Lstat would erase an in-workspace symlink hop and make it look safe.
 	rel, err := filepath.Rel(root, absPath)
 	if err != nil {
 		return err
@@ -66,6 +71,36 @@ func rejectSymlinkComponents(root string, absPath string) error {
 		}
 	}
 	return nil
+}
+
+// ResolveWorkspaceInputPath resolves an MCP/file input against root while
+// refusing escapes and every symlink component. Absolute inputs are accepted
+// only when they are already inside the workspace.
+func ResolveWorkspaceInputPath(root string, raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", apperr.New(apperr.CodeInvalidInput, "path_rejected: empty path")
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	path := raw
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(rootAbs, path)
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(rootAbs, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", apperr.New(apperr.CodeInvalidInput, "path_rejected: path escapes the workspace")
+	}
+	if err := rejectSymlinkComponents(rootAbs, path); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // resolveContainedPath joins root+rel after containment checks and rejects symlink components.

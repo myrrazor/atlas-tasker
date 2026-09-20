@@ -125,6 +125,28 @@ func TestAgentWakeupCommandModeLaunchesArgvWithoutShell(t *testing.T) {
 	}
 }
 
+func TestAgentWakeupCommandOutlivesCanceledRequestContext(t *testing.T) {
+	root := t.TempDir()
+	marker := filepath.Join(root, "detached.marker")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	wakeup := launchAgentWakeupCommand(ctx, AgentWakeup{WakeupID: "wakeup-1"}, AgentAutoConfig{
+		AgentID: "builder-1",
+		Mode:    AgentAutoModeCommand,
+		Argv:    []string{"/usr/bin/touch", marker},
+	})
+	if wakeup.State != AgentWakeupLaunched {
+		t.Fatalf("expected detached command launch, got %#v", wakeup)
+	}
+	for i := 0; i < 50; i++ {
+		if _, err := os.Stat(marker); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("detached wakeup command did not finish")
+}
+
 func TestAgentAutoRejectsShellInterpreter(t *testing.T) {
 	_, ctx, actions, _, _, _ := setupAgentWakeupTest(t)
 	_, err := actions.SetAgentAuto(ctx, "builder-1", AgentAutoModeCommand, []string{"sh", "-c", "echo no"}, contracts.Actor("human:owner"), "bad command")

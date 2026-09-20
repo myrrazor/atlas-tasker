@@ -53,6 +53,13 @@ func TestRejectSymlinkComponents(t *testing.T) {
 	if err := rejectSymlinkComponents(root, safe); err != nil {
 		t.Fatalf("safe path rejected: %v", err)
 	}
+	insideLink := filepath.Join(root, "inside-link")
+	if err := os.Symlink(filepath.Join(root, "projects"), insideLink); err != nil {
+		t.Fatal(err)
+	}
+	if err := rejectSymlinkComponents(root, filepath.Join(insideLink, "APP", "ticket.md")); err == nil {
+		t.Fatal("expected in-workspace symlink component rejection")
+	}
 }
 
 func TestResolveContainedPath(t *testing.T) {
@@ -67,6 +74,20 @@ func TestResolveContainedPath(t *testing.T) {
 	}
 	if _, err := resolveContainedPath(root, "../outside"); err == nil {
 		t.Fatal("expected escape rejection")
+	}
+}
+
+func TestResolveWorkspaceInputPath(t *testing.T) {
+	root := t.TempDir()
+	inside := filepath.Join(root, "evidence.txt")
+	if err := os.WriteFile(inside, []byte("proof"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ResolveWorkspaceInputPath(root, inside); err != nil || got != inside {
+		t.Fatalf("resolve absolute workspace input: got %q err=%v", got, err)
+	}
+	if _, err := ResolveWorkspaceInputPath(root, filepath.Join(t.TempDir(), "outside.txt")); err == nil {
+		t.Fatal("expected outside absolute input to be rejected")
 	}
 }
 

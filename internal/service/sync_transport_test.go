@@ -39,6 +39,27 @@ func TestSyncStatusDoesNotStampWorkspaceIdentityOnRead(t *testing.T) {
 	}
 }
 
+func TestSyncPublicationRejectsUnlistedBundlePaths(t *testing.T) {
+	publication := SyncPublication{
+		WorkspaceID:  "workspace-1",
+		BundleID:     "syncbundle-1",
+		Format:       syncBundleFormatV1,
+		ArtifactName: "../outside.tar.gz",
+		ManifestName: "syncbundle-1.manifest.json",
+		ChecksumName: "syncbundle-1.sha256",
+	}
+	if err := validateSyncPublication(publication, "workspace-1"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("expected traversal artifact name to be rejected, got %v", err)
+	}
+	publication.ArtifactName = "syncbundle-1.tar.gz"
+	if err := validateSyncPublication(publication, "workspace-2"); err == nil || apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("expected mismatched workspace path to be rejected, got %v", err)
+	}
+	if err := validateSyncPublication(publication, "workspace-1"); err != nil {
+		t.Fatalf("expected exact bundle allowlist to pass, got %v", err)
+	}
+}
+
 func TestMigrationStatusDetectsDivergentTicketUID(t *testing.T) {
 	ctx := context.Background()
 	root, actions, queries, projectStore, _, _ := newImportExportHarness(t)
