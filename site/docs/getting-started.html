@@ -131,7 +131,7 @@
         <p>Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>). Attestation uses a local bundle; no GitHub login. The installer places the binary only. Run <code>tracker init</code> in each workspace, then restart detected coding agents so they load Atlas MCP. A written config is not a live connection.</p>
 
         <h2>Install</h2>
-        <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> build (v1.16.0), checks its SHA-256 checksum, verifies the GitHub build attestation with a local bundle, and installs the <code>tracker</code> binary. Workspace initialization is a separate, explicit step. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>); <code>gh</code> does not need a GitHub login. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
+        <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> build (v1.17.0), checks its SHA-256 checksum, verifies the GitHub build attestation with a local bundle, and installs the <code>tracker</code> binary. Workspace initialization is a separate, explicit step. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>); <code>gh</code> does not need a GitHub login. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
         <div class="code-block">
           <div class="snippet-title"><span>release installer · macOS or Linux</span><button class="copy-button" type="button" data-copy="gs-install" aria-label="Copy install command">Copy</button></div>
           <pre id="gs-install">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</pre>
@@ -151,7 +151,7 @@
 tracker update --yes
 
 <span class="c"># install a specific release</span>
-tracker update --version v1.16.0 --yes</pre>
+tracker update --version v1.17.0 --yes</pre>
         </div>
 
         <h2>Initialize a workspace</h2>

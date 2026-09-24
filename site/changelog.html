@@ -74,6 +74,16 @@
     </header>
     <div class="legal-content">
       <section class="shell">
+        <h2>v1.17.0 — Chat-native boards and security hardening</h2>
+        <ul>
+          <li><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.0">Download v1.17.0 and read its verification results</a>.</li>
+          <li>Inline HTML boards for Meta Muse and other compatible chats show status lanes, priority, blockers, and expandable ticket details. The MCP board widget opens with side-scroll lanes and can switch to wrapping columns.</li>
+          <li>Markdown boards work in text-based chats such as Grok Bot. Discord and Grokbot can opt into a colored <code>ansi</code> code block; the default Markdown remains plain. Chat hosts control their own message fonts.</li>
+          <li>Security hardening confines MCP paths, validates sync and bundle inputs, rejects protected bundle paths and symlink escapes, and keeps scheduled wakeups alive after request cancellation.</li>
+        </ul>
+        <p>Meta Muse has not yet been tested live with the Atlas HTML renderer. Agents use the installed guide to select a format the chat host actually displays.</p>
+      </section>
+      <section class="shell">
         <h2>v1.16.0 — First-use and browser management</h2>
         <ul>
           <li><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.16.0">Download v1.16.0 and read its verification results</a>.</li>

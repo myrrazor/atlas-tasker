@@ -10,7 +10,7 @@
 
 Atlas Tasker is a local-first issue tracker that lives in your repo. Tickets, dependencies, review gates, and audit history are markdown files plus a rebuildable SQLite index — no hosted account. Coding agents (Claude Code, Codex, Cursor, OpenClaw, Grok, anything that speaks MCP) claim work, block on each other, attach evidence, and hand off for review on the same board.
 
-> **New in v1.16:** verified installation without a GitHub login, native agent skills, and board and ticket management from the browser. [Release notes](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.16.0) · [Upgrading](docs/migration-v1.16.md).
+> **New in v1.17:** chat-native boards for HTML widgets, Markdown chats, and hosts that render ANSI code blocks, plus tighter bundle import and MCP path checks. [Release notes](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.0) · [Chat board guide](docs/guides/chat-board.md).
 
 ## Get started
 
@@ -144,7 +144,7 @@ What Atlas does **not** claim: [security limitations](docs/security-limitations.
 
 ## Status
 
-Atlas Tasker **v1.16.0** brings simpler first use and browser management. The installer selects the latest published release. [CHANGELOG.md](CHANGELOG.md) lists the changes. See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
+Atlas Tasker **v1.17.0** adds chat-native boards and security hardening. The installer selects the latest published release. [CHANGELOG.md](CHANGELOG.md) lists the changes. See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
 
 `v1.9.0` was the first stable release. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 

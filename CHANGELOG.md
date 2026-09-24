@@ -2,12 +2,21 @@
 
 ## Unreleased
 
+## v1.17.0 - Chat-native boards and security hardening (2026-09-24)
+
+[Download v1.17.0 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.0).
+
+- `tracker board --style html` emits one self-contained, theme-aware board fragment for Meta Muse and other chats that render inline HTML. Cards show priority, labels, blockers, and expandable description, acceptance, relation, and review details. The MCP App shares the presentation. Both open with horizontally scrolling lanes and offer a keyboard-accessible switch to wrapping columns.
+- `tracker board --style markdown` gives Grok Bot and other text-based chats a readable board when raw HTML is displayed as text. The generated agent guide and workspace instructions explain how to choose the host-supported format. `tracker init` also installs the generic guide when no detected client supplies one.
 - Chat presentation for board and status: `tracker board --style chat` and MCP
   `atlas.board` / `atlas.status` `format=chat` (Grok: `atlas_board` /
   `atlas_status`) return a paste-ready Discord/Grokbot `ansi` code block with
   status colors. Default compact Markdown stays ANSI-free. Agents paste the
   `chat` field verbatim in chat streams and keep the Markdown table for Slack,
   Teams, and coding-agent transcripts.
+- Scheduled wakeups survive request cancellation. MCP evidence and import paths stay within the workspace; sync identifiers and bundle filenames are validated. Bundle import rejects VCS and secret paths, including mixed-case and symlink variants. Collaborative authorization fails closed for unknown Atlas actors while preserving the owner and registered local agents.
+
+Muse must render the HTML fragment and load the agent guidance for the new presentation to appear. Live Muse display of the Atlas renderer has not yet been verified. Grok Bot's ordinary chat showed raw HTML as text in a user test; its message font is controlled by the host.
 
 ## v1.16.0 - First-use and browser management (2026-09-15)
 

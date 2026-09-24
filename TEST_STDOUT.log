@@ -1263,3 +1263,111 @@ EXIT: 0
 COMMAND: sh scripts/check-workflow-security.sh
 EXIT: 0
 workflow security policy passed
+
+CHECK: v1.17.0 release documentation and website update
+COMMAND: GOMAXPROCS=2 GOFLAGS=-p=2 go test -count=1 ./...
+EXIT: 0
+?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/app	2.347s
+ok  	github.com/myrrazor/atlas-tasker/internal/apperr	0.166s
+?   	github.com/myrrazor/atlas-tasker/internal/buildinfo	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	87.221s
+ok  	github.com/myrrazor/atlas-tasker/internal/config	0.171s
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	0.164s
+ok  	github.com/myrrazor/atlas-tasker/internal/domain	0.142s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations	0.203s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter	0.160s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/all	1.834s
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/claude	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/codex	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/cursor	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/generic	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/grok	0.148s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/host	0.155s
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/openclaw	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp	2.011s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/selfprobe	1.789s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/testhost	1.616s
+ok  	github.com/myrrazor/atlas-tasker/internal/render	0.240s
+ok  	github.com/myrrazor/atlas-tasker/internal/service	38.844s
+ok  	github.com/myrrazor/atlas-tasker/internal/setup	5.686s
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	0.161s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage	0.134s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	0.140s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	0.158s
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	0.314s
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	0.165s
+?   	github.com/myrrazor/atlas-tasker/internal/testutil/testenv	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/theme	0.351s
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	2.548s
+ok  	github.com/myrrazor/atlas-tasker/internal/uninstall	0.257s
+ok  	github.com/myrrazor/atlas-tasker/internal/update	0.206s
+ok  	github.com/myrrazor/atlas-tasker/internal/web	9.173s
+
+CHECK: v1.17.0 release documentation and website update
+COMMAND: node --test internal/web/testdata/*.test.mjs site/_tools/*.test.mjs
+EXIT: 0
+✔ ticketHref keeps the explicit project filter (2.237167ms)
+✔ ticketHref uses a Home-prefixed board path (0.561917ms)
+✔ Home clears a new-tab claim before sending it in a POST body (1.673584ms)
+✔ Home consumes a claim added to an already-open sign-in tab only once (0.354917ms)
+✔ canceling a Home confirmation prompts once and leaves the form usable (0.850875ms)
+✔ a successful refresh preserves the move confirmation without retrying (3.609458ms)
+✔ an expired session shows recovery guidance without replacing the board (0.739917ms)
+✔ a transient failure retries and keeps the move confirmation after recovery (1.21425ms)
+✔ custom 404 assets and recovery links work at nested missing routes (6.765208ms)
+✔ index.html satisfies the public-page SEO contract (2.2585ms)
+✔ cli.html satisfies the public-page SEO contract (0.383709ms)
+✔ mcp.html satisfies the public-page SEO contract (0.433792ms)
+✔ docs/index.html satisfies the public-page SEO contract (0.282667ms)
+✔ docs/getting-started.html satisfies the public-page SEO contract (0.40775ms)
+✔ docs/home.html satisfies the public-page SEO contract (0.442834ms)
+✔ docs/tickets-and-workflow.html satisfies the public-page SEO contract (0.265917ms)
+✔ docs/views-and-search.html satisfies the public-page SEO contract (0.248792ms)
+✔ docs/web-board.html satisfies the public-page SEO contract (0.2845ms)
+✔ docs/backup.html satisfies the public-page SEO contract (0.190667ms)
+✔ docs/agents-and-dispatch.html satisfies the public-page SEO contract (0.273ms)
+✔ docs/mcp-setup.html satisfies the public-page SEO contract (0.241917ms)
+✔ docs/mcp-tools.html satisfies the public-page SEO contract (0.333917ms)
+✔ docs/mcp-security.html satisfies the public-page SEO contract (0.197292ms)
+✔ docs/json-and-exit-codes.html satisfies the public-page SEO contract (0.208708ms)
+✔ docs/uninstall.html satisfies the public-page SEO contract (0.160458ms)
+✔ docs/faq.html satisfies the public-page SEO contract (0.232167ms)
+✔ changelog.html satisfies the public-page SEO contract (0.295709ms)
+✔ guide.html satisfies the public-page SEO contract (0.223875ms)
+✔ privacy.html satisfies the public-page SEO contract (0.17225ms)
+✔ terms.html satisfies the public-page SEO contract (0.153292ms)
+✔ page titles are unique (0.550833ms)
+✔ internal page links, video downloads, and fragments resolve (12.478584ms)
+✔ agent integration tabs expose all six targets with valid relationships (0.9755ms)
+✔ MCP tool page covers every source workflow tool (0.893792ms)
+✔ public workflow guidance matches the v1.17 release contracts (1.982625ms)
+✔ README and site wordmarks match the canonical application wordmark (0.05375ms)
+✔ self-hosted fonts use font-display swap (0.137541ms)
+✔ OG image is a 1200 by 630 PNG (0.7245ms)
+✔ sitemap, robots, and llms cover every public page (0.204ms)
+✔ hidden security contact uses private GitHub vulnerability reporting (0.09875ms)
+✔ social card names the configured production domain (0.079375ms)
+✔ visible FAQ questions match FAQPage JSON-LD (6.454875ms)
+✔ custom 404 is a real page with hosting 404 status (0.121209ms)
+✔ first-board copyables use an app directory so APP is the init key (0.515083ms)
+✔ marketing site has no cookie banner, analytics, or nonessential cookies (0.695291ms)
+✔ all local page images exist and declare dimensions (4.652875ms)
+✔ favicon set includes SVG, PNG, and apple-touch icon (0.346834ms)
+✔ copy controls expose loading, success, and error states (0.098375ms)
+✔ mobile navigation stays keyboard reachable (0.083625ms)
+✔ website notices explain actual use without unresolved legal templates (0.217333ms)
+✔ public site omits personal author and direct contact metadata (1.921708ms)
+✔ publishes the configured Atlas production domain (0.624166ms)
+✔ keeps every public SEO output on the same origin (1.01275ms)
+✔ normalizes a canonical origin (0.308792ms)
+✔ reads the current origin from the canonical link (0.111375ms)
+✔ replaces every rendered origin reference (0.132667ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 140.652292
