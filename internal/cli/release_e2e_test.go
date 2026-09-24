@@ -683,6 +683,7 @@ func TestOrchestrationFlowSurvivesReindexAndMatchesReadSurfaces(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Orchestrate", "--type", "task", "--reviewer", "agent:reviewer-1", "--actor", "human:owner")
 	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")

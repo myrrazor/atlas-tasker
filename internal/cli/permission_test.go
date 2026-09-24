@@ -28,6 +28,7 @@ func TestPermissionProfileCommandsAndDispatchEnforcement(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Protected dispatch", "--type", "task", "--protected", "--actor", "human:owner")
 	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")
@@ -208,6 +209,7 @@ func TestPermissionsViewReflectsCollaboratorLifecycleDenials(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Lifecycle gate", "--type", "task", "--actor", "human:owner")
 	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")

@@ -26,6 +26,7 @@ func TestRunOpenAndLaunchManageRuntimeArtifacts(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Launch manifests", "--type", "task", "--actor", "human:owner")
 	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")

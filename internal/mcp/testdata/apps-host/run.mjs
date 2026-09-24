@@ -29,6 +29,7 @@ class El {
     this.scrollWidth = 0;
     this.scrollHeight = 0;
     this.clientHeight = 0;
+    this.listeners = {};
   }
   set textContent(value) {
     this._text = value == null ? "" : String(value);
@@ -54,6 +55,12 @@ class El {
   }
   removeAttribute(name) {
     delete this.attrs[String(name)];
+  }
+  addEventListener(type, fn) {
+    (this.listeners[type] ||= []).push(fn);
+  }
+  dispatchEvent(event) {
+    for (const fn of this.listeners[event.type] || []) fn(event);
   }
 }
 
@@ -151,14 +158,27 @@ if (!/Ready/i.test(root.textContent) && !/APP-1/.test(root.textContent)) {
   fail("rendered board missing column/card: " + root.textContent);
 }
 if (!/ticket/i.test(root.textContent)) fail("rendered board missing counts: " + root.textContent);
-if (!root.children.some((c) => c.tagName === "h1")) fail("missing h1 title");
+if (!collect(root, []).some((c) => c.tagName === "h1")) fail("missing h1 title");
 if (!collect(root, []).some((el) => el.className === "lanes")) fail("missing semantic lanes");
+const viewSwitch = collect(root, []).find((el) => el.tagName === "label" && el.className === "view-switch");
+const viewToggle = viewSwitch && collect(viewSwitch, []).find((el) => el.tagName === "input" && el.className === "view-toggle");
+if (!viewToggle || viewToggle.getAttribute("type") !== "checkbox" || viewToggle.id) fail("view switch must use a label-wrapped checkbox without a shared ID");
+if (viewToggle.getAttribute("checked") !== "") fail("side-scroll lanes must be selected by default");
+const laneRegion = collect(root, []).find((el) => el.className === "lanes");
+if (laneRegion.getAttribute("role") !== "region" || laneRegion.getAttribute("tabindex") !== "0") fail("horizontal lanes must be keyboard scrollable");
+const sizeCount = parentInbox.filter((m) => m && m.method === "ui/notifications/size-changed").length;
+viewToggle.checked = false;
+viewToggle.dispatchEvent({ type: "change" });
+if (parentInbox.filter((m) => m && m.method === "ui/notifications/size-changed").length <= sizeCount) fail("switching back to wrapping did not notify host size");
 const articles = collect(root, []).filter((el) => el.tagName === "article");
 if (!articles.length) fail("missing card articles");
+if (!collect(root, []).some((el) => el.tagName === "details" && el.className === "card")) {
+  fail("missing expandable card");
+}
 if (root.textContent.includes("127.0.0.1") || /\/w\/[0-9a-f-]{8}/i.test(root.textContent)) {
   fail("raw board URL leaked into visual content: " + root.textContent);
 }
-if (root.textContent.includes("managed-mode.json") && !collect(root, []).some((el) => el.tagName === "details")) {
+if (root.textContent.includes("managed-mode.json") && !collect(root, []).some((el) => el.tagName === "details" && el.className === "diagnostics")) {
   fail("diagnostic note shown in primary UI");
 }
 if (root.textContent.includes("Open board")) fail("Open board shown without host openLinks");

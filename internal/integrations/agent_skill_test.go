@@ -7,7 +7,7 @@ import (
 
 func TestSharedSkillPresentsStatusBoardAsCompactMarkdownTable(t *testing.T) {
 	needles := []string{
-		"compact Markdown ticket TABLE",
+		"compact Markdown ticket table",
 		"blockers and next steps",
 		"shown/total",
 		"unbounded catalog",
@@ -15,7 +15,10 @@ func TestSharedSkillPresentsStatusBoardAsCompactMarkdownTable(t *testing.T) {
 		"atlas.status",
 		"format",
 		"chat",
-		"paste the `chat` field verbatim",
+		"Board display in chat",
+		"tracker board --style html",
+		"Meta Muse",
+		"Grok Bot",
 		"Never invent tickets",
 	}
 	core := lifecycleSection(atlasWorkerSkill("claude"))

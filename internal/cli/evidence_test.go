@@ -27,6 +27,7 @@ func TestRunEvidenceAndHandoffCommands(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Collect proof", "--type", "task", "--actor", "human:owner")
 	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")
@@ -225,6 +226,7 @@ func TestRunEvidenceArtifactsKeepDistinctCopiesPerEvidence(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Collect proof", "--type", "task", "--actor", "human:owner")
 	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")

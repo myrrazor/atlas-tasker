@@ -70,11 +70,11 @@ go build -o tracker ./cmd/tracker
 ./tracker version --json
 ```
 
-`tracker init` writes identity, `projects/` and `.tracker/`, local checkpoints, and Atlas-managed entries named **`atlas-tasker`** (`mcp serve --global --tool-profile workflow`) for clients it actually finds. Detected agents are configured without a picker. `--integrations` (or bare `tracker integrations install`) is the older TTY picker. Opt out with `--no-agents` / `--skip-integrations`, `--no-backup`, `--no-register`, `--no-open`, or `--git-mode private|unmanaged`.
+`tracker init` writes identity, `projects/` and `.tracker/`, local checkpoints, and Atlas-managed entries named **`atlas-tasker`** (`mcp serve --global --tool-profile workflow`) for clients it actually finds. Detected agents are configured without a picker. If no detected client gets an `AGENTS.md`, init writes a generic guide and worker skill so agents such as Meta Muse have local board instructions to read. The init result points to `AGENTS.md`; a host must actually read and follow it for automatic board presentation. `--integrations` (or bare `tracker integrations install`) is the older TTY picker. Opt out with `--no-agents` / `--skip-integrations`, `--no-backup`, `--no-register`, `--no-open`, or `--git-mode private|unmanaged`.
 
 Mutation commands resolve `--actor`, then `TRACKER_ACTOR`, then `actor.default`, and exit 2 before writing if none is set. There is no silent `human:owner` fallback.
 
-Default `tracker board` is a polished table. `--style kanban` is optional cards. `--style chat` is a paste-ready Discord/Grokbot ANSI board. The browser stays Kanban. `--json` is the machine contract.
+Default `tracker board` is a polished table. `--style kanban` is optional cards. `--style chat` makes an ANSI board for compatible chats; `--style html` makes a self-contained, expandable board fragment for hosts that render inline HTML; `--style markdown` formats the board for Markdown chats such as Grok Bot. The MCP board tool also offers an inline widget in MCP Apps hosts. The browser stays Kanban, and `--json` is the machine contract. See the [chat board guide](docs/guides/chat-board.md).
 
 ![Polished ticket table in the terminal](docs/assets/board.png)
 

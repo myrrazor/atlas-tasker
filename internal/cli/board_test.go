@@ -40,6 +40,20 @@ func TestFormatBoardModernVsTable(t *testing.T) {
 	if strings.Contains(table, "+---") || strings.Contains(table, "Column") {
 		t.Fatalf("table style should be the polished row board, not the legacy grid:\n%s", table)
 	}
+	htmlBoard, err := formatBoard(board, "APP", "html", "comfortable", service.BackupHealthSummary{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(htmlBoard, "<style>") || !strings.Contains(htmlBoard, `<details class="card">`) || !strings.Contains(htmlBoard, "APP-1") {
+		t.Fatalf("html style should be a self-contained board fragment: %s", htmlBoard)
+	}
+	markdownBoard, err := formatBoard(board, "APP", "markdown", "comfortable", service.BackupHealthSummary{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(markdownBoard, "## Ready (1)") || !strings.Contains(markdownBoard, "**APP-1**") || strings.Contains(markdownBoard, "\x1b[") {
+		t.Fatalf("markdown style should be a readable ANSI-free chat board: %s", markdownBoard)
+	}
 	if !strings.Contains(table, "APP-1") || !strings.Contains(table, "Ready") || !strings.Contains(table, "ID") {
 		t.Fatalf("table style:\n%s", table)
 	}

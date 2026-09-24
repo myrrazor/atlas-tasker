@@ -100,4 +100,7 @@ func TestInitSkipIntegrationsFlag(t *testing.T) {
 		// envelope still includes created list; just ensure command succeeded
 		t.Logf("init output: %s", out)
 	}
+	if _, err := os.Stat("AGENTS.md"); !os.IsNotExist(err) {
+		t.Fatalf("skip-integrations should leave agent instructions untouched: %v", err)
+	}
 }

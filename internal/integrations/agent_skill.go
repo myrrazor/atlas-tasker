@@ -157,7 +157,7 @@ func grokBlock(guidePath string) string {
 - Pass `+"`--actor`"+` and `+"`--reason`"+` on every write.
 - Moving a ticket to its current status is a successful no-op; inspect the ticket before retrying a different transition.
 - Prefer JSON reads; treat exit 4 as a forbidden workflow edge, not a crash.
-- Grok MCP tools use underscore names (`+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`). Call those; they map to the canonical Atlas tools. For Discord or Grokbot board status, pass `+"`format=chat`"+` and paste the `+"`chat`"+` field verbatim.
+- Grok Build MCP tools use underscore names (`+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`). Call those; they map to the canonical Atlas tools. Use `+"`format=chat`"+` only when the destination renders ANSI code blocks.
 - The `+"`atlas-worker`"+` skill installs under `+"`.grok/skills/`"+` (walked from the repo root). Atlas does not write repo `+"`.agents`"+` for Grok; user `+"`.agents`"+` under the home directory is client-owned.
 - Detailed Atlas Tasker guidance lives in `+"`%s`"+`.
 `, guidePath))
@@ -170,7 +170,7 @@ Grok-style agents that load root `+"`AGENTS.md`"+` get the managed Atlas block f
 
 ## MCP tool names
 
-Grok skips dotted MCP names. Atlas registers this client with `+"`--tool-name-style portable`"+`, so the live tools are `+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`, and the rest of the catalog with dots turned into one underscore. Call those names. JSON/Markdown still talk about `+"`atlas.status`"+` and friends. In Discord or Grokbot, call `+"`atlas_status`"+` / `+"`atlas_board`"+` with `+"`format=chat`"+` and paste the `+"`chat`"+` field verbatim.
+Grok skips dotted MCP names. Atlas registers this client with `+"`--tool-name-style portable`"+`, so the live tools are `+"`atlas_status`"+`, `+"`atlas_board`"+`, `+"`atlas_context`"+`, and the rest of the catalog with dots turned into one underscore. Call those names. JSON/Markdown still talk about `+"`atlas.status`"+` and friends. Use `+"`format=chat`"+` only for a destination that renders ANSI code blocks; Grok Bot's ordinary message renderer has no documented raw HTML or ANSI contract.
 
 ## Recommended loop
 
@@ -228,7 +228,7 @@ Read ` + "`references/workflow.md`" + ` when you need the full loop, blocker han
 
 ## Grok MCP tool names
 
-Grok skips dotted MCP tool names. This session advertises Atlas tools with a single underscore: call ` + "`atlas_status`" + `, ` + "`atlas_board`" + `, and ` + "`atlas_context`" + ` (and the rest of the catalog the same way). They dispatch to the canonical Atlas tools ` + "`atlas.status`" + `, ` + "`atlas.board`" + `, and ` + "`atlas.context`" + `. JSON and Markdown still use the canonical names. For Discord or Grokbot status, pass ` + "`format=chat`" + ` and paste the ` + "`chat`" + ` field verbatim.
+Grok skips dotted MCP tool names. This session advertises Atlas tools with a single underscore: call ` + "`atlas_status`" + `, ` + "`atlas_board`" + `, and ` + "`atlas_context`" + ` (and the rest of the catalog the same way). They dispatch to the canonical Atlas tools ` + "`atlas.status`" + `, ` + "`atlas.board`" + `, and ` + "`atlas.context`" + `. JSON and Markdown still use the canonical names. Use the ` + "`chat`" + ` field only in a host that renders ANSI code blocks.
 ` + more
 	}
 	return strings.TrimSpace(fmt.Sprintf(`%s
@@ -250,16 +250,16 @@ func atlasManagedLifecycle() string {
 	return strings.TrimSpace(`
 ## Bootstrap
 
-If the workspace has no agent profiles yet (` + "`tracker agent list --json`" + ` is empty), set the team up first or ask the human to:
+If the workspace has no agent profiles yet (`+"`tracker agent list --json`"+` is empty), set the team up first or ask the human to:
 
-1. ` + "`tracker team list`" + ` shows the ready-made rosters (solo, pair, swarm, crossfire).
-2. ` + "`tracker team apply pair --actor human:owner --reason \"team setup\"`" + ` creates builder + reviewer profiles, the standard-build runbook, separation-of-duties permissions, and the review gate in one shot. Use ` + "`--dry-run`" + ` to preview.
+1. `+"`tracker team list`"+` shows the ready-made rosters (solo, pair, swarm, crossfire).
+2. `+"`tracker team apply pair --actor human:owner --reason \"team setup\"`"+` creates builder + reviewer profiles, the standard-build runbook, separation-of-duties permissions, and the review gate in one shot. Use `+"`--dry-run`"+` to preview.
 3. Your agent id should match one of the roster ids (builder-1, reviewer-1, ...).
 
 ## MCP first
 
-- Prefer Atlas MCP tools when this session has them. Call ` + "`atlas.context`" + ` when starting material work. Call ` + "`atlas.status`" + ` or ` + "`atlas.board`" + ` before every status or board question.
-- For a status or board question, query Atlas first. In Discord, Grokbot, or another chat stream that renders ANSI code blocks, call ` + "`atlas.status`" + ` or ` + "`atlas.board`" + ` with ` + "`format`" + ` ` + "`chat`" + ` and paste the ` + "`chat`" + ` field verbatim — do not rewrite colors or turn it into a different table. In Slack, Teams, coding-agent transcripts, or any host that does not color ANSI, present a compact Markdown ticket TABLE (ID, title, status, assignee) from that payload, then blockers and next steps. Do not dump an unbounded catalog. If the board is large, use the tool's filters or pagination and disclose shown/total.
+- Prefer Atlas MCP tools when this session has them. Call `+"`atlas.context`"+` when starting material work. Call `+"`atlas.status`"+` or `+"`atlas.board`"+` before every status or board question.
+- For a status or board question, query Atlas first. Follow the board display rules below for a board; otherwise present a compact Markdown ticket table (ID, title, status, assignee), then blockers and next steps. Do not dump an unbounded catalog. If the board is large, use the tool's filters or pagination and disclose shown/total.
 - If MCP is unavailable (guidance mode, the server is not registered, or a tool call failed), fall back to the CLI commands in this skill and format the same compact table from JSON. Do not invent Atlas state from conversational memory. Report a failed read instead of guessing.
 - Do not invoke high-impact Atlas operations. Do not tell the user to run low-level tracker internals as a required step.
 
@@ -267,40 +267,51 @@ If the workspace has no agent profiles yet (` + "`tracker agent list --json`" + 
 
 Classify the user request before creating or attaching a ticket.
 
-- Status queries, read-only explanations, casual discussion, and simple questions never create tickets (` + "`no_ticket`" + `).
-- Material repository changes attach to an existing ticket or create one only when policy is ` + "`material_work`" + ` (` + "`attach_or_create`" + `). Search first with ` + "`atlas.search`" + ` or ` + "`tracker search`" + `. Use the ticket the user named. Avoid duplicate work.
-- Capture policy ` + "`ask`" + ` means ask before creating; a ticket the user named may still be used.
-- Capture policy ` + "`never`" + `, mode ` + "`disabled`" + `, or an explicit user request not to track (` + "`tracking_excluded`" + `) disables tracking for that task.
-- Read declared and effective managed mode from ` + "`atlas.context`" + `. Completion always follows the workspace policy (` + "`follow_workspace`" + `). Managed mode cannot relax review, approval, or dependencies.
+- Status queries, read-only explanations, casual discussion, and simple questions never create tickets (`+"`no_ticket`"+`).
+- Material repository changes attach to an existing ticket or create one only when policy is `+"`material_work`"+` (`+"`attach_or_create`"+`). Search first with `+"`atlas.search`"+` or `+"`tracker search`"+`. Use the ticket the user named. Avoid duplicate work.
+- Capture policy `+"`ask`"+` means ask before creating; a ticket the user named may still be used.
+- Capture policy `+"`never`"+`, mode `+"`disabled`"+`, or an explicit user request not to track (`+"`tracking_excluded`"+`) disables tracking for that task.
+- Read declared and effective managed mode from `+"`atlas.context`"+`. Completion always follows the workspace policy (`+"`follow_workspace`"+`). Managed mode cannot relax review, approval, or dependencies.
 
 ## Start
 
-1. Resolve your configured Atlas actor, usually ` + "`agent:<agent-id>`" + `. A missing actor is a setup error -- stop and say so.
-2. Call ` + "`atlas.context`" + ` (or ` + "`tracker agent available <agent-id> --json`" + `) for assigned work, available work, and pending blockers.
-3. If nothing is available, call ` + "`atlas.agent.pending`" + ` or ` + "`tracker agent pending <agent-id> --json`" + ` and report the stable blocker reason codes.
-4. If you were launched by a wake-up, acknowledge it: ` + "`tracker agent wakeups list <agent-id> --json`" + `, then ` + "`tracker agent wakeups ack <WAKEUP-ID> --actor agent:<agent-id> --reason \"picked up\"`" + `.
-5. Claim before substantial edits. Move to ` + "`in_progress`" + ` only through a legal workflow edge. ` + "`backlog -> in_progress`" + ` is forbidden; an entry with action ` + "`promote`" + ` is still in ` + "`backlog`" + ` with every blocker ` + "`done`" + `, and its first suggested command moves it to ` + "`ready`" + `.
-6. Do not start work that is ` + "`dependency_blocked`" + `, ` + "`policy_blocked`" + `, ` + "`claimed_by_other`" + `, or ` + "`waiting_for_review`" + `.
-7. When a run is needed, dispatch yourself with ` + "`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`" + `.
+1. Resolve your configured Atlas actor, usually `+"`agent:<agent-id>`"+`. A missing actor is a setup error -- stop and say so.
+2. Call `+"`atlas.context`"+` (or `+"`tracker agent available <agent-id> --json`"+`) for assigned work, available work, and pending blockers.
+3. If nothing is available, call `+"`atlas.agent.pending`"+` or `+"`tracker agent pending <agent-id> --json`"+` and report the stable blocker reason codes.
+4. If you were launched by a wake-up, acknowledge it: `+"`tracker agent wakeups list <agent-id> --json`"+`, then `+"`tracker agent wakeups ack <WAKEUP-ID> --actor agent:<agent-id> --reason \"picked up\"`"+`.
+5. Claim before substantial edits. Move to `+"`in_progress`"+` only through a legal workflow edge. `+"`backlog -> in_progress`"+` is forbidden; an entry with action `+"`promote`"+` is still in `+"`backlog`"+` with every blocker `+"`done`"+`, and its first suggested command moves it to `+"`ready`"+`.
+6. Do not start work that is `+"`dependency_blocked`"+`, `+"`policy_blocked`"+`, `+"`claimed_by_other`"+`, or `+"`waiting_for_review`"+`.
+7. When a run is needed, dispatch yourself with `+"`tracker run dispatch <ID> --agent agent:<agent-id> --actor agent:<agent-id> --reason \"start run\"`"+`.
 
 ## Uninstall software
 
-` + "`tracker uninstall`" + ` previews Atlas-owned software only. It keeps workspace boards, config, tickets, events, and backup repositories. Run ` + "`tracker uninstall --yes`" + ` only when the human asked to remove the app, not the work.
+`+"`tracker uninstall`"+` previews Atlas-owned software only. It keeps workspace boards, config, tickets, events, and backup repositories. Run `+"`tracker uninstall --yes`"+` only when the human asked to remove the app, not the work.
 
 ## Work
 
-- Use ` + "`atlas.ticket.inspect`" + ` or ` + "`tracker inspect <ID> --actor agent:<agent-id> --json`" + ` before making workflow decisions.
-- Record milestone progress, not every command. Default progress policy is ` + "`milestones`" + ` (tests passing, review requested, a deliverable). Attach durable evidence for tests and reviews (comments, checkpoints, evidence, or handoffs).
-- Request review or complete according to the workspace completion mode. In ` + "`review_gate`" + ` or ` + "`dual_gate`" + `, approval is not self-service when a reviewer or separation-of-duties rule applies.
+- Use `+"`atlas.ticket.inspect`"+` or `+"`tracker inspect <ID> --actor agent:<agent-id> --json`"+` before making workflow decisions.
+- Record milestone progress, not every command. Default progress policy is `+"`milestones`"+` (tests passing, review requested, a deliverable). Attach durable evidence for tests and reviews (comments, checkpoints, evidence, or handoffs).
+- Request review or complete according to the workspace completion mode. In `+"`review_gate`"+` or `+"`dual_gate`"+`, approval is not self-service when a reviewer or separation-of-duties rule applies.
 - Self-approval is allowed by default only when no reviewer or governance separation rule is configured; respect stricter workspace policies when they exist.
 
 ## Status and completion
 
 - Query Atlas before every status report. Never answer "what is the status" from memory.
-- Default display for a status or board question is a compact Markdown ticket table, then blockers and next steps. Disclose shown/total when the payload is truncated. Never invent tickets, statuses, or a screenshot.
-- When the user is reading in Discord, Grokbot, or a similar chat stream, request ` + "`format=chat`" + ` and paste the ` + "`chat`" + ` field verbatim.
+- Default display for a status question is a compact Markdown ticket table, then blockers and next steps. Disclose shown/total when the payload is truncated. Never invent tickets, statuses, or a screenshot.
 - Reconcile Atlas state before final completion messaging. The board and ticket view must already show the new status.
-`)
+`) + "\n\n" + boardDisplayInstructions()
+}
+
+func boardDisplayInstructions() string {
+	return strings.TrimSpace(`## Board display in chat
+
+When the user asks to see the Atlas board, read current state first and choose the format the chat host actually renders:
+
+1. In an MCP Apps host, call the live ` + "`atlas.board`" + ` tool and let its inline board widget display the result. In Grok Build the portable tool name is ` + "`atlas_board`" + `. The widget shows counts, priority, labels, blockers, and expandable ticket detail.
+2. In Meta Muse's HTML widget, or any host that renders raw HTML inside assistant messages, run ` + "`tracker board --style html`" + ` from the initialized workspace (add ` + "`--project KEY`" + ` or other board filters as needed). Put the complete stdout fragment directly in the widget or message body, without a code fence or file reference. Never point the chat at a temporary HTML file; it will not survive replay.
+3. Otherwise use the ` + "`markdown`" + ` field from ` + "`atlas.board`" + ` or ` + "`tracker board --style markdown`" + `. Grok Bot documents ordinary messages and file cards, but no public raw-HTML message or custom-font interface; an observed Grok Bot chat showed raw HTML as text. Use Markdown there and let the app choose its font. Use ` + "`format=chat`" + ` or ` + "`--style chat`" + ` only when the destination renders ANSI code blocks.
+
+Check shown versus total if a tool result is paged, and do not invent hidden tickets. A raw HTML string shown as source text is a failed render; switch to the Markdown path.`)
 }
 
 func atlasWorkerReference() string {

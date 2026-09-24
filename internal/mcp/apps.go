@@ -38,20 +38,19 @@ func boardAppHTML() string {
 <title>Atlas board</title>
 <style>
 ` + render.BoardAppCSS + `
-details.diagnostics{margin:.35rem 0 .6rem;color:var(--muted);font-size:.85rem}
+html,body{margin:0}
+details.diagnostics{margin:.35rem 0 .6rem;color:var(--bw-muted);font-size:.78rem}
 details.diagnostics summary{cursor:pointer}
-button.board-nav{margin:.15rem 0 .55rem;padding:.28rem .7rem;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font:inherit}
-.empty.error{color:var(--blocked)}
+.empty.error{color:#b53f3b}
 </style>
 </head>
 <body>
-<div id="root"><p class="muted lede">Waiting for host tool result…</p></div>
+<div id="root" class="atlas-board"><p class="board-note">Waiting for host tool result…</p></div>
 <script>
 (function () {
   var root = document.getElementById("root");
   var pendingInit = 1;
   var alive = true;
-  var hostCapabilities = {};
   function text(el, value) {
     el.textContent = value == null ? "" : String(value);
   }
@@ -85,10 +84,6 @@ button.board-nav{margin:.15rem 0 .55rem;padding:.28rem .7rem;border:1px solid va
       if (!height) height = body.scrollHeight || 0;
     }
     sendNotify("ui/notifications/size-changed", { width: width, height: height });
-  }
-  function hostCanOpenLinks() {
-    var caps = hostCapabilities || {};
-    return !!caps.openLinks && typeof caps.openLinks === "object" && !Array.isArray(caps.openLinks);
   }
   function applyHostContext(ctx) {
     if (!ctx || typeof ctx !== "object") return;
@@ -163,6 +158,68 @@ button.board-nav{margin:.15rem 0 .55rem;padding:.28rem .7rem;border:1px solid va
     }
     return "Tool failed";
   }
+  function element(tag, className, value) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (value != null) text(node, value);
+    return node;
+  }
+  function pill(parent, value, kind) {
+    parent.appendChild(element("span", "pill" + (kind ? " " + kind : ""), value));
+  }
+  function detailRow(parent, label, value) {
+    parent.appendChild(element("dt", "", label));
+    parent.appendChild(element("dd", "", value || "None recorded"));
+  }
+  function renderCard(card) {
+    var article = document.createElement("article");
+    var disclosure = element("details", "card");
+    var summary = document.createElement("summary");
+    summary.appendChild(element("span", "card-id", card.id || ""));
+    summary.appendChild(element("span", "card-title", card.title || "(untitled)"));
+    var meta = element("span", "card-meta");
+    var priority = card.priority || "low";
+    var priorityLabel = card.priority ? priority.replace(/_/g, " ") + " priority" : "No priority";
+    var safePriority = /^(critical|high|medium|low)$/.test(priority) ? priority : "low";
+    var dot = element("span", "priority-dot priority-" + safePriority);
+    dot.setAttribute("aria-hidden", "true");
+    meta.appendChild(dot);
+    meta.appendChild(element("span", "", priorityLabel));
+    summary.appendChild(meta);
+    var pills = element("span", "card-pills");
+    if (card.type) pill(pills, card.type, "pill-type");
+    if (Array.isArray(card.labels)) card.labels.forEach(function (label) { pill(pills, label, ""); });
+    summary.appendChild(pills);
+    if (Array.isArray(card.blocked_by) && card.blocked_by.length) {
+      var blockers = element("span", "card-blockers");
+      card.blocked_by.forEach(function (id) { pill(blockers, "Blocked by " + id, "pill-blocked"); });
+      summary.appendChild(blockers);
+    }
+    disclosure.appendChild(summary);
+    var detail = element("div", "card-detail");
+    if (card.description && String(card.description).trim()) {
+      detail.appendChild(element("h3", "", "Description"));
+      detail.appendChild(element("p", "", String(card.description).trim()));
+    }
+    if (Array.isArray(card.acceptance_criteria) && card.acceptance_criteria.length) {
+      detail.appendChild(element("h3", "", "Acceptance criteria"));
+      var criteria = document.createElement("ul");
+      card.acceptance_criteria.forEach(function (item) { criteria.appendChild(element("li", "", item)); });
+      detail.appendChild(criteria);
+    }
+    detail.appendChild(element("h3", "", "Relations and review"));
+    var relations = document.createElement("dl");
+    detailRow(relations, "Assignee", card.assignee);
+    detailRow(relations, "Reviewer", card.reviewer);
+    detailRow(relations, "Review state", card.review_state);
+    if (card.parent) detailRow(relations, "Parent", card.parent);
+    if (Array.isArray(card.blocked_by) && card.blocked_by.length) detailRow(relations, "Blocked by", card.blocked_by.join(", "));
+    if (Array.isArray(card.blocks) && card.blocks.length) detailRow(relations, "Blocks", card.blocks.join(", "));
+    detail.appendChild(relations);
+    disclosure.appendChild(detail);
+    article.appendChild(disclosure);
+    return article;
+  }
   function render(data) {
     root.replaceChildren();
     var board = boardFrom(data);
@@ -170,39 +227,18 @@ button.board-nav{margin:.15rem 0 .55rem;padding:.28rem .7rem;border:1px solid va
       showMessage("No board payload", "empty");
       return;
     }
-    var h1 = document.createElement("h1");
-    text(h1, board.title || "Board");
-    root.appendChild(h1);
-    var lede = document.createElement("p");
-    lede.className = "lede";
-    text(lede, countPhrase(board));
-    root.appendChild(lede);
-    if (hostCanOpenLinks() && board.board_url) {
-      var nav = document.createElement("button");
-      nav.type = "button";
-      nav.className = "board-nav";
-      text(nav, "Open board");
-      root.appendChild(nav);
-    }
-    if (Array.isArray(board.attention) && board.attention.length) {
-      var att = document.createElement("p");
-      att.className = "attention meta";
-      text(att, "Attention: " + board.attention.join("; "));
-      root.appendChild(att);
-    }
-    if (Array.isArray(board.next_actions) && board.next_actions.length) {
-      var next = document.createElement("p");
-      next.className = "meta";
-      text(next, "Next: " + board.next_actions[0]);
-      root.appendChild(next);
-    }
+    var heading = element("header", "board-heading");
+    var titleBlock = document.createElement("div");
+    titleBlock.appendChild(element("span", "board-eyebrow", "Atlas Tasker / Board"));
+    titleBlock.appendChild(element("h1", "", board.title || "Board"));
+    heading.appendChild(titleBlock);
+    heading.appendChild(element("span", "board-total", countPhrase(board)));
+    root.appendChild(heading);
+    if (board.truncated) root.appendChild(element("p", "board-note", "Showing a partial board. Use a project filter or page through the remaining tickets."));
+    if (Array.isArray(board.attention) && board.attention.length) root.appendChild(element("p", "board-note", "Attention: " + board.attention.join("; ")));
+    if (Array.isArray(board.next_actions) && board.next_actions.length) root.appendChild(element("p", "board-note", "Next: " + board.next_actions[0]));
     var backup = backupLine(board.backup);
-    if (backup) {
-      var b = document.createElement("p");
-      b.className = "meta";
-      text(b, "Backup: " + backup);
-      root.appendChild(b);
-    }
+    if (backup) root.appendChild(element("p", "board-note", "Backup: " + backup));
     var extras = diagnosticNotes(board);
     if (extras.length) {
       var details = document.createElement("details");
@@ -218,49 +254,39 @@ button.board-nav{margin:.15rem 0 .55rem;padding:.28rem .7rem;border:1px solid va
       });
       root.appendChild(details);
     }
+    var viewSwitch = element("label", "view-switch");
+    var viewToggle = element("input", "view-toggle");
+    viewToggle.setAttribute("type", "checkbox");
+    viewToggle.setAttribute("checked", "");
+    viewToggle.addEventListener("change", notifySize);
+    viewSwitch.appendChild(viewToggle);
+    viewSwitch.appendChild(element("span", "", "Side-scroll lanes"));
+    root.appendChild(viewSwitch);
     var lanes = document.createElement("div");
     lanes.className = "lanes";
+    lanes.setAttribute("role", "region");
+    lanes.setAttribute("aria-label", "Board lanes");
+    lanes.setAttribute("tabindex", "0");
     var columns = Array.isArray(board.columns) ? board.columns : [];
-    var wrote = false;
     columns.forEach(function (col) {
-      if (!col || !col.total) return;
-      wrote = true;
-      var section = document.createElement("section");
-      section.className = "lane-" + (col.status || "");
+      if (!col || (col.status === "canceled" && !col.total)) return;
+      var section = element("section", "lane lane-" + (col.status || ""));
       section.setAttribute("aria-label", col.label || col.status || "lane");
-      var heading = document.createElement("h2");
-      var headingText = (col.label || col.status || "Lane") + " (" + String(col.total) + ")";
-      if (col.truncated) headingText += " showing " + String(col.shown) + ", truncated";
-      text(heading, headingText);
-      section.appendChild(heading);
+      var laneHead = element("div", "lane-head");
+      laneHead.appendChild(element("h2", "", col.label || col.status || "Lane"));
+      var count = element("span", "lane-count", String(col.total || 0));
+      count.setAttribute("aria-label", String(col.total || 0) + ((col.total || 0) === 1 ? " ticket" : " tickets"));
+      laneHead.appendChild(count);
+      section.appendChild(laneHead);
+      var list = element("div", "lane-list");
       var cards = Array.isArray(col.cards) ? col.cards : [];
       cards.forEach(function (card) {
-        var article = document.createElement("article");
-        var title = document.createElement("span");
-        title.className = "title";
-        text(title, (card && card.title) ? card.title : "(untitled)");
-        article.appendChild(title);
-        var kicker = document.createElement("span");
-        kicker.className = "kicker";
-        var bits = [];
-        if (card && card.id) bits.push(card.id);
-        if (card && card.priority && card.priority !== "medium") bits.push(card.priority);
-        if (card && card.assignee) bits.push(card.assignee);
-        if (card && Array.isArray(card.labels) && card.labels.length) bits.push(card.labels.join(", "));
-        text(kicker, bits.join(" · "));
-        article.appendChild(kicker);
-        section.appendChild(article);
+        if (card && typeof card === "object") list.appendChild(renderCard(card));
       });
+      if (!cards.length) list.appendChild(element("p", "lane-empty", "No tickets"));
+      section.appendChild(list);
       lanes.appendChild(section);
     });
-    if (!wrote) {
-      var empty = document.createElement("p");
-      empty.className = "empty";
-      text(empty, "0 tickets.");
-      root.appendChild(empty);
-      notifySize();
-      return;
-    }
     root.appendChild(lanes);
     notifySize();
   }
@@ -283,9 +309,6 @@ button.board-nav{margin:.15rem 0 .55rem;padding:.28rem .7rem;border:1px solid va
         showMessage("Unsupported host protocol", "empty error");
         return;
       }
-      hostCapabilities = message.result.hostCapabilities && typeof message.result.hostCapabilities === "object"
-        ? message.result.hostCapabilities
-        : {};
       if (message.result.hostContext) applyHostContext(message.result.hostContext);
       pendingInit = null;
       sendNotify("ui/notifications/initialized", { protocolVersion: "` + BoardAppProtocol + `" });

@@ -129,6 +129,17 @@ func gitRunCLI(t *testing.T, args ...string) {
 	}
 }
 
+// Dispatch starts from a committed Git tree. Keep Atlas's newly generated
+// agent instructions in that tree so launched workers can read them.
+func commitInitAgentGuide(t *testing.T) {
+	t.Helper()
+	if _, err := os.Stat("AGENTS.md"); err != nil {
+		t.Fatalf("init agent guide missing: %v", err)
+	}
+	gitRunCLI(t, "add", "--", "AGENTS.md", ".tracker/integrations")
+	gitRunCLI(t, "commit", "-m", "Record Atlas agent instructions")
+}
+
 func gitOutput(t *testing.T, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)

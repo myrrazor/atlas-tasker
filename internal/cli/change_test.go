@@ -27,6 +27,7 @@ func TestChangeAndChecksCommandsFlowIntoTicketRunAndHandoffViews(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Wire change flow", "--type", "task", "--actor", "human:owner")
 	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--capability", "go", "--actor", "human:owner")
@@ -248,6 +249,7 @@ func TestChangeCreateStatusSyncAndImportURLFlow(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("config", "set", "provider.default_scm_provider", "github")
 	must("config", "set", "provider.github_repo", "myrrazor/atlas-tasker")
 	must("project", "create", "APP", "App Project")
@@ -487,6 +489,7 @@ func TestChangeRepeatedProviderActionsRemainIdempotent(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("config", "set", "provider.default_scm_provider", "github")
 	must("config", "set", "provider.github_repo", "myrrazor/atlas-tasker")
 	must("project", "create", "APP", "App Project")

@@ -22,6 +22,10 @@ const (
 	BoardStyleLegacy BoardStyle = "legacy"
 	// BoardStyleChat is the paste-ready Discord/Grokbot ANSI board.
 	BoardStyleChat BoardStyle = "chat"
+	// BoardStyleHTML is a self-contained HTML fragment for capable chat hosts.
+	BoardStyleHTML BoardStyle = "html"
+	// BoardStyleMarkdown is a readable board for Markdown chat hosts.
+	BoardStyleMarkdown BoardStyle = "markdown"
 )
 
 type BoardDensity string
@@ -55,7 +59,7 @@ func (o BoardRenderOptions) normalized() BoardRenderOptions {
 		o.Width = 80
 	}
 	switch o.Style {
-	case BoardStyleTable, BoardStyleKanban, BoardStyleModern, BoardStyleLegacy, BoardStyleChat:
+	case BoardStyleTable, BoardStyleKanban, BoardStyleModern, BoardStyleLegacy, BoardStyleChat, BoardStyleHTML, BoardStyleMarkdown:
 	default:
 		o.Style = BoardStyleTable
 	}
@@ -77,8 +81,12 @@ func ParseBoardStyle(raw string) (BoardStyle, error) {
 		return BoardStyleLegacy, nil
 	case "chat", "discord", "ansi":
 		return BoardStyleChat, nil
+	case "html":
+		return BoardStyleHTML, nil
+	case "markdown":
+		return BoardStyleMarkdown, nil
 	default:
-		return "", fmt.Errorf("board style must be table, kanban, legacy, or chat")
+		return "", fmt.Errorf("board style must be table, kanban, legacy, chat, html, or markdown")
 	}
 }
 
@@ -99,10 +107,17 @@ func ParseBoardDensity(raw string) (BoardDensity, error) {
 	}
 }
 
-// RenderBoard paints CompactBoard for a human terminal. Markdown and JSON
-// callers should not go through here — they already have structured fields.
+// RenderBoard presents CompactBoard for a human terminal or capable chat host.
+// Markdown and JSON callers already have structured fields.
 func RenderBoard(board CompactBoard, opts BoardRenderOptions) string {
 	opts = opts.normalized()
+	if opts.Style == BoardStyleHTML {
+		return CompactBoardWidgetFragment(board)
+	}
+	if opts.Style == BoardStyleMarkdown {
+		board.BoardURL = "" // A relative local board path is not a useful chat link.
+		return CompactBoardMarkdown(board)
+	}
 	if opts.Style == BoardStyleChat {
 		return CompactBoardChat(board)
 	}

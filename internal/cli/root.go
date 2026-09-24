@@ -789,7 +789,7 @@ func newBoardCommand() *cobra.Command {
 	cmd.Flags().String("project", "", "Filter by project")
 	cmd.Flags().String("assignee", "", "Filter by assignee")
 	cmd.Flags().String("type", "", "Filter by ticket type")
-	cmd.Flags().String("style", "table", "Board presentation: table (default), kanban, legacy, or chat")
+	cmd.Flags().String("style", "table", "Board presentation: table (default), kanban, legacy, chat, html, or markdown")
 	cmd.Flags().String("density", "comfortable", "Board density: comfortable, compact, or focus")
 	addReadOutputFlags(cmd, flags)
 	return cmd
@@ -3018,8 +3018,8 @@ func runTUI(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return apperr.New(apperr.CodeInvalidInput, err.Error())
 	}
-	if style == render.BoardStyleLegacy || style == render.BoardStyleChat {
-		return apperr.New(apperr.CodeInvalidInput, "tui --style does not support legacy or chat; use table or kanban")
+	if style == render.BoardStyleLegacy || style == render.BoardStyleChat || style == render.BoardStyleHTML || style == render.BoardStyleMarkdown {
+		return apperr.New(apperr.CodeInvalidInput, "tui --style does not support legacy, chat, html, or markdown; use table or kanban")
 	}
 	return tui.Run(rootDir, contracts.Actor(strings.TrimSpace(actorRaw)), style)
 }

@@ -83,11 +83,41 @@ func TestInitDoesNotWriteHostMCPWhenLookPathEmpty(t *testing.T) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Init(context.Background(), InitOptions{Root: root, Agents: true, WriteClientCfg: true, Register: true}); err != nil {
+	result, err := a.Init(context.Background(), InitOptions{Root: root, Agents: true, WriteClientCfg: true, Register: true})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(a.Home(), ".cursor", "mcp.json")); !os.IsNotExist(err) {
 		t.Fatal("no detected client should create cursor MCP config")
+	}
+	guide, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("generic agent guide missing after init: %v", err)
+	}
+	if !strings.Contains(string(guide), "atlas-tasker:generic:begin") || !strings.Contains(string(guide), "tracker board --style html") {
+		t.Fatalf("generic guide lacks chat board instructions: %s", guide)
+	}
+	skill, err := os.ReadFile(filepath.Join(root, ".tracker", "integrations", "generic-agent-skill", "SKILL.md"))
+	if err != nil || !strings.Contains(string(skill), "tracker board --style html") {
+		t.Fatalf("generic board skill missing after init: %v\n%s", err, skill)
+	}
+	if !strings.Contains(result.Summary, "read AGENTS.md for board display in chat") {
+		t.Fatalf("init did not point the agent at its guide: %s", result.Summary)
+	}
+}
+
+func TestInstallWorkspaceSkillsAddsPortableGuideWhenOnlyClaudeDetected(t *testing.T) {
+	a := testApp(t)
+	root := t.TempDir()
+	if err := a.installWorkspaceSkills(&Workspace{Root: root}, []integrations.Detection{{Target: integrations.TargetClaude, Found: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "CLAUDE.md")); err != nil {
+		t.Fatalf("Claude instructions missing: %v", err)
+	}
+	guide, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil || !strings.Contains(string(guide), "tracker board --style html") {
+		t.Fatalf("portable board instructions missing: %v\n%s", err, guide)
 	}
 }
 
