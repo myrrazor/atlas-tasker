@@ -113,6 +113,7 @@ func TestShellParityForOrchestrationCommands(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Shell runner", "--type", "task", "--reviewer", "agent:reviewer-1", "--actor", "human:owner")
 	must("ticket", "move", "APP-1", "ready", "--actor", "human:owner")
@@ -373,6 +374,7 @@ func TestShellParityForChangeAndChecksCommands(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("config", "set", "provider.default_scm_provider", "github")
 	must("config", "set", "provider.github_repo", "myrrazor/atlas-tasker")
 	must("project", "create", "APP", "App Project")

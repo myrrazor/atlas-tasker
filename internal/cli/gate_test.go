@@ -25,6 +25,7 @@ func TestGateLifecycleApprovalsAndInbox(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Review me", "--type", "task", "--reviewer", "agent:reviewer-1", "--actor", "human:owner")
 	must("agent", "create", "reviewer-1", "--name", "Reviewer One", "--provider", "claude", "--default-runbook", "review", "--actor", "human:owner")

@@ -8,6 +8,8 @@ Meta Muse's chat widget can present HTML with `--hatch-widget-*` theme variables
 
 With agent setup enabled, `tracker init` puts these instructions in the workspace `AGENTS.md` and an `atlas-worker` skill. When no detected client gets an `AGENTS.md`, it installs the generic guide. Ask Muse to read `AGENTS.md` once after setup if it does not automatically load workspace instructions; Atlas cannot force a separate chat host to discover a local file. Existing workspaces can refresh the managed guide with `tracker init`. The published one-line installer downloads the latest **release** binary, so this command requires a release that includes `--style html`; check `tracker board --help` after installing.
 
+In a Git workspace, commit the generated agent instructions and skill before dispatching workers into Git worktrees, so those workers can read the same guidance.
+
 ## MCP Apps hosts
 
 Call `atlas.board` with the workspace or project you want to show. The tool advertises `ui://atlas/board` as an MCP App resource. A compatible host displays a read-only board in the transcript; the same tool result includes Markdown for hosts without Apps support. Cards expand with native `<details>` to show description, acceptance criteria, relations, and review state. The widget has a restrictive CSP and no external fonts, scripts, or network calls. Check the actual session before claiming it displayed the widget.

@@ -26,6 +26,7 @@ func TestDispatchSuggestQueueAndBulkAutoRoute(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Dispatch me", "--type", "task", "--actor", "human:owner")
 	must("ticket", "create", "--project", "APP", "--title", "Dispatch me too", "--type", "task", "--actor", "human:owner")
@@ -162,6 +163,7 @@ func TestRunDispatchAcceptsQualifiedAgentAndAllowsSelfDispatch(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--default-runbook", "implement", "--actor", "human:owner")
 	must("collaborator", "add", "builder", "--name", "Builder", "--actor-map", "agent:builder-1", "--actor", "human:owner")
@@ -220,6 +222,7 @@ func TestDispatchSuggestReportsDirtyRepoAndActiveRunReasonCodes(t *testing.T) {
 	}
 
 	must("init")
+	commitInitAgentGuide(t)
 	must("project", "create", "APP", "App Project")
 	must("ticket", "create", "--project", "APP", "--title", "Dispatch me", "--type", "task", "--actor", "human:owner")
 	must("agent", "create", "builder-1", "--name", "Builder One", "--provider", "codex", "--default-runbook", "implement", "--actor", "human:owner")
