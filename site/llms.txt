@@ -2,9 +2,9 @@
 
 > The ticketing system for you and your AI agents: terminal tickets, Atlas Home, and MCP tools, all in one binary.
 
-Atlas Tasker is a free, MIT-licensed, local-first issue tracker for macOS and Linux. Tickets are Markdown files in your repository, every change is an audited event, and humans and coding agents share queues, dependencies, runs, evidence, gates, and handoffs. Ordinary onboarding is `tracker init` then `tracker`. Lightweight by design: no hosted account. The Home service is a local loopback process, not a cloud daemon. v1.16 adds native client skills and everyday browser management.
+Atlas Tasker is a free, MIT-licensed, local-first issue tracker for macOS and Linux. Tickets are Markdown files in your repository, every change is an audited event, and humans and coding agents share queues, dependencies, runs, evidence, gates, and handoffs. Ordinary onboarding is `tracker init` then `tracker`. Lightweight by design: no hosted account. The Home service is a local loopback process, not a cloud daemon. v1.17 adds chat-native boards and security hardening.
 
-The one-line installer and `go install ...@latest` install the latest published GitHub release (v1.16.0). Needs curl, tar, and GitHub CLI (gh) for local attestation-bundle verification without GitHub login. Ordinary onboarding is `tracker init` then `tracker`. See verification results on the GitHub release page. Unstamped source builds report `version: "dev"`.
+The one-line installer selects the latest published GitHub release (v1.17.0). It needs curl, tar, and GitHub CLI (gh) for local attestation-bundle verification without GitHub login. `go install ...@latest` builds the latest tagged module from source and reports `version: "dev"` without release build stamps. Ordinary onboarding is `tracker init` then `tracker`. See verification results on the GitHub release page.
 
 Install the published binary with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh`.
 
