@@ -53,6 +53,11 @@ type CompactCard struct {
 	Reviewer         string   `json:"reviewer,omitempty"`
 	Labels           []string `json:"labels,omitempty"`
 	BlockedBy        []string `json:"blocked_by,omitempty"`
+	Blocks           []string `json:"blocks,omitempty"`
+	Parent           string   `json:"parent,omitempty"`
+	Description      string   `json:"description,omitempty"`
+	Acceptance       []string `json:"acceptance_criteria,omitempty"`
+	ReviewState      string   `json:"review_state,omitempty"`
 	LatestRunID      string   `json:"latest_run_id,omitempty"`
 	ChangeReadyState string   `json:"change_ready_state,omitempty"`
 	ChildrenTotal    int      `json:"children_total,omitempty"`
@@ -195,6 +200,11 @@ func compactCardFromTicket(ticket contracts.TicketSnapshot) CompactCard {
 		Reviewer:         string(ticket.Reviewer),
 		Labels:           append([]string(nil), ticket.Labels...),
 		BlockedBy:        append([]string(nil), ticket.BlockedBy...),
+		Blocks:           append([]string(nil), ticket.Blocks...),
+		Parent:           strings.TrimSpace(ticket.Parent),
+		Description:      ticket.Description,
+		Acceptance:       append([]string(nil), ticket.AcceptanceCriteria...),
+		ReviewState:      strings.TrimSpace(string(ticket.ReviewState)),
 		LatestRunID:      strings.TrimSpace(ticket.LatestRunID),
 		ChangeReadyState: strings.TrimSpace(string(ticket.ChangeReadyState)),
 		ReasonCodes:      nil,
@@ -503,33 +513,6 @@ func escapeMarkdown(value string) string {
 // No scripts, no network, no forms, inline CSS only.
 const BoardAppCSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; font-src 'none'; script-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'"
 
-// BoardAppCSS is the reusable Atlas board stylesheet for CompactBoardAppHTML
-// and for the MCP Apps host shell (ui://atlas/board). No network, no fonts.
-const BoardAppCSS = `:root{color-scheme:light dark;--bg:#f6f8fa;--surface:#fff;--text:#1f2328;--muted:#57606a;--line:#d0d7de;--ready:#1a7f37;--progress:#0969da;--review:#8250df;--blocked:#cf222e;--done:#0969da;--backlog:#656d76}
-@media (prefers-color-scheme:dark){:root{--bg:#0b0f14;--surface:#111821;--text:#eef4fa;--muted:#a8b5c3;--line:#27323e;--ready:#3fb950;--progress:#4d9fff;--review:#a371f7;--blocked:#f85149;--done:#58a6ff;--backlog:#8b98a6}}
-html,body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.45}
-body{padding:1rem 1.15rem 1.5rem;max-width:76rem}
-h1{font-size:1.2rem;font-weight:650;margin:0 0 .35rem;letter-spacing:-.01em}
-h2{font-size:.78rem;font-weight:650;margin:0 0 .7rem;padding:.12rem 0 .12rem .55rem;border-left:3px solid var(--backlog);letter-spacing:.04em;text-transform:uppercase}
-.lede,.meta,.note,.empty{color:var(--muted);margin:.2rem 0 .55rem;font-size:.92rem}
-.lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(15.5rem,1fr));gap:1rem;align-items:start}
-section{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:.75rem .85rem 1rem;min-width:0}
-article{padding:.6rem 0;border-top:1px solid var(--line)}
-article:first-of-type{border-top:0;padding-top:.1rem}
-.title{display:block;font-weight:600;overflow-wrap:anywhere;word-break:break-word}
-.kicker{display:block;margin-top:.22rem;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;color:var(--muted);overflow-wrap:anywhere;word-break:break-word}
-.lane-ready h2{border-left-color:var(--ready)}
-.lane-in_progress h2{border-left-color:var(--progress)}
-.lane-in_review h2{border-left-color:var(--review)}
-.lane-blocked h2{border-left-color:var(--blocked)}
-.lane-done h2{border-left-color:var(--done)}
-:root[data-theme=light]{color-scheme:light;--bg:#f6f8fa;--surface:#fff;--text:#1f2328;--muted:#57606a;--line:#d0d7de;--ready:#1a7f37;--progress:#0969da;--review:#8250df;--blocked:#cf222e;--done:#0969da;--backlog:#656d76}
-:root[data-theme=dark]{color-scheme:dark;--bg:#0b0f14;--surface:#111821;--text:#eef4fa;--muted:#a8b5c3;--line:#27323e;--ready:#3fb950;--progress:#4d9fff;--review:#a371f7;--blocked:#f85149;--done:#58a6ff;--backlog:#8b98a6}
-html[data-container-narrow] .lanes{grid-template-columns:1fr}
-@media (max-width:390px){body{padding:.75rem .7rem 1.1rem;max-width:100%}.lanes{grid-template-columns:1fr;gap:.75rem}h1{font-size:1.05rem}}
-@media (max-width:320px){body{padding:.6rem .55rem 1rem}h1{font-size:1rem}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}`
-
 // CompactBoardAppHTML is a self-contained read-only MCP App document.
 func CompactBoardAppHTML(board CompactBoard) string {
 	var b strings.Builder
@@ -548,88 +531,7 @@ func CompactBoardAppHTML(board CompactBoard) string {
 	return b.String()
 }
 
-// CompactBoardAppBody is the inner board markup (no html/head). MCP Apps can
-// reuse this inside ui://atlas/board while keeping the host shell/CSP.
+// CompactBoardAppBody is the inner board markup shared with the chat fragment.
 func CompactBoardAppBody(board CompactBoard) string {
-	var b strings.Builder
-	b.WriteString("<h1>")
-	b.WriteString(html.EscapeString(board.Title))
-	b.WriteString("</h1>\n<p class=\"lede\">")
-	b.WriteString(html.EscapeString(ticketCountPhrase(board.TotalCards, board.ShownCards, board.Truncated)))
-	if board.BoardURL != "" {
-		b.WriteString(" Board ")
-		b.WriteString(html.EscapeString(board.BoardURL))
-		b.WriteString(".")
-	}
-	b.WriteString("</p>\n")
-	if len(board.Attention) > 0 {
-		b.WriteString("<p class=\"attention meta\">Attention: ")
-		b.WriteString(html.EscapeString(strings.Join(board.Attention, "; ")))
-		b.WriteString("</p>\n")
-	}
-	if len(board.NextActions) > 0 {
-		b.WriteString("<p class=\"meta\">Next: ")
-		b.WriteString(html.EscapeString(board.NextActions[0]))
-		b.WriteString("</p>\n")
-	}
-	if board.Backup != nil {
-		b.WriteString("<p class=\"meta\">Backup: ")
-		b.WriteString(html.EscapeString(board.Backup.SummaryLine()))
-		b.WriteString("</p>\n")
-	}
-	for _, note := range board.Notes {
-		b.WriteString("<p class=\"note\">")
-		b.WriteString(html.EscapeString(note))
-		b.WriteString("</p>\n")
-	}
-	b.WriteString("<div class=\"lanes\">\n")
-	wroteLane := false
-	for _, col := range board.Columns {
-		if col.Total == 0 {
-			continue
-		}
-		wroteLane = true
-		b.WriteString(`<section class="lane-`)
-		b.WriteString(html.EscapeString(col.Status))
-		b.WriteString(`" aria-label="`)
-		b.WriteString(html.EscapeString(col.Label))
-		b.WriteString(`">`)
-		b.WriteString("<h2>")
-		b.WriteString(html.EscapeString(fmt.Sprintf("%s (%d)", col.Label, col.Total)))
-		if col.Truncated {
-			b.WriteString(html.EscapeString(fmt.Sprintf(" showing %d, truncated", col.Shown)))
-		}
-		b.WriteString("</h2>\n")
-		for _, card := range col.Cards {
-			title := strings.TrimSpace(card.Title)
-			if title == "" {
-				title = "(untitled)"
-			}
-			b.WriteString("<article>\n")
-			b.WriteString("<span class=\"title\">")
-			b.WriteString(html.EscapeString(title))
-			b.WriteString("</span>\n")
-			b.WriteString("<span class=\"kicker\">")
-			b.WriteString(html.EscapeString(card.ID))
-			if card.Priority != "" && card.Priority != string(contracts.PriorityMedium) {
-				b.WriteString(" · ")
-				b.WriteString(html.EscapeString(card.Priority))
-			}
-			if card.Assignee != "" {
-				b.WriteString(" · ")
-				b.WriteString(html.EscapeString(card.Assignee))
-			}
-			if len(card.Labels) > 0 {
-				b.WriteString(" · ")
-				b.WriteString(html.EscapeString(strings.Join(card.Labels, ", ")))
-			}
-			b.WriteString("</span>\n</article>\n")
-		}
-		b.WriteString("</section>\n")
-	}
-	if !wroteLane {
-		b.WriteString("<p class=\"empty\">No tickets on this board.</p>\n")
-	}
-	b.WriteString("</div>\n")
-	return b.String()
+	return boardWidgetBody(board)
 }

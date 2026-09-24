@@ -74,7 +74,7 @@ go build -o tracker ./cmd/tracker
 
 Mutation commands resolve `--actor`, then `TRACKER_ACTOR`, then `actor.default`, and exit 2 before writing if none is set. There is no silent `human:owner` fallback.
 
-Default `tracker board` is a polished table. `--style kanban` is optional cards. `--style chat` is a paste-ready Discord/Grokbot ANSI board. The browser stays Kanban. `--json` is the machine contract.
+Default `tracker board` is a polished table. `--style kanban` is optional cards. `--style chat` makes an ANSI board for compatible chats; `--style html` makes a self-contained, expandable board fragment for hosts that render inline HTML; `--style markdown` formats the board for Markdown chats such as Grok Bot. The MCP board tool also offers an inline widget in MCP Apps hosts. The browser stays Kanban, and `--json` is the machine contract. See the [chat board guide](docs/guides/chat-board.md).
 
 ![Polished ticket table in the terminal](docs/assets/board.png)
 

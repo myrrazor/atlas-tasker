@@ -77,6 +77,16 @@ func TestBoardAppJavaScriptRendersCompactBoard(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("move: %v", err)
 	}
+	if _, err := server.CallTool(ctx, "atlas.ticket.edit", map[string]any{
+		"workspace_id": id,
+		"ticket_id":    "APP-1",
+		"description":  "A board that fits in chat",
+		"acceptance":   []any{"Card expands with keyboard"},
+		"actor":        "human:owner",
+		"reason":       "exercise board detail",
+	}); err != nil {
+		t.Fatalf("edit: %v", err)
+	}
 	result, err := server.CallTool(ctx, "atlas.board", map[string]any{"workspace_id": id, "project": "APP"})
 	if err != nil {
 		t.Fatalf("board: %v", err)
@@ -122,6 +132,9 @@ func TestBoardAppJavaScriptRendersCompactBoard(t *testing.T) {
 	}
 	if !strings.Contains(got, "APP-1") || !strings.Contains(got, "Ship the board") {
 		t.Fatalf("JS DOM did not render compact cards:\n%s", got)
+	}
+	if !strings.Contains(got, "A board that fits in chat") || !strings.Contains(got, "Card expands with keyboard") {
+		t.Fatalf("JS DOM lost expanded ticket detail:\n%s", got)
 	}
 
 	sdk := server.SDKServer()

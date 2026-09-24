@@ -87,8 +87,11 @@ Dashboard pagination uses the same shape with `cursor_by_section`.
 ```
 
 `markdown` (default) keeps the ANSI-free compact Markdown field. `chat` adds `chat`,
-`presentation`, and `chat_hint`: `chat` is a fenced `ansi` block for Discord and Grokbot.
-The MCP text fallback prefers `chat` when that field is present.
+`presentation`, and `chat_hint`: `chat` is a fenced `ansi` block for compatible hosts.
+The MCP text fallback prefers `chat` when that field is present. Each compact board card
+may include `description`, `acceptance_criteria`, `blocks`, `parent`, and `review_state`
+alongside the existing ID, title, status, priority, type, labels, and `blocked_by` fields.
+MCP Apps hosts can present those extra fields in expandable cards.
 
 Every tracked mutation requires:
 

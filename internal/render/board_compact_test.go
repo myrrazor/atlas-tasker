@@ -128,14 +128,14 @@ func TestCompactBoardAppHTMLEnforcesCSPAndNoScripts(t *testing.T) {
 	if !strings.Contains(htmlDoc, `name="viewport"`) {
 		t.Fatalf("app should include a viewport meta:\n%s", htmlDoc)
 	}
-	article := htmlDoc
-	if i := strings.Index(htmlDoc, "<article>"); i >= 0 {
-		article = htmlDoc[i:]
-	}
+	article := htmlDoc[strings.Index(htmlDoc, "<article>"):]
 	waitIdx := strings.Index(article, "Wait")
 	idIdx := strings.Index(article, "APP-1")
-	if waitIdx < 0 || idIdx < 0 || waitIdx > idIdx {
-		t.Fatalf("title should lead the card, id secondary:\n%s", htmlDoc)
+	if waitIdx < 0 || idIdx < 0 || idIdx > waitIdx {
+		t.Fatalf("card should expose id and title in summary:\n%s", htmlDoc)
+	}
+	if !strings.Contains(article, `<details class="card"><summary>`) || !strings.Contains(article, "Relations and review") {
+		t.Fatalf("cards should expand with detail:\n%s", htmlDoc)
 	}
 	if strings.Contains(htmlDoc, `class="status`) {
 		t.Fatalf("lane cards should not repeat status chips:\n%s", htmlDoc)

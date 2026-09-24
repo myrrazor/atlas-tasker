@@ -125,7 +125,9 @@ is never pending.
 tracker board --json                       # {"columns": {"ready": [...], ...}}
 tracker board                              # default human board: polished table
 tracker board --style kanban               # optional side-by-side cards
-tracker board --style chat                 # Discord/Grokbot paste-ready ANSI board
+tracker board --style chat                 # ANSI code block for hosts that render ANSI
+tracker board --style html                 # self-contained inline HTML fragment
+tracker board --style markdown             # formatted board for Markdown chats
 tracker queue --actor agent:builder-1 --json
 tracker ticket view APP-12 --json
 tracker inspect APP-12 --actor agent:builder-1 --json   # policy + lease + queue + history
@@ -135,6 +137,14 @@ tracker search 'project=APP status=ready text~retry' --json
 
 `tracker inspect` is the one to reach for when the queue and the ticket disagree. It answers
 "why can't I move this" in a single call.
+
+### Board display in chat
+
+When asked to show the board, read live Atlas state. In a chat client that supports MCP Apps, call `atlas.board` and use its inline board widget. Its cards expand to show description, acceptance criteria, relations, and review state. In Grok Build the portable tool name is `atlas_board`.
+
+For Meta Muse's HTML widget or any chat host that renders raw HTML in assistant messages, run `tracker board --style html` from the workspace root, adding `--project`, `--assignee`, `--type`, or `--view` when requested. Put the complete stdout fragment directly in the message body or widget, without a code fence or a temporary file reference. The fragment includes its CSS and data; file-backed previews do not survive chat replay.
+
+If the host shows HTML as source text, use the `markdown` field from `atlas.board` or `tracker board --style markdown`. Grok Bot's public docs do not establish raw HTML rendering or custom message fonts, and an observed Grok Bot chat displayed raw HTML as text, so use Markdown there. The app controls its message font. Use `format=chat` or `--style chat` only after confirming that destination renders ANSI code blocks. For paged board results, disclose shown/total and fetch the remaining pages rather than implying the board is complete.
 
 ### Status edges
 

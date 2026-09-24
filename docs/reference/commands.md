@@ -8,7 +8,7 @@ Core read commands:
 - `tracker next --actor <ACTOR>`
 - `tracker` (Home)
 - `tracker init`
-- `tracker board [--style table|kanban|legacy|chat]`
+- `tracker board [--style table|kanban|legacy|chat|html|markdown]`
 - `tracker web serve --open` (single-workspace board)
 - `tracker uninstall`
 - `tracker dashboard`

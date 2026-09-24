@@ -151,14 +151,17 @@ if (!/Ready/i.test(root.textContent) && !/APP-1/.test(root.textContent)) {
   fail("rendered board missing column/card: " + root.textContent);
 }
 if (!/ticket/i.test(root.textContent)) fail("rendered board missing counts: " + root.textContent);
-if (!root.children.some((c) => c.tagName === "h1")) fail("missing h1 title");
+if (!collect(root, []).some((c) => c.tagName === "h1")) fail("missing h1 title");
 if (!collect(root, []).some((el) => el.className === "lanes")) fail("missing semantic lanes");
 const articles = collect(root, []).filter((el) => el.tagName === "article");
 if (!articles.length) fail("missing card articles");
+if (!collect(root, []).some((el) => el.tagName === "details" && el.className === "card")) {
+  fail("missing expandable card");
+}
 if (root.textContent.includes("127.0.0.1") || /\/w\/[0-9a-f-]{8}/i.test(root.textContent)) {
   fail("raw board URL leaked into visual content: " + root.textContent);
 }
-if (root.textContent.includes("managed-mode.json") && !collect(root, []).some((el) => el.tagName === "details")) {
+if (root.textContent.includes("managed-mode.json") && !collect(root, []).some((el) => el.tagName === "details" && el.className === "diagnostics")) {
   fail("diagnostic note shown in primary UI");
 }
 if (root.textContent.includes("Open board")) fail("Open board shown without host openLinks");

@@ -312,7 +312,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
-			blockBody:       codexBlock(guideRef),
+			blockBody:       codexBlock(guideRef) + "\n\n" + boardDisplayInstructions(),
 			guideBody:       codexGuide(),
 			markers:         defaultMarkers,
 			extraFiles: []managedInstallFile{
@@ -333,7 +333,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "CLAUDE.md"),
 			guidePath:       guidePath,
-			blockBody:       claudeBlock(guideRef),
+			blockBody:       claudeBlock(guideRef) + "\n\n" + boardDisplayInstructions(),
 			guideBody:       claudeGuide(),
 			markers:         defaultMarkers,
 			extraFiles: []managedInstallFile{
@@ -356,7 +356,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
-			blockBody:       openclawBlock(guideRef),
+			blockBody:       openclawBlock(guideRef) + "\n\n" + boardDisplayInstructions(),
 			guideBody:       openclawGuide(AgentsRootSkillDir),
 			markers:         openclawMarkers,
 			extraFiles: []managedInstallFile{
@@ -375,7 +375,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
-			blockBody:       genericBlock(guideRef),
+			blockBody:       genericBlock(guideRef) + "\n\n" + boardDisplayInstructions(),
 			guideBody:       genericGuide(),
 			markers:         genericMarkers,
 			extraFiles: []managedInstallFile{
@@ -395,7 +395,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
-			blockBody:       cursorBlock(guideRef),
+			blockBody:       cursorBlock(guideRef) + "\n\n" + boardDisplayInstructions(),
 			guideBody:       cursorGuide(),
 			markers:         cursorMarkers,
 			extraFiles: []managedInstallFile{
@@ -414,7 +414,7 @@ func (i Installer) spec(target Target) (installSpec, error) {
 		return installSpec{
 			instructionPath: filepath.Join(i.Root, "AGENTS.md"),
 			guidePath:       guidePath,
-			blockBody:       grokBlock(guideRef),
+			blockBody:       grokBlock(guideRef) + "\n\n" + boardDisplayInstructions(),
 			guideBody:       grokGuide(),
 			markers:         grokMarkers,
 			extraFiles: []managedInstallFile{

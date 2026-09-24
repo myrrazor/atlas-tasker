@@ -26,6 +26,9 @@ func TestInstallCodexCreatesManagedFiles(t *testing.T) {
 	if !strings.Contains(string(body), managedBegin) || !strings.Contains(string(body), "tracker agent available <agent-id> --json") {
 		t.Fatalf("unexpected AGENTS.md body: %s", string(body))
 	}
+	if !strings.Contains(string(body), "## Board display in chat") || !strings.Contains(string(body), "tracker board --style html") {
+		t.Fatalf("workspace AGENTS.md did not teach chat board rendering: %s", string(body))
+	}
 	guide, err := os.ReadFile(filepath.Join(root, ".tracker", "integrations", "codex-guide.md"))
 	if err != nil {
 		t.Fatalf("read guide: %v", err)
@@ -39,6 +42,9 @@ func TestInstallCodexCreatesManagedFiles(t *testing.T) {
 	}
 	if !strings.Contains(string(skill), "name: atlas-worker") || !strings.Contains(string(skill), "tracker agent available <agent-id> --json") || !strings.Contains(string(skill), "tracker run dispatch <ID> --agent agent:<agent-id>") {
 		t.Fatalf("unexpected skill content: %s", string(skill))
+	}
+	if !strings.Contains(string(skill), "## Board display in chat") || !strings.Contains(string(skill), "tracker board --style html") {
+		t.Fatalf("installed skill did not teach chat board rendering: %s", string(skill))
 	}
 	if _, err := os.Stat(filepath.Join(root, ".codex", "skills", "atlas-worker", "SKILL.md")); !os.IsNotExist(err) {
 		t.Fatal("fresh Codex install must not write the legacy .codex/skills root")

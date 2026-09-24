@@ -138,10 +138,12 @@ setup. Do not use `sh -c`, `npx`, curl pipes, or snippets from untrusted workspa
 `tracker integrations install` does not perform this registration. It writes project instructions and
 skills. Configure MCP in the client separately; see [coding-agent integrations](agent-integrations.md).
 
-For a status or board question, agents should call `atlas.status` / `atlas.board` (Grok:
-`atlas_status` / `atlas_board`). In Discord, Grokbot, or another ANSI chat stream,
-pass `format=chat` and paste the `chat` field verbatim. Otherwise present a compact
-Markdown ticket table, then blockers and next steps. If the payload is truncated,
-disclose shown/total. Do not invent tickets or paste a fake screenshot.
+For a status or board question, agents should call `atlas.status` / `atlas.board` (Grok Build:
+`atlas_status` / `atlas_board`). An MCP Apps host can display the read-only board widget
+inline. In a host that supports raw inline HTML, `tracker board --style html` emits a
+self-contained fragment. Otherwise use the board's Markdown field or `tracker board --style markdown` and include blockers
+and next steps. Pass `format=chat` only for a host confirmed to render ANSI code blocks.
+If the payload is truncated, disclose shown/total. Do not invent tickets or paste a
+fake screenshot. See [chat board display](chat-board.md).
 
 Use [MCP tools](../mcp-tools.md), [MCP JSON contracts](../mcp-json-contracts.md), and [MCP security](../mcp-security.md) as the canonical references.

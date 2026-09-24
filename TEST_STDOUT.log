@@ -1086,3 +1086,42 @@ ok  	github.com/myrrazor/atlas-tasker/internal/uninstall	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/update	(cached)
 ok  	github.com/myrrazor/atlas-tasker/internal/web	(cached)
 {"bootstrap": {"fresh_explicit_workspace": "passed", "init_if_missing": "passed", "project_create_over_mcp": "passed"}, "cleanup": {"synthetic_directories_removed": true}, "client_cwd": "distinct_synthetic_temporary", "format_version": "v1", "kind": "atlas_mcp_workflow_smoke", "profiles": {"admin": {"count": 98, "sha256": "8b31629e0efd0fb78a64ea54066ecf7863eade78b01254657bf4d5aca2286986"}, "admin_high_impact_enabled": {"count": 111, "sha256": "8e0aeae0293cf0d3f0690912c5ab68f5209c791d7124ca652a8953e4ab869e1b"}, "delivery": {"count": 98, "sha256": "8b31629e0efd0fb78a64ea54066ecf7863eade78b01254657bf4d5aca2286986"}, "delivery_high_impact_enabled": {"count": 100, "sha256": "e198da81ac4c14e97cf9ea883e146f7febdb1f69b84e1a29b0ff9b2fc9eaa0ca"}, "read": {"count": 55, "sha256": "8d6aaab1b6cc14a5e67a43b5ac533515ea9eaf2c437ec5338f0ae9e5a05b0d78"}, "workflow": {"count": 94, "sha256": "cd14718d07283b3192e045a08efc4e56d6787e8da25591cc2855145a6be81eed"}}, "safety": {"admin_flag_exposes_all_high_impact": "passed", "delivery_flag_exposes_only_delivery_high_impact": "passed", "high_impact_hidden_without_flag": "passed", "high_impact_operations_executed": false, "read_profile_write_denied": "passed"}, "status": "passed", "tracker": {"build_date": "unknown", "commit": "unknown", "go_version": "go1.26.6", "platform": "darwin/arm64", "version": "dev"}, "transport": {"content_length": {"initialize": "passed", "tools_call": "passed", "tools_list": "passed"}, "ndjson": {"initialize": "passed", "read_write_denial": "passed", "tools_call": "passed", "tools_list": "passed"}}, "workflow": {"actor_sequence": ["agent:builder-1", "agent:reviewer-1", "human:owner"], "agent_create_list_view": "passed", "available_pending_queue": "passed", "dependency_wakeup": "passed", "goal_brief": "passed", "request_review_approve_complete": "passed", "synthetic_ticket_ids": ["APP-1", "APP-2"], "synthetic_wakeup_state": "acked", "team_visibility": "passed", "ticket_create_assign_link": "passed", "ticket_edit_priority_labels": "passed", "ticket_heartbeat": "passed", "wakeup_ack": "passed"}, "workspace": "synthetic_temporary", "workspace_argument": "explicit"}
+
+Atlas Tasker chat board validation, 2026-09-24 UTC
+Command: go test ./...
+?   	github.com/myrrazor/atlas-tasker/cmd/tracker	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/app	4.433s
+ok  	github.com/myrrazor/atlas-tasker/internal/apperr	(cached)
+?   	github.com/myrrazor/atlas-tasker/internal/buildinfo	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/cli	104.619s
+ok  	github.com/myrrazor/atlas-tasker/internal/config	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/contracts	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/domain	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations	0.674s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/all	4.577s
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/claude	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/codex	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/cursor	[no test files]
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/generic	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/grok	0.962s
+ok  	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/host	(cached)
+?   	github.com/myrrazor/atlas-tasker/internal/integrations/adapter/openclaw	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp	5.562s
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/selfprobe	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/mcp/testhost	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/render	1.408s
+ok  	github.com/myrrazor/atlas-tasker/internal/service	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/setup	5.791s
+ok  	github.com/myrrazor/atlas-tasker/internal/slashcmd	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/events	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/markdown	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/storage/sqlite	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/testutil	(cached)
+?   	github.com/myrrazor/atlas-tasker/internal/testutil/testenv	[no test files]
+ok  	github.com/myrrazor/atlas-tasker/internal/theme	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/tui	4.569s
+ok  	github.com/myrrazor/atlas-tasker/internal/uninstall	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/update	(cached)
+ok  	github.com/myrrazor/atlas-tasker/internal/web	17.896s
