@@ -450,6 +450,9 @@ func summarizeInit(result InitResult) string {
 	}
 	if result.Agents.Attempted {
 		parts = append(parts, fmt.Sprintf("agents=%d", len(result.Agents.Clients)))
+		if info, err := os.Stat(filepath.Join(result.Workspace, "AGENTS.md")); err == nil && info.Mode().IsRegular() {
+			parts = append(parts, "read AGENTS.md for board display in chat")
+		}
 	}
 	for _, step := range result.Steps {
 		switch step.Status {

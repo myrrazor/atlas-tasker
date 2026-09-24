@@ -70,7 +70,7 @@ go build -o tracker ./cmd/tracker
 ./tracker version --json
 ```
 
-`tracker init` writes identity, `projects/` and `.tracker/`, local checkpoints, and Atlas-managed entries named **`atlas-tasker`** (`mcp serve --global --tool-profile workflow`) for clients it actually finds. Detected agents are configured without a picker. `--integrations` (or bare `tracker integrations install`) is the older TTY picker. Opt out with `--no-agents` / `--skip-integrations`, `--no-backup`, `--no-register`, `--no-open`, or `--git-mode private|unmanaged`.
+`tracker init` writes identity, `projects/` and `.tracker/`, local checkpoints, and Atlas-managed entries named **`atlas-tasker`** (`mcp serve --global --tool-profile workflow`) for clients it actually finds. Detected agents are configured without a picker. If no detected client gets an `AGENTS.md`, init writes a generic guide and worker skill so agents such as Meta Muse have local board instructions to read. The init result points to `AGENTS.md`; a host must actually read and follow it for automatic board presentation. `--integrations` (or bare `tracker integrations install`) is the older TTY picker. Opt out with `--no-agents` / `--skip-integrations`, `--no-backup`, `--no-register`, `--no-open`, or `--git-mode private|unmanaged`.
 
 Mutation commands resolve `--actor`, then `TRACKER_ACTOR`, then `actor.default`, and exit 2 before writing if none is set. There is no silent `human:owner` fallback.
 

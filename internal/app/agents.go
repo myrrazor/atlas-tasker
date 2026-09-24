@@ -379,11 +379,22 @@ func slicesEqual(a, b []string) bool {
 
 func (a *App) installWorkspaceSkills(ws *Workspace, detections []integrations.Detection) error {
 	installer := integrations.Installer{Root: ws.Root}
+	hasAgentsGuide := false
 	for _, d := range detections {
 		if !d.Found || d.Target == integrations.TargetGeneric {
 			continue
 		}
 		if _, err := installer.Install(d.Target, false); err != nil {
+			return err
+		}
+		if d.Target != integrations.TargetClaude {
+			hasAgentsGuide = true
+		}
+	}
+	// Hosts such as Meta Muse may read AGENTS.md but are not detected as coding
+	// clients. Also cover a machine where only Claude was detected.
+	if !hasAgentsGuide {
+		if _, err := installer.Install(integrations.TargetGeneric, false); err != nil {
 			return err
 		}
 	}
