@@ -163,12 +163,13 @@ if (!collect(root, []).some((el) => el.className === "lanes")) fail("missing sem
 const viewSwitch = collect(root, []).find((el) => el.tagName === "label" && el.className === "view-switch");
 const viewToggle = viewSwitch && collect(viewSwitch, []).find((el) => el.tagName === "input" && el.className === "view-toggle");
 if (!viewToggle || viewToggle.getAttribute("type") !== "checkbox" || viewToggle.id) fail("view switch must use a label-wrapped checkbox without a shared ID");
+if (viewToggle.getAttribute("checked") !== "") fail("side-scroll lanes must be selected by default");
 const laneRegion = collect(root, []).find((el) => el.className === "lanes");
 if (laneRegion.getAttribute("role") !== "region" || laneRegion.getAttribute("tabindex") !== "0") fail("horizontal lanes must be keyboard scrollable");
 const sizeCount = parentInbox.filter((m) => m && m.method === "ui/notifications/size-changed").length;
-viewToggle.checked = true;
+viewToggle.checked = false;
 viewToggle.dispatchEvent({ type: "change" });
-if (parentInbox.filter((m) => m && m.method === "ui/notifications/size-changed").length <= sizeCount) fail("view change did not notify host size");
+if (parentInbox.filter((m) => m && m.method === "ui/notifications/size-changed").length <= sizeCount) fail("switching back to wrapping did not notify host size");
 const articles = collect(root, []).filter((el) => el.tagName === "article");
 if (!articles.length) fail("missing card articles");
 if (!collect(root, []).some((el) => el.tagName === "details" && el.className === "card")) {

@@ -43,7 +43,7 @@ func TestChatBoardFragmentShowsSevenTicketsInStatusColumns(t *testing.T) {
 	if strings.Contains(fragment, "<!DOCTYPE") || strings.Contains(fragment, "<script") || !strings.Contains(fragment, "--hatch-widget-surface-muted") {
 		t.Fatal("fragment is not self-contained, script-free, theme-aware HTML")
 	}
-	if !strings.Contains(fragment, `<label class="view-switch"><input class="view-toggle" type="checkbox"><span>Side-scroll lanes</span></label>`) ||
+	if !strings.Contains(fragment, `<label class="view-switch"><input class="view-toggle" type="checkbox" checked><span>Side-scroll lanes</span></label>`) ||
 		!strings.Contains(fragment, `<div class="lanes" role="region" aria-label="Board lanes" tabindex="0">`) ||
 		!strings.Contains(fragment, `.view-switch:has(.view-toggle:checked)~.lanes`) {
 		t.Fatal("fragment lacks an accessible horizontal-lanes switch")

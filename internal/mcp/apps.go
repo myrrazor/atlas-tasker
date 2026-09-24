@@ -257,6 +257,7 @@ details.diagnostics summary{cursor:pointer}
     var viewSwitch = element("label", "view-switch");
     var viewToggle = element("input", "view-toggle");
     viewToggle.setAttribute("type", "checkbox");
+    viewToggle.setAttribute("checked", "");
     viewToggle.addEventListener("change", notifySize);
     viewSwitch.appendChild(viewToggle);
     viewSwitch.appendChild(element("span", "", "Side-scroll lanes"));

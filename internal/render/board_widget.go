@@ -91,7 +91,7 @@ func boardWidgetBody(board CompactBoard) string {
 	if board.Backup != nil {
 		writeBoardNote(&b, "Backup: "+board.Backup.SummaryLine())
 	}
-	b.WriteString(`<label class="view-switch"><input class="view-toggle" type="checkbox"><span>Side-scroll lanes</span></label><div class="lanes" role="region" aria-label="Board lanes" tabindex="0">`)
+	b.WriteString(`<label class="view-switch"><input class="view-toggle" type="checkbox" checked><span>Side-scroll lanes</span></label><div class="lanes" role="region" aria-label="Board lanes" tabindex="0">`)
 	for _, col := range board.Columns {
 		if col.Status == "canceled" && col.Total == 0 {
 			continue
