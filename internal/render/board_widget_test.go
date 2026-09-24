@@ -43,6 +43,14 @@ func TestChatBoardFragmentShowsSevenTicketsInStatusColumns(t *testing.T) {
 	if strings.Contains(fragment, "<!DOCTYPE") || strings.Contains(fragment, "<script") || !strings.Contains(fragment, "--hatch-widget-surface-muted") {
 		t.Fatal("fragment is not self-contained, script-free, theme-aware HTML")
 	}
+	if !strings.Contains(fragment, `<label class="view-switch"><input class="view-toggle" type="checkbox"><span>Side-scroll lanes</span></label>`) ||
+		!strings.Contains(fragment, `<div class="lanes" role="region" aria-label="Board lanes" tabindex="0">`) ||
+		!strings.Contains(fragment, `.view-switch:has(.view-toggle:checked)~.lanes`) {
+		t.Fatal("fragment lacks an accessible horizontal-lanes switch")
+	}
+	if strings.Contains(fragment, `id="bw-view"`) || strings.Contains(fragment, `aria-hidden="true" tabindex="-1"`) {
+		t.Fatal("view switch must not use a shared ID or hide its keyboard control")
+	}
 }
 
 func TestChatBoardFragmentEscapesUntrustedTicketFields(t *testing.T) {

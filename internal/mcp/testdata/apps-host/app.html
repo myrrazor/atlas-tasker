@@ -54,6 +54,13 @@
 .atlas-board .card-detail dd{margin:0;overflow-wrap:anywhere}
 @media(max-width:390px){.atlas-board .lanes{grid-template-columns:minmax(0,1fr)}.atlas-board .board-heading{align-items:start}}
 @media(prefers-reduced-motion:reduce){.atlas-board *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+.atlas-board .view-switch{display:none;position:relative;margin:.1rem 0 .7rem;cursor:pointer}
+.atlas-board .view-switch .view-toggle{position:absolute;width:1px;height:1px;margin:0;opacity:0}
+.atlas-board .view-switch span{display:inline-block;padding:.3rem .75rem;border:1px solid var(--bw-border);border-radius:999px;background:var(--bw-surface);color:var(--bw-muted);font-size:.72rem;font-weight:650;user-select:none;-webkit-user-select:none}
+.atlas-board .view-switch .view-toggle:focus-visible+span{outline:2px solid var(--bw-accent);outline-offset:2px}
+.atlas-board .view-switch .view-toggle:checked+span{border-color:var(--bw-accent);color:var(--bw-accent)}
+.atlas-board .lanes:focus-visible{outline:2px solid var(--bw-accent);outline-offset:-2px}
+@supports selector(:has(*)){.atlas-board .view-switch{display:inline-flex}.atlas-board .view-switch:has(.view-toggle:checked)~.lanes{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(12.5rem,15rem);overflow-x:auto;align-items:stretch;padding-bottom:.45rem}.atlas-board .view-switch:has(.view-toggle:checked)~.lanes .lane{min-height:9rem}}
 html,body{margin:0}
 details.diagnostics{margin:.35rem 0 .6rem;color:var(--bw-muted);font-size:.78rem}
 details.diagnostics summary{cursor:pointer}
@@ -270,8 +277,18 @@ details.diagnostics summary{cursor:pointer}
       });
       root.appendChild(details);
     }
+    var viewSwitch = element("label", "view-switch");
+    var viewToggle = element("input", "view-toggle");
+    viewToggle.setAttribute("type", "checkbox");
+    viewToggle.addEventListener("change", notifySize);
+    viewSwitch.appendChild(viewToggle);
+    viewSwitch.appendChild(element("span", "", "Side-scroll lanes"));
+    root.appendChild(viewSwitch);
     var lanes = document.createElement("div");
     lanes.className = "lanes";
+    lanes.setAttribute("role", "region");
+    lanes.setAttribute("aria-label", "Board lanes");
+    lanes.setAttribute("tabindex", "0");
     var columns = Array.isArray(board.columns) ? board.columns : [];
     columns.forEach(function (col) {
       if (!col || (col.status === "canceled" && !col.total)) return;

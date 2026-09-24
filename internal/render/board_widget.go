@@ -55,7 +55,14 @@ const BoardAppCSS = `.atlas-board{--bw-light-surface:#fff;--bw-light-surface-mut
 .atlas-board .card-detail dt{color:var(--bw-muted)}
 .atlas-board .card-detail dd{margin:0;overflow-wrap:anywhere}
 @media(max-width:390px){.atlas-board .lanes{grid-template-columns:minmax(0,1fr)}.atlas-board .board-heading{align-items:start}}
-@media(prefers-reduced-motion:reduce){.atlas-board *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}`
+@media(prefers-reduced-motion:reduce){.atlas-board *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+.atlas-board .view-switch{display:none;position:relative;margin:.1rem 0 .7rem;cursor:pointer}
+.atlas-board .view-switch .view-toggle{position:absolute;width:1px;height:1px;margin:0;opacity:0}
+.atlas-board .view-switch span{display:inline-block;padding:.3rem .75rem;border:1px solid var(--bw-border);border-radius:999px;background:var(--bw-surface);color:var(--bw-muted);font-size:.72rem;font-weight:650;user-select:none;-webkit-user-select:none}
+.atlas-board .view-switch .view-toggle:focus-visible+span{outline:2px solid var(--bw-accent);outline-offset:2px}
+.atlas-board .view-switch .view-toggle:checked+span{border-color:var(--bw-accent);color:var(--bw-accent)}
+.atlas-board .lanes:focus-visible{outline:2px solid var(--bw-accent);outline-offset:-2px}
+@supports selector(:has(*)){.atlas-board .view-switch{display:inline-flex}.atlas-board .view-switch:has(.view-toggle:checked)~.lanes{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(12.5rem,15rem);overflow-x:auto;align-items:stretch;padding-bottom:.45rem}.atlas-board .view-switch:has(.view-toggle:checked)~.lanes .lane{min-height:9rem}}`
 
 // CompactBoardWidgetFragment is one self-contained HTML fragment for chat hosts
 // that render HTML in a message. It has no file, network, font, or script dependency.
@@ -84,7 +91,7 @@ func boardWidgetBody(board CompactBoard) string {
 	if board.Backup != nil {
 		writeBoardNote(&b, "Backup: "+board.Backup.SummaryLine())
 	}
-	b.WriteString(`<div class="lanes">`)
+	b.WriteString(`<label class="view-switch"><input class="view-toggle" type="checkbox"><span>Side-scroll lanes</span></label><div class="lanes" role="region" aria-label="Board lanes" tabindex="0">`)
 	for _, col := range board.Columns {
 		if col.Status == "canceled" && col.Total == 0 {
 			continue

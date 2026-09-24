@@ -25,6 +25,8 @@ tracker board --style html --project APP
 
 Use the command's entire stdout as one inline HTML fragment in the assistant message or widget. Do not wrap it in a code fence or reference a temporary file. CSS, status counts, priority cues, labels, blocker badges, and expandable detail live in the fragment. The fragment honors `--hatch-widget-surface`, `--hatch-widget-surface-muted`, `--hatch-widget-text`, `--hatch-widget-muted`, `--hatch-widget-border`, `--hatch-widget-accent`, and `--hatch-widget-shadow` when the host provides them. It has light and dark defaults, responsive columns, and no external assets. Atlas escapes ticket text before writing HTML.
 
+The board starts with wrapping columns. Select **Side-scroll lanes** to see a horizontal Kanban strip instead; the lane area can be focused and scrolled with a keyboard. Hosts without CSS `:has()` support keep the wrapping layout and hide the switch.
+
 If the host prints tags or strips `<style>` or `<details>`, use `tracker board --style markdown`. The HTML command changes presentation only; `tracker board --json` remains the machine-readable board contract.
 
 ## Grok Bot and text-only hosts

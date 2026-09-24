@@ -254,8 +254,18 @@ details.diagnostics summary{cursor:pointer}
       });
       root.appendChild(details);
     }
+    var viewSwitch = element("label", "view-switch");
+    var viewToggle = element("input", "view-toggle");
+    viewToggle.setAttribute("type", "checkbox");
+    viewToggle.addEventListener("change", notifySize);
+    viewSwitch.appendChild(viewToggle);
+    viewSwitch.appendChild(element("span", "", "Side-scroll lanes"));
+    root.appendChild(viewSwitch);
     var lanes = document.createElement("div");
     lanes.className = "lanes";
+    lanes.setAttribute("role", "region");
+    lanes.setAttribute("aria-label", "Board lanes");
+    lanes.setAttribute("tabindex", "0");
     var columns = Array.isArray(board.columns) ? board.columns : [];
     columns.forEach(function (col) {
       if (!col || (col.status === "canceled" && !col.total)) return;
