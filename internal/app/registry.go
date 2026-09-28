@@ -167,11 +167,6 @@ func (a *App) NoteWorkspaceUse(root string) {
 	if err != nil || strings.TrimSpace(id) == "" {
 		return
 	}
-	release, err := a.lockMachine("note workspace use")
-	if err != nil {
-		return
-	}
-	defer func() { _ = release() }()
 	reg, err := a.loadRegistry()
 	if err != nil {
 		return
@@ -181,6 +176,31 @@ func (a *App) NoteWorkspaceUse(root string) {
 		return
 	}
 	now := a.now()
+	if !row.LastSeenAt.IsZero() && now.Sub(row.LastSeenAt) < time.Minute {
+		return
+	}
+	// The first open has to land even when other boards are stamping the
+	// registry at the same time. Later stamps can still skip a busy lock.
+	first := row.LastSeenAt.IsZero()
+	var release func() error
+	if first {
+		release, err = a.lockMachineWait("note workspace use")
+	} else {
+		release, err = a.lockMachine("note workspace use")
+	}
+	if err != nil || release == nil {
+		return
+	}
+	defer func() { _ = release() }()
+	reg, err = a.loadRegistry()
+	if err != nil {
+		return
+	}
+	row, ok = reg.Workspaces[id]
+	if !ok || filepath.Clean(row.CanonicalPath) != root {
+		return
+	}
+	now = a.now()
 	if !row.LastSeenAt.IsZero() && now.Sub(row.LastSeenAt) < time.Minute {
 		return
 	}

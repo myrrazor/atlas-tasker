@@ -132,6 +132,11 @@
   let dragsInFlight = 0;
   let cardPointerDown = false;
   let dragQuietUntil = 0;
+  let dragEpoch = 0;
+  let activeDragEpoch = 0;
+  let dragStartedAt = 0;
+  let dragWatch = 0;
+  let clearingDrag = false;
   const moveTail = new Map();
   const moveGen = new Map();
   let boundSortables = [];
@@ -155,7 +160,43 @@
   }
 
   let pointerGuard = 0;
+  function forceClearDrag() {
+    if (clearingDrag) return;
+    clearingDrag = true;
+    dragEpoch += 1;
+    const epoch = dragEpoch;
+    dragsInFlight = 0;
+    cardPointerDown = false;
+    window.clearTimeout(pointerGuard);
+    window.clearTimeout(dragWatch);
+    document.querySelectorAll('.ticket-card.sortable-chosen, .ticket-card.sortable-ghost, .ticket-card.sortable-dragging, .ticket-card.sortable-fallback').forEach((card) => {
+      card.classList.remove('sortable-chosen', 'sortable-ghost', 'sortable-dragging', 'sortable-fallback');
+    });
+    try {
+      setupSortable();
+    } catch (err) {
+      console.debug('sortable reset after stuck drag:', err);
+    }
+    if (dragEpoch === epoch) {
+      dragsInFlight = 0;
+      cardPointerDown = false;
+    }
+    clearingDrag = false;
+  }
+  function armDragWatch(epoch, ms) {
+    window.clearTimeout(dragWatch);
+    dragWatch = window.setTimeout(() => {
+      if (epoch !== dragEpoch || dragsInFlight === 0) return;
+      const age = dragStartedAt ? Date.now() - dragStartedAt : ms;
+      if (cardPointerDown && age < 15000) {
+        armDragWatch(epoch, Math.max(200, Math.min(1000, 15000 - age)));
+        return;
+      }
+      forceClearDrag();
+    }, ms);
+  }
   document.addEventListener('pointerdown', (event) => {
+    if (dragsInFlight > 0) forceClearDrag();
     const target = event.target;
     if (!(target && target.closest && target.closest('.ticket-card'))) return;
     cardPointerDown = true;
@@ -167,16 +208,24 @@
     }, 2000);
   }, true);
   function clearStuckPointer() {
-    if (dragsInFlight > 0) return;
     cardPointerDown = false;
     window.clearTimeout(pointerGuard);
+    if (dragsInFlight > 0) armDragWatch(dragEpoch, 800);
   }
   // pointerup can beat dragstart. Keep the card frozen across that gap so a
-  // live refresh cannot replace it before the drag is real.
+  // live refresh cannot replace it before the drag is real. If Sortable never
+  // finishes after the pointer is up, recover instead of staying frozen.
   function releaseCardPointer() {
     window.clearTimeout(pointerGuard);
+    const epoch = dragEpoch;
     window.setTimeout(() => {
-      if (dragsInFlight === 0) cardPointerDown = false;
+      if (epoch !== dragEpoch) return;
+      if (dragsInFlight === 0) {
+        cardPointerDown = false;
+        return;
+      }
+      cardPointerDown = false;
+      armDragWatch(epoch, 800);
     }, 80);
   }
   document.addEventListener('pointerup', releaseCardPointer, true);
@@ -533,32 +582,121 @@
     el.defaultValue = next;
   }
 
+  function controlBase(el) {
+    if (!el) return '';
+    if (el.tagName === 'SELECT') {
+      const initial = Array.from(el.options).find((opt) => opt.defaultSelected);
+      if (initial) return initial.value;
+      return el.options[0] ? el.options[0].value : '';
+    }
+    return el.defaultValue;
+  }
+
+  function actionsSignature(node) {
+    return Array.from(node.querySelectorAll('button')).map((button) => `${button.textContent.trim()}:${button.disabled ? 1 : 0}`).join('|');
+  }
+
+  function actionsDirty(root) {
+    const box = root.querySelector('.drawer-actions');
+    if (!box) return false;
+    if (box.contains(document.activeElement)) return true;
+    return Array.from(box.querySelectorAll('input, textarea, select')).some((el) => controlDirty(el));
+  }
+
+  function applyDrawerActions(root, html) {
+    if (!html || actionsDirty(root)) return;
+    const current = root.querySelector('.drawer-actions');
+    if (!current) return;
+    const holder = document.createElement('template');
+    holder.innerHTML = String(html).trim();
+    const next = holder.content.querySelector('.drawer-actions');
+    if (!next || actionsSignature(current) === actionsSignature(next)) return;
+    current.replaceWith(next);
+    next.querySelectorAll('form[data-confirm]').forEach((form) => {
+      form.addEventListener('submit', (event) => {
+        if (!window.confirm(form.dataset.confirm)) event.preventDefault();
+      });
+    });
+  }
+
   function applyDrawerLive(drawer) {
     if (!drawer || !drawer.id) return;
     if (new URL(window.location.href).searchParams.get('ticket') !== drawer.id) return;
     const root = document.querySelector('.detail-drawer');
-    if (!root || root.dataset.formEcho) return;
+    if (!root) return;
+    if (drawer.deleted) {
+      if (root.dataset.ticketDeleted !== drawer.id) {
+        root.dataset.ticketDeleted = drawer.id;
+        showFlash(message('ticketDeleted', 'This ticket was deleted and left the board.'), true);
+      }
+      if (!root.querySelector('[data-deleted-note]')) {
+        const note = document.createElement('div');
+        note.className = 'warning';
+        note.setAttribute('role', 'alert');
+        note.dataset.deletedNote = '1';
+        note.textContent = message('ticketDeleted', 'This ticket was deleted and left the board.');
+        const head = root.querySelector('.drawer-head');
+        if (head) head.insertAdjacentElement('afterend', note);
+        else root.prepend(note);
+      }
+      root.querySelectorAll('input, textarea, select, button').forEach((el) => {
+        el.disabled = true;
+      });
+      return;
+    }
+    if (root.dataset.formEcho) return;
+    const edit = root.querySelector('form[action$="/edit"]');
+    const fields = [
+      ['title', drawer.title],
+      ['description', drawer.description],
+      ['notes', drawer.notes],
+      ['acceptance', drawer.acceptance],
+      ['priority', drawer.priority],
+      ['assignee', drawer.assignee],
+      ['reviewer', drawer.reviewer],
+      ['labels', drawer.labels]
+    ];
+    let conflict = false;
+    if (edit) {
+      fields.forEach((pair) => {
+        const el = edit.querySelector(`[name="${pair[0]}"]`);
+        if (!el) return;
+        const remoteText = pair[1] == null ? '' : String(pair[1]);
+        const changed = controlDirty(el) && controlBase(el) !== remoteText;
+        if (changed) {
+          conflict = true;
+          el.dataset.remoteChanged = '1';
+          el.title = message('fieldConflict', 'Someone else changed this field while you were editing. Saving now would overwrite their change, so the revision was kept.');
+        } else if (el.dataset.remoteChanged) {
+          delete el.dataset.remoteChanged;
+          el.removeAttribute('title');
+        }
+      });
+      fields.forEach((pair) => setIfClean(edit.querySelector(`[name="${pair[0]}"]`), pair[1]));
+    }
     const heading = root.querySelector('.drawer-head h1');
-    if (heading && drawer.title) heading.textContent = drawer.title;
+    const titleInput = edit && edit.querySelector('[name="title"]');
+    if (heading && drawer.title && !(titleInput && titleInput.dataset.remoteChanged === '1')) {
+      heading.textContent = drawer.title;
+    }
     const pill = root.querySelector('.drawer-meta .status-pill');
     if (pill && drawer.status) {
       pill.className = 'status-pill st-' + drawer.status;
       if (drawer.status_label) pill.textContent = drawer.status_label;
     }
-    const edit = root.querySelector('form[action$="/edit"]');
-    if (edit) {
-      setIfClean(edit.querySelector('[name="title"]'), drawer.title);
-      setIfClean(edit.querySelector('[name="description"]'), drawer.description);
-      setIfClean(edit.querySelector('[name="notes"]'), drawer.notes);
-      setIfClean(edit.querySelector('[name="acceptance"]'), drawer.acceptance);
-      setIfClean(edit.querySelector('[name="priority"]'), drawer.priority);
-      setIfClean(edit.querySelector('[name="assignee"]'), drawer.assignee);
-      setIfClean(edit.querySelector('[name="reviewer"]'), drawer.reviewer);
-      setIfClean(edit.querySelector('[name="labels"]'), drawer.labels);
-    }
     root.querySelectorAll('input[name="expected_revision"]').forEach((rev) => {
+      if (conflict && edit && edit.contains(rev)) return;
       setIfClean(rev, drawer.revision);
     });
+    if (conflict) {
+      const mark = String(drawer.revision || '1');
+      if (root.dataset.fieldConflict !== mark) {
+        root.dataset.fieldConflict = mark;
+        showFlash(message('fieldConflict', 'Someone else changed this field while you were editing. Saving now would overwrite their change, so the revision was kept.'), true);
+      }
+    } else if (root.dataset.fieldConflict) {
+      delete root.dataset.fieldConflict;
+    }
     const descInput = edit && edit.querySelector('[name="description"]');
     const prose = root.querySelector('[data-drawer-description]');
     if (prose && (!descInput || !controlDirty(descInput))) {
@@ -569,6 +707,7 @@
     if (notes && (!notesInput || !controlDirty(notesInput))) {
       notes.textContent = drawer.notes || '';
     }
+    applyDrawerActions(root, drawer.actions_html);
   }
 
   function applyBoardResync(data) {
@@ -729,9 +868,14 @@
         dragClass: 'sortable-dragging',
         onStart: () => {
           dismissCardPreview();
+          activeDragEpoch = dragEpoch;
+          dragStartedAt = Date.now();
           dragsInFlight++;
+          armDragWatch(dragEpoch, 15000);
         },
         onEnd: (event) => {
+          if (dragEpoch !== activeDragEpoch) return;
+          window.clearTimeout(dragWatch);
           dragsInFlight = Math.max(0, dragsInFlight - 1);
           cardPointerDown = false;
           dragQuietUntil = Date.now() + 400;
@@ -777,9 +921,9 @@
                 revertCard(event);
                 const conflict = response.status === 409;
                 showFlash(
-                  data.error?.message || (conflict
-                    ? message('conflict', 'Someone else changed this ticket. Reload and retry with the current revision.')
-                    : message('moveFailedStatus', 'Move failed with {status}', { status: response.status })),
+                  conflict
+                    ? message('dragConflict', 'Someone else changed this ticket while you were moving it. It was put back.')
+                    : (data.error?.message || message('moveFailedStatus', 'Move failed with {status}', { status: response.status })),
                   true
                 );
                 refreshBoard();
@@ -919,8 +1063,18 @@
           redirect: 'follow'
         });
         if (!response.ok) {
-          const text = flashFromHTML(await response.text()) || `Save failed (${response.status})`;
+          const html = await response.text();
+          const text = flashFromHTML(html) || `Save failed (${response.status})`;
           showFlash(text, true);
+          if (response.status === 409 && String(form.action || '').indexOf('/tickets/create') !== -1) {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const fresh = doc.querySelector('form[action*="/tickets/create"] [name="submit_id"]');
+            const current = form.querySelector('[name="submit_id"]');
+            if (fresh && current && fresh.value && fresh.value !== current.value) {
+              current.value = fresh.value;
+              current.defaultValue = fresh.value;
+            }
+          }
           release();
           return;
         }

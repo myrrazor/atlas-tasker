@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,7 @@ import (
 )
 
 func TestContextAndStatusManagedWorkflow(t *testing.T) {
+	t.Setenv("TRACKER_ACTOR", "")
 	root := t.TempDir()
 	now := time.Date(2026, 9, 11, 16, 0, 0, 0, time.UTC)
 	if err := config.Save(root, contracts.TrackerConfig{
@@ -333,6 +336,82 @@ func TestBoardAppCSPHelper(t *testing.T) {
 	bad.HTML = `<script>alert(1)</script>`
 	if boardAppPassesCSP(&bad) {
 		t.Fatal("scripted app must fail CSP")
+	}
+}
+
+func TestBoardDefaultPageFitsUnderResultCap(t *testing.T) {
+	t.Setenv("TRACKER_ACTOR", "")
+	root := t.TempDir()
+	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	workspace, err := OpenWorkspace(root, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer workspace.Close()
+	ctx := context.Background()
+	if err := workspace.Actions.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	desc := strings.Repeat("d", 8000)
+	for i := 1; i <= 12; i++ {
+		_, err := workspace.Actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+			ID:            fmt.Sprintf("APP-%d", i),
+			Project:       "APP",
+			Title:         fmt.Sprintf("Card %d", i),
+			Type:          contracts.TicketTypeTask,
+			Status:        contracts.StatusReady,
+			Priority:      contracts.PriorityMedium,
+			Description:   desc,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		}, "human:owner", "board page test")
+		if err != nil {
+			t.Fatalf("create APP-%d: %v", i, err)
+		}
+	}
+	server := NewServer(workspace, Options{Profile: ProfileRead, Now: func() time.Time { return now }}.Normalized())
+	result, err := server.CallTool(ctx, "atlas.board", map[string]any{"project": "APP"})
+	if err != nil {
+		t.Fatalf("board: %v", err)
+	}
+	inner, _ := result["payload"].(map[string]any)
+	if inner == nil || inner["truncated"] == true {
+		t.Fatalf("default board was replaced by the truncated stub: %#v", result["payload"])
+	}
+	board, ok := inner["board"].(render.CompactBoard)
+	if !ok {
+		t.Fatalf("board type %T", inner["board"])
+	}
+	if board.TotalCards != 12 || board.ShownCards == 0 || board.ShownCards > defaultBoardPageLimit || board.ShownCards >= board.TotalCards {
+		t.Fatalf("default page = shown %d total %d", board.ShownCards, board.TotalCards)
+	}
+	md, _ := inner["markdown"].(string)
+	if !strings.Contains(md, "APP-") || !strings.Contains(md, "more") || !strings.Contains(md, "of") {
+		t.Fatalf("markdown is not a paged board:\n%s", md)
+	}
+	cursors, _ := inner["next_cursor_by_status"].(map[string]string)
+	if cursors["ready"] == "" {
+		t.Fatalf("missing ready cursor: %#v", inner["next_cursor_by_status"])
+	}
+	writer := &limitWriter{Limit: 128 * 1024}
+	if err := json.NewEncoder(writer).Encode(result); err != nil {
+		t.Fatal(err)
+	}
+	if writer.Truncated {
+		t.Fatalf("default board is %d bytes", writer.BytesSeen)
+	}
+	limited, err := server.CallTool(ctx, "atlas.board", map[string]any{"project": "APP", "limit": 2})
+	if err != nil {
+		t.Fatalf("limited board: %v", err)
+	}
+	limitedInner, _ := limited["payload"].(map[string]any)
+	limitedBoard, _ := limitedInner["board"].(render.CompactBoard)
+	if limitedBoard.ShownCards != 2 || limitedBoard.TotalCards != 12 {
+		t.Fatalf("explicit limit = shown %d total %d", limitedBoard.ShownCards, limitedBoard.TotalCards)
 	}
 }
 

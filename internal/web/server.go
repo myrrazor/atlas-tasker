@@ -65,6 +65,7 @@ type Server struct {
 	static      fs.FS
 	staticETags map[string]string
 	startedAt   time.Time
+	liveFP      liveFPCache
 }
 
 type contextKey string

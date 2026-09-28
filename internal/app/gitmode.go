@@ -91,11 +91,13 @@ func upsertManagedBlock(path, block string) (bool, error) {
 	begin := strings.Index(body, ManagedGitignoreBegin)
 	end := strings.Index(body, ManagedGitignoreEnd)
 	if begin >= 0 && end > begin {
+		preserved := extraIgnoreLines(body[begin:end], block)
 		end += len(ManagedGitignoreEnd)
 		if end < len(body) && body[end] == '\n' {
 			end++
 		}
-		updated := body[:begin] + block + body[end:]
+		suffix := body[end:]
+		updated := body[:begin] + block + keptIgnoreLines(preserved, suffix) + suffix
 		if updated == body {
 			return false, nil
 		}
@@ -115,6 +117,53 @@ func upsertManagedBlock(path, block string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// extraIgnoreLines returns ignore lines a person put inside the managed
+// block. Refresh rewrites that block from the canonical list; dropping
+// those lines would un-ignore a secrets file. They are moved just after
+// the end marker instead.
+func extraIgnoreLines(oldInner, canonicalBlock string) []string {
+	canon := map[string]struct{}{}
+	for _, line := range strings.Split(canonicalBlock, "\n") {
+		canon[strings.TrimSpace(line)] = struct{}{}
+	}
+	var kept []string
+	seen := map[string]struct{}{}
+	for _, line := range strings.Split(oldInner, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || trimmed == ManagedGitignoreBegin || trimmed == ManagedGitignoreEnd {
+			continue
+		}
+		if _, ok := canon[trimmed]; ok {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		kept = append(kept, trimmed)
+	}
+	return kept
+}
+
+func keptIgnoreLines(lines []string, suffix string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	existing := map[string]struct{}{}
+	for _, line := range strings.Split(suffix, "\n") {
+		existing[strings.TrimSpace(line)] = struct{}{}
+	}
+	var b strings.Builder
+	for _, line := range lines {
+		if _, ok := existing[line]; ok {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func DefaultProjectKey(dirName string) string {

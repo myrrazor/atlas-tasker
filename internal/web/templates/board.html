@@ -506,6 +506,11 @@
   {{end}}
 </section>
 
+{{template "drawerActions" .}}
+{{end}}
+
+{{define "drawerActions"}}
+{{$d := .Detail.View}}
 <div class="drawer-actions">
   {{$st := statusKey $d.BoardStatus}}
   {{$review := printf "%s" $d.Ticket.ReviewState}}

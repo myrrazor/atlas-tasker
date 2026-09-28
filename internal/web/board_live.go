@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"hash/fnv"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -40,6 +42,16 @@ type liveDrawer struct {
 	Labels      string `json:"labels"`
 	Status      string `json:"status"`
 	StatusLabel string `json:"status_label"`
+	Deleted     bool   `json:"deleted,omitempty"`
+	ActionsHTML string `json:"actions_html,omitempty"`
+}
+
+// liveFPCache remembers a logical ticket fingerprint for one sqlite+wal
+// size:mtime. Idle polls reuse it and never open the index.
+type liveFPCache struct {
+	mu  sync.Mutex
+	key string
+	fp  string
 }
 
 type liveBoardBody struct {
@@ -81,8 +93,79 @@ func (s *Server) boardLiveStamp(r *http.Request) string {
 	for _, name := range names {
 		parts = append(parts, name+"="+strconv.FormatInt(files[name], 10))
 	}
-	parts = append(parts, projectionStampParts(s.cfg.Root)...)
+	parts = append(parts, s.liveProjectionParts(r)...)
 	return strings.Join(parts, "|")
+}
+
+// liveProjectionParts stamps the index files plus a logical fingerprint of
+// ticket rows. A no-op reindex changes file mtimes without changing the
+// fingerprint, so open tabs can advance the etag without rebuilding the board.
+func (s *Server) liveProjectionParts(r *http.Request) []string {
+	key := strings.Join(projectionStampParts(s.cfg.Root), "|")
+	if fp, ok := s.liveFP.lookup(key); ok {
+		return append(strings.Split(key, "|"), "db:fp="+fp)
+	}
+	fp, ok := s.computeLiveFP(r.Context())
+	key = strings.Join(projectionStampParts(s.cfg.Root), "|")
+	if key == "" {
+		return nil
+	}
+	parts := strings.Split(key, "|")
+	if !ok {
+		return parts
+	}
+	s.liveFP.store(key, fp)
+	return append(parts, "db:fp="+fp)
+}
+
+func (c *liveFPCache) lookup(key string) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if key == "" || c.key != key || c.fp == "" {
+		return "", false
+	}
+	return c.fp, true
+}
+
+func (c *liveFPCache) store(key, fp string) {
+	if key == "" || fp == "" {
+		return
+	}
+	c.mu.Lock()
+	c.key = key
+	c.fp = fp
+	c.mu.Unlock()
+}
+
+func (s *Server) computeLiveFP(ctx context.Context) (string, bool) {
+	if s.queries == nil || s.queries.Tickets == nil {
+		return "", false
+	}
+	tickets, err := s.queries.Tickets.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	if err != nil {
+		return "", false
+	}
+	return fingerprintTickets(tickets), true
+}
+
+func fingerprintTickets(tickets []contracts.TicketSnapshot) string {
+	sort.Slice(tickets, func(i, j int) bool { return tickets[i].ID < tickets[j].ID })
+	sum := fnv.New64a()
+	for _, ticket := range tickets {
+		fmt.Fprintf(sum, "%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%t\x1f%d\n",
+			ticket.ID,
+			ticket.Status,
+			ticket.Title,
+			ticket.Description,
+			ticket.Notes,
+			ticket.Priority,
+			ticket.Assignee,
+			strings.Join(ticket.Labels, ","),
+			ticket.Archived,
+			ticket.UpdatedAt.UnixNano(),
+		)
+	}
+	return strconv.FormatUint(sum.Sum64(), 16)
 }
 
 func projectionStampParts(root string) []string {
@@ -155,6 +238,12 @@ func parseLiveStamp(raw string) (parsedLiveStamp, bool) {
 	return parsed, true
 }
 
+func fingerprintUnchanged(prev, cur map[string]string) bool {
+	old := prev["fp"]
+	next := cur["fp"]
+	return old != "" && old == next
+}
+
 func projectionChanged(prev, cur map[string]string) bool {
 	if len(prev) != len(cur) {
 		return true
@@ -185,6 +274,12 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	// large board, which discards that page and asks again forever.
 	tail, tailOK := readGrownTails(s.cfg.Root, prev.files, cur.files)
 	if !tailOK || (projectionChanged(prev.db, cur.db) && len(bytes.TrimSpace(tail)) == 0) {
+		// Same rows, new file mtimes: reindex rewrote the index and appended
+		// nothing. An empty patch advances the etag; a full resync would
+		// reload every card.
+		if tailOK && fingerprintUnchanged(prev.db, cur.db) {
+			return liveBoardBody{Cards: []liveCardPatch{}}, true
+		}
 		return s.liveResync(r)
 	}
 	ids := ticketIDsFromTail(tail)
@@ -198,11 +293,8 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	for _, id := range ids {
 		patch, includeDetail := s.liveCard(r.Context(), r, page, colors, id)
 		body.Cards = append(body.Cards, patch)
-		if id == openID && !patch.Remove {
-			if ticket, err := s.actions.Tickets.GetTicket(r.Context(), id); err == nil && !ticket.Archived {
-				drawer := drawerFromTicket(ticket)
-				body.Drawer = &drawer
-			}
+		if id == openID {
+			body.Drawer = s.openDrawer(r, id)
 		}
 		if includeDetail && id == openID {
 			if comments, history, err := s.liveActivityHTML(r, id); err == nil {
@@ -226,6 +318,7 @@ func (s *Server) liveResync(r *http.Request) (liveBoardBody, bool) {
 	}
 	openID := strings.TrimSpace(r.URL.Query().Get("ticket"))
 	body := liveBoardBody{Resync: true}
+	foundOpen := false
 	for _, column := range s.columnsFromBoard(r.Context(), board, page, colors) {
 		for _, card := range column.Tickets {
 			html, err := s.renderFragment(r, "card", card)
@@ -238,12 +331,36 @@ func (s *Server) liveResync(r *http.Request) (liveBoardBody, bool) {
 				HTML:   html,
 			})
 			if card.Ticket.ID == openID {
-				drawer := drawerFromTicket(card.Ticket)
+				drawer := s.drawerForTicket(r, card.Ticket)
 				body.Drawer = &drawer
+				foundOpen = true
 			}
 		}
 	}
+	if openID != "" && !foundOpen {
+		body.Drawer = s.openDrawer(r, openID)
+	}
 	return body, true
+}
+
+func (s *Server) openDrawer(r *http.Request, id string) *liveDrawer {
+	if s.actions == nil || strings.TrimSpace(id) == "" {
+		return nil
+	}
+	ticket, err := s.actions.Tickets.GetTicket(r.Context(), id)
+	if err != nil || ticket.Archived {
+		return &liveDrawer{ID: id, Deleted: true}
+	}
+	drawer := s.drawerForTicket(r, ticket)
+	return &drawer
+}
+
+func (s *Server) drawerForTicket(r *http.Request, ticket contracts.TicketSnapshot) liveDrawer {
+	drawer := drawerFromTicket(ticket)
+	if html, err := s.liveActionsHTML(r, ticket.ID); err == nil {
+		drawer.ActionsHTML = html
+	}
+	return drawer
 }
 
 func drawerFromTicket(ticket contracts.TicketSnapshot) liveDrawer {
@@ -327,6 +444,27 @@ func (s *Server) liveActivityHTML(r *http.Request, id string) (string, string, e
 		return "", "", err
 	}
 	return comments, history, nil
+}
+
+func (s *Server) liveActionsHTML(r *http.Request, id string) (string, error) {
+	detail, err := s.ticketDetail(r.Context(), id)
+	if err != nil {
+		return "", err
+	}
+	home, board, schedule, newTicket, prefix := s.navPaths()
+	page := BoardPage{
+		Page:          "board",
+		Actor:         s.cfg.Actor,
+		ReadOnly:      s.cfg.ReadOnly,
+		CSRFToken:     s.cfg.CSRFToken,
+		BoardPath:     board,
+		ActionPrefix:  prefix,
+		HomePath:      home,
+		SchedulePath:  schedule,
+		NewTicketPath: newTicket,
+		Detail:        &detail,
+	}
+	return s.renderFragment(r, "drawerActions", page)
 }
 
 func (s *Server) renderFragment(r *http.Request, name string, data any) (string, error) {

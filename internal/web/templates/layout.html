@@ -113,7 +113,10 @@
     data-updated="{{t "board.flash.updated"}}"
     data-offline="The local server is unreachable. Work stays on disk; retry when the local server is running."
     data-online="Back online."
-    data-conflict="Someone else changed this ticket. Reload and retry with the current revision."></div>
+    data-conflict="Someone else changed this ticket. Reload and retry with the current revision."
+    data-field-conflict="Someone else changed this field while you were editing. Saving now would overwrite their change, so the revision was kept."
+    data-drag-conflict="Someone else changed this ticket while you were moving it. It was put back."
+    data-ticket-deleted="This ticket was deleted and left the board."></div>
   {{if eq .Page "board"}}<script src="/static/vendor/sortable.min.js"></script>{{end}}
   <script src="/static/app.js"></script>
 </body>

@@ -161,6 +161,42 @@ func NewCompactBoard(project string, columns map[contracts.Status][]contracts.Ti
 	return board
 }
 
+// RestoreColumnTotals puts the real column sizes back after a cursor window
+// was passed to NewCompactBoard. Shown stays the page size; Total is the
+// full column, so "N more" and next_cursor stay honest.
+func RestoreColumnTotals(board *CompactBoard, totals map[string]int) {
+	if board == nil {
+		return
+	}
+	board.TotalCards = 0
+	board.ShownCards = 0
+	board.Truncated = false
+	for i := range board.Columns {
+		col := &board.Columns[i]
+		if total, ok := totals[col.Status]; ok {
+			col.Total = total
+		}
+		col.Truncated = col.Total > col.Shown
+		if col.Truncated {
+			board.Truncated = true
+		}
+		board.TotalCards += col.Total
+		board.ShownCards += col.Shown
+	}
+	notes := make([]string, 0, len(board.Notes)+1)
+	for _, note := range board.Notes {
+		if strings.HasPrefix(note, "showing ") {
+			continue
+		}
+		notes = append(notes, note)
+	}
+	if board.Truncated {
+		notes = append(notes, fmt.Sprintf("showing %d of %d cards; use cursor or a named project to page", board.ShownCards, board.TotalCards))
+	}
+	board.Notes = notes
+	deriveBoardSignals(board)
+}
+
 // UniqueProject returns the only project key on the board, or "" when mixed
 // or empty. Used so a single-project workspace heading can say DEMO without
 // repeating it on every card.
@@ -415,6 +451,9 @@ func CompactBoardMarkdown(board CompactBoard) string {
 			b.WriteString("- ")
 			b.WriteString(markdownCardItem(card))
 			b.WriteString("\n")
+		}
+		if col.Truncated && col.Total > col.Shown {
+			b.WriteString(fmt.Sprintf("- +%d more\n", col.Total-col.Shown))
 		}
 		b.WriteString("\n")
 	}
