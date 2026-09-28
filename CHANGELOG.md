@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Atlas Home and browser boards retain private sessions across restarts, rotate tokens, reject expired cookies, and recover through a fresh local sign-in. Workspace session files stay excluded from Git.
+- Live boards preserve saved-view filters, refresh reindexed ticket details and activity, and keep revision checks on unreconciled forms. Schedule and project forms show validation errors without losing typed input. The TUI detects writes made before its first refresh tick.
+- MCP board pagination keeps completed columns finished and reports unread counts. Flexible search still rejects malformed structured filters.
+- Valid first-ticket creation can initialize an empty directory; invalid input leaves it untouched. Source and Go-installed uninstall previews and results identify the executable that remains installed.
+
 ## v1.17.0 - Chat-native boards and security hardening (2026-09-24)
 
 [Download v1.17.0 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.0).
