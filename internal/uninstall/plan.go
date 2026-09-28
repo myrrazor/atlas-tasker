@@ -531,6 +531,13 @@ func Pretty(plan Plan) string {
 		}
 		b.WriteByte('\n')
 	}
+	for _, note := range plan.Notes {
+		if strings.TrimSpace(note) == "" {
+			continue
+		}
+		b.WriteString(note)
+		b.WriteByte('\n')
+	}
 	b.WriteString("preserved: registry, backups, workspaces, unrelated client config\n")
 	return strings.TrimRight(b.String(), "\n")
 }

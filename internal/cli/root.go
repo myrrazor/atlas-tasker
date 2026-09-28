@@ -1030,6 +1030,12 @@ func resolveMutationActor(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if err := requireInitializedWorkspace(root); err != nil {
+		// ticket create bootstraps an empty directory itself. A directory that
+		// is not a workspace at all continues into the command; a subdirectory
+		// of a workspace still fails here and names that root.
+		if uninitializedWorkspaceError(err) {
+			return nil
+		}
 		return err
 	}
 	raw, _ := cmd.Flags().GetString("actor")
