@@ -626,7 +626,14 @@
           return;
         }
         if (response.status === 401) {
-          showFlash(message('sessionExpired', 'Session expired. Run tracker in a terminal on this computer to sign in again.'), true);
+          let text = '';
+          try {
+            text = (await response.text()).trim();
+          } catch (err) {}
+          if (!text || text.length > 240 || text.indexOf('<') !== -1) {
+            text = message('sessionExpired', 'Session expired. Run tracker in a terminal on this computer to sign in again.');
+          }
+          showFlash(text, true);
           return;
         }
         if (!response.ok && response.status !== 404) throw new Error(`board refresh got ${response.status}`);

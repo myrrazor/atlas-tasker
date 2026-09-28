@@ -384,6 +384,11 @@ func agentStep(report AgentSetupReport) InitStep {
 	}
 	var written, unverified int
 	for _, client := range report.Clients {
+		// The portable descriptor is not a client. It must not turn a killed
+		// openclaw registration into "agents configured".
+		if string(client.Target) == "generic" {
+			continue
+		}
 		switch client.Status {
 		case AgentWritten, AgentPendingClientRestart:
 			written++
