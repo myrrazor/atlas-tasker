@@ -145,8 +145,8 @@ func bootstrapEmptyWorkspace(cmd *cobra.Command, openErr error) (*workspace, err
 	jsonMode, _ := cmd.Flags().GetBool("json")
 	if !jsonMode {
 		a.SetNotice(cmd.ErrOrStderr())
-		fmt.Fprintf(cmd.ErrOrStderr(), "created a new Atlas board at %s\n", cwd)
 	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "created a new Atlas board at %s\n", cwd)
 	project, _ := cmd.Flags().GetString("project")
 	_, initErr := a.Init(commandContext(cmd), app.InitOptions{
 		Root:           cwd,

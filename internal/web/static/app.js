@@ -449,7 +449,10 @@
       const status = next.dataset.status || patch.status;
       const list = document.querySelector(`.ticket-list[data-status="${status}"]`);
       if (existing && existing.dataset.status === status) {
-        existing.replaceWith(next);
+        // Keep the same element. Replacing it detaches a card the pointer
+        // is about to drag, which drops the drag before dragstart.
+        existing.innerHTML = next.innerHTML;
+        for (const attr of next.attributes) existing.setAttribute(attr.name, attr.value);
       } else {
         if (existing) existing.remove();
         if (list) {
