@@ -83,21 +83,53 @@ func openBoardWorkspace(cmd *cobra.Command) (*workspace, error) {
 	if len(available) == 0 {
 		return nil, err
 	}
-	sort.SliceStable(available, func(i, j int) bool {
-		if !available[i].LastSeenAt.Equal(available[j].LastSeenAt) {
-			return available[i].LastSeenAt.After(available[j].LastSeenAt)
+	candidates := available
+	if want, flagErr := cmd.Flags().GetString("project"); flagErr == nil {
+		if matched := boardsWithProject(available, want); len(matched) > 0 {
+			candidates = matched
 		}
-		return available[i].Path < available[j].Path
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if !candidates[i].LastSeenAt.Equal(candidates[j].LastSeenAt) {
+			return candidates[i].LastSeenAt.After(candidates[j].LastSeenAt)
+		}
+		return candidates[i].Path < candidates[j].Path
 	})
-	chosen := available[0]
+	chosen := candidates[0]
 	fmt.Fprintf(cmd.ErrOrStderr(), "opening Atlas board at %s\n", chosen.Path)
 	if len(available) > 1 {
 		fmt.Fprintf(cmd.ErrOrStderr(), "other registered boards:\n")
-		for _, rec := range available[1:] {
+		for _, rec := range available {
+			if rec.Path == chosen.Path {
+				continue
+			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "- %s\n", rec.Path)
 		}
 	}
 	return openWorkspaceWith(openOptions{root: chosen.Path})
+}
+
+// boardsWithProject keeps registered boards that contain this project key.
+// --project then selects among those boards instead of filtering an unrelated one.
+func boardsWithProject(boards []app.WorkspaceRecord, project string) []app.WorkspaceRecord {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return nil
+	}
+	matched := make([]app.WorkspaceRecord, 0, 1)
+	for _, board := range boards {
+		entries, err := os.ReadDir(filepath.Join(board.Path, "projects"))
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if strings.EqualFold(entry.Name(), project) {
+				matched = append(matched, board)
+				break
+			}
+		}
+	}
+	return matched
 }
 
 // directoryCanBootstrap is an empty directory, or a fresh git init whose only

@@ -132,6 +132,8 @@
   let dragsInFlight = 0;
   let cardPointerDown = false;
   let dragQuietUntil = 0;
+  const moveTail = new Map();
+  const moveGen = new Map();
   let boundSortables = [];
   let previewTimer = 0;
   let previewCard = null;
@@ -608,58 +610,75 @@
           dragQuietUntil = Date.now() + 400;
           settleDroppedCard(event.item);
         },
-        onAdd: async (event) => {
+        onAdd: (event) => {
           const card = event.item;
           const ticketID = card.dataset.ticketId;
           const status = event.to.dataset.status;
-          const body = new URLSearchParams();
-          body.set('csrf_token', csrf);
-          body.set('status', status);
-          body.set('reason', 'web drag move');
-          if (card.dataset.revision) body.set('expected_revision', card.dataset.revision);
-          try {
-            const response = await fetch(`${actionPrefix()}/actions/tickets/${encodeURIComponent(ticketID)}/move`, {
-              method: 'POST',
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Atlas-CSRF': csrf,
-                'X-Atlas-Request': 'fetch'
-              },
-              body
-            });
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) {
-              // feedback first — the resync may take a while or fail
+          const gen = (moveGen.get(ticketID) || 0) + 1;
+          moveGen.set(ticketID, gen);
+          const prev = moveTail.get(ticketID) || Promise.resolve();
+          const run = prev.catch(() => {}).then(async () => {
+            // A newer drop already happened. Send only the latest column,
+            // with the revision the previous request stored.
+            if (moveGen.get(ticketID) !== gen) return;
+            const live = document.querySelector(`.ticket-card[data-ticket-id="${String(ticketID).replace(/"/g, '')}"]`) || card;
+            const body = new URLSearchParams();
+            body.set('csrf_token', csrf);
+            body.set('status', status);
+            body.set('reason', 'web drag move');
+            if (live.dataset.revision) body.set('expected_revision', live.dataset.revision);
+            try {
+              const response = await fetch(`${actionPrefix()}/actions/tickets/${encodeURIComponent(ticketID)}/move`, {
+                method: 'POST',
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'X-Atlas-CSRF': csrf,
+                  'X-Atlas-Request': 'fetch'
+                },
+                body
+              });
+              const data = await response.json().catch(() => ({}));
+              const current = document.querySelector(`.ticket-card[data-ticket-id="${String(ticketID).replace(/"/g, '')}"]`) || live;
+              if (response.ok) {
+                if (data.payload?.revision) current.dataset.revision = data.payload.revision;
+                if (data.payload?.status) current.dataset.status = data.payload.status;
+              }
+              // A later drop owns the card. Keep the revision, skip the revert.
+              if (moveGen.get(ticketID) !== gen) return;
+              if (!response.ok) {
+                revertCard(event);
+                const conflict = response.status === 409;
+                showFlash(
+                  data.error?.message || (conflict
+                    ? message('conflict', 'Someone else changed this ticket. Reload and retry with the current revision.')
+                    : message('moveFailedStatus', 'Move failed with {status}', { status: response.status })),
+                  true
+                );
+                refreshBoard();
+                return;
+              }
+              showFlash(data.payload?.flash || message('updated', 'updated {id}', { id: ticketID }), false);
+              if (data.payload?.revision) live.dataset.revision = data.payload.revision;
+              if (data.payload?.status) live.dataset.status = data.payload.status;
+              if (cardCount() > 200) {
+                syncColumnCounts();
+              } else {
+                refreshBoard();
+              }
+            } catch (err) {
+              if (moveGen.get(ticketID) !== gen) return;
               revertCard(event);
-              const conflict = response.status === 409;
-              showFlash(
-                data.error?.message || (conflict
-                  ? message('conflict', 'Someone else changed this ticket. Reload and retry with the current revision.')
-                  : message('moveFailedStatus', 'Move failed with {status}', { status: response.status })),
-                true
-              );
-              refreshBoard();
-              return;
-            }
-            showFlash(data.payload?.flash || message('updated', 'updated {id}', { id: ticketID }), false);
-            if (data.payload?.revision) card.dataset.revision = data.payload.revision;
-            if (data.payload?.status) card.dataset.status = data.payload.status;
-            if (cardCount() > 200) {
-              syncColumnCounts();
-            } else {
+              if (isNetworkError(err)) {
+                showServerDown();
+                showFlash(message('offline', 'The local server is unreachable. Work stays on disk; retry when the local server is running.'), true);
+                return;
+              }
+              showFlash(err.message || message('moveFailed', 'Move failed'), true);
               refreshBoard();
             }
-          } catch (err) {
-            revertCard(event);
-            if (isNetworkError(err)) {
-              showServerDown();
-              showFlash(message('offline', 'The local server is unreachable. Work stays on disk; retry when the local server is running.'), true);
-              return;
-            }
-            showFlash(err.message || message('moveFailed', 'Move failed'), true);
-            refreshBoard();
-          }
+          });
+          moveTail.set(ticketID, run);
         }
       }));
     });
