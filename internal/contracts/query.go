@@ -36,7 +36,10 @@ func ParseSearchQueryFlexible(raw string) (SearchQuery, error) {
 	if err == nil {
 		return query, nil
 	}
-	rewritten := foldBareSearchTokens(raw)
+	rewritten, foldErr := foldBareSearchTokens(raw)
+	if foldErr != nil {
+		return SearchQuery{}, foldErr
+	}
 	if rewritten == "" || rewritten == strings.TrimSpace(raw) {
 		return SearchQuery{}, err
 	}
@@ -49,10 +52,10 @@ func ParseSearchQueryFlexible(raw string) (SearchQuery, error) {
 
 // foldBareSearchTokens turns loose words into a text~ term while leaving
 // status= and the other structured terms in place.
-func foldBareSearchTokens(raw string) string {
+func foldBareSearchTokens(raw string) (string, error) {
 	tokens := strings.Fields(strings.TrimSpace(raw))
 	if len(tokens) == 0 {
-		return ""
+		return "", nil
 	}
 	out := make([]string, 0, len(tokens)+1)
 	bare := make([]string, 0, len(tokens))
@@ -63,16 +66,28 @@ func foldBareSearchTokens(raw string) string {
 		out = append(out, "text~"+strings.Join(bare, " "))
 		bare = bare[:0]
 	}
-	for _, token := range tokens {
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
 		if isSearchTermStart(token) {
 			flush()
+			// Explicit text terms keep their multi-word value, including
+			// literal operators, just as the strict parser does.
+			if strings.HasPrefix(token, "text~") {
+				for i+1 < len(tokens) && !isSearchTermStart(tokens[i+1]) {
+					i++
+					token += " " + tokens[i]
+				}
+			}
 			out = append(out, token)
 			continue
+		}
+		if strings.ContainsAny(token, "=~") {
+			return "", fmt.Errorf("unsupported query token: %s", token)
 		}
 		bare = append(bare, token)
 	}
 	flush()
-	return strings.Join(out, " ")
+	return strings.Join(out, " "), nil
 }
 
 func ParseSearchQuery(raw string) (SearchQuery, error) {

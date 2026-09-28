@@ -651,10 +651,61 @@ func TestBoardDoneCursorDoesNotRestartFinishedColumns(t *testing.T) {
 	if len(seen) != 5 {
 		t.Fatalf("paging missed cards: %#v", seen)
 	}
+	for id, count := range seen {
+		if count != 1 {
+			t.Fatalf("paging repeated %s %d times", id, count)
+		}
+	}
 
 	first := paginateBoard(fresh(), map[string]any{"limit": 10}, 10)
 	if len(first["next_cursor_by_status"].(map[string]string)) != 0 {
 		t.Fatalf("a board that fits must not invent cursors: %#v", first["next_cursor_by_status"])
+	}
+}
+
+func TestBoardPagingKeepsInitiallyFinishedColumnsDone(t *testing.T) {
+	ticket := func(id string, status contracts.Status) contracts.TicketSnapshot {
+		return contracts.TicketSnapshot{ID: id, Project: "APP", Title: id, Type: contracts.TicketTypeTask, Status: status, Priority: contracts.PriorityMedium}
+	}
+	full := map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady:   {ticket("APP-1", contracts.StatusReady), ticket("APP-2", contracts.StatusReady), ticket("APP-3", contracts.StatusReady)},
+		contracts.StatusBlocked: {ticket("APP-4", contracts.StatusBlocked)},
+		contracts.StatusDone:    {},
+	}
+	cursors := map[string]any{}
+	seen := map[string]int{}
+	for pageNumber := 1; pageNumber <= 3; pageNumber++ {
+		view := service.BoardViewModel{Board: contracts.BoardView{Columns: cloneBoardColumns(full)}}
+		page := paginateBoard(view, map[string]any{"limit": 1, "cursor_by_status": cursors}, 10)
+		board := page["board"].(service.BoardViewModel).Board
+		for _, tickets := range board.Columns {
+			for _, ticket := range tickets {
+				seen[ticket.ID]++
+			}
+		}
+		pages := page["pages_by_status"].(map[string]map[string]any)
+		if pages["ready"]["remaining"] != 3-pageNumber || pages["blocked"]["remaining"] != 0 || pages["done"]["remaining"] != 0 {
+			t.Fatalf("page %d has incorrect unread counts: %#v", pageNumber, pages)
+		}
+		next := page["next_cursor_by_status"].(map[string]string)
+		if pageNumber < 3 {
+			if next["blocked"] != boardCursorDone || next["done"] != boardCursorDone {
+				t.Fatalf("page %d lost finished columns: %#v", pageNumber, next)
+			}
+		} else if len(next) != 0 {
+			t.Fatalf("final page has unexpected continuation: %#v", next)
+		}
+		cursors = map[string]any{}
+		for status, cursor := range next {
+			cursors[status] = cursor
+		}
+	}
+	for _, tickets := range full {
+		for _, ticket := range tickets {
+			if seen[ticket.ID] != 1 {
+				t.Fatalf("%s appeared %d times while paging", ticket.ID, seen[ticket.ID])
+			}
+		}
 	}
 }
 

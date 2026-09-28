@@ -153,7 +153,7 @@ tracker mcp serve \
   --max-text-tokens-estimate 4000
 ```
 
-Paged list tools accept `limit` and `cursor`. Grouped tools keep independent cursors: `atlas.board` accepts `cursor_by_status`, and `atlas.dashboard` accepts `cursor_by_section`. Large results return a truncated summary with a hint to narrow the request.
+Paged list tools accept `limit` and `cursor`. Grouped tools keep independent cursors: `atlas.board` accepts `cursor_by_status`, and `atlas.dashboard` accepts `cursor_by_section`. Boards default to at most 10 cards per column and can reduce the page size to fit the result cap. Echo the entire `next_cursor_by_status` map until it is empty; its `done` values keep completed columns from repeating. Each column reports its total, shown, and remaining counts. See [MCP JSON contracts](mcp-json-contracts.md) for paging details. Results that still exceed the byte cap return a truncated summary with a hint to narrow the request.
 
 ## More
 

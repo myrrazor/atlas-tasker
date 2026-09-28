@@ -400,11 +400,15 @@ func assembleBoardPayload(tc ToolContext, args map[string]any, full map[contract
 	paged := paginateBoard(view, pagedArgs, tc.Server.Options.MaxItems)
 	cursors, _ := paged["next_cursor_by_status"].(map[string]string)
 	totals := map[string]int{}
+	remaining := map[string]int{}
 	for status, tickets := range full {
 		totals[string(status)] = len(tickets)
 	}
+	for status, page := range paged["pages_by_status"].(map[string]map[string]any) {
+		remaining[status], _ = page["remaining"].(int)
+	}
 	board := render.NewCompactBoard(stringArg(args, "project"), view.Board.Columns, limit, cursors)
-	render.RestoreColumnTotals(&board, totals)
+	render.RestoreColumnTotals(&board, totals, remaining)
 	if err := finishBoardPayload(tc, args, paged, board); err != nil {
 		return nil, err
 	}
@@ -1251,6 +1255,7 @@ func paginateBoard(view service.BoardViewModel, args map[string]any, maxItems in
 		incoming := cursors[string(status)]
 		var page pageResult
 		next := ""
+		remaining := 0
 		if incoming == boardCursorDone {
 			columnTotal := len(tickets)
 			if tickets == nil {
@@ -1264,15 +1269,16 @@ func paginateBoard(view service.BoardViewModel, args map[string]any, maxItems in
 			view.Board.Columns[status] = page.Items.([]contracts.TicketSnapshot)
 			if page.NextCursor != "" {
 				next = page.NextCursor
+				remaining = page.Total - parseCursor(next)
 				hasMore = true
-			} else if strings.TrimSpace(incoming) != "" {
+			} else {
 				// An omitted cursor means page 1. A finished column has to
-				// stay finished when the caller echoes the whole map back.
+				// stay finished even if it fit on that first page.
 				next = boardCursorDone
 			}
 		}
 		total += page.Total
-		pagesByStatus[string(status)] = map[string]any{"total": page.Total, "next_cursor": next}
+		pagesByStatus[string(status)] = map[string]any{"total": page.Total, "remaining": remaining, "next_cursor": next}
 		if next != "" {
 			nextByStatus[string(status)] = next
 		}

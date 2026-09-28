@@ -36,6 +36,7 @@ type CompactColumn struct {
 	Label     string        `json:"label"`
 	Total     int           `json:"total"`
 	Shown     int           `json:"shown"`
+	Remaining int           `json:"remaining"`
 	Truncated bool          `json:"truncated"`
 	Cards     []CompactCard `json:"cards"`
 }
@@ -147,6 +148,7 @@ func NewCompactBoard(project string, columns map[contracts.Status][]contracts.Ti
 			board.Truncated = true
 		}
 		col.Shown = len(shown)
+		col.Remaining = col.Total - col.Shown
 		for _, ticket := range shown {
 			col.Cards = append(col.Cards, compactCardFromTicket(ticket))
 		}
@@ -163,19 +165,22 @@ func NewCompactBoard(project string, columns map[contracts.Status][]contracts.Ti
 
 // RestoreColumnTotals puts the real column sizes back after a cursor window
 // was passed to NewCompactBoard. Shown stays the page size; Total is the
-// full column, so "N more" and next_cursor stay honest.
-func RestoreColumnTotals(board *CompactBoard, totals map[string]int) {
+// full column. Remaining counts only cards after the current cursor window.
+func RestoreColumnTotals(board *CompactBoard, totals, remaining map[string]int) {
 	if board == nil {
 		return
 	}
 	board.TotalCards = 0
 	board.ShownCards = 0
 	board.Truncated = false
+	hasMore := false
 	for i := range board.Columns {
 		col := &board.Columns[i]
 		if total, ok := totals[col.Status]; ok {
 			col.Total = total
 		}
+		col.Remaining = remaining[col.Status]
+		hasMore = hasMore || col.Remaining > 0
 		col.Truncated = col.Total > col.Shown
 		if col.Truncated {
 			board.Truncated = true
@@ -191,7 +196,11 @@ func RestoreColumnTotals(board *CompactBoard, totals map[string]int) {
 		notes = append(notes, note)
 	}
 	if board.Truncated {
-		notes = append(notes, fmt.Sprintf("showing %d of %d cards; use cursor or a named project to page", board.ShownCards, board.TotalCards))
+		hint := "end of board"
+		if hasMore {
+			hint = "use cursor or a named project to page"
+		}
+		notes = append(notes, fmt.Sprintf("showing %d of %d cards; %s", board.ShownCards, board.TotalCards, hint))
 	}
 	board.Notes = notes
 	deriveBoardSignals(board)
@@ -452,8 +461,8 @@ func CompactBoardMarkdown(board CompactBoard) string {
 			b.WriteString(markdownCardItem(card))
 			b.WriteString("\n")
 		}
-		if col.Truncated && col.Total > col.Shown {
-			b.WriteString(fmt.Sprintf("- +%d more\n", col.Total-col.Shown))
+		if col.Remaining > 0 {
+			b.WriteString(fmt.Sprintf("- +%d more\n", col.Remaining))
 		}
 		b.WriteString("\n")
 	}
