@@ -196,9 +196,21 @@ func (s *HomeServer) handleAttention(w http.ResponseWriter, r *http.Request) {
 		page.Error = err.Error()
 	} else {
 		page.Attention = report.Items
-		page.Workspaces = report.Missing
 	}
+	s.attachWorkspaceRail(r, &page)
 	s.renderHome(w, r, page, http.StatusOK)
+}
+
+func (s *HomeServer) attachWorkspaceRail(r *http.Request, page *HomePage) {
+	listed, err := s.application.ListWorkspaces(r.Context(), app.ListOptions{})
+	if err != nil {
+		if page.Error == "" {
+			page.Error = err.Error()
+		}
+		return
+	}
+	page.Workspaces = listed
+	page.Rows = s.decorateWorkspaceRows(r, listed, page.Attention)
 }
 
 func (s *HomeServer) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -213,6 +225,7 @@ func (s *HomeServer) handleSearch(w http.ResponseWriter, r *http.Request) {
 			page.Hits = report.Hits
 		}
 	}
+	s.attachWorkspaceRail(r, &page)
 	s.renderHome(w, r, page, http.StatusOK)
 }
 
@@ -220,6 +233,7 @@ func (s *HomeServer) handleHomeSettings(w http.ResponseWriter, r *http.Request) 
 	page := s.pageBase("settings")
 	page.Settings = s.application.Settings()
 	page.Flash = r.URL.Query().Get("flash")
+	s.attachWorkspaceRail(r, &page)
 	s.renderHome(w, r, page, http.StatusOK)
 }
 
@@ -671,13 +685,17 @@ func (s *HomeServer) renderUnavailable(w http.ResponseWriter, r *http.Request, i
 		page.Health = app.HealthUnavailable
 		page.HealthLabel = healthLabel(app.HealthUnavailable)
 	}
+	if apperr.CodeOf(bindErr) == apperr.CodeNotFound {
+		page.Page = "notfound"
+		page.Error = "Workspace " + id + " was not found."
+		s.attachWorkspaceRail(r, &page)
+		s.renderHome(w, r, page, http.StatusNotFound)
+		return
+	}
 	page.FindHits = s.discoveryRepairGrants(r)
 	page.FindHits = append(page.FindHits, pendingGrantHits(s.application.ListPendingGrants(), app.PathGrantRepair)...)
 	status := statusForError(bindErr)
 	if status == http.StatusInternalServerError && apperr.CodeOf(bindErr) == apperr.CodeRepairNeeded {
-		status = http.StatusOK
-	}
-	if status == http.StatusNotFound {
 		status = http.StatusOK
 	}
 	s.renderHome(w, r, page, status)

@@ -28,6 +28,21 @@ type SearchQuery struct {
 	Terms []SearchTerm `json:"terms"`
 }
 
+// ParseSearchQueryFlexible matches the CLI: a bare word or ticket id such as
+// "rapid" or "APP-12" is a text search. Tokens that already use = or ~ keep
+// the strict parser so a typo in a structured query is still reported.
+func ParseSearchQueryFlexible(raw string) (SearchQuery, error) {
+	query, err := ParseSearchQuery(raw)
+	if err == nil {
+		return query, nil
+	}
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || strings.ContainsAny(trimmed, "=~") {
+		return SearchQuery{}, err
+	}
+	return ParseSearchQuery("text~" + trimmed)
+}
+
 func ParseSearchQuery(raw string) (SearchQuery, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {

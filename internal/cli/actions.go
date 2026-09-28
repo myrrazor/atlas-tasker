@@ -46,16 +46,115 @@ type openOptions struct {
 	// skipIndexFreshness: the caller is about to rebuild anyway (reindex), so
 	// don't do it twice
 	skipIndexFreshness bool
+	root               string
 }
 
 func openWorkspace() (*workspace, error) {
 	return openWorkspaceWith(openOptions{})
 }
 
-func openWorkspaceWith(opts openOptions) (*workspace, error) {
-	root, err := os.Getwd()
+// openBoardWorkspace opens the current directory, or the single registered
+// board when this directory is not a workspace at all. A subdirectory of a
+// workspace still fails and names that root. An empty registry keeps the
+// original error so nothing is scaffolded.
+func openBoardWorkspace(cmd *cobra.Command) (*workspace, error) {
+	ws, err := openWorkspace()
+	if err == nil {
+		return ws, nil
+	}
+	if !uninitializedWorkspaceError(err) {
+		return nil, err
+	}
+	a, appErr := openApp()
+	if appErr != nil {
+		return nil, err
+	}
+	defer func() { _ = a.Close() }()
+	listed, listErr := a.ListWorkspaces(context.Background(), app.ListOptions{})
+	if listErr != nil {
+		return nil, err
+	}
+	available := make([]app.WorkspaceRecord, 0, len(listed))
+	for _, rec := range listed {
+		if rec.Health == app.HealthAvailable && strings.TrimSpace(rec.Path) != "" {
+			available = append(available, rec)
+		}
+	}
+	if len(available) == 0 {
+		return nil, err
+	}
+	if len(available) > 1 {
+		var b strings.Builder
+		b.WriteString("this directory is not an Atlas workspace, and more than one board is registered:\n")
+		for _, rec := range available {
+			fmt.Fprintf(&b, "- %s\n", rec.Path)
+		}
+		b.WriteString("run tracker from that directory, or run tracker to open Atlas Home")
+		return nil, apperr.New(apperr.CodeInvalidInput, strings.TrimSpace(b.String()))
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "opening Atlas board at %s\n", available[0].Path)
+	return openWorkspaceWith(openOptions{root: available[0].Path})
+}
+
+func uninitializedWorkspaceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "is not an Atlas workspace;")
+}
+
+// bootstrapEmptyWorkspace initializes the current directory only when ticket
+// create is run in a directory that is empty and not already inside a workspace.
+func bootstrapEmptyWorkspace(cmd *cobra.Command, openErr error) (*workspace, error) {
+	if !uninitializedWorkspaceError(openErr) {
+		return nil, openErr
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, openErr
+	}
+	entries, err := os.ReadDir(cwd)
+	if err != nil || len(entries) > 0 {
+		return nil, openErr
+	}
+	a, err := openApp()
 	if err != nil {
 		return nil, err
+	}
+	defer func() { _ = a.Close() }()
+	jsonMode, _ := cmd.Flags().GetBool("json")
+	if !jsonMode {
+		a.SetNotice(cmd.ErrOrStderr())
+		fmt.Fprintf(cmd.ErrOrStderr(), "initializing an Atlas board in %s\n", cwd)
+	}
+	project, _ := cmd.Flags().GetString("project")
+	_, initErr := a.Init(commandContext(cmd), app.InitOptions{
+		Root:           cwd,
+		ProjectKey:     project,
+		ProjectName:    project,
+		Register:       true,
+		Agents:         false,
+		Backup:         true,
+		DefaultProject: true,
+		OpenHome:       false,
+		WriteClientCfg: false,
+	})
+	if initErr != nil && !app.IsPartial(initErr) {
+		if _, statErr := os.Stat(filepath.Join(cwd, ".tracker")); statErr != nil {
+			return nil, initErr
+		}
+	}
+	return openWorkspace()
+}
+
+func openWorkspaceWith(opts openOptions) (*workspace, error) {
+	root := opts.root
+	var err error
+	if root == "" {
+		root, err = os.Getwd()
+		if err != nil {
+			return nil, err
+		}
 	}
 	root, err = service.CanonicalWorkspaceRoot(root)
 	if err != nil {

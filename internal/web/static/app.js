@@ -368,22 +368,55 @@
     return !fieldsDirty && !selectsDirty && !panelsOpen;
   }
 
+  let boardETag = '';
+
+  function showServerDown() {
+    const banner = document.querySelector('[data-net-banner]');
+    if (!banner) return;
+    banner.hidden = false;
+    banner.classList.remove('is-online');
+    banner.textContent = message('offline', 'The local server is unreachable. Work stays on disk; retry when Atlas Home is running.');
+  }
+
+  function hideServerDown() {
+    const banner = document.querySelector('[data-net-banner]');
+    if (!banner || banner.classList.contains('is-online')) return;
+    banner.hidden = true;
+    banner.textContent = '';
+  }
+
+  function isNetworkError(err) {
+    const text = String(err && err.message ? err.message : err || '');
+    return /failed to fetch|networkerror|load failed|network request failed/i.test(text);
+  }
+
   // Sync with the server WITHOUT navigating: fetch the board page and swap
   // in the fresh grid (and drawer, when provably safe). Typed input, filter
   // fields, and the flash survive; unreachable servers are retried with
   // backoff so a committed-but-unacknowledged move still converges.
-  async function refreshBoard() {
+  async function refreshBoard(opts) {
+    const attempts = (opts && opts.attempts) || 6;
+    const quiet = !!(opts && opts.quiet);
     const seq = ++refreshSeq;
-    for (let attempt = 0; attempt < 6; attempt++) {
+    for (let attempt = 0; attempt < attempts; attempt++) {
       if (seq !== refreshSeq) return;
       try {
-        const response = await fetch(boardURL().toString(), { headers: { 'Accept': 'text/html' } });
-        if (response.status === 401) {
-          showFlash(message('sessionExpired', 'Session expired — run `tracker web serve --open` and use the new session URL'), true);
+        const headers = { 'Accept': 'text/html' };
+        if (boardETag) headers['If-None-Match'] = boardETag;
+        const response = await fetch(boardURL().toString(), { headers });
+        if (response.status === 304) {
+          hideServerDown();
           return;
         }
-        if (!response.ok) throw new Error(`board refresh got ${response.status}`);
+        if (response.status === 401) {
+          showFlash(message('sessionExpired', 'Session expired. Run tracker in a terminal on this computer to sign in again.'), true);
+          return;
+        }
+        if (!response.ok && response.status !== 404) throw new Error(`board refresh got ${response.status}`);
+        const etag = response.headers && typeof response.headers.get === 'function' ? response.headers.get('ETag') : '';
+        if (etag) boardETag = etag;
         const html = await response.text();
+        hideServerDown();
         await waitForDragEnd();
         if (seq !== refreshSeq) return;
         const boardMotion = prefersReducedMotion() ? null : captureBoardMotion(document.querySelector('.board-grid'));
@@ -414,14 +447,29 @@
         }
         return;
       } catch (err) {
-        if (attempt < 5) {
+        if (attempt < attempts - 1) {
           await sleep(2000 * (attempt + 1));
+          continue;
+        }
+        if (quiet) throw err;
+        if (isNetworkError(err)) showServerDown();
+        if (seq === refreshSeq) {
+          showFlash(message('stale', 'Board may be out of date — could not reach the server'), true);
         }
       }
     }
-    if (seq === refreshSeq) {
-      showFlash(message('stale', 'Board may be out of date — could not reach the server'), true);
-    }
+  }
+
+  function syncColumnCounts() {
+    document.querySelectorAll('.column[data-status]').forEach((column) => {
+      const count = column.querySelectorAll('.ticket-list .ticket-card').length;
+      const badge = column.querySelector('.col-count');
+      if (badge) badge.textContent = String(count);
+    });
+  }
+
+  function cardCount() {
+    return document.querySelectorAll('.ticket-card').length;
   }
 
   function setupSortable() {
@@ -440,7 +488,7 @@
       boundSortables.push(window.Sortable.create(list, {
         group: 'atlas-board',
         draggable: '.ticket-card',
-        animation: 150,
+        animation: cardCount() > 200 ? 0 : 150,
         sort: false,
         ghostClass: 'sortable-ghost',
         chosenClass: 'sortable-chosen',
@@ -488,9 +536,20 @@
               return;
             }
             showFlash(data.payload?.flash || message('updated', 'updated {id}', { id: ticketID }), false);
-            refreshBoard();
+            if (data.payload?.revision) card.dataset.revision = data.payload.revision;
+            if (data.payload?.status) card.dataset.status = data.payload.status;
+            if (cardCount() > 200) {
+              syncColumnCounts();
+            } else {
+              refreshBoard();
+            }
           } catch (err) {
             revertCard(event);
+            if (isNetworkError(err)) {
+              showServerDown();
+              showFlash(message('offline', 'The local server is unreachable. Work stays on disk; retry when Atlas Home is running.'), true);
+              return;
+            }
             showFlash(err.message || message('moveFailed', 'Move failed'), true);
             refreshBoard();
           }
@@ -569,6 +628,73 @@
     (closer || heading)?.focus({ preventScroll: true });
   }
 
+  function flashFromHTML(html) {
+    const doc = new DOMParser().parseFromString(html || '', 'text/html');
+    const node = doc.querySelector('.flash.error, .flash[role="alert"]');
+    return (node?.textContent || '').trim();
+  }
+
+  function setupResilientForms() {
+    document.addEventListener('submit', async (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      if ((form.getAttribute('method') || '').toLowerCase() !== 'post') return;
+      const page = document.body?.dataset?.page || '';
+      if (page !== 'board' && page !== 'welcome' && page !== 'schedule') return;
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      form.classList.add('is-saving');
+      form.querySelectorAll('button[type="submit"], button:not([type])').forEach((button) => {
+        button.disabled = true;
+      });
+      const body = new URLSearchParams(new FormData(form));
+      const release = () => {
+        form.classList.remove('is-saving');
+        form.querySelectorAll('button[type="submit"], button:not([type])').forEach((button) => {
+          button.disabled = false;
+        });
+      };
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST',
+          headers: {
+            'Accept': 'text/html',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Atlas-CSRF': csrf
+          },
+          body,
+          redirect: 'follow'
+        });
+        if (!response.ok) {
+          const text = flashFromHTML(await response.text()) || `Save failed (${response.status})`;
+          showFlash(text, true);
+          release();
+          return;
+        }
+        window.location.assign(response.url || boardURL().toString());
+      } catch (err) {
+        showServerDown();
+        showFlash(message('offline', 'The local server is unreachable. Work stays on disk; retry when Atlas Home is running.'), true);
+        release();
+      }
+    });
+  }
+
+  function startLiveBoard() {
+    if (document.body?.dataset?.page !== 'board') return;
+    if (typeof window.setInterval !== 'function') return;
+    let misses = 0;
+    window.setInterval(() => {
+      if (document.hidden || dragsInFlight > 0) return;
+      refreshBoard({ attempts: 1, quiet: true }).then(() => {
+        misses = 0;
+      }).catch(() => {
+        misses += 1;
+        if (misses >= 2) showServerDown();
+      });
+    }, 3000);
+  }
+
   function setupFormBusy() {
     document.querySelectorAll('form[method="post"]').forEach((form) => {
       form.addEventListener('submit', (event) => {
@@ -612,6 +738,8 @@
   restoreTicketFocus();
   prepareOpenDrawer();
   setupFormBusy();
+  setupResilientForms();
+  startLiveBoard();
   revealSelectedScheduleDay();
 
   document.addEventListener('dragstart', dismissCardPreview, true);

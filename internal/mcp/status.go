@@ -456,8 +456,10 @@ func parseFormatArg(args map[string]any) (string, error) {
 		return "markdown", nil
 	case "chat":
 		return "chat", nil
+	case "html":
+		return "html", nil
 	default:
-		return "", apperr.New(apperr.CodeInvalidInput, "format must be markdown or chat")
+		return "", apperr.New(apperr.CodeInvalidInput, "format must be markdown, chat, or html")
 	}
 }
 
@@ -465,6 +467,11 @@ func attachChatPresentation(paged map[string]any, args map[string]any, board ren
 	format, err := parseFormatArg(args)
 	if err != nil {
 		return err
+	}
+	if format == "html" {
+		paged["presentation"] = "html"
+		paged["html"] = render.CompactBoardWidgetFragment(board)
+		return nil
 	}
 	if format != "chat" {
 		return nil

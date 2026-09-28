@@ -62,6 +62,10 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	}
 	defer listener.Close()
 	actualPort := listener.Addr().(*net.TCPAddr).Port
+	token, csrf, err := webui.LoadOrCreateWebSession(filepath.Join(workspace.root, ".tracker", "web-session.json"))
+	if err != nil {
+		return err
+	}
 	server, err := webui.NewServer(webui.Services{Actions: workspace.actions, Queries: workspace.queries}, webui.Config{
 		Root:      workspace.root,
 		Workspace: filepath.Base(workspace.root),
@@ -71,6 +75,8 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 		Actor:     actor,
 		ReadOnly:  readOnly,
 		TokenMode: tokenMode,
+		Token:     token,
+		CSRFToken: csrf,
 		Clock:     defaultNow,
 	})
 	if err != nil {

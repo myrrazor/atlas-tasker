@@ -180,6 +180,9 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	wantIntegrations, _ := cmd.Flags().GetBool("integrations")
 	agents := !skipIntegrations && !noAgents && a.Settings().Agents.AutoInstall
 	jsonMode, _ := cmd.Flags().GetBool("json")
+	if !jsonMode {
+		a.SetNotice(cmd.ErrOrStderr())
+	}
 	openHome := !noOpen && !jsonMode && canPromptIntegrations(cmd)
 	result, err := a.Init(commandContext(cmd), app.InitOptions{
 		Root:           root,
@@ -436,7 +439,7 @@ func newAgentCommand() *cobra.Command {
 	autoSet.Flags().StringArray("argv", nil, "Command argv item; repeat once per argument. Shell interpreters are rejected.")
 	for _, sub := range []*cobra.Command{create, edit} {
 		sub.Flags().String("name", "", "Display name")
-		sub.Flags().String("provider", "", "Provider: codex, claude, human, custom")
+		sub.Flags().String("provider", "", "Provider: codex, claude, grok, human, custom")
 		sub.Flags().StringArray("capability", nil, "Capability tag")
 		sub.Flags().StringArray("ticket-type", nil, "Allowed ticket type")
 		sub.Flags().String("default-runbook", "", "Default runbook")
@@ -1136,7 +1139,10 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
-		return err
+		workspace, err = bootstrapEmptyWorkspace(cmd, err)
+		if err != nil {
+			return err
+		}
 	}
 	defer workspace.close()
 
@@ -2317,7 +2323,7 @@ func runSweep(cmd *cobra.Command, _ []string) error {
 
 func runBoard(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
-	workspace, err := openWorkspace()
+	workspace, err := openBoardWorkspace(cmd)
 	if err != nil {
 		return err
 	}
@@ -3054,14 +3060,9 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return apperr.New(apperr.CodeInvalidInput, "search requires a query or --view")
 	}
 	queryText := strings.TrimSpace(args[0])
-	query, err := contracts.ParseSearchQuery(queryText)
+	query, err := contracts.ParseSearchQueryFlexible(queryText)
 	if err != nil {
-		if !strings.ContainsAny(queryText, "=~") {
-			query, err = contracts.ParseSearchQuery("text~" + queryText)
-		}
-		if err != nil {
-			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%v (try structured terms like status=in_progress, project=AUTH, or text~multi word text)", err))
-		}
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%v (try structured terms like status=in_progress, project=AUTH, or text~multi word text)", err))
 	}
 	tickets, err := workspace.queries.Search(ctx, query)
 	if err != nil {

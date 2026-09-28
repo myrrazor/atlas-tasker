@@ -117,7 +117,7 @@ func TestBoardThousandTicketPerformanceTarget(t *testing.T) {
 		t.Logf("1000-ticket board query exceeded 250ms target: %s (set ATLAS_PERF_STRICT=1 to fail)", elapsed)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "http://atlas.local/board?project=WEB", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/board?project=WEB", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "test-token"})
 	res := httptest.NewRecorder()
 	renderStarted := time.Now()

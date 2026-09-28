@@ -930,8 +930,8 @@ func (s *Store) QuerySearch(ctx context.Context, query contracts.SearchQuery) ([
 			base += ` AND labels_json LIKE ?`
 			args = append(args, "%\""+term.Value+"\"%")
 		case contracts.SearchTermTextLike:
-			base += ` AND LOWER(COALESCE(title,'') || ' ' || COALESCE(summary,'') || ' ' || COALESCE(description,'') || ' ' || COALESCE(notes,'')) LIKE ?`
-			args = append(args, "%"+strings.ToLower(term.Value)+"%")
+			base += ` AND (LOWER(COALESCE(id,'') || ' ' || COALESCE(title,'') || ' ' || COALESCE(summary,'') || ' ' || COALESCE(description,'') || ' ' || COALESCE(notes,'')) LIKE ? OR UPPER(id) = UPPER(?))`
+			args = append(args, "%"+strings.ToLower(term.Value)+"%", term.Value)
 		default:
 			return nil, fmt.Errorf("unsupported search term kind: %s", term.Kind)
 		}

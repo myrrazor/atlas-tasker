@@ -3,6 +3,8 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -71,11 +73,70 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 			ReadOnly:     s.cfg.ReadOnly,
 			Project:      s.cfg.Project,
 			CSRFToken:    s.cfg.CSRFToken,
-			LocationName: locationName(s.cfg.Location, s.cfg.Clock()),
+			LocationName: locationName(s.location(), s.cfg.Clock()),
 			Error:        err.Error(),
+			NotFound:     apperr.CodeOf(err) == apperr.CodeNotFound,
 		}
 	}
-	s.renderPage(w, r, page, http.StatusOK)
+	status := http.StatusOK
+	if page.NotFound {
+		status = http.StatusNotFound
+	}
+	if status == http.StatusOK {
+		tag := boardETag(page)
+		w.Header().Set("ETag", tag)
+		if etagMatches(r.Header.Get("If-None-Match"), tag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+	s.renderPage(w, r, page, status)
+}
+
+func boardETag(page BoardPage) string {
+	hash := sha256.New()
+	fmt.Fprintf(hash, "%t\n%s\n%s\n%s\n", page.NotFound, page.Error, page.Flash, page.Query)
+	for _, column := range page.Columns {
+		fmt.Fprintf(hash, "col %s %d\n", column.Status, len(column.Tickets))
+		for _, card := range column.Tickets {
+			fmt.Fprintf(hash, "%s\t%s\t%s\t%s\n", card.Ticket.ID, card.Ticket.Status, card.Ticket.Title, TicketRevision(card.Ticket))
+		}
+	}
+	if page.Detail != nil {
+		ticket := page.Detail.View.Ticket
+		fmt.Fprintf(hash, "detail %s %s %s %s %s\n", ticket.ID, ticket.Title, ticket.Status, ticket.Description, TicketRevision(ticket))
+	}
+	sum := hash.Sum(nil)
+	return `"` + hex.EncodeToString(sum[:8]) + `"`
+}
+
+func etagMatches(header, tag string) bool {
+	header = strings.TrimSpace(header)
+	if header == "" || tag == "" {
+		return false
+	}
+	for _, part := range strings.Split(header, ",") {
+		part = strings.TrimSpace(part)
+		part = strings.TrimPrefix(part, "W/")
+		if part == tag {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) rejectActionMethod(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method == http.MethodPost {
+		return false
+	}
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		q := url.Values{}
+		q.Set("error_flash", "That address only accepts the form that submitted it. Use the board to try again.")
+		http.Redirect(w, r, s.actionBoardPath("")+"?"+q.Encode(), http.StatusSeeOther)
+		return true
+	}
+	s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+	return true
 }
 
 func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, page any, status int) {
@@ -196,8 +257,7 @@ func (s *Server) handleNewTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+	if s.rejectActionMethod(w, r) {
 		return
 	}
 	if s.cfg.ReadOnly {
@@ -242,17 +302,22 @@ func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:          now,
 		SchemaVersion:      contracts.CurrentSchemaVersion,
 	}
-	created, err := s.actions.CreateTrackedTicket(s.mutationContext(r, actor), ticket, actor, reason)
+	createdID, err := s.createOnce(r.Form.Get("submit_id"), func() (string, error) {
+		created, err := s.actions.CreateTrackedTicket(s.mutationContext(r, actor), ticket, actor, reason)
+		if err != nil {
+			return "", err
+		}
+		return created.ID, nil
+	})
 	if err != nil {
 		s.writeActionError(w, r, err, "")
 		return
 	}
-	s.actionSuccess(w, r, created.ID, "created "+created.ID)
+	s.actionSuccess(w, r, createdID, "created "+createdID)
 }
 
 func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+	if s.rejectActionMethod(w, r) {
 		return
 	}
 	if s.cfg.ReadOnly {
@@ -286,8 +351,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+	if s.rejectActionMethod(w, r) {
 		return
 	}
 	if s.cfg.ReadOnly {
@@ -328,8 +392,7 @@ func (s *Server) handleCreateAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTicketAction(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+	if s.rejectActionMethod(w, r) {
 		return
 	}
 	if s.cfg.ReadOnly {
@@ -415,6 +478,12 @@ func (s *Server) runTicketAction(w http.ResponseWriter, r *http.Request, ctx con
 		ticket, err = s.actions.ReleaseTicket(ctx, id, actor, reason)
 	case "archive", "delete":
 		ticket, err = s.actions.DeleteTrackedTicket(ctx, id, actor, reason)
+		if err != nil {
+			s.writeActionError(w, r, err, id)
+			return
+		}
+		s.actionSuccessCleared(w, r, fmt.Sprintf("deleted %s", id))
+		return
 	case "link":
 		kind := domain.LinkKind(strings.TrimSpace(r.Form.Get("kind")))
 		if kind == "" {
@@ -440,8 +509,7 @@ func (s *Server) runTicketAction(w http.ResponseWriter, r *http.Request, ctx con
 }
 
 func (s *Server) handleScheduleAction(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
+	if s.rejectActionMethod(w, r) {
 		return
 	}
 	if s.cfg.ReadOnly {
@@ -490,16 +558,17 @@ func (s *Server) parseScheduleLocal(raw string) (time.Time, error) {
 	if raw == "" {
 		return time.Time{}, apperr.New(apperr.CodeInvalidInput, "schedule time is required")
 	}
+	loc := s.location()
 	for _, layout := range []string{"2006-01-02T15:04", "2006-01-02T15:04:05"} {
-		at, err := time.ParseInLocation(layout, raw, s.cfg.Location)
+		at, err := time.ParseInLocation(layout, raw, loc)
 		if err == nil {
-			if at.In(s.cfg.Location).Format(layout) != raw {
-				return time.Time{}, apperr.New(apperr.CodeInvalidInput, "schedule time does not exist in "+locationName(s.cfg.Location, s.cfg.Clock()))
+			if at.In(loc).Format(layout) != raw {
+				return time.Time{}, apperr.New(apperr.CodeInvalidInput, "schedule time does not exist in "+locationName(loc, s.cfg.Clock()))
 			}
 			return at.UTC(), nil
 		}
 	}
-	return time.Time{}, apperr.New(apperr.CodeInvalidInput, "schedule time must be a local date and time in "+locationName(s.cfg.Location, s.cfg.Clock()))
+	return time.Time{}, apperr.New(apperr.CodeInvalidInput, "schedule time must be a local date and time in "+locationName(loc, s.cfg.Clock()))
 }
 
 // editMutatorFromForm applies only the submitted fields; the store validates
@@ -621,8 +690,23 @@ func (s *Server) moveTicket(ctx context.Context, id string, to contracts.Status,
 }
 
 func (s *Server) actionSuccess(w http.ResponseWriter, r *http.Request, ticketID string, flash string) {
+	s.finishAction(w, r, ticketID, flash, false)
+}
+
+func (s *Server) actionSuccessCleared(w http.ResponseWriter, r *http.Request, flash string) {
+	s.finishAction(w, r, "", flash, true)
+}
+
+func (s *Server) finishAction(w http.ResponseWriter, r *http.Request, ticketID string, flash string, clearTicket bool) {
 	if wantsJSON(r) {
-		s.writeJSON(w, "atlas_web_action", map[string]any{"ok": true, "ticket_id": ticketID, "flash": flash})
+		payload := map[string]any{"ok": true, "ticket_id": ticketID, "flash": flash}
+		if ticketID != "" && s.actions != nil && s.actions.Tickets != nil {
+			if ticket, err := s.actions.Tickets.GetTicket(r.Context(), ticketID); err == nil {
+				payload["status"] = string(ticket.Status)
+				payload["revision"] = TicketRevision(ticket)
+			}
+		}
+		s.writeJSON(w, "atlas_web_action", payload)
 		return
 	}
 	_, _, schedule, _, _ := s.navPaths()
@@ -633,11 +717,17 @@ func (s *Server) actionSuccess(w http.ResponseWriter, r *http.Request, ticketID 
 	}
 	if q.Get("return") == "schedule" {
 		q.Del("return")
+		if clearTicket {
+			q.Del("ticket")
+		}
 		q.Set("flash", flash)
 		http.Redirect(w, r, schedule+"?"+q.Encode(), http.StatusSeeOther)
 		return
 	}
-	if ticketID != "" {
+	if clearTicket {
+		q.Del("ticket")
+		q.Del("new")
+	} else if ticketID != "" {
 		q.Set("ticket", ticketID)
 	}
 	q.Set("flash", flash)
@@ -808,6 +898,28 @@ func splitLines(raw string) []string {
 		}
 	}
 	return out
+}
+
+func webActionError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	if apperr.CodeOf(err) == apperr.CodeConflict && strings.HasPrefix(msg, "forbidden transition:") {
+		return apperr.New(apperr.CodeInvalidInput, friendlyForbiddenTransition(msg))
+	}
+	return err
+}
+
+func friendlyForbiddenTransition(msg string) string {
+	rest := strings.TrimSpace(strings.TrimPrefix(msg, "forbidden transition:"))
+	from, to, ok := strings.Cut(rest, "->")
+	if !ok {
+		return "That move is not allowed."
+	}
+	from = strings.TrimSpace(strings.ReplaceAll(from, "_", " "))
+	to = strings.TrimSpace(strings.ReplaceAll(to, "_", " "))
+	return fmt.Sprintf("Can't move a ticket from %s straight to %s.", from, to)
 }
 
 func statusForError(err error) int {

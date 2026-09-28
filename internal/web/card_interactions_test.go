@@ -137,7 +137,7 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 		"document.addEventListener('scroll', dismissCardPreview, true)",
 		"event.key === 'Escape'",
 		"window.requestAnimationFrame(() =>",
-		"animation: 150",
+		"animation: cardCount() > 200 ? 0 : 150",
 		"ghostClass: 'sortable-ghost'",
 		"chosenClass: 'sortable-chosen'",
 		"function captureBoardMotion(grid)",

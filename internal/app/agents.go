@@ -68,6 +68,7 @@ func (a *App) setupAgents(ctx context.Context, ws *Workspace) AgentSetupReport {
 }
 
 func (a *App) registerDetectedClient(ctx context.Context, target integrations.Target, command string, args []string) AgentClientReport {
+	a.noticef("registering %s…", target)
 	client := AgentClientReport{Target: target, Command: command, Args: args}
 	exe := integrations.LookClientExecutable(a.lookPath(), target)
 	switch target {
@@ -227,7 +228,7 @@ func (a *App) runClientRegistration(ctx context.Context, client AgentClientRepor
 		Purpose:    adapter.CommandPurposeRegister,
 		Executable: exe,
 		Args:       append(append([]string{}, prefix...), extra...),
-		Timeout:    30 * time.Second,
+		Timeout:    8 * time.Second,
 	}
 	if err := cmd.Validate(); err != nil {
 		client.Status = AgentUnverified

@@ -115,7 +115,7 @@ func (s *Server) buildSchedulePage(ctx context.Context, r *http.Request) (Schedu
 		ProjectExplicit: strings.TrimSpace(query.Get("project")) != "",
 		Query:           strings.TrimSpace(query.Get("q")),
 		CSRFToken:       s.cfg.CSRFToken,
-		LocationName:    locationName(s.cfg.Location, s.cfg.Clock()),
+		LocationName:    locationName(s.location(), s.cfg.Clock()),
 		Flash:           strings.TrimSpace(query.Get("flash")),
 		Error:           strings.TrimSpace(query.Get("error_flash")),
 	}
@@ -138,7 +138,7 @@ func (s *Server) buildSchedulePage(ctx context.Context, r *http.Request) (Schedu
 	page.DateHeading = selected.Format("Monday, January 2")
 	page.PrevURL = s.scheduleURL(selected.AddDate(0, 0, -7), project, page.ProjectExplicit)
 	page.NextURL = s.scheduleURL(selected.AddDate(0, 0, 7), project, page.ProjectExplicit)
-	page.TodayURL = s.scheduleURL(scheduleDate(s.cfg.Clock(), s.cfg.Location), project, page.ProjectExplicit)
+	page.TodayURL = s.scheduleURL(scheduleDate(s.cfg.Clock(), s.location()), project, page.ProjectExplicit)
 	page.Week = s.scheduleWeek(weekStart, selected, view.Entries, project, page.ProjectExplicit)
 	page.Hours, page.Entries = s.scheduleHours(selected, view.Entries, project, page.ProjectExplicit)
 	page.History = s.scheduleHistory(view.History, project, page.ProjectExplicit)
@@ -155,9 +155,9 @@ func (s *Server) buildSchedulePage(ctx context.Context, r *http.Request) (Schedu
 
 func (s *Server) selectedScheduleDate(raw string) (time.Time, error) {
 	if strings.TrimSpace(raw) == "" {
-		return scheduleDate(s.cfg.Clock(), s.cfg.Location), nil
+		return scheduleDate(s.cfg.Clock(), s.location()), nil
 	}
-	selected, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(raw), s.cfg.Location)
+	selected, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(raw), s.location())
 	if err != nil {
 		return time.Time{}, apperr.New(apperr.CodeInvalidInput, "schedule date must use YYYY-MM-DD")
 	}
@@ -165,17 +165,37 @@ func (s *Server) selectedScheduleDate(raw string) (time.Time, error) {
 }
 
 func scheduleDate(value time.Time, location *time.Location) time.Time {
+	location = safeLocation(location)
 	local := value.In(location)
 	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
+}
+
+// safeLocation never returns nil. Home builds workspace servers without
+// NewServer, and a nil Location panics inside time.Time.In / time.Date.
+func safeLocation(location *time.Location) *time.Location {
+	if location != nil {
+		return location
+	}
+	if time.Local != nil {
+		return time.Local
+	}
+	return time.UTC
+}
+
+func (s *Server) location() *time.Location {
+	if s == nil {
+		return safeLocation(nil)
+	}
+	return safeLocation(s.cfg.Location)
 }
 
 func (s *Server) scheduleWeek(start time.Time, selected time.Time, entries []service.ScheduleEntry, project string, explicit bool) []ScheduleDay {
 	counts := map[string]int{}
 	for _, entry := range entries {
-		key := entry.Ticket.Schedule.At.In(s.cfg.Location).Format("2006-01-02")
+		key := entry.Ticket.Schedule.At.In(s.location()).Format("2006-01-02")
 		counts[key]++
 	}
-	today := scheduleDate(s.cfg.Clock(), s.cfg.Location)
+	today := scheduleDate(s.cfg.Clock(), s.location())
 	days := make([]ScheduleDay, 0, 7)
 	for offset := 0; offset < 7; offset++ {
 		day := start.AddDate(0, 0, offset)
@@ -198,7 +218,7 @@ func (s *Server) scheduleHours(selected time.Time, entries []service.ScheduleEnt
 	firstHour := 24
 	lastHour := -1
 	for _, entry := range entries {
-		local := entry.Ticket.Schedule.At.In(s.cfg.Location)
+		local := entry.Ticket.Schedule.At.In(s.location())
 		if !sameScheduleDate(local, selected) {
 			continue
 		}
@@ -214,10 +234,10 @@ func (s *Server) scheduleHours(selected time.Time, entries []service.ScheduleEnt
 	if count == 0 {
 		return nil, 0
 	}
-	now := s.cfg.Clock().In(s.cfg.Location)
+	now := s.cfg.Clock().In(s.location())
 	hours := make([]ScheduleHour, 0, lastHour-firstHour+1)
 	for hour := firstHour; hour <= lastHour; hour++ {
-		at := time.Date(selected.Year(), selected.Month(), selected.Day(), hour, 0, 0, 0, s.cfg.Location)
+		at := time.Date(selected.Year(), selected.Month(), selected.Day(), hour, 0, 0, 0, s.location())
 		hours = append(hours, ScheduleHour{
 			Label:   at.Format("15:04"),
 			ID:      fmt.Sprintf("hour-%02d", hour),
@@ -229,7 +249,7 @@ func (s *Server) scheduleHours(selected time.Time, entries []service.ScheduleEnt
 }
 
 func (s *Server) scheduleCard(entry service.ScheduleEntry, project string, explicit bool) ScheduleCard {
-	local := entry.Ticket.Schedule.At.In(s.cfg.Location)
+	local := entry.Ticket.Schedule.At.In(s.location())
 	runnerMeta := "Human reminder"
 	if entry.RunnerKind == "agent" {
 		runnerMeta = "Agent"
@@ -261,7 +281,7 @@ func (s *Server) scheduleCard(entry service.ScheduleEntry, project string, expli
 func (s *Server) scheduleHistory(entries []service.CompletionEntry, project string, explicit bool) []ScheduleHistoryItem {
 	items := make([]ScheduleHistoryItem, 0, len(entries))
 	for _, entry := range entries {
-		local := entry.CompletedAt.In(s.cfg.Location)
+		local := entry.CompletedAt.In(s.location())
 		items = append(items, ScheduleHistoryItem{
 			Entry:     entry,
 			Time:      local.Format("15:04"),
@@ -371,6 +391,7 @@ func (s *Server) boardTicketURL(ticketID string, project string, explicit bool) 
 }
 
 func locationName(location *time.Location, at time.Time) string {
+	location = safeLocation(location)
 	if location.String() != "Local" {
 		return location.String()
 	}

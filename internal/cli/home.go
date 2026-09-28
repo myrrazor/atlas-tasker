@@ -102,11 +102,17 @@ func runHomeServe(cmd *cobra.Command, _ []string) error {
 	if strings.TrimSpace(host) == "" {
 		host = a.Settings().Service.Bind
 	}
+	token, csrf, err := webui.LoadOrCreateWebSession(filepath.Join(a.StateDir(), "home-session.json"))
+	if err != nil {
+		return err
+	}
 	server, err := webui.NewHomeServer(a, webui.HomeConfig{
 		Host:     host,
 		Port:     port,
 		Actor:    "human:owner",
 		ReadOnly: false,
+		Token:    token,
+		CSRF:     csrf,
 	})
 	if err != nil {
 		return err

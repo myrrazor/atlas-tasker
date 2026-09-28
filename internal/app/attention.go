@@ -93,7 +93,7 @@ func (a *App) Search(ctx context.Context, opts SearchOptions) (SearchReport, err
 	if strings.TrimSpace(opts.Query) == "" {
 		return report, nil
 	}
-	query, err := contracts.ParseSearchQuery(opts.Query)
+	query, err := contracts.ParseSearchQueryFlexible(opts.Query)
 	if err != nil {
 		return SearchReport{}, err
 	}

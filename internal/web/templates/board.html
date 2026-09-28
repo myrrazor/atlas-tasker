@@ -1,6 +1,15 @@
 {{define "revInput"}}<input type="hidden" name="expected_revision" value="{{ticketRevision .}}">{{end}}
 
 {{define "boardContent"}}
+{{if .NotFound}}
+<main class="app-shell">
+  <section class="not-found" role="alert">
+    <h1>Not found</h1>
+    <p>{{.Error}}</p>
+    <p><a class="primary-action" href="{{.BoardPath}}">Back to the board</a></p>
+  </section>
+</main>
+{{else}}
 <main class="app-shell{{if or .Detail .ShowNew}} has-drawer{{end}}">
   <section class="board-shell" aria-label="{{t "board.aria"}}">
     {{if .Flash}}<div class="flash" role="status">{{.Flash}}</div>{{end}}
@@ -196,6 +205,7 @@
   {{end}}
 </main>
 {{end}}
+{{end}}
 
 {{define "column"}}
 <article class="column {{if .ActiveMobile}}is-active-mobile{{end}}" data-status="{{.Status}}">
@@ -258,10 +268,11 @@
   <a href="{{.BoardPath}}?ticket=" class="close-button" aria-label="{{t "common.close"}}">×</a>
 </div>
 <form class="drawer-form" method="post" action="{{.ActionPrefix}}/actions/tickets/create">
+  {{$cf := .FormFor "create"}}
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <input type="hidden" name="submit_id" value="{{formValue $cf "submit_id" .SubmitID}}">
   <input type="hidden" name="actor" value="{{.Actor}}">
   {{if .Project}}<input type="hidden" name="return_project" value="{{.Project}}">{{end}}
-  {{$cf := .FormFor "create"}}
   {{$ctype := formValue $cf "type" "task"}}
   {{$cprio := formValue $cf "priority" "medium"}}
   <label>{{t "board.field.project"}} <input name="project" value="{{formValue $cf "project" .Project}}" required></label>

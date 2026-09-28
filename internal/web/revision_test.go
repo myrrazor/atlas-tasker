@@ -62,7 +62,7 @@ func TestStaleEditAfterAgentMutationConflicts(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/edit", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 		"Accept":       "application/json",
 	})
 	if res.code != http.StatusConflict {
@@ -98,7 +98,7 @@ func TestMatchingRevisionEditSucceeds(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/edit", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusSeeOther {
 		t.Fatalf("status=%d body=%s", res.code, res.body)
@@ -133,7 +133,7 @@ func TestStaleDragMoveConflicts(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/move", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 		"Accept":       "application/json",
 	})
 	if res.code != http.StatusConflict {
@@ -175,7 +175,7 @@ func TestBulkStaleRevisionWritesNothing(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/bulk", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 		"Accept":       "application/json",
 	})
 	if res.code != http.StatusConflict {
@@ -197,7 +197,7 @@ func TestRevisionOptionalKeepsLegacyCallers(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/move", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusSeeOther {
 		t.Fatalf("status=%d body=%s", res.code, res.body)
@@ -221,7 +221,7 @@ func TestMalformedRevisionConflicts(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/edit", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 		"Accept":       "application/json",
 	})
 	if res.code != http.StatusConflict {

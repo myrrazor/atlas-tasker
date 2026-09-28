@@ -309,7 +309,7 @@ func TestNotesTextareaRoundTripsThroughEdit(t *testing.T) {
 	}
 	saved := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/edit", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if saved.code != http.StatusSeeOther {
 		t.Fatalf("save status=%d body=%s", saved.code, saved.body)
@@ -377,7 +377,7 @@ func TestRejectedEditKeepsNotesAndShowsError(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/edit", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusBadRequest {
 		t.Fatalf("status=%d body=%s", res.code, res.body)

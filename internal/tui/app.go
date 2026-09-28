@@ -172,6 +172,7 @@ type model struct {
 	cursor             int
 	status             string
 	showHelp           bool
+	indexMod           time.Time
 	dialog             dialogState
 	lastBulk           *service.BulkOperationResult
 	pendingBulk        *service.BulkOperation
@@ -332,8 +333,14 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 	}, nil
 }
 
+type watchTickMsg struct{}
+
+func watchTick() tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return watchTickMsg{} })
+}
+
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.refresh(), splashMinDelayCmd())
+	return tea.Batch(m.refresh(), splashMinDelayCmd(), watchTick())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -446,6 +453,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "synced"
 		}
 		return m, nil
+	case watchTickMsg:
+		if m.dialog.active() || m.search.Focused() || m.showHelp {
+			return m, watchTick()
+		}
+		info, err := os.Stat(filepath.Join(storage.TrackerDir(m.root), "index.sqlite"))
+		if err != nil {
+			return m, watchTick()
+		}
+		if m.indexMod.IsZero() {
+			m.indexMod = info.ModTime()
+			return m, watchTick()
+		}
+		if info.ModTime().After(m.indexMod) {
+			m.indexMod = info.ModTime()
+			return m, tea.Batch(m.refresh(), watchTick())
+		}
+		return m, watchTick()
 	case detailMsg:
 		if msg.err != nil {
 			m.status = msg.err.Error()
@@ -841,7 +865,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 		}
 		searchHits := []contracts.TicketSnapshot{}
 		if searchQuery != "" {
-			parsed, err := contracts.ParseSearchQuery(searchQuery)
+			parsed, err := contracts.ParseSearchQueryFlexible(searchQuery)
 			if err != nil {
 				return loadedMsg{err: err}
 			}

@@ -15,8 +15,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
@@ -203,6 +205,8 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	if err := validateLoopbackListener(ln); err != nil {
 		return err
 	}
+	signal.Ignore(syscall.SIGPIPE)
+	fmt.Fprintf(os.Stderr, "%s atlas web listening on %s\n", time.Now().Format(time.RFC3339), ln.Addr().String())
 	server := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	done := make(chan error, 1)
 	go func() {
@@ -229,6 +233,10 @@ func (s *Server) security(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
 		r = r.WithContext(ctx)
 		s.writeSecurityHeaders(w, r)
+		if !loopbackHostAllowed(r.Host, s.cfg.Host, s.cfg.Port) {
+			http.Error(w, "host not allowed", http.StatusForbidden)
+			return
+		}
 		if r.Method == http.MethodOptions {
 			http.Error(w, "CORS is not enabled", http.StatusForbidden)
 			return
@@ -368,6 +376,7 @@ func (s *Server) writeError(w http.ResponseWriter, r *http.Request, err error, s
 // form — a redirect would both lose everything the user typed (no-store
 // disables bfcache) and read as success to non-browser clients following it.
 func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err error, ticketID string) {
+	err = webActionError(err)
 	if wantsJSON(r) {
 		s.writeError(w, r, err, statusForError(err))
 		return

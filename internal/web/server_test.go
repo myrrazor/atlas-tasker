@@ -122,7 +122,7 @@ func TestNewServerRejectsNonLoopbackHost(t *testing.T) {
 func TestSecurityHeadersSessionAndNoCORS(t *testing.T) {
 	h := newWebHarness(t, false)
 	health := httptest.NewRecorder()
-	h.handler.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "http://atlas.local/healthz", nil))
+	h.handler.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/healthz", nil))
 	if health.Code != http.StatusOK {
 		t.Fatalf("health status = %d", health.Code)
 	}
@@ -137,13 +137,13 @@ func TestSecurityHeadersSessionAndNoCORS(t *testing.T) {
 	}
 
 	unauthorized := httptest.NewRecorder()
-	h.handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "http://atlas.local/board", nil))
+	h.handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/board", nil))
 	if unauthorized.Code != http.StatusUnauthorized {
 		t.Fatalf("expected missing session to return 401, got %d", unauthorized.Code)
 	}
 
 	preflight := httptest.NewRecorder()
-	h.handler.ServeHTTP(preflight, httptest.NewRequest(http.MethodOptions, "http://atlas.local/board", nil))
+	h.handler.ServeHTTP(preflight, httptest.NewRequest(http.MethodOptions, "http://127.0.0.1/board", nil))
 	if preflight.Code != http.StatusForbidden {
 		t.Fatalf("expected OPTIONS to be rejected, got %d", preflight.Code)
 	}
@@ -152,13 +152,13 @@ func TestSecurityHeadersSessionAndNoCORS(t *testing.T) {
 	}
 
 	static := httptest.NewRecorder()
-	h.handler.ServeHTTP(static, httptest.NewRequest(http.MethodGet, "http://atlas.local/static/app.css", nil))
+	h.handler.ServeHTTP(static, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/static/app.css", nil))
 	if static.Code != http.StatusOK || !strings.Contains(static.Body.String(), "app-shell") {
 		t.Fatalf("expected static CSS to be served, code=%d body=%s", static.Code, static.Body.String())
 	}
 
 	favicon := httptest.NewRecorder()
-	h.handler.ServeHTTP(favicon, httptest.NewRequest(http.MethodGet, "http://atlas.local/favicon.ico", nil))
+	h.handler.ServeHTTP(favicon, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/favicon.ico", nil))
 	if favicon.Code != http.StatusSeeOther || favicon.Header().Get("Location") != "/static/favicon.svg" {
 		t.Fatalf("expected favicon redirect, code=%d location=%q", favicon.Code, favicon.Header().Get("Location"))
 	}
@@ -167,7 +167,7 @@ func TestSecurityHeadersSessionAndNoCORS(t *testing.T) {
 func TestTokenQuerySetsStrictSessionCookie(t *testing.T) {
 	h := newWebHarness(t, false)
 	res := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "http://atlas.local/board?token=test-token&project=WEB", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/board?token=test-token&project=WEB", nil)
 	h.handler.ServeHTTP(res, req)
 	if res.Code != http.StatusSeeOther {
 		t.Fatalf("expected token redirect, got %d", res.Code)
@@ -237,7 +237,7 @@ func TestMutationCSRFOriginReadOnlyAndWebSurface(t *testing.T) {
 	created := h.doAuthed(t, http.MethodPost, "/actions/tickets/create", withCSRF(form).Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
 		"Accept":       "application/json",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if created.code != http.StatusOK {
 		t.Fatalf("expected create to pass, got %d body=%s", created.code, created.body)
@@ -255,7 +255,7 @@ func TestMutationCSRFOriginReadOnlyAndWebSurface(t *testing.T) {
 	commented := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+ticketID+"/comment", comment.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
 		"Accept":       "application/json",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if commented.code != http.StatusOK {
 		t.Fatalf("expected comment to pass, got %d body=%s", commented.code, commented.body)
@@ -272,7 +272,7 @@ func TestMutationCSRFOriginReadOnlyAndWebSurface(t *testing.T) {
 	blocked := readOnly.doAuthed(t, http.MethodPost, "/actions/tickets/create", withCSRF(form).Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
 		"Accept":       "application/json",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if blocked.code != http.StatusForbidden {
 		t.Fatalf("expected read-only mutation rejection, got %d body=%s", blocked.code, blocked.body)
@@ -299,7 +299,7 @@ type httpResult struct {
 
 func (h webHarness) doAuthed(t *testing.T, method string, target string, body string, headers map[string]string) httpResult {
 	t.Helper()
-	req := httptest.NewRequest(method, "http://atlas.local"+target, strings.NewReader(body))
+	req := httptest.NewRequest(method, "http://127.0.0.1"+target, strings.NewReader(body))
 	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "test-token"})
 	for key, value := range headers {
 		req.Header.Set(key, value)
@@ -315,7 +315,7 @@ func (h webHarness) doAuthed(t *testing.T, method string, target string, body st
 
 func doRaw(t *testing.T, handler http.Handler, method string, target string, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(method, "http://atlas.local"+target, nil)
+	req := httptest.NewRequest(method, "http://127.0.0.1"+target, nil)
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}

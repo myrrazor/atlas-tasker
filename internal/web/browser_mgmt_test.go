@@ -184,7 +184,7 @@ func TestDuplicateProjectCreateIsConflict(t *testing.T) {
 	form := url.Values{"csrf_token": {"test-csrf"}, "key": {"WEB"}, "name": {"Again"}}
 	res := h.doAuthed(t, http.MethodPost, "/actions/projects/create", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusConflict {
 		t.Fatalf("duplicate project status=%d body=%s", res.code, res.body)
@@ -227,7 +227,7 @@ func TestTicketClaimReleaseArchiveAndLink(t *testing.T) {
 		"csrf_token":        {"test-csrf"},
 		"reason":            {"web claim ticket"},
 		"expected_revision": {rev()},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if claim.code != http.StatusSeeOther {
 		t.Fatalf("claim status=%d body=%s", claim.code, claim.body)
 	}
@@ -243,7 +243,7 @@ func TestTicketClaimReleaseArchiveAndLink(t *testing.T) {
 		"csrf_token":        {"test-csrf"},
 		"reason":            {"web release ticket"},
 		"expected_revision": {rev()},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if release.code != http.StatusSeeOther {
 		t.Fatalf("release status=%d body=%s", release.code, release.body)
 	}
@@ -267,7 +267,7 @@ func TestTicketClaimReleaseArchiveAndLink(t *testing.T) {
 		"kind":              {"blocks"},
 		"reason":            {"web link ticket"},
 		"expected_revision": {rev()},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if link.code != http.StatusSeeOther {
 		t.Fatalf("link status=%d body=%s", link.code, link.body)
 	}
@@ -290,7 +290,7 @@ func TestTicketClaimReleaseArchiveAndLink(t *testing.T) {
 		"assignee":          {"human:ada"},
 		"reason":            {"web assign"},
 		"expected_revision": {rev()},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if human.code != http.StatusSeeOther {
 		t.Fatalf("human assign status=%d body=%s", human.code, human.body)
 	}
@@ -300,7 +300,7 @@ func TestTicketClaimReleaseArchiveAndLink(t *testing.T) {
 		"assignee":          {"not-an-actor"},
 		"reason":            {"web assign"},
 		"expected_revision": {rev()},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if badActor.code != http.StatusBadRequest {
 		t.Fatalf("invalid actor status=%d body=%s", badActor.code, badActor.body)
 	}
@@ -316,7 +316,7 @@ func TestTicketClaimReleaseArchiveAndLink(t *testing.T) {
 		"csrf_token":        {"test-csrf"},
 		"reason":            {"stale archive"},
 		"expected_revision": {stale},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if staleEdit.code != http.StatusConflict {
 		t.Fatalf("stale delete status=%d body=%s", staleEdit.code, staleEdit.body)
 	}
@@ -325,7 +325,7 @@ func TestTicketClaimReleaseArchiveAndLink(t *testing.T) {
 		"csrf_token":        {"test-csrf"},
 		"reason":            {"web delete ticket"},
 		"expected_revision": {rev()},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if archived.code != http.StatusSeeOther {
 		t.Fatalf("delete status=%d body=%s", archived.code, archived.body)
 	}
@@ -359,8 +359,11 @@ func TestTicketClaimReleaseArchiveAndLink(t *testing.T) {
 	}
 
 	getWrite := h.doAuthed(t, http.MethodGet, "/actions/tickets/"+h.ticketID+"/delete", "", nil)
-	if getWrite.code != http.StatusMethodNotAllowed {
-		t.Fatalf("GET delete status=%d", getWrite.code)
+	if getWrite.code != http.StatusSeeOther {
+		t.Fatalf("GET delete status=%d body=%s", getWrite.code, getWrite.body)
+	}
+	if !strings.Contains(getWrite.header.Get("Location"), "error_flash=") {
+		t.Fatalf("GET delete location=%q", getWrite.header.Get("Location"))
 	}
 }
 
@@ -368,7 +371,7 @@ func TestArchiveCSRFReadOnlyAndPermission(t *testing.T) {
 	h := newWebHarness(t, false)
 	missing := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/delete", url.Values{
 		"reason": {"no csrf"},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if missing.code != http.StatusForbidden {
 		t.Fatalf("csrf status=%d body=%s", missing.code, missing.body)
 	}
@@ -376,7 +379,7 @@ func TestArchiveCSRFReadOnlyAndPermission(t *testing.T) {
 	blocked := ro.doAuthed(t, http.MethodPost, "/actions/tickets/"+ro.ticketID+"/delete", url.Values{
 		"csrf_token": {"test-csrf"},
 		"reason":     {"readonly"},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if blocked.code != http.StatusForbidden {
 		t.Fatalf("read-only status=%d body=%s", blocked.code, blocked.body)
 	}
@@ -563,7 +566,7 @@ func TestBoardRegistersWorkspaceAgent(t *testing.T) {
 		"name":       {"Reviewer"},
 		"provider":   {"claude"},
 		"reason":     {"web register agent"},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if res.code != http.StatusSeeOther {
 		t.Fatalf("create agent status=%d body=%s", res.code, res.body)
 	}
@@ -584,7 +587,7 @@ func TestBoardAgentRegistrationPreservesExistingProfile(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/agents/create", url.Values{
 		"csrf_token": {"test-csrf"}, "agent_id": {"BUILD_ER"}, "name": {"Replacement"}, "provider": {"claude"},
-	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+	}.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 	if res.code != http.StatusConflict {
 		t.Fatalf("duplicate agent registration status=%d body=%s", res.code, res.body)
 	}
@@ -602,7 +605,7 @@ func TestBoardAgentRegistrationRejectsInvalidInput(t *testing.T) {
 		{"agent_id": {"new-builder"}, "name": {"Builder"}, "provider": {"unknown"}},
 	} {
 		form.Set("csrf_token", "test-csrf")
-		res := h.doAuthed(t, http.MethodPost, "/actions/agents/create", form.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"})
+		res := h.doAuthed(t, http.MethodPost, "/actions/agents/create", form.Encode(), map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"})
 		if res.code != http.StatusBadRequest {
 			t.Fatalf("invalid agent registration status=%d body=%s", res.code, res.body)
 		}

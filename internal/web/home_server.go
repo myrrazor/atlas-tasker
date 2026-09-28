@@ -9,7 +9,10 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/app"
@@ -119,6 +122,8 @@ func (s *HomeServer) Serve(ctx context.Context, ln net.Listener) error {
 	if err := validateLoopbackListener(ln); err != nil {
 		return err
 	}
+	signal.Ignore(syscall.SIGPIPE)
+	fmt.Fprintf(os.Stderr, "%s atlas home listening on %s\n", time.Now().Format(time.RFC3339), ln.Addr().String())
 	if addr, ok := ln.Addr().(*net.TCPAddr); ok {
 		s.cfg.Port = addr.Port
 	}
@@ -337,6 +342,7 @@ func (s *HomeServer) innerServer(ws *app.Workspace, project string) *Server {
 			Token:       s.token,
 			CSRFToken:   s.csrf,
 			Clock:       s.cfg.Clock,
+			Location:    time.Local,
 			RoutePrefix: "/w/" + ws.ID,
 			BoardPath:   homeBoardPath(ws.ID, project),
 			HomePath:    "/w/" + ws.ID,

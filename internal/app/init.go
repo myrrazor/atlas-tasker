@@ -51,6 +51,7 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 	}()
 	settings := a.snapshotSettings()
 
+	a.noticef("scaffolding workspace…")
 	scaffold, err := ScaffoldWorkspace(root, ScaffoldOptions{Now: a.opts.Now, GitMode: opts.GitMode})
 	if err != nil {
 		return InitResult{}, err
@@ -122,6 +123,7 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 	}
 
 	if opts.Agents && settings.Agents.AutoInstall && opts.WriteClientCfg {
+		a.noticef("registering agents…")
 		result.Agents = a.setupAgents(ctx, ws)
 		result.Steps = append(result.Steps, agentStep(result.Agents))
 	} else if opts.Agents && settings.Agents.AutoInstall && !opts.WriteClientCfg {
@@ -135,6 +137,7 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 	_ = release()
 	release = nil
 
+	a.noticef("starting Atlas Home…")
 	result.Service, result.Steps = a.initHomeService(ctx, opts, result.Steps)
 	if err := a.writeInitJournal(result); err != nil {
 		result.Steps = append(result.Steps, InitStep{Name: "journal", Status: InitStepFailed, Detail: err.Error()})
@@ -225,6 +228,22 @@ func (a *App) initHomeService(ctx context.Context, opts InitOptions, steps []Ini
 	}
 	status, err := a.EnsureService(ctx, ServiceOptions{OpenBrowser: opts.OpenHome})
 	if err != nil {
+		if homePortOccupied(err) {
+			if status.URL == "" {
+				status = ServiceStatus{
+					Kind:       "atlas_home_status",
+					Host:       settings.Service.Bind,
+					Port:       settings.Service.Port,
+					URL:        homeURL(settings.Service.Bind, settings.Service.Port),
+					InstanceID: settings.InstanceID,
+					Detail:     err.Error(),
+				}
+			} else if status.Detail == "" {
+				status.Detail = err.Error()
+			}
+			a.noticef("Atlas Home: %s", err.Error())
+			return &status, append(steps, InitStep{Name: "service", Status: InitStepUnverified, Detail: err.Error()})
+		}
 		if status.URL == "" {
 			status = ServiceStatus{
 				Kind:       "atlas_home_status",
@@ -240,6 +259,14 @@ func (a *App) initHomeService(ctx context.Context, opts InitOptions, steps []Ini
 		return &status, append(steps, InitStep{Name: "service", Status: InitStepFailed, Detail: err.Error()})
 	}
 	return &status, append(steps, InitStep{Name: "service", Status: InitStepDone, Detail: status.URL})
+}
+
+func homePortOccupied(err error) bool {
+	if apperr.CodeOf(err) != apperr.CodeConflict {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "owned by a different Atlas instance") || strings.Contains(msg, "occupied by another application")
 }
 
 func ensureInitProject(ctx context.Context, ws *Workspace, root, key, name string) (string, error) {

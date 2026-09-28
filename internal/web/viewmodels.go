@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os/user"
@@ -60,6 +61,8 @@ type BoardPage struct {
 	SavedViews    []contracts.SavedView `json:"-"`
 	ShowArchived  bool                  `json:"-"`
 	Archived      []TicketCard          `json:"-"`
+	NotFound      bool                  `json:"-"`
+	SubmitID      string                `json:"-"`
 }
 
 type WelcomePage struct {
@@ -221,7 +224,15 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		Error:           strings.TrimSpace(query.Get("error_flash")),
 		ShowNew:         query.Get("new") == "1",
 		ShowArchived:    query.Get("archived") == "1",
-		LocationName:    locationName(s.cfg.Location, s.cfg.Clock()),
+		LocationName:    locationName(s.location(), s.cfg.Clock()),
+		SubmitID:        randomToken(),
+	}
+	if page.ProjectExplicit && page.Project != "" && s.queries != nil && s.queries.Projects != nil {
+		if _, err := s.queries.Projects.GetProject(ctx, page.Project); err != nil {
+			page.NotFound = true
+			page.Error = fmt.Sprintf("Project %s was not found.", page.Project)
+			return page, nil
+		}
 	}
 	board, err := s.loadBoard(ctx, page)
 	if err != nil {
@@ -244,7 +255,12 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 	if selected != "" {
 		detail, err := s.ticketDetail(ctx, selected)
 		if err != nil {
-			page.Error = err.Error()
+			if apperr.CodeOf(err) == apperr.CodeNotFound {
+				page.NotFound = true
+				page.Error = fmt.Sprintf("Ticket %s was not found.", selected)
+			} else {
+				page.Error = err.Error()
+			}
 		} else {
 			page.Detail = &detail
 		}
@@ -593,7 +609,7 @@ func (s *Server) ticketDetail(ctx context.Context, ticketID string) (TicketDetai
 		CheckCount: len(view.Checks),
 	}
 	if view.Ticket.Schedule != nil {
-		local := view.Ticket.Schedule.At.In(s.cfg.Location)
+		local := view.Ticket.Schedule.At.In(s.location())
 		detail.ScheduleAtInput = local.Format("2006-01-02T15:04")
 		detail.ScheduleAtLabel = local.Format("Mon, Jan 2 · 15:04")
 	}

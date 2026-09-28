@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="atlas-csrf-token" content="{{.CSRFToken}}">
-  <title>{{if eq .Page "home"}}Atlas Home{{else if eq .Page "attention"}}Attention · Atlas Home{{else if eq .Page "search"}}Search · Atlas Home{{else if eq .Page "workspace"}}{{if .DisplayName}}{{.DisplayName}}{{else}}{{.WorkspaceID}}{{end}} · Atlas Home{{else if eq .Page "activity"}}Activity · Atlas Home{{else if eq .Page "backup"}}Backup · Atlas Home{{else if eq .Page "unavailable"}}Repair · Atlas Home{{else}}Atlas Home{{end}}</title>
+  <title>{{if eq .Page "home"}}Atlas Home{{else if eq .Page "attention"}}Attention · Atlas Home{{else if eq .Page "search"}}Search · Atlas Home{{else if eq .Page "notfound"}}Not found · Atlas Home{{else if eq .Page "workspace"}}{{if .DisplayName}}{{.DisplayName}}{{else}}{{.WorkspaceID}}{{end}} · Atlas Home{{else if eq .Page "activity"}}Activity · Atlas Home{{else if eq .Page "backup"}}Backup · Atlas Home{{else if eq .Page "unavailable"}}Repair · Atlas Home{{else}}Atlas Home{{end}}</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
   <link rel="stylesheet" href="/static/home.css">
@@ -65,6 +65,7 @@
             {{end}}
             {{if eq .Page "activity"}}<span aria-hidden="true">/</span><span aria-current="page">Activity</span>{{end}}
             {{if eq .Page "backup"}}<span aria-hidden="true">/</span><span aria-current="page">Backup</span>{{end}}
+            {{if eq .Page "notfound"}}<span aria-hidden="true">/</span><span aria-current="page">Not found</span>{{end}}
             {{if eq .Page "attention"}}<span aria-hidden="true">/</span><span aria-current="page">Attention</span>{{end}}
             {{if eq .Page "search"}}<span aria-hidden="true">/</span><span aria-current="page">Search</span>{{end}}
             {{if or (eq .Page "settings") (eq .Page "settings-agents") (eq .Page "settings-workspaces")}}<span aria-hidden="true">/</span><span aria-current="page">Settings</span>{{end}}
@@ -92,6 +93,7 @@
         {{if eq .Page "activity"}}{{template "homeActivity" .}}{{end}}
         {{if eq .Page "backup"}}{{template "homeBackup" .}}{{end}}
         {{if eq .Page "unavailable"}}{{template "homeUnavailable" .}}{{end}}
+        {{if eq .Page "notfound"}}{{template "homeNotFound" .}}{{end}}
         {{if or (eq .Page "settings") (eq .Page "settings-agents") (eq .Page "settings-workspaces")}}{{template "homeSettings" .}}{{end}}
       </div>
     </div>
@@ -376,6 +378,17 @@
     {{else}}
       <p>No backup health for this workspace.</p>
     {{end}}
+  </section>
+</main>
+{{end}}
+
+{{define "homeNotFound"}}
+<main class="welcome-shell home-shell home-narrow">
+  <section class="welcome-main not-found" role="alert">
+    <p class="section-kicker">Missing</p>
+    <h1>Not found</h1>
+    <p>{{.Error}}</p>
+    <p><a class="primary-action" href="/">Back to Atlas Home</a></p>
   </section>
 </main>
 {{end}}

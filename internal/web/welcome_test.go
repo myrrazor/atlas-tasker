@@ -56,7 +56,7 @@ func TestCreateProjectUsesActionServiceAndPreservesVerbatimErrors(t *testing.T) 
 	}
 	created := h.doAuthed(t, http.MethodPost, "/actions/projects/create", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if created.code != http.StatusSeeOther || created.header.Get("Location") != "/?flash=created+project+OPS" {
 		t.Fatalf("unexpected project create response: code=%d location=%q body=%s", created.code, created.header.Get("Location"), created.body)
@@ -81,7 +81,7 @@ func TestCreateProjectUsesActionServiceAndPreservesVerbatimErrors(t *testing.T) 
 	}
 	rejected := h.doAuthed(t, http.MethodPost, "/actions/projects/create", bad.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if rejected.code != http.StatusBadRequest {
 		t.Fatalf("expected invalid project to return 400, got %d body=%s", rejected.code, rejected.body)
@@ -100,7 +100,7 @@ func TestProjectCreateHonorsCSRFAndReadOnly(t *testing.T) {
 	form := url.Values{"key": {"OPS"}, "name": {"Operations"}}
 	missingCSRF := h.doAuthed(t, http.MethodPost, "/actions/projects/create", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if missingCSRF.code != http.StatusForbidden || !strings.Contains(missingCSRF.body, "invalid csrf token") {
 		t.Fatalf("expected project CSRF error on welcome page, got %d body=%s", missingCSRF.code, missingCSRF.body)
@@ -109,7 +109,7 @@ func TestProjectCreateHonorsCSRFAndReadOnly(t *testing.T) {
 	readOnly := newWebHarness(t, true)
 	blocked := readOnly.doAuthed(t, http.MethodPost, "/actions/projects/create", withCSRF(form).Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if blocked.code != http.StatusForbidden || !strings.Contains(blocked.body, "web board is read-only") {
 		t.Fatalf("expected read-only project create rejection, got %d body=%s", blocked.code, blocked.body)
