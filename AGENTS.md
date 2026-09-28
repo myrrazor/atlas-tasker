@@ -30,13 +30,18 @@ This file is for agents **using** the tracker. If you are contributing to Atlas 
   itself when it is missing or stale (one `[tracker] ...rebuilt it...` line on stderr), and
   `tracker doctor` reports drift as exit 7 instead of `ok`. If you already hand-edited
   something, `tracker doctor --repair` rebuilds the index from markdown and events.
-- **Run tracker from the workspace root for ticket work.** A directory that never went through
-  `tracker init` is exit 2 for workspace commands — nothing gets scaffolded — and from a
-  subdirectory of a real workspace the error names the root to run from. Bare `tracker` is
-  different: it starts or reuses Atlas Home and does not require an initialized CWD.
-  `tracker init` is the ordinary workspace creator. Explicit `integrations install` can still
-  create one. Advanced `tracker setup` plans and applies agent guidance in an already-initialized
-  workspace; it does not initialize the current directory. MCP `--workspace-from-cwd` also never
+- **Workspace commands find the board containing the current directory.** Ticket commands and
+  the TUI walk up from a subdirectory to the nearest initialized workspace. Outside every
+  workspace, `tracker board` opens the most recently used available registered board and names
+  its path on stderr; `--project` limits that choice to boards containing the project. Other
+  workspace commands still fail unless they explicitly create a workspace. A valid
+  `tracker ticket create` can initialize an empty directory (or one containing only `.git`),
+  create its requested project, and then create the ticket. Invalid ticket input is rejected
+  before initialization. Bare `tracker` starts or reuses Atlas Home without requiring an
+  initialized CWD. `tracker init` remains the ordinary workspace creator, and explicit
+  `integrations install` can also create one. Advanced `tracker setup` plans and applies agent
+  guidance in an already-initialized workspace; it does not initialize the current directory.
+  MCP `--workspace-from-cwd` also never
   initializes. `--yes` is not consent for remote backup or for unnamed machine-wide scopes such
   as OpenClaw. `--team` may apply a named preset and never overwrites existing agent roles.
 - **Claim before you edit code.** A lease is how two agents avoid the same ticket. Claiming a

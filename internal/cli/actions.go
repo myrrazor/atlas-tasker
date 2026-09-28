@@ -185,6 +185,9 @@ func bootstrapEmptyWorkspace(cmd *cobra.Command, openErr error) (*workspace, err
 	if !directoryCanBootstrap(cwd) {
 		return nil, openErr
 	}
+	if err := validateBootstrapTicketCreate(cmd, cwd); err != nil {
+		return nil, err
+	}
 	a, err := openApp()
 	if err != nil {
 		return nil, err
@@ -216,6 +219,31 @@ func bootstrapEmptyWorkspace(cmd *cobra.Command, openErr error) (*workspace, err
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "created a new Atlas board at %s\n", cwd)
 	return openWorkspaceWith(openOptions{skipUseStamp: true})
+}
+
+func validateBootstrapTicketCreate(cmd *cobra.Command, root string) error {
+	queries := service.QueryService{Root: root}
+	raw, _ := cmd.Flags().GetString("actor")
+	actor, err := queries.ResolveActor(commandContext(cmd), contracts.Actor(strings.TrimSpace(raw)))
+	if err != nil {
+		return err
+	}
+	project, _ := cmd.Flags().GetString("project")
+	if !contracts.IsValidProjectKey(project) {
+		return fmt.Errorf("%s", contracts.ProjectKeyValidationMessage())
+	}
+	var template service.TemplateView
+	name, _ := cmd.Flags().GetString("template")
+	if strings.TrimSpace(name) != "" {
+		template, err = app.DefaultTicketTemplate(name)
+		if err != nil {
+			return err
+		}
+	}
+	if _, err := ticketCreateFromFlags(cmd, template, defaultNow()); err != nil {
+		return err
+	}
+	return cmd.Flags().Set("actor", string(actor))
 }
 
 func openWorkspaceWith(opts openOptions) (*workspace, error) {

@@ -63,12 +63,23 @@ func (s *QueryService) Template(_ context.Context, name string) (TemplateView, e
 	if err != nil {
 		return TemplateView{}, err
 	}
+	view, err := ParseTemplate(name, string(raw))
+	view.Path = path
+	return view, err
+}
+
+// ParseTemplate reads the same template metadata for stored and built-in
+// templates, without requiring a workspace to exist on disk.
+func ParseTemplate(name, raw string) (TemplateView, error) {
+	name = strings.TrimSpace(name)
+	if !templateNamePattern.MatchString(name) {
+		return TemplateView{}, fmt.Errorf("template name must match ^[A-Za-z][A-Za-z0-9_-]{0,63}$")
+	}
 	view := TemplateView{
 		Name:         name,
-		Path:         path,
-		TemplateBody: string(raw),
+		TemplateBody: raw,
 	}
-	body := string(raw)
+	body := raw
 	if strings.HasPrefix(body, "---\n") {
 		parts := strings.SplitN(body, "\n---\n", 2)
 		if len(parts) == 2 {

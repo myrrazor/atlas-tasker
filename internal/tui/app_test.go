@@ -98,6 +98,49 @@ func TestModelLoadsDataAndSwitchesTabs(t *testing.T) {
 	}
 }
 
+func TestWatchRefreshesWriteBeforeFirstTick(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.close()
+	updated, _ := m.Update(m.refresh()())
+	m = updated.(model)
+	if m.detail.Ticket.Status != contracts.StatusReady {
+		t.Fatalf("initial ticket = %#v", m.detail.Ticket)
+	}
+
+	// Another client writes after the first render, before the watcher's
+	// first tick. That write must not become an unread baseline.
+	external, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer external.close()
+	if _, err := external.actions.MoveTicket(context.Background(), "APP-1", contracts.StatusBlocked, "human:owner", "external change"); err != nil {
+		t.Fatal(err)
+	}
+	updated, cmd := m.Update(watchTickMsg{})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("first watch tick did not schedule a refresh")
+	}
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok || len(batch) < 1 {
+		t.Fatal("first watch tick discarded the external write")
+	}
+	loaded, ok := batch[0]().(loadedMsg)
+	if !ok || loaded.err != nil {
+		t.Fatalf("refresh failed: %#v", loaded)
+	}
+	updated, _ = m.Update(loaded)
+	m = updated.(model)
+	if m.detail.Ticket.Status != contracts.StatusBlocked {
+		t.Fatalf("external status did not reach the TUI: %#v", m.detail.Ticket)
+	}
+}
+
 func TestCursorClampsAcrossScreenSizes(t *testing.T) {
 	m := model{
 		screen: screenOwner,

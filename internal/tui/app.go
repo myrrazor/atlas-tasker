@@ -330,6 +330,7 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		search:     searchInput,
 		status:     "loading…",
 		boardStyle: render.BoardStyleTable,
+		indexStamp: projectionStamp(root),
 	}, nil
 }
 
@@ -475,10 +476,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, watchTick()
 		}
 		stamp := projectionStamp(m.root)
-		if m.indexStamp == "" {
-			m.indexStamp = stamp
-			return m, watchTick()
-		}
 		if stamp != m.indexStamp {
 			m.indexStamp = stamp
 			return m, tea.Batch(m.refresh(), watchTick())

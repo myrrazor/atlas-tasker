@@ -211,7 +211,7 @@ func Apply(ctx context.Context, opts Options, yes bool) (Result, error) {
 		result.Status = StatusRefused
 		return result, apperr.New(apperr.CodeConflict, "uninstall apply failed: "+result.Failed[0])
 	}
-	if receipt.packageManager() == MethodHomebrew {
+	if receipt.packageManager() == MethodHomebrew || receipt.InstallMethod == MethodSource || receipt.InstallMethod == MethodGoInstall {
 		if _, err := os.Lstat(receipt.BinaryPath); err == nil {
 			result.Status = StatusSoftwareStillInstalled
 			result.Notes = append(result.Notes, "software still installed")

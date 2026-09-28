@@ -1153,6 +1153,43 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	defer workspace.close()
 
 	project, _ := cmd.Flags().GetString("project")
+	templateName, _ := cmd.Flags().GetString("template")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	if _, err := workspace.project.GetProject(ctx, project); err != nil {
+		return err
+	}
+	var template service.TemplateView
+	if strings.TrimSpace(templateName) != "" {
+		template, err = workspace.queries.Template(ctx, templateName)
+		if err != nil {
+			return err
+		}
+	}
+	now := defaultNow()
+	if workspace.actions.Clock != nil {
+		now = workspace.actions.Clock().UTC()
+	}
+	ticket, err := ticketCreateFromFlags(cmd, template, now)
+	if err != nil {
+		return err
+	}
+	ticket, err = workspace.actions.CreateTrackedTicket(ctx, ticket, actor, reason)
+	if err != nil {
+		return err
+	}
+	warnSecretLikeContent(cmd, ticket.Title, ticket.Description, strings.Join(ticket.AcceptanceCriteria, "\n"))
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s", ticket.ID, ticket.Title), fmt.Sprintf("created %s", ticket.ID))
+}
+
+// ticketCreateFromFlags validates the same ticket before bootstrap and before
+// creation in an existing workspace. It does not read or write workspace state.
+func ticketCreateFromFlags(cmd *cobra.Command, template service.TemplateView, now time.Time) (contracts.TicketSnapshot, error) {
+	project, _ := cmd.Flags().GetString("project")
 	title, _ := cmd.Flags().GetString("title")
 	title = render.SanitizeDisplayLine(title)
 	typeValue, _ := cmd.Flags().GetString("type")
@@ -1168,47 +1205,23 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	permissionProfiles, _ := cmd.Flags().GetStringArray("permission-profile")
 	protected, _ := cmd.Flags().GetBool("protected")
 	sensitive, _ := cmd.Flags().GetBool("sensitive")
-	actorRaw, _ := cmd.Flags().GetString("actor")
-	reason, _ := cmd.Flags().GetString("reason")
-	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
-	if err != nil {
-		return err
-	}
-
-	if _, err := workspace.project.GetProject(ctx, project); err != nil {
-		return err
-	}
-	var template service.TemplateView
-	if strings.TrimSpace(templateName) != "" {
-		template, err = workspace.queries.Template(ctx, templateName)
-		if err != nil {
-			return err
-		}
-	}
 	if strings.TrimSpace(typeValue) == "" && template.Type != "" {
 		typeValue = string(template.Type)
 	}
 	ticketType := contracts.TicketType(typeValue)
 	if !ticketType.IsValid() {
-		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid ticket type: %s (valid: %s)", typeValue, strings.Join(contracts.ValidTicketTypeValues(), ", ")))
+		return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid ticket type: %s (valid: %s)", typeValue, strings.Join(contracts.ValidTicketTypeValues(), ", ")))
 	}
 	status := contracts.Status(statusValue)
 	if !status.IsValid() {
-		return fmt.Errorf("invalid status: %s (valid: %s)", statusValue, strings.Join(contracts.ValidStatusValues(), ", "))
+		return contracts.TicketSnapshot{}, fmt.Errorf("invalid status: %s (valid: %s)", statusValue, strings.Join(contracts.ValidStatusValues(), ", "))
 	}
 	if status == contracts.StatusDone || status == contracts.StatusCanceled {
-		return fmt.Errorf("status %s is not allowed on ticket create", status)
+		return contracts.TicketSnapshot{}, fmt.Errorf("status %s is not allowed on ticket create", status)
 	}
 	priority := contracts.Priority(priorityValue)
 	if !priority.IsValid() {
-		return fmt.Errorf("invalid priority: %s", priorityValue)
-	}
-	if !actor.IsValid() {
-		return fmt.Errorf("invalid actor: %s", actorRaw)
-	}
-	now := defaultNow()
-	if workspace.actions.Clock != nil {
-		now = workspace.actions.Clock().UTC()
+		return contracts.TicketSnapshot{}, fmt.Errorf("invalid priority: %s", priorityValue)
 	}
 	ticket := contracts.TicketSnapshot{
 		Project:            project,
@@ -1253,21 +1266,23 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	if strings.TrimSpace(assigneeRaw) != "" {
 		ticket.Assignee = contracts.Actor(strings.TrimSpace(assigneeRaw))
 		if !ticket.Assignee.IsValid() {
-			return fmt.Errorf("invalid assignee actor: %s", assigneeRaw)
+			return contracts.TicketSnapshot{}, fmt.Errorf("invalid assignee actor: %s", assigneeRaw)
 		}
 	}
 	if strings.TrimSpace(reviewerRaw) != "" {
 		ticket.Reviewer = contracts.Actor(strings.TrimSpace(reviewerRaw))
 		if !ticket.Reviewer.IsValid() {
-			return fmt.Errorf("invalid reviewer actor: %s", reviewerRaw)
+			return contracts.TicketSnapshot{}, fmt.Errorf("invalid reviewer actor: %s", reviewerRaw)
 		}
 	}
-	ticket, err = workspace.actions.CreateTrackedTicket(ctx, ticket, actor, reason)
-	if err != nil {
-		return err
+	// The service allocates the real ID while holding its write lock. Validate
+	// the remaining snapshot now with the ID an empty project would receive.
+	preview := ticket
+	preview.ID = strings.TrimSpace(ticket.Project) + "-1"
+	if err := preview.ValidateForCreate(); err != nil {
+		return contracts.TicketSnapshot{}, err
 	}
-	warnSecretLikeContent(cmd, ticket.Title, ticket.Description, strings.Join(ticket.AcceptanceCriteria, "\n"))
-	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s", ticket.ID, ticket.Title), fmt.Sprintf("created %s", ticket.ID))
+	return ticket, nil
 }
 
 func runTicketView(cmd *cobra.Command, args []string) error {

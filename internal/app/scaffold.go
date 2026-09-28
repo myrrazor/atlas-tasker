@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
@@ -201,6 +202,21 @@ func relToRoot(root, path string) string {
 		return path
 	}
 	return rel
+}
+
+// DefaultTicketTemplate returns the template that init would create, without
+// scaffolding a workspace during input validation.
+func DefaultTicketTemplate(name string) (service.TemplateView, error) {
+	name = strings.TrimSpace(name)
+	body, ok := defaultTicketTemplates()[name+".md"]
+	view, err := service.ParseTemplate(name, body)
+	if err != nil {
+		return service.TemplateView{}, err
+	}
+	if !ok {
+		return service.TemplateView{}, fmt.Errorf("template %s: %w", name, os.ErrNotExist)
+	}
+	return view, nil
 }
 
 func defaultTicketTemplates() map[string]string {

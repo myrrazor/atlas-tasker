@@ -226,6 +226,35 @@ func TestHomebrewProvenanceDoesNotDeleteBinary(t *testing.T) {
 	}
 }
 
+func TestSourceUninstallWithIntegrationsReportsSoftwareStillInstalled(t *testing.T) {
+	for _, method := range []string{MethodSource, MethodGoInstall} {
+		t.Run(method, func(t *testing.T) {
+			env := newUninstallFixture(t, "darwin")
+			env.receipt.InstallMethod = method
+			env.receipt.Digest = ReceiptDigest(env.receipt.BinaryPath, env.receipt.BinarySHA256, method, env.receipt.Version)
+			if err := WriteReceipt(env.stateDir, env.receipt); err != nil {
+				t.Fatal(err)
+			}
+			result, err := Apply(context.Background(), env.opts, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Status != StatusSoftwareStillInstalled || len(result.Applied) == 0 {
+				t.Fatalf("expected integrations removed and software left installed: %#v", result)
+			}
+			if _, err := os.Stat(env.binary); err != nil {
+				t.Fatalf("source executable was removed: %v", err)
+			}
+			if _, err := os.Stat(env.plist); !os.IsNotExist(err) {
+				t.Fatalf("managed service was not removed: %v", err)
+			}
+			if raw, err := os.ReadFile(env.mcp); err != nil || strings.Contains(string(raw), "atlas-aaaaaaaaaaaa") || !strings.Contains(string(raw), `"other"`) {
+				t.Fatalf("managed client entry was not removed cleanly: %s, %v", raw, err)
+			}
+		})
+	}
+}
+
 func TestProducerManifestIsConsumed(t *testing.T) {
 	ctx := context.Background()
 	env := newUninstallFixture(t, "darwin")
