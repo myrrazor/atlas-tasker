@@ -87,7 +87,7 @@ func TestCanceledTicketKeepsBoardColumnStatusAndMoveOption(t *testing.T) {
 	for _, want := range []string{
 		`class="column is-active-mobile" data-status="canceled"`,
 		`class="status-pill st-canceled">Canceled</span>`,
-		`<option value="canceled">Canceled</option>`,
+		`<option value="canceled" selected>Canceled</option>`,
 	} {
 		if !strings.Contains(res.body, want) {
 			t.Fatalf("canceled board missing %q:\n%s", want, excerpt(res.body, "canceled"))

@@ -137,6 +137,9 @@
   let dragStartedAt = 0;
   let dragWatch = 0;
   let clearingDrag = false;
+  let nativeDrag = false;
+  let dragActivityAt = 0;
+  let dragRearmAt = 0;
   const moveTail = new Map();
   const moveGen = new Map();
   let boundSortables = [];
@@ -160,9 +163,28 @@
   }
 
   let pointerGuard = 0;
+  function dragRecentlyActive() {
+    return nativeDrag && dragActivityAt > 0 && (Date.now() - dragActivityAt) < 2000;
+  }
+  function noteDragActivity() {
+    const now = Date.now();
+    dragActivityAt = now;
+    if (dragsInFlight === 0 || now - dragRearmAt < 500) return;
+    dragRearmAt = now;
+    armDragWatch(dragEpoch, 15000);
+  }
   function forceClearDrag() {
     if (clearingDrag) return;
+    // Chrome keeps firing drag/dragover for the whole hold. Rebuilding
+    // Sortable here is what cancels a real mouse drag and throws
+    // removeEventListener on a null element.
+    if (dragRecentlyActive()) {
+      armDragWatch(dragEpoch, 2000);
+      return;
+    }
     clearingDrag = true;
+    nativeDrag = false;
+    dragActivityAt = 0;
     dragEpoch += 1;
     const epoch = dragEpoch;
     dragsInFlight = 0;
@@ -187,6 +209,10 @@
     window.clearTimeout(dragWatch);
     dragWatch = window.setTimeout(() => {
       if (epoch !== dragEpoch || dragsInFlight === 0) return;
+      if (dragRecentlyActive()) {
+        armDragWatch(epoch, 2000);
+        return;
+      }
       const age = dragStartedAt ? Date.now() - dragStartedAt : ms;
       if (cardPointerDown && age < 15000) {
         armDragWatch(epoch, Math.max(200, Math.min(1000, 15000 - age)));
@@ -196,7 +222,7 @@
     }, ms);
   }
   document.addEventListener('pointerdown', (event) => {
-    if (dragsInFlight > 0) forceClearDrag();
+    if (dragsInFlight > 0 && !dragRecentlyActive()) forceClearDrag();
     const target = event.target;
     if (!(target && target.closest && target.closest('.ticket-card'))) return;
     cardPointerDown = true;
@@ -208,6 +234,7 @@
     }, 2000);
   }, true);
   function clearStuckPointer() {
+    if (dragRecentlyActive()) return;
     cardPointerDown = false;
     window.clearTimeout(pointerGuard);
     if (dragsInFlight > 0) armDragWatch(dragEpoch, 800);
@@ -215,11 +242,15 @@
   // pointerup can beat dragstart. Keep the card frozen across that gap so a
   // live refresh cannot replace it before the drag is real. If Sortable never
   // finishes after the pointer is up, recover instead of staying frozen.
-  function releaseCardPointer() {
+  // pointercancel is not that release: Chrome fires it when the native drag
+  // takes the pointer, while the hold is still in progress.
+  function releaseCardPointer(event) {
+    if (event && event.type === 'pointercancel' && (nativeDrag || dragsInFlight > 0)) return;
+    if (event && event.type === 'pointerup' && nativeDrag) return;
     window.clearTimeout(pointerGuard);
     const epoch = dragEpoch;
     window.setTimeout(() => {
-      if (epoch !== dragEpoch) return;
+      if (epoch !== dragEpoch || nativeDrag || dragRecentlyActive()) return;
       if (dragsInFlight === 0) {
         cardPointerDown = false;
         return;
@@ -231,6 +262,17 @@
   document.addEventListener('pointerup', releaseCardPointer, true);
   document.addEventListener('pointercancel', releaseCardPointer, true);
   document.addEventListener('dragend', releaseCardPointer, true);
+  document.addEventListener('dragstart', (event) => {
+    const target = event.target;
+    if (!(target && target.closest && target.closest('.ticket-card'))) return;
+    nativeDrag = true;
+    noteDragActivity();
+  }, true);
+  document.addEventListener('dragend', () => {
+    nativeDrag = false;
+  }, true);
+  document.addEventListener('drag', noteDragActivity, true);
+  document.addEventListener('dragover', noteDragActivity, true);
   window.addEventListener('blur', clearStuckPointer);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) clearStuckPointer();
@@ -662,7 +704,15 @@
         const el = edit.querySelector(`[name="${pair[0]}"]`);
         if (!el) return;
         const remoteText = pair[1] == null ? '' : String(pair[1]);
-        const changed = controlDirty(el) && controlBase(el) !== remoteText;
+        const currentText = el.value == null ? '' : String(el.value);
+        if (controlDirty(el) && currentText === remoteText) {
+          if (el.tagName === 'SELECT') {
+            Array.from(el.options).forEach((opt) => { opt.defaultSelected = opt.value === currentText; });
+          } else {
+            el.defaultValue = el.value;
+          }
+        }
+        const changed = controlDirty(el) && currentText !== remoteText && controlBase(el) !== remoteText;
         if (changed) {
           conflict = true;
           el.dataset.remoteChanged = '1';
@@ -708,6 +758,17 @@
       notes.textContent = drawer.notes || '';
     }
     applyDrawerActions(root, drawer.actions_html);
+    syncMoveSelect(root, drawer.status);
+  }
+
+  function syncMoveSelect(root, status) {
+    if (!status) return;
+    const move = root.querySelector('.drawer-actions select[name="status"]');
+    if (!move || controlDirty(move)) return;
+    const next = String(status).replace(/-/g, '_');
+    if (!Array.from(move.options).some((opt) => opt.value === next)) return;
+    move.value = next;
+    Array.from(move.options).forEach((opt) => { opt.defaultSelected = opt.value === next; });
   }
 
   function applyBoardResync(data) {
@@ -875,6 +936,8 @@
         },
         onEnd: (event) => {
           if (dragEpoch !== activeDragEpoch) return;
+          nativeDrag = false;
+          dragActivityAt = 0;
           window.clearTimeout(dragWatch);
           dragsInFlight = Math.max(0, dragsInFlight - 1);
           cardPointerDown = false;

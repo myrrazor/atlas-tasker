@@ -54,6 +54,29 @@ type liveFPCache struct {
 	fp  string
 }
 
+// sharedLiveFP lives for the process, keyed by workspace root. Home builds a
+// fresh Server per request; a cache on that Server never hits.
+var sharedLiveFP sync.Map
+
+func (s *Server) fpCache() *liveFPCache {
+	if s == nil {
+		return &liveFPCache{}
+	}
+	root := s.cfg.Root
+	if root == "" {
+		if s.liveFP == nil {
+			s.liveFP = &liveFPCache{}
+		}
+		return s.liveFP
+	}
+	if found, ok := sharedLiveFP.Load(root); ok {
+		return found.(*liveFPCache)
+	}
+	fresh := &liveFPCache{}
+	actual, _ := sharedLiveFP.LoadOrStore(root, fresh)
+	return actual.(*liveFPCache)
+}
+
 type liveBoardBody struct {
 	Cards        []liveCardPatch `json:"cards"`
 	CommentsHTML string          `json:"comments_html,omitempty"`
@@ -101,21 +124,29 @@ func (s *Server) boardLiveStamp(r *http.Request) string {
 // ticket rows. A no-op reindex changes file mtimes without changing the
 // fingerprint, so open tabs can advance the etag without rebuilding the board.
 func (s *Server) liveProjectionParts(r *http.Request) []string {
-	key := strings.Join(projectionStampParts(s.cfg.Root), "|")
-	if fp, ok := s.liveFP.lookup(key); ok {
-		return append(strings.Split(key, "|"), "db:fp="+fp)
-	}
-	fp, ok := s.computeLiveFP(r.Context())
-	key = strings.Join(projectionStampParts(s.cfg.Root), "|")
+	before := projectionStampParts(s.cfg.Root)
+	key := strings.Join(before, "|")
 	if key == "" {
 		return nil
 	}
-	parts := strings.Split(key, "|")
-	if !ok {
-		return parts
+	cache := s.fpCache()
+	if fp, ok := cache.lookup(key); ok {
+		return append(append([]string{}, before...), "db:fp="+fp)
 	}
-	s.liveFP.store(key, fp)
-	return append(parts, "db:fp="+fp)
+	fp, computed := s.computeLiveFP(r.Context())
+	after := projectionStampParts(s.cfg.Root)
+	afterKey := strings.Join(after, "|")
+	if afterKey == "" {
+		return nil
+	}
+	// The index moved while the rows were read. Caching that fingerprint
+	// under the new stamp would 304 a stale board forever. Omit it so the
+	// client resyncs, and let the next idle poll fill the cache.
+	if !computed || afterKey != key {
+		return after
+	}
+	cache.store(afterKey, fp)
+	return append(after, "db:fp="+fp)
 }
 
 func (c *liveFPCache) lookup(key string) (string, bool) {

@@ -324,16 +324,14 @@ func boardTool(tc ToolContext, args map[string]any) (any, error) {
 		return nil, err
 	}
 	full := cloneBoardColumns(view.Board.Columns)
-	limit := boardCallLimit(args, tc.Server.Options.MaxItems)
+	requested := boardCallLimit(args, tc.Server.Options.MaxItems)
+	limit := requested
 	payload, err := assembleBoardPayload(tc, args, full, limit)
 	if err != nil {
 		return nil, err
 	}
 	if !boardPayloadFits(payload, tc.Server.Options) {
-		for _, smaller := range []int{defaultBoardPageLimit, 5, 2, 1} {
-			if smaller >= limit {
-				continue
-			}
+		for _, smaller := range boardShrinkLimits(limit) {
 			limit = smaller
 			payload, err = assembleBoardPayload(tc, args, full, limit)
 			if err != nil {
@@ -352,7 +350,26 @@ func boardTool(tc ToolContext, args map[string]any) (any, error) {
 			}
 		}
 	}
+	if limit < requested {
+		if board, ok := payload["board"].(render.CompactBoard); ok {
+			board.Notes = append(board.Notes, fmt.Sprintf("limit reduced to %d to fit the result cap", limit))
+			if err := finishBoardPayload(tc, args, payload, board); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return payload, nil
+}
+
+func boardShrinkLimits(limit int) []int {
+	ladder := []int{40, 30, 20, 15, defaultBoardPageLimit, 5, 2, 1}
+	out := make([]int, 0, len(ladder))
+	for _, smaller := range ladder {
+		if smaller > 0 && smaller < limit {
+			out = append(out, smaller)
+		}
+	}
+	return out
 }
 
 func boardCallLimit(args map[string]any, maxItems int) int {
@@ -1222,19 +1239,52 @@ func scheduleQueryArgs(args map[string]any) (service.ScheduleQuery, error) {
 	return query, nil
 }
 
+const boardCursorDone = "done"
+
 func paginateBoard(view service.BoardViewModel, args map[string]any, maxItems int) map[string]any {
 	total := 0
 	cursors := stringMapArg(args, "cursor_by_status")
 	pagesByStatus := map[string]map[string]any{}
 	nextByStatus := map[string]string{}
+	hasMore := false
 	for status, tickets := range view.Board.Columns {
-		page := paginateSliceWithCursor(tickets, cursors[string(status)], args, maxItems, maxItems)
-		view.Board.Columns[status] = page.Items.([]contracts.TicketSnapshot)
-		total += page.Total
-		pagesByStatus[string(status)] = map[string]any{"total": page.Total, "next_cursor": page.NextCursor}
-		if page.NextCursor != "" {
-			nextByStatus[string(status)] = page.NextCursor
+		incoming := cursors[string(status)]
+		var page pageResult
+		next := ""
+		if incoming == boardCursorDone {
+			columnTotal := len(tickets)
+			if tickets == nil {
+				tickets = []contracts.TicketSnapshot{}
+			}
+			view.Board.Columns[status] = tickets[:0]
+			page = pageResult{Items: view.Board.Columns[status], Total: columnTotal, NextCursor: boardCursorDone}
+			next = boardCursorDone
+		} else {
+			page = paginateSliceWithCursor(tickets, incoming, args, maxItems, maxItems)
+			view.Board.Columns[status] = page.Items.([]contracts.TicketSnapshot)
+			if page.NextCursor != "" {
+				next = page.NextCursor
+				hasMore = true
+			} else if strings.TrimSpace(incoming) != "" {
+				// An omitted cursor means page 1. A finished column has to
+				// stay finished when the caller echoes the whole map back.
+				next = boardCursorDone
+			}
 		}
+		total += page.Total
+		pagesByStatus[string(status)] = map[string]any{"total": page.Total, "next_cursor": next}
+		if next != "" {
+			nextByStatus[string(status)] = next
+		}
+	}
+	if !hasMore {
+		for key, page := range pagesByStatus {
+			if page["next_cursor"] == boardCursorDone {
+				page["next_cursor"] = ""
+			}
+			pagesByStatus[key] = page
+		}
+		nextByStatus = map[string]string{}
 	}
 	return map[string]any{"board": view, "total": total, "next_cursor_by_status": nextByStatus, "pages_by_status": pagesByStatus}
 }

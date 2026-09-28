@@ -65,7 +65,10 @@ type Server struct {
 	static      fs.FS
 	staticETags map[string]string
 	startedAt   time.Time
-	liveFP      liveFPCache
+	// liveFP is only the empty-root fallback. Workspace stamps share
+	// fpCacheForRoot so a Home request, which builds a new Server each
+	// time, still hits the fingerprint computed for that root.
+	liveFP *liveFPCache
 }
 
 type contextKey string

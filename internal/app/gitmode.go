@@ -87,7 +87,11 @@ func upsertManagedBlock(path, block string) (bool, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return false, err
 	}
-	body := string(current)
+	// A CRLF checkout leaves \r on each pattern. Git then does not match
+	// .tracker/web-session.json, and a refresh that only skips a bare \n
+	// after the end marker never rewrites the block. Canonical lines are LF.
+	body := strings.ReplaceAll(string(current), "\r\n", "\n")
+	body = strings.ReplaceAll(body, "\r", "\n")
 	begin := strings.Index(body, ManagedGitignoreBegin)
 	end := strings.Index(body, ManagedGitignoreEnd)
 	if begin >= 0 && end > begin {

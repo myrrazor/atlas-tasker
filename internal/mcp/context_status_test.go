@@ -415,6 +415,62 @@ func TestBoardDefaultPageFitsUnderResultCap(t *testing.T) {
 	}
 }
 
+func TestBoardExplicitLimitShrinksToWhatFitsAndSaysSo(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := OpenWorkspace(root, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer workspace.Close()
+	ctx := context.Background()
+	if err := workspace.Actions.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatal(err)
+	}
+	desc := strings.Repeat("d", 2500)
+	for i := 1; i <= 40; i++ {
+		if _, err := workspace.Actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+			ID:            fmt.Sprintf("APP-%d", i),
+			Project:       "APP",
+			Title:         fmt.Sprintf("Card %d", i),
+			Type:          contracts.TicketTypeTask,
+			Status:        contracts.StatusReady,
+			Priority:      contracts.PriorityMedium,
+			Description:   desc,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+			SchemaVersion: contracts.CurrentSchemaVersion,
+		}, "human:owner", "board limit test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server := NewServer(workspace, Options{Profile: ProfileRead, Now: func() time.Time { return now }}.Normalized())
+	result, err := server.CallTool(ctx, "atlas.board", map[string]any{"project": "APP", "limit": 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner, _ := result["payload"].(map[string]any)
+	board, _ := inner["board"].(render.CompactBoard)
+	md, _ := inner["markdown"].(string)
+	if board.ShownCards <= defaultBoardPageLimit || board.ShownCards >= 40 {
+		t.Fatalf("limit 50 should keep the largest page under the cap, shown %d", board.ShownCards)
+	}
+	note := fmt.Sprintf("limit reduced to %d to fit the result cap", board.ShownCards)
+	if !strings.Contains(md, note) {
+		t.Fatalf("missing %q in:\n%s", note, md)
+	}
+	writer := &limitWriter{Limit: 128 * 1024}
+	if err := json.NewEncoder(writer).Encode(result); err != nil {
+		t.Fatal(err)
+	}
+	if writer.Truncated {
+		t.Fatalf("reduced board is %d bytes", writer.BytesSeen)
+	}
+}
+
 func countEnabled(items []ToolInfo) int {
 	n := 0
 	for _, item := range items {

@@ -65,3 +65,44 @@ func TestRefreshManagedIgnoresKeepsUserLinesInsideBlock(t *testing.T) {
 		t.Fatalf("second refresh changed preserved lines:\n%s", again)
 	}
 }
+
+func TestRefreshManagedIgnoresCRLFRewritesSessionPattern(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".gitignore")
+	body := ManagedGitignoreBegin + "\n/.tracker/runtime/\nsecrets.env\n" + ManagedGitignoreEnd + "\n\n# mine\nlocal.out\n"
+	body = strings.ReplaceAll(body, "\n", "\r\n")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := RefreshManagedIgnores(root); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(got)
+	if strings.Contains(text, "\r") {
+		t.Fatalf("carriage return left on ignore patterns:\n%s", text)
+	}
+	if !strings.Contains(text, "/.tracker/web-session.json\n") {
+		t.Fatalf("session file is not ignored:\n%s", text)
+	}
+	end := strings.Index(text, ManagedGitignoreEnd)
+	if end < 0 || strings.Contains(text[:end], "secrets.env") {
+		t.Fatalf("user line stayed inside the managed block:\n%s", text)
+	}
+	if !strings.Contains(text[end:], "secrets.env\n") || !strings.Contains(text[end:], "local.out\n") {
+		t.Fatalf("user lines were dropped:\n%s", text)
+	}
+	if err := RefreshManagedIgnores(root); err != nil {
+		t.Fatal(err)
+	}
+	again, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != text {
+		t.Fatalf("second refresh was not idempotent:\n%s", again)
+	}
+}
