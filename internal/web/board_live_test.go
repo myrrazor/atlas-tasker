@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +19,89 @@ import (
 	mdstore "github.com/myrrazor/atlas-tasker/internal/storage/markdown"
 	sqlitestore "github.com/myrrazor/atlas-tasker/internal/storage/sqlite"
 )
+
+func TestLiveBoardReindexIncludesAllTicketFields(t *testing.T) {
+	h := newWebHarness(t, false)
+	ticket, err := h.actions.Tickets.GetTicket(t.Context(), h.ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This imported Markdown ticket has no event snapshot to replay.
+	ticket.ID = "WEB-2"
+	if err := h.actions.Tickets.CreateTicket(t.Context(), ticket); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.projection.Rebuild(t.Context(), ""); err != nil {
+		t.Fatal(err)
+	}
+	path := "/board?project=WEB&ticket=" + ticket.ID
+	first := liveBoardAt(t, h.handler, "", path)
+	// A manual edit or Git restore can change fields without updating the
+	// timestamp. The live fingerprint must reflect what the board renders.
+	ticket.Type = contracts.TicketTypeBug
+	ticket.AcceptanceCriteria = []string{"updated acceptance"}
+	if err := h.actions.Tickets.UpdateTicket(t.Context(), ticket); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.projection.Rebuild(t.Context(), ""); err != nil {
+		t.Fatal(err)
+	}
+	after := liveBoardAt(t, h.handler, first.Header().Get("ETag"), path)
+	var patch liveBoardBody
+	if err := json.Unmarshal(after.Body.Bytes(), &patch); err != nil {
+		t.Fatal(err)
+	}
+	if !patch.Resync || patch.Drawer == nil || patch.Drawer.Acceptance != "updated acceptance" {
+		t.Fatalf("reindexed ticket changes were lost: %s", after.Body.String())
+	}
+}
+
+func TestLiveBoardSavedViewKeepsItsFilters(t *testing.T) {
+	h := newWebHarness(t, false)
+	if err := (service.ViewStore{Root: h.root}).SaveView(contracts.SavedView{
+		Name: "bugs", Kind: contracts.SavedViewKindBoard, Type: contracts.TicketTypeBug,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	poll := func(etag string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/board?view=bugs", nil)
+		req.Header.Set("X-Atlas-Live", "1")
+		req.Header.Set("If-None-Match", etag)
+		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "test-token"})
+		res := httptest.NewRecorder()
+		h.handler.ServeHTTP(res, req)
+		return res
+	}
+	first := poll("")
+	if _, err := h.actions.MutateTrackedTicket(t.Context(), h.ticketID, "human:owner", "update task", "edit", func(ticket *contracts.TicketSnapshot) error {
+		ticket.Title = "task outside the saved view"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	after := poll(first.Header().Get("ETag"))
+	var patch liveBoardBody
+	if err := json.Unmarshal(after.Body.Bytes(), &patch); err != nil {
+		t.Fatal(err)
+	}
+	for _, card := range patch.Cards {
+		if card.ID == h.ticketID && !card.Remove {
+			t.Fatal("live update added a task to a bugs-only saved view")
+		}
+	}
+}
+
+func TestLiveBoardResyncRefreshesDrawerActivity(t *testing.T) {
+	h := newWebHarness(t, false)
+	if err := h.actions.CommentTicket(t.Context(), h.ticketID, "new comment after a large update", "human:owner", "review test"); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/board?project=WEB&ticket="+h.ticketID, nil)
+	patch, ok := h.server.liveResync(req)
+	if !ok || !strings.Contains(patch.CommentsHTML, "new comment after a large update") || patch.HistoryHTML == "" {
+		t.Fatal("full board resync must also refresh the open drawer's activity")
+	}
+}
 
 func TestLiveBoardReindexSeesMarkdownAfterCommit(t *testing.T) {
 	root := t.TempDir()
@@ -124,7 +208,12 @@ func TestLiveBoardReindexSeesMarkdownAfterCommit(t *testing.T) {
 
 func liveBoard(t *testing.T, handler http.Handler, etag string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/board?project=WEB", nil)
+	return liveBoardAt(t, handler, etag, "/board?project=WEB")
+}
+
+func liveBoardAt(t *testing.T, handler http.Handler, etag, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1"+path, nil)
 	req.Header.Set("X-Atlas-Live", "1")
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)

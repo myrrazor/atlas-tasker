@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -104,5 +105,58 @@ func TestRefreshManagedIgnoresCRLFRewritesSessionPattern(t *testing.T) {
 	}
 	if string(again) != text {
 		t.Fatalf("second refresh was not idempotent:\n%s", again)
+	}
+}
+
+func TestRefreshManagedIgnoresProtectsWebStateWithoutManagedBlock(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required to verify ignore behavior")
+	}
+	for _, existing := range []string{"", "# User rules\nnotes.txt\n"} {
+		name := "missing"
+		if existing != "" {
+			name = "unmanaged"
+		}
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
+				t.Fatalf("git init: %v\n%s", err, out)
+			}
+			path := filepath.Join(root, ".gitignore")
+			if existing != "" {
+				if err := os.WriteFile(path, []byte(existing), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := RefreshManagedIgnores(root); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"web-session.json", "web-session.json.tmp", "web-create-submits.json", "web-create-submits.json.tmp", "web-create-submits.lock"} {
+				cmd := exec.Command("git", "-C", root, "-c", "core.excludesFile="+os.DevNull, "check-ignore", "--no-index", "-q", ".tracker/"+name)
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("local web state %s is not ignored: %v\n%s", name, err, out)
+				}
+			}
+			raw, err := os.ReadFile(path)
+			if existing == "" {
+				if !os.IsNotExist(err) {
+					t.Fatalf("created a root ignore file: %v", err)
+				}
+			} else if err != nil || string(raw) != existing {
+				t.Fatalf("rewrote unrelated ignore rules: %q, %v", raw, err)
+			}
+			localPath := filepath.Join(root, ".tracker", ".gitignore")
+			before, err := os.ReadFile(localPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := RefreshManagedIgnores(root); err != nil {
+				t.Fatal(err)
+			}
+			after, err := os.ReadFile(localPath)
+			if err != nil || string(before) != string(after) {
+				t.Fatalf("second refresh changed local ignore rules: %q, %v", after, err)
+			}
+		})
 	}
 }

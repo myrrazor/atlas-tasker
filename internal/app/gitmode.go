@@ -43,8 +43,8 @@ func workspaceGitignoreBlock() string {
 }
 
 // RefreshManagedIgnores rewrites an existing Atlas ignore block so session
-// secrets created after init stay untracked. It does not invent a block in a
-// repository that never asked for one.
+// secrets created after init stay untracked. Workspaces without a managed
+// block get a narrow ignore file next to the local web state instead.
 func RefreshManagedIgnores(root string) error {
 	block := workspaceGitignoreBlock()
 	for _, path := range []string{
@@ -61,7 +61,22 @@ func RefreshManagedIgnores(root string) error {
 		_, err = upsertManagedBlock(path, block)
 		return err
 	}
-	return nil
+	dir := filepath.Join(root, ".tracker")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	_, err := upsertManagedBlock(filepath.Join(dir, ".gitignore"), strings.Join([]string{
+		ManagedGitignoreBegin,
+		"# Local web session and submission state; never commit these files.",
+		"/web-session.json",
+		"/web-session.json.tmp",
+		"/web-create-submits.json",
+		"/web-create-submits.json.tmp",
+		"/web-create-submits.lock",
+		ManagedGitignoreEnd,
+		"",
+	}, "\n"))
+	return err
 }
 
 func applyGitIgnore(root string, mode GitMode) (bool, error) {

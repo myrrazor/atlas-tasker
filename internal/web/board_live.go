@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"hash/fnv"
 	"io"
 	"net/http"
@@ -182,27 +181,19 @@ func (s *Server) computeLiveFP(ctx context.Context) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	return fingerprintTickets(tickets), true
+	return fingerprintTickets(tickets)
 }
 
-func fingerprintTickets(tickets []contracts.TicketSnapshot) string {
+func fingerprintTickets(tickets []contracts.TicketSnapshot) (string, bool) {
 	sort.Slice(tickets, func(i, j int) bool { return tickets[i].ID < tickets[j].ID })
 	sum := fnv.New64a()
-	for _, ticket := range tickets {
-		fmt.Fprintf(sum, "%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%t\x1f%d\n",
-			ticket.ID,
-			ticket.Status,
-			ticket.Title,
-			ticket.Description,
-			ticket.Notes,
-			ticket.Priority,
-			ticket.Assignee,
-			strings.Join(ticket.Labels, ","),
-			ticket.Archived,
-			ticket.UpdatedAt.UnixNano(),
-		)
+	// Reindex can change any displayed field without changing UpdatedAt.
+	// Encode complete rows so type, acceptance, relations and review state
+	// cannot be mistaken for a no-op rebuild.
+	if err := json.NewEncoder(sum).Encode(tickets); err != nil {
+		return "", false
 	}
-	return strconv.FormatUint(sum.Sum64(), 16)
+	return strconv.FormatUint(sum.Sum64(), 16), true
 }
 
 func projectionStampParts(root string) []string {
@@ -351,6 +342,12 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	if !ok || prev.query != cur.query {
 		return liveBoardBody{}, false
 	}
+	// Saved views carry their own project, assignee, type and column scope.
+	// Resolve that scope through loadBoard instead of patching raw tickets
+	// with only the URL's filters.
+	if strings.TrimSpace(r.URL.Query().Get("view")) != "" {
+		return s.liveResync(r)
+	}
 	// A tail we cannot apply id-by-id, or an index change with no new events
 	// (reindex, git pull), still has to land. One resync, then the new stamp
 	// makes later polls 304. Falling through to a full HTML page wedges a
@@ -422,6 +419,12 @@ func (s *Server) liveResync(r *http.Request) (liveBoardBody, bool) {
 	}
 	if openID != "" && !foundOpen {
 		body.Drawer = s.openDrawer(r, openID)
+	}
+	if body.Drawer != nil && !body.Drawer.Deleted {
+		if comments, history, err := s.liveActivityHTML(r, openID); err == nil {
+			body.CommentsHTML = comments
+			body.HistoryHTML = history
+		}
 	}
 	return body, true
 }
@@ -510,7 +513,7 @@ func (s *Server) liveActivityHTML(r *http.Request, id string) (string, string, e
 		Page:          "board",
 		Actor:         s.cfg.Actor,
 		ReadOnly:      s.cfg.ReadOnly,
-		CSRFToken:     s.cfg.CSRFToken,
+		CSRFToken:     s.csrfToken(),
 		BoardPath:     board,
 		ActionPrefix:  prefix,
 		HomePath:      home,
@@ -539,7 +542,7 @@ func (s *Server) liveActionsHTML(r *http.Request, id string) (string, error) {
 		Page:          "board",
 		Actor:         s.cfg.Actor,
 		ReadOnly:      s.cfg.ReadOnly,
-		CSRFToken:     s.cfg.CSRFToken,
+		CSRFToken:     s.csrfToken(),
 		BoardPath:     board,
 		ActionPrefix:  prefix,
 		HomePath:      home,

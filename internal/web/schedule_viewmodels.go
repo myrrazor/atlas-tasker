@@ -116,7 +116,7 @@ func (s *Server) buildSchedulePage(ctx context.Context, r *http.Request) (Schedu
 		Project:         project,
 		ProjectExplicit: strings.TrimSpace(query.Get("project")) != "",
 		Query:           strings.TrimSpace(query.Get("q")),
-		CSRFToken:       s.cfg.CSRFToken,
+		CSRFToken:       s.csrfToken(),
 		LocationName:    locationName(s.location(), s.cfg.Clock()),
 		Flash:           strings.TrimSpace(query.Get("flash")),
 		Error:           strings.TrimSpace(query.Get("error_flash")),

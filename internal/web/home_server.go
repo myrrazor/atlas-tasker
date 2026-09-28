@@ -224,23 +224,25 @@ func (s *HomeServer) validSession(w http.ResponseWriter, r *http.Request) bool {
 	if err == nil {
 		presented = cookie.Value
 	}
-	if s.session != nil && s.session.Matches(presented) {
-		current, changed := s.session.Maintain(time.Now())
-		if changed {
-			s.token = current
+	valid := err == nil && secureCompare(presented, s.token)
+	if s.session != nil {
+		// A persisted session is authoritative, including expiry. Never
+		// fall back to the token captured when this server started.
+		valid = err == nil && s.session.Matches(presented)
+		if valid {
+			current, _ := s.session.Maintain(time.Now())
+			if presented != current {
+				http.SetCookie(w, &http.Cookie{
+					Name:     s.sessionCookieName(),
+					Value:    current,
+					Path:     "/",
+					HttpOnly: true,
+					SameSite: http.SameSiteStrictMode,
+				})
+			}
 		}
-		if presented != current {
-			http.SetCookie(w, &http.Cookie{
-				Name:     s.sessionCookieName(),
-				Value:    current,
-				Path:     "/",
-				HttpOnly: true,
-				SameSite: http.SameSiteStrictMode,
-			})
-		}
-		return true
 	}
-	if err != nil || !secureCompare(presented, s.token) {
+	if !valid {
 		if r.Header.Get("X-Atlas-Live") == "1" {
 			w.Header().Set("Cache-Control", "no-store")
 			w.WriteHeader(http.StatusUnauthorized)
@@ -261,6 +263,20 @@ func (s *HomeServer) validSession(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+func (s *HomeServer) sessionToken() string {
+	if s.session != nil {
+		return s.session.Token()
+	}
+	return s.token
+}
+
+func (s *HomeServer) csrfToken() string {
+	if s.session != nil {
+		return s.session.CSRF()
+	}
+	return s.csrf
 }
 
 func (s *HomeServer) writeClaimPage(w http.ResponseWriter) {
@@ -306,7 +322,7 @@ func (s *HomeServer) validateMutation(r *http.Request) error {
 	if token == "" {
 		token = r.Form.Get("csrf_token")
 	}
-	if !secureCompare(token, s.csrf) {
+	if !secureCompare(token, s.csrfToken()) {
 		return apperr.New(apperr.CodePermissionDenied, "invalid csrf token")
 	}
 	return nil
@@ -342,9 +358,16 @@ func (s *HomeServer) handleClaim(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid session claim", http.StatusUnauthorized)
 		return
 	}
+	if s.session != nil {
+		current, _ := s.session.Maintain(time.Now())
+		if !s.session.Matches(current) {
+			http.Error(w, "could not renew local session", http.StatusInternalServerError)
+			return
+		}
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.sessionCookieName(),
-		Value:    s.token,
+		Value:    s.sessionToken(),
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
@@ -368,8 +391,8 @@ func (s *HomeServer) innerServer(ws *app.Workspace, project string) *Server {
 			Actor:       s.cfg.Actor,
 			ReadOnly:    s.cfg.ReadOnly,
 			TokenMode:   "random",
-			Token:       s.token,
-			CSRFToken:   s.csrf,
+			Token:       s.sessionToken(),
+			CSRFToken:   s.csrfToken(),
 			Clock:       s.cfg.Clock,
 			Location:    time.Local,
 			RoutePrefix: "/w/" + ws.ID,

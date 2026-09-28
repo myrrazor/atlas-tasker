@@ -100,7 +100,7 @@ func (s *HomeServer) pageBase(page string) HomePage {
 		Workspace: "Atlas Home",
 		Host:      s.cfg.Host,
 		Actor:     string(s.cfg.Actor),
-		CSRFToken: s.csrf,
+		CSRFToken: s.csrfToken(),
 		ReadOnly:  s.cfg.ReadOnly,
 		HomePath:  "/",
 		BoardPath: "/",

@@ -203,7 +203,7 @@ func (s *Server) SessionURL(port int) string {
 	state := s.RuntimeState(port)
 	u, _ := url.Parse(state.URL)
 	q := u.Query()
-	q.Set("token", s.cfg.Token)
+	q.Set("token", s.currentSessionToken())
 	u.RawQuery = q.Encode()
 	return u.String()
 }
@@ -313,11 +313,15 @@ func (s *Server) currentSessionToken() string {
 	if s.session == nil {
 		return s.cfg.Token
 	}
-	token, changed := s.session.Maintain(time.Now())
-	if changed {
-		s.cfg.Token = token
-	}
+	token, _ := s.session.Maintain(time.Now())
 	return token
+}
+
+func (s *Server) csrfToken() string {
+	if s.session != nil {
+		return s.session.CSRF()
+	}
+	return s.cfg.CSRFToken
 }
 
 func (s *Server) validSession(w http.ResponseWriter, r *http.Request) bool {
@@ -356,7 +360,7 @@ func (s *Server) validateMutation(r *http.Request) error {
 	if token == "" {
 		token = r.Form.Get("csrf_token")
 	}
-	if !secureCompare(token, s.cfg.CSRFToken) {
+	if !secureCompare(token, s.csrfToken()) {
 		return apperr.New(apperr.CodePermissionDenied, "invalid csrf token")
 	}
 	return nil

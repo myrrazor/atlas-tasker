@@ -85,7 +85,7 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 			Actor:        s.cfg.Actor,
 			ReadOnly:     s.cfg.ReadOnly,
 			Project:      s.cfg.Project,
-			CSRFToken:    s.cfg.CSRFToken,
+			CSRFToken:    s.csrfToken(),
 			LocationName: locationName(s.location(), s.cfg.Clock()),
 			Error:        err.Error(),
 			NotFound:     apperr.CodeOf(err) == apperr.CodeNotFound,

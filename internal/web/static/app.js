@@ -8,13 +8,16 @@
     return raw.replace(/\{(\w+)\}/g, (match, key) => values[key] ?? match);
   }
 
-  function showFlash(message, isError) {
-    let flash = document.querySelector('.flash');
+  function showFlash(message, isError, source) {
+    const dialog = source?.closest('dialog[open]');
+    let flash = dialog ? dialog.querySelector('.flash') : document.querySelector('.flash');
     if (!flash) {
       flash = document.createElement('div');
       flash.className = 'flash';
       flash.setAttribute('role', 'status');
-      document.querySelector('.board-shell')?.prepend(flash);
+      const surface = dialog || document.querySelector('.board-shell') ||
+        document.querySelector('.schedule-page') || document.querySelector('.welcome-main');
+      surface?.prepend(flash);
     }
     flash.className = isError ? 'flash error' : 'flash';
     flash.textContent = message;
@@ -734,10 +737,11 @@
       pill.className = 'status-pill st-' + drawer.status;
       if (drawer.status_label) pill.textContent = drawer.status_label;
     }
-    root.querySelectorAll('input[name="expected_revision"]').forEach((rev) => {
-      if (conflict && edit && edit.contains(rev)) return;
-      setIfClean(rev, drawer.revision);
-    });
+    if (edit && !conflict) {
+      edit.querySelectorAll('input[name="expected_revision"]').forEach((rev) => {
+        setIfClean(rev, drawer.revision);
+      });
+    }
     if (conflict) {
       const mark = String(drawer.revision || '1');
       if (root.dataset.fieldConflict !== mark) {
@@ -759,6 +763,16 @@
     }
     applyDrawerActions(root, drawer.actions_html);
     syncMoveSelect(root, drawer.status);
+    // Only advance forms whose displayed state was reconciled. Schedule and
+    // relation forms are absent from this patch; keeping their revision lets
+    // the server reject a save based on stale values instead of overwriting
+    // someone else's changes. Typed action inputs need the same protection.
+    const actions = root.querySelector('.drawer-actions');
+    if (actions && !actionsDirty(root)) {
+      actions.querySelectorAll('input[name="expected_revision"]').forEach((rev) => {
+        setIfClean(rev, drawer.revision);
+      });
+    }
   }
 
   function syncMoveSelect(root, status) {
@@ -1128,7 +1142,7 @@
         if (!response.ok) {
           const html = await response.text();
           const text = flashFromHTML(html) || `Save failed (${response.status})`;
-          showFlash(text, true);
+          showFlash(text, true, form);
           if (response.status === 409 && String(form.action || '').indexOf('/tickets/create') !== -1) {
             const doc = new DOMParser().parseFromString(html, 'text/html');
             const fresh = doc.querySelector('form[action*="/tickets/create"] [name="submit_id"]');
@@ -1144,7 +1158,7 @@
         window.location.assign(response.url || boardURL().toString());
       } catch (err) {
         showServerDown();
-        showFlash(message('offline', 'The local server is unreachable. Work stays on disk; retry when the local server is running.'), true);
+        showFlash(message('offline', 'The local server is unreachable. Work stays on disk; retry when the local server is running.'), true, form);
         release();
       }
     });

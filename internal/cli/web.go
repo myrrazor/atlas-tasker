@@ -63,11 +63,13 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	}
 	defer listener.Close()
 	actualPort := listener.Addr().(*net.TCPAddr).Port
+	if err := app.RefreshManagedIgnores(workspace.root); err != nil {
+		return err
+	}
 	session, err := webui.OpenSession(filepath.Join(workspace.root, ".tracker", "web-session.json"))
 	if err != nil {
 		return err
 	}
-	_ = app.RefreshManagedIgnores(workspace.root)
 	server, err := webui.NewServer(webui.Services{Actions: workspace.actions, Queries: workspace.queries}, webui.Config{
 		Root:      workspace.root,
 		Workspace: filepath.Base(workspace.root),

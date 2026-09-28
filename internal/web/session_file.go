@@ -42,7 +42,9 @@ type sessionDocument struct {
 
 // LoadOrCreateWebSession keeps the loopback session cookie and CSRF secret
 // stable across process restarts. The secrets stay on local disk (mode 0600)
-// and are never put in a URL. A matching cookie from an already-open tab keeps
+// and Home exchanges a one-time claim rather than exposing them in a URL.
+// Legacy web serve still uses a token URL to bootstrap its cookie.
+// A matching cookie from an already-open tab keeps
 // working; there is no unauthenticated reclaim path.
 func LoadOrCreateWebSession(path string) (string, string, error) {
 	session, err := OpenSession(path)
@@ -173,13 +175,18 @@ func (s *Session) Maintain(now time.Time) (string, bool) {
 }
 
 func (s *Session) hardRotate(now time.Time) error {
+	oldToken, oldCSRF, oldPrev, oldUntil, oldIssued, oldExpires := s.token, s.csrf, s.previous, s.previousUntil, s.issued, s.expires
 	s.token = randomToken()
 	s.csrf = randomToken()
 	s.previous = ""
 	s.previousUntil = time.Time{}
 	s.issued = now.UTC()
 	s.expires = s.issued.Add(sessionLifetime)
-	return s.write()
+	if err := s.write(); err != nil {
+		s.token, s.csrf, s.previous, s.previousUntil, s.issued, s.expires = oldToken, oldCSRF, oldPrev, oldUntil, oldIssued, oldExpires
+		return err
+	}
+	return nil
 }
 
 func (s *Session) write() error {
