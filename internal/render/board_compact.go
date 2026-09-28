@@ -396,6 +396,9 @@ func populatedColumns(board CompactBoard) []CompactColumn {
 		if col.Total == 0 {
 			continue
 		}
+		if col.Shown == 0 && board.NextCursors[col.Status] == "done" {
+			continue
+		}
 		out = append(out, col)
 	}
 	return out

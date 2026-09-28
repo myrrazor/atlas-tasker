@@ -21,7 +21,7 @@ import (
 
 func newWebCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "web", Short: "Run the local browser Kanban board"}
-	serve := &cobra.Command{Use: "serve", Short: "Serve the local browser Kanban board", RunE: runWebServe}
+	serve := &cobra.Command{Use: "serve", Short: "Serve the local browser Kanban board", Args: cobra.NoArgs, RunE: runWebServe}
 	serve.Flags().String("host", "127.0.0.1", "Loopback host to bind")
 	serve.Flags().Int("port", 0, "Port to bind; 0 chooses a random free port")
 	serve.Flags().String("project", "", "Default project filter")

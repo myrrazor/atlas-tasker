@@ -9,7 +9,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
@@ -42,6 +44,19 @@ type Store struct {
 	// projection was built from. Leave it empty and none of the freshness
 	// bookkeeping runs — handy for stores opened without sources.
 	Root string
+	// live is one long-lived connection for PRAGMA data_version. It is a
+	// pointer so transaction copies of Store share it. Closing a separate
+	// fd on the database or its wal/shm files drops this process's POSIX
+	// locks, so generation must come from a connection SQLite already owns.
+	live *liveConn
+}
+
+// liveConn is the process's generation reader. Do not Close it on the poll
+// path: database/sql Conn.Close returns the connection to the pool, and any
+// real close of a sqlite fd drops every fcntl lock this process holds.
+type liveConn struct {
+	mu   sync.Mutex
+	conn *sql.Conn
 }
 
 const sourceFingerprintKey = "source_fingerprint"
@@ -56,7 +71,7 @@ func Open(path string, ticketSource contracts.TicketStore, eventSource contracts
 	if err != nil {
 		return nil, err
 	}
-	store := &Store{Path: path, DB: db, TicketSource: ticketSource, EventSource: eventSource}
+	store := &Store{Path: path, DB: db, TicketSource: ticketSource, EventSource: eventSource, live: &liveConn{}}
 	if err := store.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -157,10 +172,83 @@ func IsCorrupt(err error) bool {
 }
 
 func (s *Store) Close() error {
+	if s.live != nil {
+		s.live.mu.Lock()
+		if s.live.conn != nil {
+			_ = s.live.conn.Close()
+			s.live.conn = nil
+		}
+		s.live.mu.Unlock()
+	}
 	if s.DB == nil {
 		return nil
 	}
 	return s.DB.Close()
+}
+
+func (s *Store) withLiveConn(ctx context.Context, fn func(*sql.Conn) error) error {
+	if s == nil || s.DB == nil || s.live == nil {
+		return fmt.Errorf("sqlite store is closed")
+	}
+	s.live.mu.Lock()
+	defer s.live.mu.Unlock()
+	if s.live.conn == nil {
+		conn, err := s.DB.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		s.live.conn = conn
+	}
+	return fn(s.live.conn)
+}
+
+// ProjectionGeneration is the SQLite data_version of one pinned connection.
+// It changes when a different connection commits, and it stays put across
+// idle polls. Callers must not open the database files themselves.
+func (s *Store) ProjectionGeneration(ctx context.Context) (string, bool) {
+	var version int64
+	err := s.withLiveConn(ctx, func(conn *sql.Conn) error {
+		return conn.QueryRowContext(ctx, `PRAGMA data_version`).Scan(&version)
+	})
+	if err != nil {
+		return "", false
+	}
+	return strconv.FormatInt(version, 10), true
+}
+
+// LiveSnapshot reads data_version and every ticket on the pinned connection,
+// in one read transaction, so the generation cannot move ahead of the rows.
+func (s *Store) LiveSnapshot(ctx context.Context) (string, []contracts.TicketSnapshot, error) {
+	var version int64
+	var tickets []contracts.TicketSnapshot
+	err := s.withLiveConn(ctx, func(conn *sql.Conn) error {
+		tx, err := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if err := tx.QueryRowContext(ctx, `PRAGMA data_version`).Scan(&version); err != nil {
+			return err
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT `+ticketSelectColumns+` FROM tickets`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		tickets = make([]contracts.TicketSnapshot, 0)
+		for rows.Next() {
+			ticket, err := scanTicket(rows)
+			if err != nil {
+				return err
+			}
+			tickets = append(tickets, ticket)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return strconv.FormatInt(version, 10), tickets, nil
 }
 
 func (s *Store) migrate() error {

@@ -315,6 +315,18 @@ func searchTool(tc ToolContext, args map[string]any) (any, error) {
 const defaultBoardPageLimit = 10
 
 func boardTool(tc ToolContext, args map[string]any) (any, error) {
+	if project := strings.TrimSpace(stringArg(args, "project")); project != "" {
+		projects, err := listProjectRefs(tc)
+		if err != nil {
+			return nil, err
+		}
+		if _, keys, ok := resolveNamedProject(projects, project); !ok {
+			return nil, apperr.New(apperr.CodeNotFound, fmt.Sprintf("unknown project %q; known projects: %s", project, strings.Join(keys, ", ")))
+		}
+	}
+	if _, ok := args["limit"]; ok && args["limit"] != nil && intArg(args, "limit", 0) <= 0 {
+		return nil, apperr.New(apperr.CodeInvalidInput, "limit must be a positive integer")
+	}
 	view, err := tc.Server.Workspace.Queries.Board(tc.Context, contracts.BoardQueryOptions{
 		Project:  stringArg(args, "project"),
 		Assignee: contracts.Actor(stringArg(args, "assignee")),
@@ -1281,6 +1293,21 @@ func paginateBoard(view service.BoardViewModel, args map[string]any, maxItems in
 		pagesByStatus[string(status)] = map[string]any{"total": page.Total, "remaining": remaining, "next_cursor": next}
 		if next != "" {
 			nextByStatus[string(status)] = next
+		}
+	}
+	// A column that already fit has no cursor. Echoing only the cursors that
+	// continue would otherwise treat that omission as page 1 and send the
+	// same cards again. Mark it done while some other column still pages.
+	// A board that fits entirely keeps an empty cursor map.
+	if hasMore {
+		for status := range view.Board.Columns {
+			if _, ok := nextByStatus[string(status)]; ok {
+				continue
+			}
+			nextByStatus[string(status)] = boardCursorDone
+			if page, ok := pagesByStatus[string(status)]; ok {
+				page["next_cursor"] = boardCursorDone
+			}
 		}
 	}
 	if !hasMore {

@@ -661,6 +661,29 @@ func TestBoardDoneCursorDoesNotRestartFinishedColumns(t *testing.T) {
 	if len(first["next_cursor_by_status"].(map[string]string)) != 0 {
 		t.Fatalf("a board that fits must not invent cursors: %#v", first["next_cursor_by_status"])
 	}
+
+	// A column that fits on page 1 must not be sent again when the caller
+	// echoes the cursor map to fetch the rest of a longer column.
+	short := func() service.BoardViewModel {
+		return service.BoardViewModel{Board: contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+			contracts.StatusReady:   {ticket("APP-1", contracts.StatusReady), ticket("APP-2", contracts.StatusReady), ticket("APP-3", contracts.StatusReady)},
+			contracts.StatusBlocked: {ticket("APP-4", contracts.StatusBlocked)},
+		}}}
+	}
+	opened := paginateBoard(short(), map[string]any{"limit": 1}, 10)
+	openedNext := opened["next_cursor_by_status"].(map[string]string)
+	if openedNext["blocked"] != boardCursorDone || openedNext["ready"] == "" || openedNext["ready"] == boardCursorDone {
+		t.Fatalf("short column should be finished while ready continues: %#v", openedNext)
+	}
+	echoed := map[string]any{}
+	for key, value := range openedNext {
+		echoed[key] = value
+	}
+	again := paginateBoard(short(), map[string]any{"limit": 1, "cursor_by_status": echoed}, 10)
+	againBoard := again["board"].(service.BoardViewModel).Board
+	if len(againBoard.Columns[contracts.StatusBlocked]) != 0 {
+		t.Fatalf("finished short column was sent again: %#v", againBoard.Columns[contracts.StatusBlocked])
+	}
 }
 
 func TestBoardPagingKeepsInitiallyFinishedColumnsDone(t *testing.T) {

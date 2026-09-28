@@ -3,7 +3,6 @@ package web
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"hash/fnv"
 	"io"
@@ -47,12 +46,16 @@ type liveDrawer struct {
 }
 
 // liveFPCache remembers a logical ticket fingerprint for one projection
-// stamp (sqlite+wal size:mtime plus the WAL commit counter). Idle polls
-// reuse it and never open the index.
+// stamp. Idle polls reuse it and do not list tickets. Row hashes let a
+// later poll patch the tickets that actually changed, including a reindex
+// that lands while other events are appended.
 type liveFPCache struct {
-	mu  sync.Mutex
-	key string
-	fp  string
+	mu       sync.Mutex
+	key      string
+	fp       string
+	rows     map[string]uint64
+	prevFP   string
+	prevRows map[string]uint64
 }
 
 // sharedLiveFP lives for the process, keyed by workspace root. Home builds a
@@ -125,7 +128,7 @@ func (s *Server) boardLiveStamp(r *http.Request) string {
 // ticket rows. A no-op reindex changes file mtimes without changing the
 // fingerprint, so open tabs can advance the etag without rebuilding the board.
 func (s *Server) liveProjectionParts(r *http.Request) []string {
-	before := projectionStampParts(s.cfg.Root)
+	before := s.projectionStampParts(r.Context())
 	key := strings.Join(before, "|")
 	if key == "" {
 		return nil
@@ -134,20 +137,20 @@ func (s *Server) liveProjectionParts(r *http.Request) []string {
 	if fp, ok := cache.lookup(key); ok {
 		return append(append([]string{}, before...), "db:fp="+fp)
 	}
-	fp, computed := s.computeLiveFP(r.Context())
-	after := projectionStampParts(s.cfg.Root)
+	fp, rows, gen, computed := s.computeLiveFP(r.Context())
+	after := s.projectionStampParts(r.Context())
 	afterKey := strings.Join(after, "|")
 	if afterKey == "" {
 		return nil
 	}
-	// The index moved while the rows were read, or a commit was in the
-	// middle of publishing the WAL header. Caching that fingerprint under
-	// the new stamp would 304 a stale board forever. Omit it so the client
-	// resyncs, and let the next idle poll fill the cache.
-	if !computed || afterKey != key || strings.Contains(afterKey, "walgen=pending") {
+	// A commit landed while the rows were read, or the generation on the
+	// stamp is not the generation those rows were read at. Caching that
+	// fingerprint would 304 a stale board. Omit it and let the next poll
+	// try again once the snapshot is stable.
+	if !computed || afterKey != key || gen == "" || !stampCarriesGeneration(after, gen) {
 		return after
 	}
-	cache.store(afterKey, fp)
+	cache.store(afterKey, fp, rows)
 	return append(after, "db:fp="+fp)
 }
 
@@ -160,45 +163,174 @@ func (c *liveFPCache) lookup(key string) (string, bool) {
 	return c.fp, true
 }
 
-func (c *liveFPCache) store(key, fp string) {
+func (c *liveFPCache) store(key, fp string, rows map[string]uint64) {
 	if key == "" || fp == "" {
 		return
 	}
 	c.mu.Lock()
+	if c.fp != "" && c.rows != nil {
+		c.prevFP = c.fp
+		c.prevRows = c.rows
+	}
 	c.key = key
 	c.fp = fp
+	c.rows = rows
 	c.mu.Unlock()
 }
 
-func (s *Server) computeLiveFP(ctx context.Context) (string, bool) {
+// changedSince reports tickets whose rendered row changed since the client
+// stamp's fingerprint. known is false when that fingerprint is not the one
+// this process last published, and the caller should resync.
+func (c *liveFPCache) changedSince(fp string) (ids []string, known bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if fp == "" || c.fp == "" {
+		return nil, false
+	}
+	if fp == c.fp {
+		return nil, true
+	}
+	if fp != c.prevFP || c.prevRows == nil || c.rows == nil {
+		return nil, false
+	}
+	seen := map[string]struct{}{}
+	for id, hash := range c.rows {
+		if c.prevRows[id] != hash {
+			ids = append(ids, id)
+			seen[id] = struct{}{}
+		}
+	}
+	for id := range c.prevRows {
+		if _, ok := c.rows[id]; ok {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids, true
+}
+
+type liveSnapshotter interface {
+	LiveSnapshot(ctx context.Context) (string, []contracts.TicketSnapshot, error)
+	ProjectionGeneration(ctx context.Context) (string, bool)
+}
+
+func (s *Server) computeLiveFP(ctx context.Context) (string, map[string]uint64, string, bool) {
 	// The board is rendered from the sqlite projection. Fingerprinting the
 	// markdown files instead races ahead of an in-flight reindex: the etag
 	// says nothing changed while the cards on screen are still the old rows.
 	if s.queries == nil || s.queries.Projection == nil {
-		return "", false
+		return "", nil, "", false
+	}
+	if snap, ok := s.queries.Projection.(liveSnapshotter); ok {
+		gen, tickets, err := snap.LiveSnapshot(ctx)
+		if err != nil || gen == "" {
+			return "", nil, "", false
+		}
+		fp, rows := fingerprintTickets(tickets)
+		if fp == "" {
+			return "", nil, "", false
+		}
+		return fp, rows, gen, true
 	}
 	tickets, err := s.queries.Projection.QuerySearch(ctx, contracts.SearchQuery{})
 	if err != nil {
-		return "", false
+		return "", nil, "", false
 	}
-	return fingerprintTickets(tickets)
+	fp, rows := fingerprintTickets(tickets)
+	if fp == "" {
+		return "", nil, "", false
+	}
+	return fp, rows, "", true
 }
 
-func fingerprintTickets(tickets []contracts.TicketSnapshot) (string, bool) {
+func fingerprintTickets(tickets []contracts.TicketSnapshot) (string, map[string]uint64) {
+	statuses := make(map[string]contracts.Status, len(tickets))
+	for _, ticket := range tickets {
+		statuses[ticket.ID] = ticket.Status
+	}
 	sort.Slice(tickets, func(i, j int) bool { return tickets[i].ID < tickets[j].ID })
 	sum := fnv.New64a()
-	// Reindex can change any displayed field without changing UpdatedAt.
-	// Encode complete rows so type, acceptance, relations and review state
-	// cannot be mistaken for a no-op rebuild.
-	if err := json.NewEncoder(sum).Encode(tickets); err != nil {
-		return "", false
+	rows := make(map[string]uint64, len(tickets))
+	for _, ticket := range tickets {
+		// The whole row covers reviewer, acceptance, relations and review
+		// state. Board is the derived column, which changes when a blocker
+		// is added or finished without rewriting this ticket.
+		var buf bytes.Buffer
+		err := json.NewEncoder(&buf).Encode(struct {
+			Ticket contracts.TicketSnapshot `json:"ticket"`
+			Board  contracts.Status         `json:"board"`
+		}{ticket, boardStatusForBlockers(ticket, statuses)})
+		if err != nil {
+			return "", nil
+		}
+		line := buf.Bytes()
+		row := fnv.New64a()
+		_, _ = row.Write(line)
+		rows[ticket.ID] = row.Sum64()
+		_, _ = sum.Write(line)
 	}
-	return strconv.FormatUint(sum.Sum64(), 16), true
+	return strconv.FormatUint(sum.Sum64(), 16), rows
 }
 
-func projectionStampParts(root string) []string {
+// boardStatusForBlockers matches the column QueryBoard renders. A blocker
+// that is not done puts the dependent in Blocked without changing its row.
+func boardStatusForBlockers(ticket contracts.TicketSnapshot, statuses map[string]contracts.Status) contracts.Status {
+	if contracts.IsTerminalStatus(ticket.Status) {
+		return ticket.Status
+	}
+	if ticket.Status == contracts.StatusBlocked {
+		return contracts.StatusBlocked
+	}
+	for _, blockerID := range ticket.BlockedBy {
+		blockerID = strings.TrimSpace(blockerID)
+		if blockerID == "" {
+			continue
+		}
+		status, ok := statuses[blockerID]
+		if !ok || status != contracts.StatusDone {
+			return contracts.StatusBlocked
+		}
+	}
+	return ticket.Status
+}
+
+func stampCarriesGeneration(parts []string, gen string) bool {
+	want := "db:data_version=" + gen
+	for _, part := range parts {
+		if part == want {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) projectionStampParts(ctx context.Context) []string {
+	parts := projectionFileStamp(s.cfg.Root)
+	gen, ok := s.projectionGeneration(ctx)
+	if !ok {
+		return parts
+	}
+	return append(parts, "db:data_version="+gen)
+}
+
+func (s *Server) projectionGeneration(ctx context.Context) (string, bool) {
+	if s == nil || s.queries == nil || s.queries.Projection == nil {
+		return "", false
+	}
+	src, ok := s.queries.Projection.(liveSnapshotter)
+	if !ok {
+		return "", false
+	}
+	return src.ProjectionGeneration(ctx)
+}
+
+func projectionFileStamp(root string) []string {
 	dir := storage.TrackerDir(root)
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 2)
 	for _, name := range []string{"index.sqlite", "index.sqlite-wal"} {
 		info, err := os.Stat(filepath.Join(dir, name))
 		if err != nil {
@@ -207,53 +339,7 @@ func projectionStampParts(root string) []string {
 		}
 		parts = append(parts, "db:"+name+"="+strconv.FormatInt(info.Size(), 10)+":"+strconv.FormatInt(info.ModTime().UnixNano(), 10))
 	}
-	// sqlite+wal size:mtime is not a commit counter. Frames land in the WAL
-	// before readers can see them, and a later commit often keeps the same
-	// mtime. The WAL index header is what a reader uses to notice a commit,
-	// and idle polls do not change it. The shm file's own size and mtime
-	// stay out of the key: they do not move on commit and must not be
-	// treated as a generation.
-	gen, ok := walCommitGeneration(filepath.Join(dir, "index.sqlite-shm"))
-	if !ok {
-		gen = "pending"
-	}
-	parts = append(parts, "db:index.sqlite-walgen="+gen)
 	return parts
-}
-
-// walCommitGeneration reads the two copies of the WAL index header.
-// Layout (host endian), from SQLite's wal-index header:
-//
-//	0  iVersion uint32
-//	8  iChange  uint32  incremented on each commit
-//	16 mxFrame  uint32
-//	32 aSalt    uint32[2]
-//
-// ok is false when a commit is between the two header copies.
-func walCommitGeneration(path string) (string, bool) {
-	f, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "0", true
-		}
-		return "", false
-	}
-	defer f.Close()
-	var buf [96]byte
-	if _, err := io.ReadFull(f, buf[:]); err != nil {
-		return "", false
-	}
-	if !bytes.Equal(buf[:48], buf[48:96]) {
-		return "", false
-	}
-	iChange := binary.NativeEndian.Uint32(buf[8:12])
-	mxFrame := binary.NativeEndian.Uint32(buf[16:20])
-	salt1 := binary.NativeEndian.Uint32(buf[32:36])
-	salt2 := binary.NativeEndian.Uint32(buf[36:40])
-	return strconv.FormatUint(uint64(iChange), 10) + ":" +
-		strconv.FormatUint(uint64(mxFrame), 10) + ":" +
-		strconv.FormatUint(uint64(salt1), 10) + ":" +
-		strconv.FormatUint(uint64(salt2), 10), true
 }
 
 func eventFileSizes(root string) map[string]int64 {
@@ -348,21 +434,23 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	if strings.TrimSpace(r.URL.Query().Get("view")) != "" {
 		return s.liveResync(r)
 	}
-	// A tail we cannot apply id-by-id, or an index change with no new events
-	// (reindex, git pull), still has to land. One resync, then the new stamp
-	// makes later polls 304. Falling through to a full HTML page wedges a
-	// large board, which discards that page and asks again forever.
+	// A tail we cannot apply id-by-id still has to land as one resync.
+	// Falling through to a full HTML page wedges a large board, which
+	// discards that page and asks again forever.
+	changed, known := s.fpCache().changedSince(prev.db["fp"])
 	tail, tailOK := readGrownTails(s.cfg.Root, prev.files, cur.files)
-	if !tailOK || (projectionChanged(prev.db, cur.db) && len(bytes.TrimSpace(tail)) == 0) {
-		// Same rows, new file mtimes: reindex rewrote the index and appended
-		// nothing. An empty patch advances the etag; a full resync would
-		// reload every card.
-		if tailOK && fingerprintUnchanged(prev.db, cur.db) {
+	if !tailOK || !known {
+		if tailOK && known && fingerprintUnchanged(prev.db, cur.db) && len(changed) == 0 && len(bytes.TrimSpace(tail)) == 0 {
 			return liveBoardBody{Cards: []liveCardPatch{}}, true
 		}
 		return s.liveResync(r)
 	}
-	ids := ticketIDsFromTail(tail)
+	ids := unionIDs(ticketIDsFromTail(tail), changed)
+	if len(ids) == 0 {
+		// Same rows, new file generation: a no-op reindex. An empty patch
+		// advances the etag; a full resync would reload every card.
+		return liveBoardBody{Cards: []liveCardPatch{}}, true
+	}
 	page := s.boardFilterPage(r)
 	colors := map[string]string{}
 	if cfg, err := config.Load(s.cfg.Root); err == nil {
@@ -474,10 +562,16 @@ func (s *Server) liveCard(ctx context.Context, r *http.Request, page BoardPage, 
 	if page.Project != "" && !strings.EqualFold(ticket.Project, page.Project) {
 		return liveCardPatch{ID: id, Remove: true}, false
 	}
+	boardStatus := ticket.Status
+	if s.queries != nil {
+		if projected, err := s.queries.BoardStatus(ctx, ticket); err == nil && projected != "" {
+			boardStatus = projected
+		}
+	}
 	filtered := filterBoard(contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
-		ticket.Status: {ticket},
+		boardStatus: {ticket},
 	}}, page)
-	if len(filtered.Columns[ticket.Status]) == 0 {
+	if len(filtered.Columns[boardStatus]) == 0 {
 		return liveCardPatch{ID: id, Remove: true}, false
 	}
 	count := 0
@@ -490,8 +584,8 @@ func (s *Server) liveCard(ctx context.Context, r *http.Request, page BoardPage, 
 		EffectiveReviewer: ticket.Reviewer,
 		Warnings:          cardWarnings(ticket),
 		CommentCount:      count,
-		BoardStatus:       ticket.Status,
-		StatusLabel:       statusLabel(ticket.Status),
+		BoardStatus:       boardStatus,
+		StatusLabel:       statusLabel(boardStatus),
 		AgentName:         agentName,
 		AgentColorClass:   colorClass,
 		BoardPath:         page.BoardPath,
@@ -500,7 +594,26 @@ func (s *Server) liveCard(ctx context.Context, r *http.Request, page BoardPage, 
 	if err != nil {
 		return liveCardPatch{ID: id, Remove: true}, false
 	}
-	return liveCardPatch{ID: id, Status: string(ticket.Status), HTML: html}, true
+	return liveCardPatch{ID: id, Status: string(boardStatus), HTML: html}, true
+}
+
+func unionIDs(groups ...[]string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0)
+	for _, group := range groups {
+		for _, id := range group {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func (s *Server) liveActivityHTML(r *http.Request, id string) (string, string, error) {

@@ -6,8 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -51,8 +54,19 @@ func TestLiveBoardReindexIncludesAllTicketFields(t *testing.T) {
 	if err := json.Unmarshal(after.Body.Bytes(), &patch); err != nil {
 		t.Fatal(err)
 	}
-	if !patch.Resync || patch.Drawer == nil || patch.Drawer.Acceptance != "updated acceptance" {
+	if patch.Drawer == nil || patch.Drawer.Acceptance != "updated acceptance" {
 		t.Fatalf("reindexed ticket changes were lost: %s", after.Body.String())
+	}
+	if !patch.Resync {
+		found := false
+		for _, card := range patch.Cards {
+			if card.ID == ticket.ID && card.HTML != "" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("reindexed card was not patched: %s", after.Body.String())
+		}
 	}
 }
 
@@ -149,8 +163,8 @@ func TestLiveBoardReindexSeesMarkdownAfterCommit(t *testing.T) {
 		t.Fatalf("seed board = %d %s", first.Code, first.Body.String())
 	}
 	etag := first.Header().Get("ETag")
-	if etag == "" || !strings.Contains(etag, "walgen=") {
-		t.Fatalf("etag missing wal generation: %q", etag)
+	if etag == "" || !strings.Contains(etag, "data_version=") {
+		t.Fatalf("etag missing sqlite data_version: %q", etag)
 	}
 	warm := liveBoard(t, handler, etag)
 	if warm.Code != http.StatusNotModified {
@@ -204,6 +218,164 @@ func TestLiveBoardReindexSeesMarkdownAfterCommit(t *testing.T) {
 	if settled.Code != http.StatusNotModified {
 		t.Fatalf("settled poll = %d %s", settled.Code, settled.Body.String())
 	}
+}
+
+func TestFingerprintTracksReviewerAndBlockedColumn(t *testing.T) {
+	base := contracts.TicketSnapshot{ID: "A", Status: contracts.StatusReady, Title: "a", UpdatedAt: time.Unix(1, 0).UTC()}
+	blocker := contracts.TicketSnapshot{ID: "B", Status: contracts.StatusReady, Title: "b", UpdatedAt: time.Unix(1, 0).UTC()}
+	fp1, _ := fingerprintTickets([]contracts.TicketSnapshot{base, blocker})
+	withReviewer := base
+	withReviewer.Reviewer = contracts.Actor("human:owner")
+	fp2, _ := fingerprintTickets([]contracts.TicketSnapshot{withReviewer, blocker})
+	if fp1 == fp2 {
+		t.Fatal("reviewer change did not change the live fingerprint")
+	}
+	blocked := base
+	blocked.BlockedBy = []string{"B"}
+	fp3, _ := fingerprintTickets([]contracts.TicketSnapshot{blocked, blocker})
+	if fp1 == fp3 {
+		t.Fatal("an open blocker did not change the live fingerprint")
+	}
+	done := blocker
+	done.Status = contracts.StatusDone
+	fp4, _ := fingerprintTickets([]contracts.TicketSnapshot{blocked, done})
+	if fp3 == fp4 {
+		t.Fatal("finishing the blocker did not change the live fingerprint")
+	}
+}
+
+func TestLivePollKeepsSQLiteSHMLock(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	projects := mdstore.ProjectStore{RootDir: root}
+	tickets := mdstore.TicketStore{RootDir: root, Clock: clock}
+	events := &eventstore.Log{RootDir: root}
+	dbPath := filepath.Join(storage.TrackerDir(root), "index.sqlite")
+	projection, err := sqlitestore.Open(dbPath, tickets, events)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = projection.Close() })
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := projects.CreateProject(ctx, contracts.Project{Key: "WEB", Name: "Web", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	ticket := contracts.NormalizeTicketSnapshot(contracts.TicketSnapshot{
+		ID: "WEB-1", Project: "WEB", Title: "lock probe", Type: contracts.TicketTypeTask,
+		Status: contracts.StatusBacklog, Priority: contracts.PriorityMedium,
+		CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion,
+	})
+	if err := tickets.CreateTicket(ctx, ticket); err != nil {
+		t.Fatalf("create ticket: %v", err)
+	}
+	if err := projection.Rebuild(ctx, ""); err != nil {
+		t.Fatalf("rebuild: %v", err)
+	}
+	queries := service.NewQueryService(root, projects, tickets, events, projection, clock)
+	actions := service.NewActionService(root, projects, tickets, events, projection, clock, service.FileLockManager{Root: root}, nil, nil)
+	srv, err := NewServer(Services{Actions: actions, Queries: queries}, Config{
+		Root: root, Workspace: "live", Host: "127.0.0.1", Project: "WEB",
+		Actor: contracts.Actor("human:owner"), TokenMode: "random", Token: "test-token",
+		CSRFToken: "test-csrf", Clock: clock,
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	handler := srv.Handler()
+	etag := ""
+	for i := 0; i < 8; i++ {
+		res := liveBoard(t, handler, etag)
+		if res.Code != http.StatusOK && res.Code != http.StatusNotModified {
+			t.Fatalf("poll %d = %d", i, res.Code)
+		}
+		if next := res.Header().Get("ETag"); next != "" {
+			etag = next
+		}
+	}
+	shm := dbPath + "-shm"
+	info, err := os.Stat(shm)
+	if err != nil {
+		t.Fatalf("stat shm: %v", err)
+	}
+	if info.Size() < 32768 {
+		t.Fatalf("shm shrank before the other process opened it: %d", info.Size())
+	}
+	locks := posixLocksOn(os.Getpid(), shm)
+	if locks == 0 {
+		t.Fatal("live polls dropped the process lock on index.sqlite-shm")
+	}
+	before, _ := projection.ProjectionGeneration(ctx)
+	script := `
+import sqlite3, sys
+path = sys.argv[1]
+for i in range(40):
+    con = sqlite3.connect(path, timeout=5)
+    con.execute("select count(*) from tickets")
+    if i % 5 == 0:
+        con.execute("update tickets set title = ?", ("stormed-title",))
+        con.commit()
+    con.close()
+`
+	cmd := exec.Command("python3", "-c", script, dbPath)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sqlite open/close storm: %v %s", err, out)
+	}
+	afterInfo, err := os.Stat(shm)
+	if err != nil {
+		t.Fatalf("stat shm after storm: %v", err)
+	}
+	if afterInfo.Size() < 32768 {
+		t.Fatalf("another process truncated index.sqlite-shm to %d bytes", afterInfo.Size())
+	}
+	if locksAfter := posixLocksOn(os.Getpid(), shm); locksAfter == 0 {
+		t.Fatal("sqlite lock on index.sqlite-shm was gone after other processes closed it")
+	}
+	got, err := projection.QueryBoard(ctx, contracts.BoardQueryOptions{Project: "WEB"})
+	if err != nil {
+		t.Fatalf("query after storm: %v", err)
+	}
+	backlog := got.Columns[contracts.StatusBacklog]
+	if len(backlog) != 1 || backlog[0].Title != "stormed-title" {
+		t.Fatalf("board after storm = %#v", got.Columns)
+	}
+	after, ok := projection.ProjectionGeneration(ctx)
+	if !ok || after == "" || after == before {
+		t.Fatalf("data_version did not move after another process committed: before %q after %q", before, after)
+	}
+}
+
+func posixLocksOn(pid int, path string) int {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0
+	}
+	inode := strconv.FormatUint(stat.Ino, 10)
+	raw, err := os.ReadFile("/proc/locks")
+	if err != nil {
+		return 0
+	}
+	wantPID := strconv.Itoa(pid)
+	n := 0
+	for _, line := range strings.Split(string(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 6 || fields[4] != wantPID {
+			continue
+		}
+		parts := strings.Split(fields[5], ":")
+		if len(parts) == 3 && parts[2] == inode {
+			n++
+		}
+	}
+	return n
 }
 
 func liveBoard(t *testing.T, handler http.Handler, etag string) *httptest.ResponseRecorder {
