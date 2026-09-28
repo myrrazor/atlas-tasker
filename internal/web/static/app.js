@@ -130,6 +130,8 @@
   // the grid is never pulled out from under the pointer.
   let refreshSeq = 0;
   let dragsInFlight = 0;
+  let cardPointerDown = false;
+  let dragQuietUntil = 0;
   let boundSortables = [];
   let previewTimer = 0;
   let previewCard = null;
@@ -141,10 +143,29 @@
   }
 
   async function waitForDragEnd() {
-    while (dragsInFlight > 0) {
-      await sleep(150);
+    while (dragBlocked()) {
+      await sleep(50);
     }
   }
+
+  function dragBlocked() {
+    return dragsInFlight > 0 || cardPointerDown || Date.now() < dragQuietUntil;
+  }
+
+  document.addEventListener('pointerdown', (event) => {
+    const target = event.target;
+    if (target && target.closest && target.closest('.ticket-card')) cardPointerDown = true;
+  }, true);
+  // pointerup can beat dragstart. Keep the card frozen across that gap so a
+  // live refresh cannot replace it before the drag is real.
+  function releaseCardPointer() {
+    window.setTimeout(() => {
+      if (dragsInFlight === 0) cardPointerDown = false;
+    }, 80);
+  }
+  document.addEventListener('pointerup', releaseCardPointer, true);
+  document.addEventListener('pointercancel', releaseCardPointer, true);
+  document.addEventListener('dragend', releaseCardPointer, true);
 
   function prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -168,6 +189,7 @@
 
   function captureBoardMotion(grid) {
     const cardRects = new Map();
+    if (cardCount() > 200) return { cardRects, columnCounts: new Map() };
     const columnCounts = new Map();
     grid?.querySelectorAll('.ticket-card[data-ticket-id]').forEach((card) => {
       const rect = card.getBoundingClientRect();
@@ -375,7 +397,7 @@
     if (!banner) return;
     banner.hidden = false;
     banner.classList.remove('is-online');
-    banner.textContent = message('offline', 'The local server is unreachable. Work stays on disk; retry when Atlas Home is running.');
+    banner.textContent = message('offline', 'The local server is unreachable. Work stays on disk; retry when the local server is running.');
   }
 
   function hideServerDown() {
@@ -394,15 +416,85 @@
   // in the fresh grid (and drawer, when provably safe). Typed input, filter
   // fields, and the flash survive; unreachable servers are retried with
   // backoff so a committed-but-unacknowledged move still converges.
+  function applyBoardDelta(data) {
+    let skipped = false;
+    (data.cards || []).forEach((patch) => {
+      const id = String(patch.id || '').replace(/"/g, '');
+      if (!id) return;
+      const existing = document.querySelector(`.ticket-card[data-ticket-id="${id}"]`);
+      if (existing && (existing.classList.contains('sortable-chosen') || existing.classList.contains('sortable-ghost') || existing.classList.contains('sortable-dragging'))) {
+        skipped = true;
+        return;
+      }
+      if (patch.remove) {
+        if (!existing) return;
+        const list = existing.parentElement;
+        existing.remove();
+        if (list && !list.querySelector('.ticket-card') && !list.querySelector('.empty-column')) {
+          const empty = document.createElement('div');
+          empty.className = 'empty-column';
+          list.appendChild(empty);
+        }
+        return;
+      }
+      if (!patch.html) return;
+      const holder = document.createElement('template');
+      holder.innerHTML = String(patch.html).trim();
+      const next = holder.content.querySelector('.ticket-card');
+      if (!next) return;
+      next.setAttribute('href', ticketHref(next.dataset.ticketId));
+      if (existing && existing.dataset.revision === next.dataset.revision && existing.dataset.status === next.dataset.status && existing.dataset.comments === next.dataset.comments && existing.dataset.title === next.dataset.title) {
+        return;
+      }
+      const status = next.dataset.status || patch.status;
+      const list = document.querySelector(`.ticket-list[data-status="${status}"]`);
+      if (existing && existing.dataset.status === status) {
+        existing.replaceWith(next);
+      } else {
+        if (existing) existing.remove();
+        if (list) {
+          const empty = list.querySelector('.empty-column');
+          if (empty) empty.remove();
+          list.prepend(next);
+        }
+      }
+    });
+    syncColumnCounts();
+    setupCardPreviews();
+    const safe = drawerSafeToSwap();
+    if (safe && data.comments_html) {
+      const thread = document.querySelector('[data-comment-thread]');
+      if (thread) {
+        const holder = document.createElement('template');
+        holder.innerHTML = String(data.comments_html).trim();
+        const next = holder.content.querySelector('[data-comment-thread]');
+        if (next) thread.replaceWith(next);
+      }
+    }
+    if (safe && data.history_html) {
+      const history = document.querySelector('[data-history-list]');
+      if (history) {
+        const holder = document.createElement('template');
+        holder.innerHTML = String(data.history_html).trim();
+        const next = holder.content.querySelector('[data-history-list]');
+        if (next) history.replaceWith(next);
+      }
+    }
+    if ((data.comments_html || data.history_html) && !safe) skipped = true;
+    return !skipped;
+  }
+
   async function refreshBoard(opts) {
     const attempts = (opts && opts.attempts) || 6;
     const quiet = !!(opts && opts.quiet);
     const seq = ++refreshSeq;
+    if (quiet && dragBlocked()) return;
     for (let attempt = 0; attempt < attempts; attempt++) {
       if (seq !== refreshSeq) return;
       try {
         const headers = { 'Accept': 'text/html' };
         if (boardETag) headers['If-None-Match'] = boardETag;
+        headers['X-Atlas-Live'] = '1';
         const response = await fetch(boardURL().toString(), { headers });
         if (response.status === 304) {
           hideServerDown();
@@ -414,11 +506,21 @@
         }
         if (!response.ok && response.status !== 404) throw new Error(`board refresh got ${response.status}`);
         const etag = response.headers && typeof response.headers.get === 'function' ? response.headers.get('ETag') : '';
-        if (etag) boardETag = etag;
+        const ctype = response.headers && typeof response.headers.get === 'function' ? (response.headers.get('Content-Type') || '') : '';
+        if (ctype.indexOf('application/json') !== -1) {
+          const data = await response.json();
+          hideServerDown();
+          if (dragBlocked() || seq !== refreshSeq) return;
+          const applied = applyBoardDelta(data);
+          if (applied && etag) boardETag = etag;
+          return;
+        }
+        if (quiet && cardCount() > 200) return;
         const html = await response.text();
         hideServerDown();
         await waitForDragEnd();
-        if (seq !== refreshSeq) return;
+        if (dragBlocked() || seq !== refreshSeq) return;
+        if (etag) boardETag = etag;
         const boardMotion = prefersReducedMotion() ? null : captureBoardMotion(document.querySelector('.board-grid'));
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const selectors = ['.board-grid', '.mobile-columns'];
@@ -499,6 +601,8 @@
         },
         onEnd: (event) => {
           dragsInFlight = Math.max(0, dragsInFlight - 1);
+          cardPointerDown = false;
+          dragQuietUntil = Date.now() + 400;
           settleDroppedCard(event.item);
         },
         onAdd: async (event) => {
@@ -547,7 +651,7 @@
             revertCard(event);
             if (isNetworkError(err)) {
               showServerDown();
-              showFlash(message('offline', 'The local server is unreachable. Work stays on disk; retry when Atlas Home is running.'), true);
+              showFlash(message('offline', 'The local server is unreachable. Work stays on disk; retry when the local server is running.'), true);
               return;
             }
             showFlash(err.message || message('moveFailed', 'Move failed'), true);
@@ -577,7 +681,7 @@
       }
       banner.hidden = false;
       banner.classList.remove('is-online');
-      banner.textContent = message('offline', 'The local server is unreachable. Work stays on disk; retry when Atlas Home is running.');
+      banner.textContent = message('offline', 'The local server is unreachable. Work stays on disk; retry when the local server is running.');
     };
     set(window.navigator.onLine);
     window.addEventListener('offline', () => set(false));
@@ -674,7 +778,7 @@
         window.location.assign(response.url || boardURL().toString());
       } catch (err) {
         showServerDown();
-        showFlash(message('offline', 'The local server is unreachable. Work stays on disk; retry when Atlas Home is running.'), true);
+        showFlash(message('offline', 'The local server is unreachable. Work stays on disk; retry when the local server is running.'), true);
         release();
       }
     });
@@ -683,9 +787,11 @@
   function startLiveBoard() {
     if (document.body?.dataset?.page !== 'board') return;
     if (typeof window.setInterval !== 'function') return;
+    const stamp = document.querySelector('meta[name="atlas-board-stamp"]');
+    if (stamp && stamp.content) boardETag = '"' + stamp.content + '"';
     let misses = 0;
     window.setInterval(() => {
-      if (document.hidden || dragsInFlight > 0) return;
+      if (document.hidden || dragBlocked()) return;
       refreshBoard({ attempts: 1, quiet: true }).then(() => {
         misses = 0;
       }).catch(() => {

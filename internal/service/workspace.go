@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
@@ -50,4 +51,36 @@ func InitializedWorkspaceRoot(root string) (string, error) {
 		}
 	}
 	return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is not an Atlas workspace; run 'tracker init' first, or open Atlas Home with 'tracker' and attach an existing board with 'tracker workspaces grant'", root))
+}
+
+// FindWorkspaceRoot resolves start, then walks parents until it finds an
+// initialized Atlas board. The directory you are in does not have to be the
+// board root.
+func FindWorkspaceRoot(start string) (string, error) {
+	start, err := CanonicalWorkspaceRoot(start)
+	if err != nil {
+		return "", err
+	}
+	dir := start
+	for {
+		if root, err := InitializedWorkspaceRoot(dir); err == nil {
+			return root, nil
+		} else if !workspaceMiss(err) {
+			return "", err
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is not an Atlas workspace; run 'tracker init' first, or open Atlas Home with 'tracker' and attach an existing board with 'tracker workspaces grant'", start))
+}
+
+func workspaceMiss(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "is not an Atlas workspace;") || strings.Contains(msg, "is not an Atlas workspace root")
 }

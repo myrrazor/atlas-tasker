@@ -32,9 +32,36 @@ func workspaceGitignoreBlock() string {
 		"/.tracker/index.sqlite",
 		"/.tracker/index.sqlite-*",
 		"/.tracker/write.lock",
+		"/.tracker/web-session.json",
+		"/.tracker/web-session.json.tmp",
+		"/.tracker/web-create-submits.json",
+		"/.tracker/web-create-submits.json.tmp",
+		"/.tracker/web-create-submits.lock",
 		ManagedGitignoreEnd,
 		"",
 	}, "\n")
+}
+
+// RefreshManagedIgnores rewrites an existing Atlas ignore block so session
+// secrets created after init stay untracked. It does not invent a block in a
+// repository that never asked for one.
+func RefreshManagedIgnores(root string) error {
+	block := workspaceGitignoreBlock()
+	for _, path := range []string{
+		filepath.Join(root, ".gitignore"),
+		filepath.Join(root, ".git", "info", "exclude"),
+	} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if !strings.Contains(string(raw), ManagedGitignoreBegin) {
+			continue
+		}
+		_, err = upsertManagedBlock(path, block)
+		return err
+	}
+	return nil
 }
 
 func applyGitIgnore(root string, mode GitMode) (bool, error) {

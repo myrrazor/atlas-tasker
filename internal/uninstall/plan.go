@@ -508,7 +508,7 @@ func preservedList(stateDir string) []string {
 }
 
 func Pretty(plan Plan) string {
-	if plan.Refusal != "" && !plan.CanApply {
+	if plan.Refusal != "" && !plan.CanApply && plan.Status != StatusSoftwareStillInstalled {
 		return "uninstall preview: refused — " + plan.Refusal
 	}
 	var b strings.Builder
@@ -536,6 +536,10 @@ func Pretty(plan Plan) string {
 			continue
 		}
 		b.WriteString(note)
+		b.WriteByte('\n')
+	}
+	if plan.Status == StatusSoftwareStillInstalled && strings.TrimSpace(plan.Refusal) != "" {
+		b.WriteString(plan.Refusal)
 		b.WriteByte('\n')
 	}
 	b.WriteString("preserved: registry, backups, workspaces, unrelated client config\n")

@@ -53,10 +53,10 @@ func openWorkspace() (*workspace, error) {
 	return openWorkspaceWith(openOptions{})
 }
 
-// openBoardWorkspace opens the current directory, or the single registered
-// board when this directory is not a workspace at all. A subdirectory of a
-// workspace still fails and names that root. An empty registry keeps the
-// original error so nothing is scaffolded.
+// openBoardWorkspace opens the board that contains this directory, walking up
+// the way git finds a repository. Outside every board, it opens the most
+// recently used registered board and names the others. An empty registry
+// keeps the original error so nothing is scaffolded.
 func openBoardWorkspace(cmd *cobra.Command) (*workspace, error) {
 	ws, err := openWorkspace()
 	if err == nil {
@@ -83,17 +83,38 @@ func openBoardWorkspace(cmd *cobra.Command) (*workspace, error) {
 	if len(available) == 0 {
 		return nil, err
 	}
-	if len(available) > 1 {
-		var b strings.Builder
-		b.WriteString("this directory is not an Atlas workspace, and more than one board is registered:\n")
-		for _, rec := range available {
-			fmt.Fprintf(&b, "- %s\n", rec.Path)
+	sort.SliceStable(available, func(i, j int) bool {
+		if !available[i].LastSeenAt.Equal(available[j].LastSeenAt) {
+			return available[i].LastSeenAt.After(available[j].LastSeenAt)
 		}
-		b.WriteString("run tracker from that directory, or run tracker to open Atlas Home")
-		return nil, apperr.New(apperr.CodeInvalidInput, strings.TrimSpace(b.String()))
+		return available[i].Path < available[j].Path
+	})
+	chosen := available[0]
+	fmt.Fprintf(cmd.ErrOrStderr(), "opening Atlas board at %s\n", chosen.Path)
+	if len(available) > 1 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "other registered boards:\n")
+		for _, rec := range available[1:] {
+			fmt.Fprintf(cmd.ErrOrStderr(), "- %s\n", rec.Path)
+		}
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "opening Atlas board at %s\n", available[0].Path)
-	return openWorkspaceWith(openOptions{root: available[0].Path})
+	return openWorkspaceWith(openOptions{root: chosen.Path})
+}
+
+// directoryCanBootstrap is an empty directory, or a fresh git init whose only
+// entry is .git. Anything else is left alone so ticket create does not start
+// a second board beside existing files.
+func directoryCanBootstrap(cwd string) bool {
+	entries, err := os.ReadDir(cwd)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.Name() == ".git" {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func uninitializedWorkspaceError(err error) bool {
@@ -113,8 +134,7 @@ func bootstrapEmptyWorkspace(cmd *cobra.Command, openErr error) (*workspace, err
 	if err != nil {
 		return nil, openErr
 	}
-	entries, err := os.ReadDir(cwd)
-	if err != nil || len(entries) > 0 {
+	if !directoryCanBootstrap(cwd) {
 		return nil, openErr
 	}
 	a, err := openApp()
@@ -125,7 +145,7 @@ func bootstrapEmptyWorkspace(cmd *cobra.Command, openErr error) (*workspace, err
 	jsonMode, _ := cmd.Flags().GetBool("json")
 	if !jsonMode {
 		a.SetNotice(cmd.ErrOrStderr())
-		fmt.Fprintf(cmd.ErrOrStderr(), "initializing an Atlas board in %s\n", cwd)
+		fmt.Fprintf(cmd.ErrOrStderr(), "created a new Atlas board at %s\n", cwd)
 	}
 	project, _ := cmd.Flags().GetString("project")
 	_, initErr := a.Init(commandContext(cmd), app.InitOptions{
@@ -156,11 +176,8 @@ func openWorkspaceWith(opts openOptions) (*workspace, error) {
 			return nil, err
 		}
 	}
-	root, err = service.CanonicalWorkspaceRoot(root)
+	root, err = service.FindWorkspaceRoot(root)
 	if err != nil {
-		return nil, err
-	}
-	if err := requireInitializedWorkspace(root); err != nil {
 		return nil, err
 	}
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}

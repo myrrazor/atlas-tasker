@@ -3,6 +3,7 @@ package buildinfo
 import (
 	"runtime"
 	"runtime/debug"
+	"strings"
 )
 
 var (
@@ -52,7 +53,9 @@ func Current() Info {
 			date = vcsTime
 		}
 		if version == "dev" {
-			if info.Main.Version != "" && info.Main.Version != "(devel)" {
+			// A module pseudo-version (v1.17.1-0.2026…-<sha>) is Go's guess at
+			// the next release, not a version Atlas published.
+			if info.Main.Version != "" && info.Main.Version != "(devel)" && !pseudoVersion(info.Main.Version) {
 				version = info.Main.Version
 			} else if revision != "" {
 				version = "dev+" + shortRev(revision)
@@ -66,6 +69,10 @@ func Current() Info {
 		GoVersion: runtime.Version(),
 		Platform:  runtime.GOOS + "/" + runtime.GOARCH,
 	}
+}
+
+func pseudoVersion(version string) bool {
+	return strings.Contains(version, "-0.")
 }
 
 func shortRev(rev string) string {

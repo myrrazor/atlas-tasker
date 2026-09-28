@@ -63,6 +63,7 @@ type BoardPage struct {
 	Archived      []TicketCard          `json:"-"`
 	NotFound      bool                  `json:"-"`
 	SubmitID      string                `json:"-"`
+	LiveStamp     string                `json:"-"`
 }
 
 type WelcomePage struct {
@@ -228,9 +229,12 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		SubmitID:        randomToken(),
 	}
 	if page.ProjectExplicit && page.Project != "" && s.queries != nil && s.queries.Projects != nil {
-		if _, err := s.queries.Projects.GetProject(ctx, page.Project); err != nil {
+		if canon, ok := s.canonicalProject(ctx, page.Project); ok {
+			page.Project = canon
+		} else {
 			page.NotFound = true
 			page.Error = fmt.Sprintf("Project %s was not found.", page.Project)
+			page.BoardPath = firstNonEmpty(page.HomePath, "/board")
 			return page, nil
 		}
 	}

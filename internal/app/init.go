@@ -40,6 +40,9 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 	if err != nil {
 		return InitResult{}, err
 	}
+	if ancestor, findErr := service.FindWorkspaceRoot(root); findErr == nil && ancestor != root {
+		return InitResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is inside existing Atlas workspace %s; tracker did not create another board here", root, ancestor))
+	}
 	release, err := a.lockMachine("tracker init")
 	if err != nil {
 		return InitResult{}, err

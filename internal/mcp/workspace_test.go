@@ -115,6 +115,17 @@ func TestOpenWorkspaceRejectsInvalidRootsWithoutCreatingState(t *testing.T) {
 				}
 			}
 			workspace, err := OpenWorkspace(root, nil, nil)
+			if nested {
+				if err != nil {
+					t.Fatalf("subdirectory should open the parent board: %v", err)
+				}
+				workspace.Close()
+				entries, readErr := os.ReadDir(root)
+				if readErr != nil || len(entries) != 0 {
+					t.Fatalf("opening the parent changed the subdirectory: %v, %v", entries, readErr)
+				}
+				return
+			}
 			if workspace != nil {
 				workspace.Close()
 				t.Fatal("invalid root opened a workspace")

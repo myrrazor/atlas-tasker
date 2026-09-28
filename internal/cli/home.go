@@ -43,6 +43,9 @@ func openAppWithState(stateDir string) (*app.App, error) {
 }
 
 func runRootHome(cmd *cobra.Command, args []string) error {
+	if show, _ := cmd.Flags().GetBool("version"); show {
+		return printVersion(cmd)
+	}
 	if len(args) > 0 {
 		return fmt.Errorf("unknown command %q", args[0])
 	}
@@ -53,7 +56,7 @@ func runRootHome(cmd *cobra.Command, args []string) error {
 	defer func() { _ = a.Close() }()
 	if a.Settings().AutoRegister {
 		if cwd, err := os.Getwd(); err == nil {
-			if root, err := service.InitializedWorkspaceRoot(cwd); err == nil {
+			if root, err := service.FindWorkspaceRoot(cwd); err == nil {
 				_, _ = a.Register(commandContext(cmd), app.RegisterOptions{Root: root, DisplayName: filepath.Base(root)})
 			}
 		}
@@ -102,7 +105,7 @@ func runHomeServe(cmd *cobra.Command, _ []string) error {
 	if strings.TrimSpace(host) == "" {
 		host = a.Settings().Service.Bind
 	}
-	token, csrf, err := webui.LoadOrCreateWebSession(filepath.Join(a.StateDir(), "home-session.json"))
+	session, err := webui.OpenSession(filepath.Join(a.StateDir(), "home-session.json"))
 	if err != nil {
 		return err
 	}
@@ -111,8 +114,9 @@ func runHomeServe(cmd *cobra.Command, _ []string) error {
 		Port:     port,
 		Actor:    "human:owner",
 		ReadOnly: false,
-		Token:    token,
-		CSRF:     csrf,
+		Token:    session.Token(),
+		CSRF:     session.CSRF(),
+		Session:  session,
 	})
 	if err != nil {
 		return err

@@ -625,8 +625,13 @@ func (s *HomeServer) renderWorkspaceOverview(w http.ResponseWriter, r *http.Requ
 	home.Projects = page.Projects
 	home.Recent = page.Recent
 	home.ShowNewProject = r.URL.Query().Get("new_project") == "1"
-	if err != nil {
+	if msg := strings.TrimSpace(r.URL.Query().Get("error_flash")); msg != "" {
+		home.Error = msg
+	} else if err != nil {
 		home.Error = err.Error()
+	}
+	if msg := strings.TrimSpace(r.URL.Query().Get("flash")); msg != "" {
+		home.Flash = msg
 	}
 	if health, err := ws.Queries.BackupHealth(r.Context()); err == nil {
 		home.Backup = &health
@@ -905,14 +910,19 @@ func (s *HomeServer) resolveWorkspaceProject(r *http.Request, ws *app.Workspace,
 	}
 	accept := func(raw string) string {
 		key := strings.TrimSpace(raw)
-		if !contracts.IsValidProjectKey(key) {
+		if key == "" {
 			return ""
 		}
-		if len(allowed) == 0 {
-			return key
+		for existing := range allowed {
+			if existing == key || strings.EqualFold(existing, key) {
+				return existing
+			}
 		}
-		if _, ok := allowed[key]; ok {
-			return key
+		if len(allowed) == 0 && contracts.IsValidProjectKey(strings.ToUpper(key)) {
+			if contracts.IsValidProjectKey(key) {
+				return key
+			}
+			return strings.ToUpper(key)
 		}
 		return ""
 	}

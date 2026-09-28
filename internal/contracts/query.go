@@ -36,11 +36,43 @@ func ParseSearchQueryFlexible(raw string) (SearchQuery, error) {
 	if err == nil {
 		return query, nil
 	}
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" || strings.ContainsAny(trimmed, "=~") {
+	rewritten := foldBareSearchTokens(raw)
+	if rewritten == "" || rewritten == strings.TrimSpace(raw) {
 		return SearchQuery{}, err
 	}
-	return ParseSearchQuery("text~" + trimmed)
+	next, nextErr := ParseSearchQuery(rewritten)
+	if nextErr != nil {
+		return SearchQuery{}, nextErr
+	}
+	return next, nil
+}
+
+// foldBareSearchTokens turns loose words into a text~ term while leaving
+// status= and the other structured terms in place.
+func foldBareSearchTokens(raw string) string {
+	tokens := strings.Fields(strings.TrimSpace(raw))
+	if len(tokens) == 0 {
+		return ""
+	}
+	out := make([]string, 0, len(tokens)+1)
+	bare := make([]string, 0, len(tokens))
+	flush := func() {
+		if len(bare) == 0 {
+			return
+		}
+		out = append(out, "text~"+strings.Join(bare, " "))
+		bare = bare[:0]
+	}
+	for _, token := range tokens {
+		if isSearchTermStart(token) {
+			flush()
+			out = append(out, token)
+			continue
+		}
+		bare = append(bare, token)
+	}
+	flush()
+	return strings.Join(out, " ")
 }
 
 func ParseSearchQuery(raw string) (SearchQuery, error) {
@@ -60,7 +92,11 @@ func ParseSearchQuery(raw string) (SearchQuery, error) {
 			if value == "" {
 				return SearchQuery{}, fmt.Errorf("status query missing value")
 			}
-			terms = append(terms, SearchTerm{Kind: SearchTermStatus, Value: value})
+			status := Status(strings.ToLower(value))
+			if !status.IsValid() {
+				return SearchQuery{}, fmt.Errorf("invalid status: %s", value)
+			}
+			terms = append(terms, SearchTerm{Kind: SearchTermStatus, Value: string(status)})
 		case strings.HasPrefix(token, "type="):
 			value := strings.TrimPrefix(token, "type=")
 			if value == "" {

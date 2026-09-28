@@ -27,12 +27,14 @@ type HomeConfig struct {
 	ReadOnly bool
 	Token    string
 	CSRF     string
+	Session  *Session
 	Clock    func() time.Time
 }
 
 type HomeServer struct {
 	application *app.App
 	cfg         HomeConfig
+	session     *Session
 	token       string
 	csrf        string
 	templates   *template.Template
@@ -78,6 +80,7 @@ func NewHomeServer(application *app.App, cfg HomeConfig) (*HomeServer, error) {
 	return &HomeServer{
 		application: application,
 		cfg:         cfg,
+		session:     cfg.Session,
 		token:       cfg.Token,
 		csrf:        cfg.CSRF,
 		templates:   templates,
@@ -217,7 +220,27 @@ func (s *HomeServer) security(next http.Handler) http.Handler {
 
 func (s *HomeServer) validSession(w http.ResponseWriter, r *http.Request) bool {
 	cookie, err := r.Cookie(s.sessionCookieName())
-	if err != nil || !secureCompare(cookie.Value, s.token) {
+	presented := ""
+	if err == nil {
+		presented = cookie.Value
+	}
+	if s.session != nil && s.session.Matches(presented) {
+		current, changed := s.session.Maintain(time.Now())
+		if changed {
+			s.token = current
+		}
+		if presented != current {
+			http.SetCookie(w, &http.Cookie{
+				Name:     s.sessionCookieName(),
+				Value:    current,
+				Path:     "/",
+				HttpOnly: true,
+				SameSite: http.SameSiteStrictMode,
+			})
+		}
+		return true
+	}
+	if err != nil || !secureCompare(presented, s.token) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte("Atlas Home session required. Open Atlas from `tracker` or `tracker serve`.\n"))

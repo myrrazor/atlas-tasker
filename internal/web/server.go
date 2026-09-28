@@ -48,6 +48,7 @@ type Config struct {
 	TokenMode   string
 	Token       string
 	CSRFToken   string
+	Session     *Session
 	Clock       func() time.Time
 	Location    *time.Location
 	RoutePrefix string
@@ -57,6 +58,7 @@ type Config struct {
 
 type Server struct {
 	cfg         Config
+	session     *Session
 	actions     *service.ActionService
 	queries     *service.QueryService
 	templates   *template.Template
@@ -120,6 +122,7 @@ func NewServer(services Services, cfg Config) (*Server, error) {
 	}
 	return &Server{
 		cfg:         cfg,
+		session:     cfg.Session,
 		actions:     services.Actions,
 		queries:     services.Queries,
 		templates:   templates,
@@ -285,15 +288,37 @@ func (s *Server) sessionCookieName() string {
 	return sessionCookie
 }
 
+func (s *Server) sessionCookie(token string) *http.Cookie {
+	return &http.Cookie{
+		Name:     s.sessionCookieName(),
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	}
+}
+
+func (s *Server) acceptSessionToken(token string) bool {
+	if s.session != nil {
+		return s.session.Matches(token)
+	}
+	return secureCompare(token, s.cfg.Token)
+}
+
+func (s *Server) currentSessionToken() string {
+	if s.session == nil {
+		return s.cfg.Token
+	}
+	token, changed := s.session.Maintain(time.Now())
+	if changed {
+		s.cfg.Token = token
+	}
+	return token
+}
+
 func (s *Server) validSession(w http.ResponseWriter, r *http.Request) bool {
-	if token := r.URL.Query().Get("token"); secureCompare(token, s.cfg.Token) {
-		http.SetCookie(w, &http.Cookie{
-			Name:     s.sessionCookieName(),
-			Value:    s.cfg.Token,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
-		})
+	if token := r.URL.Query().Get("token"); s.acceptSessionToken(token) {
+		http.SetCookie(w, s.sessionCookie(s.currentSessionToken()))
 		clean := *r.URL
 		q := clean.Query()
 		q.Del("token")
@@ -302,10 +327,13 @@ func (s *Server) validSession(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	cookie, err := r.Cookie(s.sessionCookieName())
-	if err != nil || !secureCompare(cookie.Value, s.cfg.Token) {
+	if err != nil || !s.acceptSessionToken(cookie.Value) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte("Atlas web session required. Start with `tracker web serve --open` to open a session URL.\n"))
 		return false
+	}
+	if current := s.currentSessionToken(); cookie.Value != current {
+		http.SetCookie(w, s.sessionCookie(current))
 	}
 	return true
 }

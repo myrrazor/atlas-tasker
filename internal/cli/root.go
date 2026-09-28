@@ -60,6 +60,7 @@ init plus Home.`,
 		RunE:              runRootHome,
 	}
 	root.PersistentFlags().Bool("plain", false, "Disable terminal styling and print plain text output")
+	root.Flags().Bool("version", false, "Print build version metadata")
 	root.Flags().Bool("no-open", false, "Print the Home URL without opening a browser")
 	addReadOutputFlags(root, &outputFlags{})
 
@@ -1021,18 +1022,17 @@ func resolveMutationActor(cmd *cobra.Command, _ []string) error {
 	if cmd.Annotations["atlas.resolve-actor"] != "true" {
 		return nil
 	}
+	if raw, _ := cmd.Flags().GetString("actor"); strings.TrimSpace(raw) != "" && !contracts.Actor(strings.TrimSpace(raw)).IsValid() {
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", strings.TrimSpace(raw)))
+	}
 	root, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	root, err = service.CanonicalWorkspaceRoot(root)
+	root, err = service.FindWorkspaceRoot(root)
 	if err != nil {
-		return err
-	}
-	if err := requireInitializedWorkspace(root); err != nil {
 		// ticket create bootstraps an empty directory itself. A directory that
-		// is not a workspace at all continues into the command; a subdirectory
-		// of a workspace still fails here and names that root.
+		// is not inside a board continues into the command.
 		if uninitializedWorkspaceError(err) {
 			return nil
 		}

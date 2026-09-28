@@ -37,6 +37,20 @@ func TestNewModelRejectsInvalidRootsWithoutCreatingState(t *testing.T) {
 				}
 			}
 			m, err := newModel(root, contracts.Actor("human:owner"))
+			if nested {
+				if err != nil {
+					t.Fatalf("subdirectory should open the parent board: %v", err)
+				}
+				m.close()
+				if m.root != wantMessage && !strings.HasPrefix(m.root, wantMessage) {
+					t.Fatalf("TUI root = %s, want parent %s", m.root, wantMessage)
+				}
+				entries, readErr := os.ReadDir(root)
+				if readErr != nil || len(entries) != 0 {
+					t.Fatalf("opening the parent changed the subdirectory: %v, %v", entries, readErr)
+				}
+				return
+			}
 			if err == nil {
 				m.close()
 				t.Fatal("invalid root opened a TUI model")

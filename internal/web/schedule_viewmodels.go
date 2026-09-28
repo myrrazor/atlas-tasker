@@ -17,6 +17,7 @@ import (
 type SchedulePage struct {
 	Page            string
 	Workspace       string
+	DisplayName     string
 	Host            string
 	Actor           contracts.Actor
 	ReadOnly        bool
@@ -103,6 +104,7 @@ func (s *Server) buildSchedulePage(ctx context.Context, r *http.Request) (Schedu
 	page := SchedulePage{
 		Page:            "schedule",
 		Workspace:       s.cfg.Workspace,
+		DisplayName:     firstNonEmpty(s.cfg.DisplayName, s.cfg.Workspace),
 		Host:            s.cfg.Host,
 		Actor:           s.cfg.Actor,
 		ReadOnly:        s.cfg.ReadOnly,

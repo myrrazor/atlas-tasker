@@ -172,7 +172,7 @@ type model struct {
 	cursor             int
 	status             string
 	showHelp           bool
-	indexMod           time.Time
+	indexStamp         string
 	dialog             dialogState
 	lastBulk           *service.BulkOperationResult
 	pendingBulk        *service.BulkOperation
@@ -242,7 +242,7 @@ func Run(root string, explicitActor contracts.Actor, boardStyle render.BoardStyl
 }
 
 func newModel(root string, explicitActor contracts.Actor) (model, error) {
-	root, err := service.InitializedWorkspaceRoot(root)
+	root, err := service.FindWorkspaceRoot(root)
 	if err != nil {
 		return model{}, err
 	}
@@ -337,6 +337,23 @@ type watchTickMsg struct{}
 
 func watchTick() tea.Cmd {
 	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return watchTickMsg{} })
+}
+
+// projectionStamp includes the WAL and SHM files. A single write often lands
+// only in index.sqlite-wal, so the main database mtime stays put until a
+// checkpoint.
+func projectionStamp(root string) string {
+	var b strings.Builder
+	dir := storage.TrackerDir(root)
+	for _, name := range []string{"index.sqlite", "index.sqlite-wal", "index.sqlite-shm"} {
+		info, err := os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			fmt.Fprintf(&b, "%s:missing;", name)
+			continue
+		}
+		fmt.Fprintf(&b, "%s:%d:%d;", name, info.ModTime().UnixNano(), info.Size())
+	}
+	return b.String()
 }
 
 func (m model) Init() tea.Cmd {
@@ -457,16 +474,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.dialog.active() || m.search.Focused() || m.showHelp {
 			return m, watchTick()
 		}
-		info, err := os.Stat(filepath.Join(storage.TrackerDir(m.root), "index.sqlite"))
-		if err != nil {
+		stamp := projectionStamp(m.root)
+		if m.indexStamp == "" {
+			m.indexStamp = stamp
 			return m, watchTick()
 		}
-		if m.indexMod.IsZero() {
-			m.indexMod = info.ModTime()
-			return m, watchTick()
-		}
-		if info.ModTime().After(m.indexMod) {
-			m.indexMod = info.ModTime()
+		if stamp != m.indexStamp {
+			m.indexStamp = stamp
 			return m, tea.Batch(m.refresh(), watchTick())
 		}
 		return m, watchTick()

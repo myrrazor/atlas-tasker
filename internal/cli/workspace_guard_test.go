@@ -78,18 +78,11 @@ func TestSubdirectoryOfWorkspacePointsAtTheRealRoot(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(root) })
 
 	out, cliErr := runCLI(t, "board")
-	if cliErr == nil {
-		t.Fatalf("expected board in a workspace subdirectory to fail, got output:\n%s", out)
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		resolvedRoot = root
-	}
-	if !strings.Contains(cliErr.Error(), resolvedRoot) {
-		t.Fatalf("error should name the workspace root %s so the user knows where to cd, got: %v", resolvedRoot, cliErr)
+	if cliErr != nil {
+		t.Fatalf("board in a workspace subdirectory should open the parent board: %v\n%s", cliErr, out)
 	}
 	if _, statErr := os.Stat(filepath.Join(sub, ".tracker")); !os.IsNotExist(statErr) {
-		t.Fatalf("a refused read must not scaffold .tracker in the subdirectory (stat err: %v)", statErr)
+		t.Fatalf("opening the parent board must not scaffold .tracker in the subdirectory (stat err: %v)", statErr)
 	}
 }
 

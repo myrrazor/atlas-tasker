@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/app"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	webui "github.com/myrrazor/atlas-tasker/internal/web"
 	"github.com/spf13/cobra"
@@ -62,10 +63,11 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	}
 	defer listener.Close()
 	actualPort := listener.Addr().(*net.TCPAddr).Port
-	token, csrf, err := webui.LoadOrCreateWebSession(filepath.Join(workspace.root, ".tracker", "web-session.json"))
+	session, err := webui.OpenSession(filepath.Join(workspace.root, ".tracker", "web-session.json"))
 	if err != nil {
 		return err
 	}
+	_ = app.RefreshManagedIgnores(workspace.root)
 	server, err := webui.NewServer(webui.Services{Actions: workspace.actions, Queries: workspace.queries}, webui.Config{
 		Root:      workspace.root,
 		Workspace: filepath.Base(workspace.root),
@@ -75,8 +77,9 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 		Actor:     actor,
 		ReadOnly:  readOnly,
 		TokenMode: tokenMode,
-		Token:     token,
-		CSRFToken: csrf,
+		Token:     session.Token(),
+		CSRFToken: session.CSRF(),
+		Session:   session,
 		Clock:     defaultNow,
 	})
 	if err != nil {

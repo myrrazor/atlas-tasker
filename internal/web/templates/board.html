@@ -1,5 +1,23 @@
 {{define "revInput"}}<input type="hidden" name="expected_revision" value="{{ticketRevision .}}">{{end}}
 
+{{define "commentThread"}}
+<div class="comment-thread" data-comment-thread>
+{{$d := .Detail.View}}
+{{range $d.CommentEntries}}
+  <div class="comment-block">
+    <div class="comment-meta">{{.Actor}} <b>{{actorInitials .Actor}}</b> · {{formatTime .Timestamp}}</div>
+    <pre class="comment">{{.Body}}</pre>
+  </div>
+{{else}}<p class="muted">{{t "board.section.no_comments"}}</p>{{end}}
+</div>
+{{end}}
+
+{{define "historyList"}}
+<ol class="history" data-history-list>
+  {{range .Detail.Recent}}<li><b>{{.Type}}</b> {{t "common.by"}} {{.Actor}} <span>{{formatTime .Timestamp}}</span></li>{{else}}<li>{{t "board.section.no_history"}}</li>{{end}}
+</ol>
+{{end}}
+
 {{define "boardContent"}}
 {{if .NotFound}}
 <main class="app-shell">
@@ -420,12 +438,7 @@
 
 <section class="tab-panel {{if eq $activeTab "activity"}}active{{end}}" id="tab-activity">
   <h2>{{t "board.section.comments"}}</h2>
-  {{range $d.CommentEntries}}
-    <div class="comment-block">
-      <div class="comment-meta">{{.Actor}} <b>{{actorInitials .Actor}}</b> · {{formatTime .Timestamp}}</div>
-      <pre class="comment">{{.Body}}</pre>
-    </div>
-  {{else}}<p class="muted">{{t "board.section.no_comments"}}</p>{{end}}
+  {{template "commentThread" .}}
   <form class="drawer-form compact" method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/comment">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">
@@ -435,9 +448,7 @@
     <button type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.section.add_comment"}}</button>
   </form>
   <h2>{{t "board.section.recent_history"}}</h2>
-  <ol class="history">
-    {{range $.Detail.Recent}}<li><b>{{.Type}}</b> {{t "common.by"}} {{.Actor}} <span>{{formatTime .Timestamp}}</span></li>{{else}}<li>{{t "board.section.no_history"}}</li>{{end}}
-  </ol>
+  {{template "historyList" .}}
 </section>
 
 <section class="tab-panel" id="tab-gates">
@@ -496,6 +507,10 @@
 </section>
 
 <div class="drawer-actions">
+  {{$st := statusKey $d.BoardStatus}}
+  {{$review := printf "%s" $d.Ticket.ReviewState}}
+  {{$mode := printf "%s" $d.EffectivePolicy.CompletionMode}}
+  {{if eq $st "in-progress"}}
   <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/request-review">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">
@@ -503,6 +518,8 @@
     <input type="hidden" name="reason" value="web request review">
     <button class="primary-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.action.request_review"}}</button>
   </form>
+  {{end}}
+  {{if eq $st "in-review"}}
   <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/approve">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">
@@ -510,6 +527,8 @@
     <input type="hidden" name="reason" value="web approve">
     <button class="approve-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.action.approve"}}</button>
   </form>
+  {{end}}
+  {{if or (and (eq $st "in-progress") (eq $mode "open")) (and (eq $st "in-review") (eq $review "approved"))}}
   <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/complete">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">
@@ -517,6 +536,7 @@
     <input type="hidden" name="reason" value="web complete">
     <button class="complete-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.action.complete"}}</button>
   </form>
+  {{end}}
   <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/claim">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">

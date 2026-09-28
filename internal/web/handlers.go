@@ -3,8 +3,6 @@ package web
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,6 +61,21 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, r, apperr.New(apperr.CodeInvalidInput, "method not allowed"), http.StatusMethodNotAllowed)
 		return
 	}
+	stamp := s.boardLiveStamp(r)
+	if r.Header.Get("X-Atlas-Live") == "1" {
+		w.Header().Set("ETag", quotedETag(stamp))
+		w.Header().Set("Cache-Control", "no-store")
+		if etagMatches(r.Header.Get("If-None-Match"), quotedETag(stamp)) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		if patch, ok := s.liveBoardPatch(r, stamp); ok {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(patch)
+			return
+		}
+	}
 	page, err := s.buildBoardPage(r.Context(), r)
 	if err != nil {
 		page = BoardPage{
@@ -78,36 +91,15 @@ func (s *Server) handleBoard(w http.ResponseWriter, r *http.Request) {
 			NotFound:     apperr.CodeOf(err) == apperr.CodeNotFound,
 		}
 	}
+	page.LiveStamp = stamp
 	status := http.StatusOK
 	if page.NotFound {
 		status = http.StatusNotFound
 	}
 	if status == http.StatusOK {
-		tag := boardETag(page)
-		w.Header().Set("ETag", tag)
-		if etagMatches(r.Header.Get("If-None-Match"), tag) {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
+		w.Header().Set("ETag", quotedETag(stamp))
 	}
 	s.renderPage(w, r, page, status)
-}
-
-func boardETag(page BoardPage) string {
-	hash := sha256.New()
-	fmt.Fprintf(hash, "%t\n%s\n%s\n%s\n", page.NotFound, page.Error, page.Flash, page.Query)
-	for _, column := range page.Columns {
-		fmt.Fprintf(hash, "col %s %d\n", column.Status, len(column.Tickets))
-		for _, card := range column.Tickets {
-			fmt.Fprintf(hash, "%s\t%s\t%s\t%s\n", card.Ticket.ID, card.Ticket.Status, card.Ticket.Title, TicketRevision(card.Ticket))
-		}
-	}
-	if page.Detail != nil {
-		ticket := page.Detail.View.Ticket
-		fmt.Fprintf(hash, "detail %s %s %s %s %s\n", ticket.ID, ticket.Title, ticket.Status, ticket.Description, TicketRevision(ticket))
-	}
-	sum := hash.Sum(nil)
-	return `"` + hex.EncodeToString(sum[:8]) + `"`
 }
 
 func etagMatches(header, tag string) bool {
@@ -302,7 +294,7 @@ func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:          now,
 		SchemaVersion:      contracts.CurrentSchemaVersion,
 	}
-	createdID, err := s.createOnce(r.Form.Get("submit_id"), func() (string, error) {
+	createdID, err := s.createOnce(r.Form.Get("submit_id"), createFingerprint(ticket), func() (string, error) {
 		created, err := s.actions.CreateTrackedTicket(s.mutationContext(r, actor), ticket, actor, reason)
 		if err != nil {
 			return "", err
@@ -794,20 +786,23 @@ func (s *Server) projectFromTicket(r *http.Request, ticketID string) string {
 
 func (s *Server) validatedProject(r *http.Request, raw string) string {
 	key := strings.TrimSpace(raw)
-	if !contracts.IsValidProjectKey(key) {
+	if key == "" {
 		return ""
 	}
 	if s.queries != nil {
 		if projects, err := s.queries.Projects.ListProjects(r.Context()); err == nil {
 			for _, project := range projects {
-				if project.Key == key {
-					return key
+				if project.Key == key || strings.EqualFold(project.Key, key) {
+					return project.Key
 				}
 			}
 			return ""
 		}
 	}
-	if s.cfg.Project == "" || s.cfg.Project == key {
+	if contracts.IsValidProjectKey(key) && (s.cfg.Project == "" || strings.EqualFold(s.cfg.Project, key)) {
+		if strings.EqualFold(s.cfg.Project, key) && s.cfg.Project != "" {
+			return s.cfg.Project
+		}
 		return key
 	}
 	return ""
