@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -46,8 +47,9 @@ type liveDrawer struct {
 	ActionsHTML string `json:"actions_html,omitempty"`
 }
 
-// liveFPCache remembers a logical ticket fingerprint for one sqlite+wal
-// size:mtime. Idle polls reuse it and never open the index.
+// liveFPCache remembers a logical ticket fingerprint for one projection
+// stamp (sqlite+wal size:mtime plus the WAL commit counter). Idle polls
+// reuse it and never open the index.
 type liveFPCache struct {
 	mu  sync.Mutex
 	key string
@@ -139,10 +141,11 @@ func (s *Server) liveProjectionParts(r *http.Request) []string {
 	if afterKey == "" {
 		return nil
 	}
-	// The index moved while the rows were read. Caching that fingerprint
-	// under the new stamp would 304 a stale board forever. Omit it so the
-	// client resyncs, and let the next idle poll fill the cache.
-	if !computed || afterKey != key {
+	// The index moved while the rows were read, or a commit was in the
+	// middle of publishing the WAL header. Caching that fingerprint under
+	// the new stamp would 304 a stale board forever. Omit it so the client
+	// resyncs, and let the next idle poll fill the cache.
+	if !computed || afterKey != key || strings.Contains(afterKey, "walgen=pending") {
 		return after
 	}
 	cache.store(afterKey, fp)
@@ -169,10 +172,13 @@ func (c *liveFPCache) store(key, fp string) {
 }
 
 func (s *Server) computeLiveFP(ctx context.Context) (string, bool) {
-	if s.queries == nil || s.queries.Tickets == nil {
+	// The board is rendered from the sqlite projection. Fingerprinting the
+	// markdown files instead races ahead of an in-flight reindex: the etag
+	// says nothing changed while the cards on screen are still the old rows.
+	if s.queries == nil || s.queries.Projection == nil {
 		return "", false
 	}
-	tickets, err := s.queries.Tickets.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	tickets, err := s.queries.Projection.QuerySearch(ctx, contracts.SearchQuery{})
 	if err != nil {
 		return "", false
 	}
@@ -201,7 +207,7 @@ func fingerprintTickets(tickets []contracts.TicketSnapshot) string {
 
 func projectionStampParts(root string) []string {
 	dir := storage.TrackerDir(root)
-	parts := make([]string, 0, 2)
+	parts := make([]string, 0, 3)
 	for _, name := range []string{"index.sqlite", "index.sqlite-wal"} {
 		info, err := os.Stat(filepath.Join(dir, name))
 		if err != nil {
@@ -210,7 +216,53 @@ func projectionStampParts(root string) []string {
 		}
 		parts = append(parts, "db:"+name+"="+strconv.FormatInt(info.Size(), 10)+":"+strconv.FormatInt(info.ModTime().UnixNano(), 10))
 	}
+	// sqlite+wal size:mtime is not a commit counter. Frames land in the WAL
+	// before readers can see them, and a later commit often keeps the same
+	// mtime. The WAL index header is what a reader uses to notice a commit,
+	// and idle polls do not change it. The shm file's own size and mtime
+	// stay out of the key: they do not move on commit and must not be
+	// treated as a generation.
+	gen, ok := walCommitGeneration(filepath.Join(dir, "index.sqlite-shm"))
+	if !ok {
+		gen = "pending"
+	}
+	parts = append(parts, "db:index.sqlite-walgen="+gen)
 	return parts
+}
+
+// walCommitGeneration reads the two copies of the WAL index header.
+// Layout (host endian), from SQLite's wal-index header:
+//
+//	0  iVersion uint32
+//	8  iChange  uint32  incremented on each commit
+//	16 mxFrame  uint32
+//	32 aSalt    uint32[2]
+//
+// ok is false when a commit is between the two header copies.
+func walCommitGeneration(path string) (string, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "0", true
+		}
+		return "", false
+	}
+	defer f.Close()
+	var buf [96]byte
+	if _, err := io.ReadFull(f, buf[:]); err != nil {
+		return "", false
+	}
+	if !bytes.Equal(buf[:48], buf[48:96]) {
+		return "", false
+	}
+	iChange := binary.NativeEndian.Uint32(buf[8:12])
+	mxFrame := binary.NativeEndian.Uint32(buf[16:20])
+	salt1 := binary.NativeEndian.Uint32(buf[32:36])
+	salt2 := binary.NativeEndian.Uint32(buf[36:40])
+	return strconv.FormatUint(uint64(iChange), 10) + ":" +
+		strconv.FormatUint(uint64(mxFrame), 10) + ":" +
+		strconv.FormatUint(uint64(salt1), 10) + ":" +
+		strconv.FormatUint(uint64(salt2), 10), true
 }
 
 func eventFileSizes(root string) map[string]int64 {
