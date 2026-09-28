@@ -768,12 +768,59 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 			return err
 		}
 	}
+	if err := s.dropTicketsAbsentFromMarkdown(ctx, project, tickets); err != nil {
+		return err
+	}
 
 	// project-scoped rebuilds don't stamp: the fingerprint is workspace-wide
 	// and a partial rebuild says nothing about the other projects
 	if project == "" {
 		if err := s.recordSourceFingerprint(ctx, true); err != nil {
 			return fmt.Errorf("record source fingerprint: %w", err)
+		}
+	}
+	return nil
+}
+
+// dropTicketsAbsentFromMarkdown removes index rows whose markdown files are
+// gone. Event replay would otherwise keep a deleted ticket on the board.
+func (s *Store) dropTicketsAbsentFromMarkdown(ctx context.Context, project string, live []contracts.TicketSnapshot) error {
+	keep := make(map[string]struct{}, len(live))
+	for _, ticket := range live {
+		id := strings.TrimSpace(ticket.ID)
+		if id != "" {
+			keep[id] = struct{}{}
+		}
+	}
+	query := `SELECT id FROM tickets`
+	args := make([]any, 0, 1)
+	if project != "" {
+		query += ` WHERE project = ?`
+		args = append(args, project)
+	}
+	rows, err := s.queryContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("list indexed tickets: %w", err)
+	}
+	var gone []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		if _, ok := keep[id]; !ok {
+			gone = append(gone, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, id := range gone {
+		if _, err := s.execContext(ctx, `DELETE FROM tickets WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("drop missing ticket %s: %w", id, err)
 		}
 	}
 	return nil

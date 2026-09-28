@@ -46,7 +46,10 @@ type openOptions struct {
 	// skipIndexFreshness: the caller is about to rebuild anyway (reindex), so
 	// don't do it twice
 	skipIndexFreshness bool
-	root               string
+	// skipUseStamp: bootstrap of an empty directory is not "using" a board.
+	// Stamping it would make a scratch ticket the default everywhere.
+	skipUseStamp bool
+	root         string
 }
 
 func openWorkspace() (*workspace, error) {
@@ -84,10 +87,23 @@ func openBoardWorkspace(cmd *cobra.Command) (*workspace, error) {
 		return nil, err
 	}
 	candidates := available
-	if want, flagErr := cmd.Flags().GetString("project"); flagErr == nil {
-		if matched := boardsWithProject(available, want); len(matched) > 0 {
+	if cmd != nil {
+		if want, flagErr := cmd.Flags().GetString("project"); flagErr == nil && strings.TrimSpace(want) != "" {
+			matched := boardsWithProject(available, want)
+			if len(matched) == 0 {
+				return nil, apperr.New(apperr.CodeNotFound, fmt.Sprintf("no registered Atlas board contains project %s", strings.TrimSpace(want)))
+			}
 			candidates = matched
 		}
+	}
+	skipped := 0
+	for _, rec := range listed {
+		if rec.Health != app.HealthAvailable {
+			skipped++
+		}
+	}
+	if skipped > 0 && cmd != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "skipped %d registered board(s) that are missing or unavailable\n", skipped)
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
 		if !candidates[i].LastSeenAt.Equal(candidates[j].LastSeenAt) {
@@ -178,7 +194,6 @@ func bootstrapEmptyWorkspace(cmd *cobra.Command, openErr error) (*workspace, err
 	if !jsonMode {
 		a.SetNotice(cmd.ErrOrStderr())
 	}
-	fmt.Fprintf(cmd.ErrOrStderr(), "created a new Atlas board at %s\n", cwd)
 	project, _ := cmd.Flags().GetString("project")
 	_, initErr := a.Init(commandContext(cmd), app.InitOptions{
 		Root:           cwd,
@@ -196,7 +211,11 @@ func bootstrapEmptyWorkspace(cmd *cobra.Command, openErr error) (*workspace, err
 			return nil, initErr
 		}
 	}
-	return openWorkspace()
+	if _, statErr := os.Stat(filepath.Join(cwd, ".tracker")); statErr != nil {
+		return nil, initErr
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "created a new Atlas board at %s\n", cwd)
+	return openWorkspaceWith(openOptions{skipUseStamp: true})
 }
 
 func openWorkspaceWith(opts openOptions) (*workspace, error) {
@@ -262,7 +281,19 @@ func openWorkspaceWith(opts openOptions) (*workspace, error) {
 	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
 	home, _ := os.UserHomeDir()
 	service.AttachUserState(w.actions, w.queries, home, "")
+	if !opts.skipUseStamp {
+		noteBoardUse(root)
+	}
 	return w, nil
+}
+
+func noteBoardUse(root string) {
+	a, err := openApp()
+	if err != nil {
+		return
+	}
+	defer func() { _ = a.Close() }()
+	a.NoteWorkspaceUse(root)
 }
 
 // init and integrations install bootstrap explicitly; every other workspace

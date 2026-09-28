@@ -154,13 +154,27 @@
     return dragsInFlight > 0 || cardPointerDown || Date.now() < dragQuietUntil;
   }
 
+  let pointerGuard = 0;
   document.addEventListener('pointerdown', (event) => {
     const target = event.target;
-    if (target && target.closest && target.closest('.ticket-card')) cardPointerDown = true;
+    if (!(target && target.closest && target.closest('.ticket-card'))) return;
+    cardPointerDown = true;
+    window.clearTimeout(pointerGuard);
+    // A press that never receives pointerup (released outside the window,
+    // or the tab changed) must not freeze live updates until the next click.
+    pointerGuard = window.setTimeout(() => {
+      if (dragsInFlight === 0) cardPointerDown = false;
+    }, 2000);
   }, true);
+  function clearStuckPointer() {
+    if (dragsInFlight > 0) return;
+    cardPointerDown = false;
+    window.clearTimeout(pointerGuard);
+  }
   // pointerup can beat dragstart. Keep the card frozen across that gap so a
   // live refresh cannot replace it before the drag is real.
   function releaseCardPointer() {
+    window.clearTimeout(pointerGuard);
     window.setTimeout(() => {
       if (dragsInFlight === 0) cardPointerDown = false;
     }, 80);
@@ -168,6 +182,10 @@
   document.addEventListener('pointerup', releaseCardPointer, true);
   document.addEventListener('pointercancel', releaseCardPointer, true);
   document.addEventListener('dragend', releaseCardPointer, true);
+  window.addEventListener('blur', clearStuckPointer);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) clearStuckPointer();
+  });
 
   function prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -485,8 +503,110 @@
         if (next) history.replaceWith(next);
       }
     }
-    if ((data.comments_html || data.history_html) && !safe) skipped = true;
+    const commentBlocked = (data.comments_html || data.history_html) && !safe;
+    // A large patch must still advance the stamp. Holding it for a dirty
+    // drawer re-downloads the whole burst on every poll.
+    if (commentBlocked && !data.resync && (data.cards || []).length <= 40) skipped = true;
     return !skipped;
+  }
+
+  function controlDirty(el) {
+    if (!el) return true;
+    if (el.tagName === 'SELECT') {
+      let initial = Array.from(el.options).findIndex((opt) => opt.defaultSelected);
+      if (initial < 0) initial = 0;
+      return el.selectedIndex !== initial;
+    }
+    if (el.type === 'checkbox' || el.type === 'radio') return el.checked !== el.defaultChecked;
+    return el.value !== el.defaultValue;
+  }
+
+  function setIfClean(el, value) {
+    if (!el || controlDirty(el)) return;
+    const next = value == null ? '' : String(value);
+    if (el.tagName === 'SELECT') {
+      el.value = next;
+      Array.from(el.options).forEach((opt) => { opt.defaultSelected = opt.value === next; });
+      return;
+    }
+    el.value = next;
+    el.defaultValue = next;
+  }
+
+  function applyDrawerLive(drawer) {
+    if (!drawer || !drawer.id) return;
+    if (new URL(window.location.href).searchParams.get('ticket') !== drawer.id) return;
+    const root = document.querySelector('.detail-drawer');
+    if (!root || root.dataset.formEcho) return;
+    const heading = root.querySelector('.drawer-head h1');
+    if (heading && drawer.title) heading.textContent = drawer.title;
+    const pill = root.querySelector('.drawer-meta .status-pill');
+    if (pill && drawer.status) {
+      pill.className = 'status-pill st-' + drawer.status;
+      if (drawer.status_label) pill.textContent = drawer.status_label;
+    }
+    const edit = root.querySelector('form[action$="/edit"]');
+    if (edit) {
+      setIfClean(edit.querySelector('[name="title"]'), drawer.title);
+      setIfClean(edit.querySelector('[name="description"]'), drawer.description);
+      setIfClean(edit.querySelector('[name="notes"]'), drawer.notes);
+      setIfClean(edit.querySelector('[name="acceptance"]'), drawer.acceptance);
+      setIfClean(edit.querySelector('[name="priority"]'), drawer.priority);
+      setIfClean(edit.querySelector('[name="assignee"]'), drawer.assignee);
+      setIfClean(edit.querySelector('[name="reviewer"]'), drawer.reviewer);
+      setIfClean(edit.querySelector('[name="labels"]'), drawer.labels);
+    }
+    root.querySelectorAll('input[name="expected_revision"]').forEach((rev) => {
+      setIfClean(rev, drawer.revision);
+    });
+    const descInput = edit && edit.querySelector('[name="description"]');
+    const prose = root.querySelector('[data-drawer-description]');
+    if (prose && (!descInput || !controlDirty(descInput))) {
+      prose.textContent = drawer.description || '';
+    }
+    const notesInput = edit && edit.querySelector('[name="notes"]');
+    const notes = root.querySelector('[data-drawer-notes]');
+    if (notes && (!notesInput || !controlDirty(notesInput))) {
+      notes.textContent = drawer.notes || '';
+    }
+  }
+
+  function applyBoardResync(data) {
+    const dragging = document.querySelector('.ticket-card.sortable-chosen, .ticket-card.sortable-ghost, .ticket-card.sortable-dragging');
+    if (dragging) return false;
+    const byStatus = new Map();
+    (data.cards || []).forEach((patch) => {
+      const status = String(patch.status || '');
+      if (!status) return;
+      if (!byStatus.has(status)) byStatus.set(status, []);
+      byStatus.get(status).push(patch);
+    });
+    document.querySelectorAll('.ticket-list[data-status]').forEach((list) => {
+      const patches = byStatus.get(list.dataset.status) || [];
+      const frag = document.createDocumentFragment();
+      patches.forEach((patch) => {
+        if (!patch.html) return;
+        const holder = document.createElement('template');
+        holder.innerHTML = String(patch.html).trim();
+        const next = holder.content.querySelector('.ticket-card');
+        if (!next) return;
+        next.setAttribute('href', ticketHref(next.dataset.ticketId));
+        frag.appendChild(next);
+      });
+      if (!frag.childNodes.length) {
+        list.replaceChildren();
+        const empty = document.createElement('div');
+        empty.className = 'empty-column';
+        list.appendChild(empty);
+      } else {
+        list.replaceChildren(frag);
+      }
+    });
+    syncColumnCounts();
+    setupSortable();
+    setupCardPreviews();
+    rewriteCardHrefs();
+    return true;
   }
 
   async function refreshBoard(opts) {
@@ -516,16 +636,15 @@
           const data = await response.json();
           hideServerDown();
           if (dragBlocked() || seq !== refreshSeq) return;
-          const applied = applyBoardDelta(data);
+          const applied = data.resync ? applyBoardResync(data) : applyBoardDelta(data);
+          applyDrawerLive(data.drawer);
           if (applied && etag) boardETag = etag;
           return;
         }
-        if (quiet && cardCount() > 200) return;
         const html = await response.text();
         hideServerDown();
         await waitForDragEnd();
         if (dragBlocked() || seq !== refreshSeq) return;
-        if (etag) boardETag = etag;
         const boardMotion = prefersReducedMotion() ? null : captureBoardMotion(document.querySelector('.board-grid'));
         const doc = new DOMParser().parseFromString(html, 'text/html');
         const selectors = ['.board-grid', '.mobile-columns'];
@@ -552,6 +671,7 @@
           setupTabs();
           setupDrawerMotion(false);
         }
+        if (etag) boardETag = etag;
         return;
       } catch (err) {
         if (attempt < attempts - 1) {
@@ -805,6 +925,17 @@
       }
     });
   }
+
+  window.addEventListener('pageshow', (event) => {
+    const nav = window.performance && typeof window.performance.getEntriesByType === 'function'
+      ? window.performance.getEntriesByType('navigation')[0]
+      : null;
+    const back = event.persisted || (nav && nav.type === 'back_forward');
+    if (!back) return;
+    document.querySelectorAll('form[action*="/tickets/create"]').forEach((form) => {
+      form.reset();
+    });
+  });
 
   function startLiveBoard() {
     if (document.body?.dataset?.page !== 'board') return;

@@ -66,7 +66,7 @@ func (s *Server) createOnce(submitID, fingerprint string, create func() (string,
 	for _, record := range records {
 		if record.ID == submitID && record.Ticket != "" {
 			if record.Fingerprint != "" && fingerprint != "" && record.Fingerprint != fingerprint {
-				return "", apperr.New(apperr.CodeConflict, "submit_id was already used for a different ticket")
+				return "", apperr.New(apperr.CodeConflict, "That create was already used for a different ticket. Submit again to create a new one.")
 			}
 			return record.Ticket, nil
 		}

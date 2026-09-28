@@ -241,6 +241,12 @@ func (s *HomeServer) validSession(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	if err != nil || !secureCompare(presented, s.token) {
+		if r.Header.Get("X-Atlas-Live") == "1" {
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Session expired. Run tracker in a terminal on this computer to sign in again.\n"))
+			return false
+		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte("Atlas Home session required. Open Atlas from `tracker` or `tracker serve`.\n"))

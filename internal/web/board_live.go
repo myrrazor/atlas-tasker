@@ -27,24 +27,43 @@ type liveCardPatch struct {
 	Remove bool   `json:"remove,omitempty"`
 }
 
+type liveDrawer struct {
+	ID          string `json:"id"`
+	Revision    string `json:"revision"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Notes       string `json:"notes"`
+	Acceptance  string `json:"acceptance"`
+	Priority    string `json:"priority"`
+	Assignee    string `json:"assignee"`
+	Reviewer    string `json:"reviewer"`
+	Labels      string `json:"labels"`
+	Status      string `json:"status"`
+	StatusLabel string `json:"status_label"`
+}
+
 type liveBoardBody struct {
 	Cards        []liveCardPatch `json:"cards"`
 	CommentsHTML string          `json:"comments_html,omitempty"`
 	HistoryHTML  string          `json:"history_html,omitempty"`
+	Resync       bool            `json:"resync,omitempty"`
+	Drawer       *liveDrawer     `json:"drawer,omitempty"`
 }
 
 type parsedLiveStamp struct {
 	query string
 	files map[string]int64
+	db    map[string]string
 }
 
 func quotedETag(body string) string {
 	return `"` + body + `"`
 }
 
-// boardLiveStamp is a stat of the event logs plus the board query. It does
-// not read ticket rows. Comments and edits both append a JSONL line, so a
-// matching stamp means the visible board cannot have changed.
+// boardLiveStamp is a stat of the event logs, the sqlite index, and the board
+// query. It does not read ticket rows. A matching stamp means the visible
+// board cannot have changed, including a reindex or a git pull that rebuilt
+// the index without appending an event.
 func (s *Server) boardLiveStamp(r *http.Request) string {
 	q := r.URL.Query()
 	q.Del("flash")
@@ -62,7 +81,22 @@ func (s *Server) boardLiveStamp(r *http.Request) string {
 	for _, name := range names {
 		parts = append(parts, name+"="+strconv.FormatInt(files[name], 10))
 	}
+	parts = append(parts, projectionStampParts(s.cfg.Root)...)
 	return strings.Join(parts, "|")
+}
+
+func projectionStampParts(root string) []string {
+	dir := storage.TrackerDir(root)
+	parts := make([]string, 0, 2)
+	for _, name := range []string{"index.sqlite", "index.sqlite-wal"} {
+		info, err := os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			parts = append(parts, "db:"+name+"=0:0")
+			continue
+		}
+		parts = append(parts, "db:"+name+"="+strconv.FormatInt(info.Size(), 10)+":"+strconv.FormatInt(info.ModTime().UnixNano(), 10))
+	}
+	return parts
 }
 
 func eventFileSizes(root string) map[string]int64 {
@@ -98,8 +132,16 @@ func parseLiveStamp(raw string) (parsedLiveStamp, bool) {
 	if len(parts) < 2 {
 		return parsedLiveStamp{}, false
 	}
-	parsed := parsedLiveStamp{query: parts[1], files: map[string]int64{}}
+	parsed := parsedLiveStamp{query: parts[1], files: map[string]int64{}, db: map[string]string{}}
 	for _, part := range parts[2:] {
+		if strings.HasPrefix(part, "db:") {
+			name, rest, ok := strings.Cut(strings.TrimPrefix(part, "db:"), "=")
+			if !ok || name == "" || strings.Contains(rest, "|") {
+				return parsedLiveStamp{}, false
+			}
+			parsed.db[name] = rest
+			continue
+		}
 		name, sizeText, ok := strings.Cut(part, "=")
 		if !ok || !strings.HasSuffix(name, ".jsonl") {
 			return parsedLiveStamp{}, false
@@ -113,10 +155,19 @@ func parseLiveStamp(raw string) (parsedLiveStamp, bool) {
 	return parsed, true
 }
 
-func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, bool) {
-	if strings.TrimSpace(r.URL.Query().Get("view")) != "" {
-		return liveBoardBody{}, false
+func projectionChanged(prev, cur map[string]string) bool {
+	if len(prev) != len(cur) {
+		return true
 	}
+	for name, value := range cur {
+		if prev[name] != value {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, bool) {
 	if s.cfg.Root == "" || s.actions == nil || s.queries == nil {
 		return liveBoardBody{}, false
 	}
@@ -128,14 +179,15 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	if !ok || prev.query != cur.query {
 		return liveBoardBody{}, false
 	}
-	tail, ok := readGrownTails(s.cfg.Root, prev.files, cur.files)
-	if !ok {
-		return liveBoardBody{}, false
+	// A tail we cannot apply id-by-id, or an index change with no new events
+	// (reindex, git pull), still has to land. One resync, then the new stamp
+	// makes later polls 304. Falling through to a full HTML page wedges a
+	// large board, which discards that page and asks again forever.
+	tail, tailOK := readGrownTails(s.cfg.Root, prev.files, cur.files)
+	if !tailOK || (projectionChanged(prev.db, cur.db) && len(bytes.TrimSpace(tail)) == 0) {
+		return s.liveResync(r)
 	}
 	ids := ticketIDsFromTail(tail)
-	if len(ids) > 40 {
-		return liveBoardBody{}, false
-	}
 	page := s.boardFilterPage(r)
 	colors := map[string]string{}
 	if cfg, err := config.Load(s.cfg.Root); err == nil {
@@ -146,6 +198,12 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	for _, id := range ids {
 		patch, includeDetail := s.liveCard(r.Context(), r, page, colors, id)
 		body.Cards = append(body.Cards, patch)
+		if id == openID && !patch.Remove {
+			if ticket, err := s.actions.Tickets.GetTicket(r.Context(), id); err == nil && !ticket.Archived {
+				drawer := drawerFromTicket(ticket)
+				body.Drawer = &drawer
+			}
+		}
 		if includeDetail && id == openID {
 			if comments, history, err := s.liveActivityHTML(r, id); err == nil {
 				body.CommentsHTML = comments
@@ -154,6 +212,55 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 		}
 	}
 	return body, true
+}
+
+func (s *Server) liveResync(r *http.Request) (liveBoardBody, bool) {
+	page := s.boardFilterPage(r)
+	board, err := s.loadBoard(r.Context(), page)
+	if err != nil {
+		return liveBoardBody{}, false
+	}
+	colors := map[string]string{}
+	if cfg, err := config.Load(s.cfg.Root); err == nil {
+		colors = cfg.Web.AgentColors
+	}
+	openID := strings.TrimSpace(r.URL.Query().Get("ticket"))
+	body := liveBoardBody{Resync: true}
+	for _, column := range s.columnsFromBoard(r.Context(), board, page, colors) {
+		for _, card := range column.Tickets {
+			html, err := s.renderFragment(r, "card", card)
+			if err != nil || strings.TrimSpace(html) == "" {
+				continue
+			}
+			body.Cards = append(body.Cards, liveCardPatch{
+				ID:     card.Ticket.ID,
+				Status: string(card.BoardStatus),
+				HTML:   html,
+			})
+			if card.Ticket.ID == openID {
+				drawer := drawerFromTicket(card.Ticket)
+				body.Drawer = &drawer
+			}
+		}
+	}
+	return body, true
+}
+
+func drawerFromTicket(ticket contracts.TicketSnapshot) liveDrawer {
+	return liveDrawer{
+		ID:          ticket.ID,
+		Revision:    TicketRevision(ticket),
+		Title:       ticket.Title,
+		Description: ticket.Description,
+		Notes:       ticket.Notes,
+		Acceptance:  strings.Join(ticket.AcceptanceCriteria, "\n"),
+		Priority:    string(ticket.Priority),
+		Assignee:    string(ticket.Assignee),
+		Reviewer:    string(ticket.Reviewer),
+		Labels:      strings.Join(ticket.Labels, ", "),
+		Status:      statusKey(ticket.Status),
+		StatusLabel: statusLabel(ticket.Status),
+	}
 }
 
 func (s *Server) liveCard(ctx context.Context, r *http.Request, page BoardPage, colors map[string]string, id string) (liveCardPatch, bool) {

@@ -448,6 +448,14 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 		page.Form = r.Form
 		page.FormTarget = target
 	}
+	if target == "create" && apperr.CodeOf(err) == apperr.CodeConflict {
+		form := url.Values{}
+		for key, values := range r.Form {
+			form[key] = append([]string(nil), values...)
+		}
+		form.Del("submit_id")
+		page.Form = form
+	}
 	s.renderPage(w, pageReq, page, statusForError(err))
 }
 

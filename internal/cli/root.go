@@ -2357,6 +2357,23 @@ func runBoard(cmd *cobra.Command, _ []string) error {
 		}
 		return writeCommandOutput(cmd, result, markdown, pretty)
 	}
+	if strings.TrimSpace(project) != "" {
+		projects, err := workspace.project.ListProjects(ctx)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, item := range projects {
+			if strings.EqualFold(item.Key, strings.TrimSpace(project)) {
+				project = item.Key
+				found = true
+				break
+			}
+		}
+		if !found {
+			return apperr.New(apperr.CodeNotFound, fmt.Sprintf("project %s was not found", strings.TrimSpace(project)))
+		}
+	}
 	boardVM, err := workspace.queries.Board(ctx, contracts.BoardQueryOptions{
 		Project:  project,
 		Assignee: contracts.Actor(strings.TrimSpace(assigneeRaw)),

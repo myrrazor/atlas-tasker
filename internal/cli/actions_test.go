@@ -468,6 +468,7 @@ func TestBoardMarkdownOrderIsDeterministic(t *testing.T) {
 }
 
 func TestClaimQueueAndSweepCommands(t *testing.T) {
+	t.Setenv("TRACKER_ACTOR", "")
 	withTempWorkspace(t)
 
 	must := func(args ...string) string {

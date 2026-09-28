@@ -285,7 +285,7 @@
   </div>
   <a href="{{.BoardPath}}?ticket=" class="close-button" aria-label="{{t "common.close"}}">×</a>
 </div>
-<form class="drawer-form" method="post" action="{{.ActionPrefix}}/actions/tickets/create">
+<form class="drawer-form" method="post" action="{{.ActionPrefix}}/actions/tickets/create" autocomplete="off">
   {{$cf := .FormFor "create"}}
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
   <input type="hidden" name="submit_id" value="{{formValue $cf "submit_id" .SubmitID}}">
@@ -352,10 +352,10 @@
 
 <section class="tab-panel {{if eq $activeTab "overview"}}active{{end}}" id="tab-overview">
   <h2>{{t "board.section.description"}}</h2>
-  <pre class="prose">{{if $d.Ticket.Description}}{{$d.Ticket.Description}}{{else}}{{t "board.section.no_description"}}{{end}}</pre>
+  <pre class="prose" data-drawer-description>{{if $d.Ticket.Description}}{{$d.Ticket.Description}}{{else}}{{t "board.section.no_description"}}{{end}}</pre>
   {{if $d.Ticket.Notes}}
   <h2>Notes</h2>
-  <pre class="prose">{{$d.Ticket.Notes}}</pre>
+  <pre class="prose" data-drawer-notes>{{$d.Ticket.Notes}}</pre>
   {{end}}
   <h2>{{t "board.section.acceptance"}}{{if $d.Ticket.AcceptanceCriteria}} <span>{{len $d.Ticket.AcceptanceCriteria}}</span>{{end}}</h2>
   <ul class="check-list">

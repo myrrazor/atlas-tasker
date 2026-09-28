@@ -120,7 +120,6 @@ func (a *App) register(_ context.Context, opts RegisterOptions, alreadyLocked bo
 			}
 			existing.DisplayName = display
 			existing.VerifiedAt = now
-			existing.LastSeenAt = now
 			if existing.Visibility == "" {
 				existing.Visibility = string(VisibilityVisible)
 			}
@@ -134,7 +133,6 @@ func (a *App) register(_ context.Context, opts RegisterOptions, alreadyLocked bo
 				Ino:           ino,
 				RegisteredAt:  now,
 				VerifiedAt:    now,
-				LastSeenAt:    now,
 				Visibility:    string(VisibilityVisible),
 			}
 			reg.Workspaces[id] = existing
@@ -151,6 +149,44 @@ func (a *App) register(_ context.Context, opts RegisterOptions, alreadyLocked bo
 		err = a.withMachineLock("register workspace", write)
 	}
 	return rec, err
+}
+
+// NoteWorkspaceUse records that this board was actually opened. Registration
+// time is not use: a scratch ticket in an empty folder must not become the
+// default over a board the user is working in. Failures are ignored so a
+// busy machine lock cannot fail the command that triggered the note.
+func (a *App) NoteWorkspaceUse(root string) {
+	if a == nil {
+		return
+	}
+	root, err := service.CanonicalWorkspaceRoot(root)
+	if err != nil {
+		return
+	}
+	id, err := service.LoadWorkspaceIdentity(root)
+	if err != nil || strings.TrimSpace(id) == "" {
+		return
+	}
+	release, err := a.lockMachine("note workspace use")
+	if err != nil {
+		return
+	}
+	defer func() { _ = release() }()
+	reg, err := a.loadRegistry()
+	if err != nil {
+		return
+	}
+	row, ok := reg.Workspaces[id]
+	if !ok || filepath.Clean(row.CanonicalPath) != root {
+		return
+	}
+	now := a.now()
+	if !row.LastSeenAt.IsZero() && now.Sub(row.LastSeenAt) < time.Minute {
+		return
+	}
+	row.LastSeenAt = now
+	reg.Workspaces[id] = row
+	_ = a.saveRegistry(reg)
 }
 
 func (a *App) ListWorkspaces(ctx context.Context, opts ListOptions) ([]WorkspaceRecord, error) {

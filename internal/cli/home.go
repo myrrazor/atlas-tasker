@@ -58,6 +58,7 @@ func runRootHome(cmd *cobra.Command, args []string) error {
 		if cwd, err := os.Getwd(); err == nil {
 			if root, err := service.FindWorkspaceRoot(cwd); err == nil {
 				_, _ = a.Register(commandContext(cmd), app.RegisterOptions{Root: root, DisplayName: filepath.Base(root)})
+				a.NoteWorkspaceUse(root)
 			}
 		}
 	}

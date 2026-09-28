@@ -143,21 +143,30 @@ func (s *Session) Maintain(now time.Time) (string, bool) {
 		return s.token, true
 	}
 	if s.issued.IsZero() || now.Sub(s.issued) < sessionRotateEvery {
-		return s.token, false
+		// Daily use inside the rotation window still slides. A fixed 14-day
+		// clock signed out tabs that had been open the whole time.
+		if s.expires.IsZero() || s.expires.Sub(now) >= 24*time.Hour {
+			return s.token, false
+		}
+		oldExpires := s.expires
+		s.expires = now.Add(sessionLifetime)
+		if err := s.write(); err != nil {
+			s.expires = oldExpires
+			return s.token, false
+		}
+		return s.token, true
 	}
 	previous := s.token
 	until := now.Add(sessionOverlap)
-	if !s.expires.IsZero() && until.After(s.expires) {
-		until = s.expires
-	}
 	next := randomToken()
-	oldToken, oldPrev, oldUntil, oldIssued := s.token, s.previous, s.previousUntil, s.issued
+	oldToken, oldPrev, oldUntil, oldIssued, oldExpires := s.token, s.previous, s.previousUntil, s.issued, s.expires
 	s.token = next
 	s.previous = previous
 	s.previousUntil = until
 	s.issued = now
+	s.expires = now.Add(sessionLifetime)
 	if err := s.write(); err != nil {
-		s.token, s.previous, s.previousUntil, s.issued = oldToken, oldPrev, oldUntil, oldIssued
+		s.token, s.previous, s.previousUntil, s.issued, s.expires = oldToken, oldPrev, oldUntil, oldIssued, oldExpires
 		return s.token, false
 	}
 	return s.token, true

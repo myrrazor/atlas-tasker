@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/app"
@@ -533,6 +534,32 @@ func (s *HomeServer) handleUpdateSettings(w http.ResponseWriter, r *http.Request
 	http.Redirect(w, r, "/settings?flash="+url.QueryEscape("settings saved"), http.StatusSeeOther)
 }
 
+var managedIgnoreOnce sync.Map
+
+func refreshManagedIgnoresOnce(root string) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return
+	}
+	if _, loaded := managedIgnoreOnce.LoadOrStore(root, true); loaded {
+		return
+	}
+	_ = app.RefreshManagedIgnores(root)
+}
+
+func (s *HomeServer) noteHomeBoardOpen(r *http.Request, ws *app.Workspace) {
+	if ws == nil {
+		return
+	}
+	refreshManagedIgnoresOnce(ws.Root)
+	if r != nil && r.Header.Get("X-Atlas-Live") == "1" {
+		return
+	}
+	if s.application != nil {
+		s.application.NoteWorkspaceUse(ws.Root)
+	}
+}
+
 func (s *HomeServer) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/w/")
 	parts := strings.Split(strings.Trim(rest, "/"), "/")
@@ -546,6 +573,7 @@ func (s *HomeServer) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.renderUnavailable(w, r, id, err)
 		return
 	}
+	s.noteHomeBoardOpen(r, ws)
 	if len(parts) == 1 {
 		s.renderWorkspaceOverview(w, r, ws)
 		return

@@ -126,6 +126,11 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 	}
 
 	if opts.Agents && settings.Agents.AutoInstall && opts.WriteClientCfg {
+		// openclaw `mcp add` probes `tracker mcp serve --global`, and that
+		// probe waits on this same lock. Release it before registration or
+		// the client sits until the timeout kills it.
+		_ = release()
+		release = nil
 		a.noticef("registering agents…")
 		result.Agents = a.setupAgents(ctx, ws)
 		result.Steps = append(result.Steps, agentStep(result.Agents))
@@ -137,8 +142,10 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 		result.Steps = append(result.Steps, InitStep{Name: "agents", Status: InitStepSkipped})
 	}
 
-	_ = release()
-	release = nil
+	if release != nil {
+		_ = release()
+		release = nil
+	}
 
 	a.noticef("starting Atlas Home…")
 	result.Service, result.Steps = a.initHomeService(ctx, opts, result.Steps)
@@ -465,6 +472,33 @@ func hasFailedStep(steps []InitStep) bool {
 	return false
 }
 
+func agentOutcome(report AgentSetupReport) string {
+	var configured, failed []string
+	for _, client := range report.Clients {
+		name := string(client.Target)
+		if name == "" || name == "generic" {
+			continue
+		}
+		switch client.Status {
+		case AgentWritten, AgentPendingClientRestart:
+			configured = append(configured, name)
+		case AgentUnverified:
+			failed = append(failed, name)
+		}
+	}
+	var parts []string
+	if len(configured) > 0 {
+		parts = append(parts, "agents configured: "+strings.Join(configured, ", "))
+	}
+	if len(failed) > 0 {
+		parts = append(parts, "agents not registered: "+strings.Join(failed, ", "))
+	}
+	if len(parts) == 0 && report.Attempted {
+		return "no agents registered"
+	}
+	return strings.Join(parts, "; ")
+}
+
 func summarizeInit(result InitResult) string {
 	var parts []string
 	if result.Already {
@@ -479,12 +513,17 @@ func summarizeInit(result InitResult) string {
 		parts = append(parts, "registered")
 	}
 	if result.Agents.Attempted {
-		parts = append(parts, fmt.Sprintf("agents=%d", len(result.Agents.Clients)))
+		if line := agentOutcome(result.Agents); line != "" {
+			parts = append(parts, line)
+		}
 		if info, err := os.Stat(filepath.Join(result.Workspace, "AGENTS.md")); err == nil && info.Mode().IsRegular() {
 			parts = append(parts, "read AGENTS.md for board display in chat")
 		}
 	}
 	for _, step := range result.Steps {
+		if step.Name == "agents" {
+			continue
+		}
 		switch step.Status {
 		case InitStepFailed:
 			parts = append(parts, step.Name+" failed")
