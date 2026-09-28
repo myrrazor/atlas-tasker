@@ -450,8 +450,20 @@ func (s *Server) runTicketAction(w http.ResponseWriter, r *http.Request, ctx con
 		if err == nil {
 			ticket, err = s.actions.SetTicketSchedule(ctx, id, at, contracts.Actor(strings.TrimSpace(r.Form.Get("runner"))), actor, reason)
 		}
+		if err != nil {
+			s.writeActionError(w, r, err, id)
+			return
+		}
+		s.actionSuccess(w, r, ticket.ID, "scheduled "+ticket.ID)
+		return
 	case "schedule/clear":
 		ticket, err = s.actions.ClearTicketSchedule(ctx, id, actor, reason)
+		if err != nil {
+			s.writeActionError(w, r, err, id)
+			return
+		}
+		s.actionSuccess(w, r, ticket.ID, "cleared schedule for "+ticket.ID)
+		return
 	case "label/add":
 		label := strings.TrimSpace(r.Form.Get("label"))
 		ticket, err = s.actions.MutateTrackedTicket(ctx, id, actor, reason, "web add label", func(ticket *contracts.TicketSnapshot) error {
