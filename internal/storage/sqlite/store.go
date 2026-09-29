@@ -58,11 +58,21 @@ type Store struct {
 // dev and ino are the index file this connection opened. A delete plus
 // reindex replaces that inode; the pinned connection and its pool would
 // otherwise keep reading the unlinked file.
+// parked keeps pools whose -shm inode is still the live one. Closing them
+// would drop this process's POSIX locks on that inode.
 type liveConn struct {
-	mu   sync.Mutex
+	mu     sync.Mutex
+	conn   *sql.Conn
+	dev    uint64
+	ino    uint64
+	parked []parkedPool
+}
+
+// parkedPool is a previous index pool that still has the live -shm file
+// mapped. conn stays checked out so database/sql does not close its fds.
+type parkedPool struct {
+	db   *sql.DB
 	conn *sql.Conn
-	dev  uint64
-	ino  uint64
 }
 
 const sourceFingerprintKey = "source_fingerprint"
@@ -70,8 +80,17 @@ const sourceFingerprintKey = "source_fingerprint"
 var _ contracts.ProjectionStore = (*Store)(nil)
 
 func Open(path string, ticketSource contracts.TicketStore, eventSource contracts.EventLog) (*Store, error) {
+	return open(path, ticketSource, eventSource, true)
+}
+
+func open(path string, ticketSource contracts.TicketStore, eventSource contracts.EventLog, discardOrphans bool) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create sqlite dir: %w", err)
+	}
+	if discardOrphans {
+		if err := discardOrphanedSidecars(path); err != nil {
+			return nil, err
+		}
 	}
 	db, err := openDB(path)
 	if err != nil {
@@ -83,6 +102,26 @@ func Open(path string, ticketSource contracts.TicketStore, eventSource contracts
 		return nil, err
 	}
 	return store, nil
+}
+
+// discardOrphanedSidecars removes -wal and -shm when the main index file is
+// already gone. Those sidecars belong to the deleted database. Replaying them
+// onto a new file returns SQLITE_IOERR_SHORT_READ while a live server still
+// holds that shm, which is also how a later reopen shares the inode and
+// SIGBUSes. The projection is rebuilt from markdown and events. Unlink does
+// not truncate an inode the server still has mapped.
+func discardOrphanedSidecars(path string) error {
+	if _, err := os.Lstat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat index: %w", err)
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove orphaned index%s: %w", suffix, err)
+		}
+	}
+	return nil
 }
 
 func openDB(path string) (*sql.DB, error) {
@@ -191,18 +230,33 @@ func IsCorrupt(err error) bool {
 }
 
 func (s *Store) Close() error {
+	var parked []parkedPool
 	if s.live != nil {
 		s.live.mu.Lock()
 		if s.live.conn != nil {
 			_ = s.live.conn.Close()
 			s.live.conn = nil
 		}
+		parked = s.live.parked
+		s.live.parked = nil
 		s.live.mu.Unlock()
 	}
+	closeParked(parked)
 	if s.DB == nil {
 		return nil
 	}
 	return s.DB.Close()
+}
+
+func closeParked(parked []parkedPool) {
+	for _, pool := range parked {
+		if pool.conn != nil {
+			_ = pool.conn.Close()
+		}
+		if pool.db != nil {
+			_ = pool.db.Close()
+		}
+	}
 }
 
 func indexFileID(path string) (uint64, uint64, bool) {
@@ -242,25 +296,110 @@ func (s *Store) indexReplacedLocked() bool {
 }
 
 // reopenIndexLocked swaps the pool onto the index file that now occupies
-// Path. The previous pool's fds stay on the unlinked inode, so closing them
-// releases locks on that deleted file only.
+// Path. When the replacement also created a new -shm inode, the previous
+// pool's fds refer to the unlinked shm and closing them releases locks on
+// that deleted file only. When only index.sqlite was replaced, the new pool
+// maps the same -shm inode. POSIX locks are per-process: closing any fd that
+// refers to that inode drops the locks the new pool just took, and another
+// process can truncate the mapping (SIGBUS). Those pools stay open. Their
+// unlinked index.sqlite fds are retargeted so they are not a deleted-index leak.
 func (s *Store) reopenIndexLocked() error {
+	oldShmDev, oldShmIno, oldShmOK := openSidecarInode(s.Path, "-shm")
 	fresh, err := openDB(s.Path)
 	if err != nil {
 		return err
 	}
-	if s.live.conn != nil {
-		_ = s.live.conn.Close()
-		s.live.conn = nil
-	}
+	newShmDev, newShmIno, newShmOK := indexFileID(s.Path + "-shm")
+	shareShm := oldShmOK && newShmOK && oldShmDev == newShmDev && oldShmIno == newShmIno
+	pinned := s.live.conn
+	s.live.conn = nil
 	old := s.DB
 	s.DB = fresh
 	s.live.dev = 0
 	s.live.ino = 0
-	if old != nil && old != fresh {
-		_ = old.Close()
+	if old == nil || old == fresh {
+		if pinned != nil {
+			_ = pinned.Close()
+		}
+		return nil
 	}
+	if shareShm {
+		releaseUnlinkedIndexFDs(s.Path)
+		s.live.parked = append(s.live.parked, parkedPool{db: old, conn: pinned})
+		return nil
+	}
+	if pinned != nil {
+		_ = pinned.Close()
+	}
+	closeParked(s.live.parked)
+	s.live.parked = nil
+	_ = old.Close()
 	return nil
+}
+
+// openSidecarInode reports the inode of an already-open -wal or -shm fd for
+// path. The directory entry may already name a different file; the open fd
+// still refers to the inode this process mapped.
+func openSidecarInode(path, suffix string) (uint64, uint64, bool) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return 0, 0, false
+	}
+	live := abs + suffix
+	deleted := live + " (deleted)"
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		return 0, 0, false
+	}
+	for _, entry := range entries {
+		target, err := os.Readlink("/proc/self/fd/" + entry.Name())
+		if err != nil || (target != live && target != deleted) {
+			continue
+		}
+		fd, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		var st syscall.Stat_t
+		if syscall.Fstat(fd, &st) != nil || st.Ino == 0 {
+			continue
+		}
+		return uint64(st.Dev), uint64(st.Ino), true
+	}
+	return 0, 0, false
+}
+
+// releaseUnlinkedIndexFDs retargets fds whose path is the unlinked main
+// index. -wal and -shm fds are left alone so their POSIX locks stay held.
+// Dup2 keeps the fd number sqlite stored; the descriptor no longer points
+// at a deleted index file.
+func releaseUnlinkedIndexFDs(path string) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return
+	}
+	deleted := abs + " (deleted)"
+	devnull, err := os.OpenFile("/dev/null", os.O_RDWR, 0)
+	if err != nil {
+		return
+	}
+	defer devnull.Close()
+	nullfd := int(devnull.Fd())
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		fd, err := strconv.Atoi(entry.Name())
+		if err != nil || fd == nullfd {
+			continue
+		}
+		target, err := os.Readlink("/proc/self/fd/" + entry.Name())
+		if err != nil || target != deleted {
+			continue
+		}
+		_ = syscall.Dup2(nullfd, fd)
+	}
 }
 
 func (s *Store) withLiveConn(ctx context.Context, fn func(*sql.Conn) error) error {

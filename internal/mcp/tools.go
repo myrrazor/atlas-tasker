@@ -1274,6 +1274,9 @@ func validateBoardCursors(args map[string]any) error {
 		return nil
 	}
 	check := func(status, cursor string) error {
+		if !contracts.Status(status).IsValid() {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unknown cursor status %q", status))
+		}
 		if err := validBoardCursor(cursor); err != nil {
 			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid cursor for %s: %s", status, err.Error()))
 		}

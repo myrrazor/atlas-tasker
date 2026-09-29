@@ -146,6 +146,11 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 		"{ duration: 180, easing }",
 		"settleDroppedCard(event.item)",
 		"'is-count-pulsing'",
+		"function noteLocalMove(",
+		"card.dataset.storedStatus = status",
+		"existing.dataset.storedStatus === next.dataset.storedStatus",
+		"activePoll.abort()",
+		"err.name === 'AbortError'",
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("app.js missing interaction contract %q", want)

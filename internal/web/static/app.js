@@ -559,7 +559,7 @@
       const next = holder.content.querySelector('.ticket-card');
       if (!next) return;
       next.setAttribute('href', ticketHref(next.dataset.ticketId));
-      if (existing && existing.dataset.revision === next.dataset.revision && existing.dataset.status === next.dataset.status && existing.dataset.comments === next.dataset.comments && existing.dataset.title === next.dataset.title) {
+      if (existing && existing.dataset.revision === next.dataset.revision && existing.dataset.status === next.dataset.status && existing.dataset.storedStatus === next.dataset.storedStatus && existing.dataset.comments === next.dataset.comments && existing.dataset.title === next.dataset.title) {
         return;
       }
       const status = next.dataset.status || patch.status;
@@ -787,6 +787,27 @@
     Array.from(move.options).forEach((opt) => { opt.defaultSelected = opt.value === next; });
   }
 
+  // stored-status is what the move endpoint compares against `from`. The
+  // column attribute (data-status) can be a projected column and is not
+  // enough on its own after a drop.
+  function noteLocalMove(ticketID, status, revision) {
+    const id = String(ticketID || '').replace(/"/g, '');
+    if (!id) return;
+    document.querySelectorAll(`.ticket-card[data-ticket-id="${id}"]`).forEach((card) => {
+      if (status) {
+        card.dataset.storedStatus = status;
+        card.dataset.status = status;
+      }
+      if (revision) card.dataset.revision = revision;
+    });
+    if (new URL(window.location.href).searchParams.get('ticket') !== id) return;
+    const root = document.querySelector('.detail-drawer');
+    if (!root || root.dataset.formEcho) return;
+    if (status) syncMoveSelect(root, status);
+    if (!revision) return;
+    root.querySelectorAll('input[name="expected_revision"]').forEach((rev) => setIfClean(rev, revision));
+  }
+
   function applyBoardResync(data) {
     const dragging = document.querySelector('.ticket-card.sortable-chosen, .ticket-card.sortable-ghost, .ticket-card.sortable-dragging');
     if (dragging) return false;
@@ -836,7 +857,7 @@
         const headers = { 'Accept': 'text/html' };
         if (boardETag) headers['If-None-Match'] = boardETag;
         headers['X-Atlas-Live'] = '1';
-        const response = await fetch(boardURL().toString(), { headers });
+        const response = await fetch(boardURL().toString(), { headers, signal: opts && opts.signal });
         if (response.status === 304) {
           hideServerDown();
           return;
@@ -897,6 +918,7 @@
         if (etag) boardETag = etag;
         return;
       } catch (err) {
+        if (err && err.name === 'AbortError') throw err;
         if (attempt < attempts - 1) {
           await sleep(2000 * (attempt + 1));
           continue;
@@ -995,11 +1017,7 @@
                 body
               });
               const data = await response.json().catch(() => ({}));
-              const current = document.querySelector(`.ticket-card[data-ticket-id="${String(ticketID).replace(/"/g, '')}"]`) || live;
-              if (response.ok) {
-                if (data.payload?.revision) current.dataset.revision = data.payload.revision;
-                if (data.payload?.status) current.dataset.status = data.payload.status;
-              }
+              if (response.ok) noteLocalMove(ticketID, data.payload?.status, data.payload?.revision);
               // A later drop owns the card. Keep the revision, skip the revert.
               if (moveGen.get(ticketID) !== gen) return;
               if (!response.ok) {
@@ -1015,8 +1033,7 @@
                 return;
               }
               showFlash(data.payload?.flash || message('updated', 'updated {id}', { id: ticketID }), false);
-              if (data.payload?.revision) live.dataset.revision = data.payload.revision;
-              if (data.payload?.status) live.dataset.status = data.payload.status;
+              noteLocalMove(ticketID, data.payload?.status, data.payload?.revision);
               if (cardCount() > 200) {
                 syncColumnCounts();
               } else {
@@ -1198,17 +1215,28 @@
     const stamp = document.querySelector('meta[name="atlas-board-stamp"]');
     if (stamp && stamp.content) boardETag = '"' + stamp.content + '"';
     let misses = 0;
-    let pollInFlight = false;
+    let pollGen = 0;
+    let activePoll = null;
+    // A poll still running at the next tick is stalled (hung socket, or a
+    // proxy that never answers). Abort it and start the next one so the
+    // guard cannot stick. A poll that finishes inside the interval is left
+    // alone, which keeps a slow resync from being restarted underneath itself.
     window.setInterval(() => {
-      if (document.hidden || dragBlocked() || pollInFlight) return;
-      pollInFlight = true;
-      refreshBoard({ attempts: 1, quiet: true }).then(() => {
+      if (document.hidden || dragBlocked()) return;
+      if (activePoll) activePoll.abort();
+      const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+      const gen = ++pollGen;
+      activePoll = ctrl;
+      refreshBoard({ attempts: 1, quiet: true, signal: ctrl && ctrl.signal }).then(() => {
+        if (gen !== pollGen) return;
         misses = 0;
-      }).catch(() => {
+      }).catch((err) => {
+        if (gen !== pollGen) return;
+        if (err && err.name === 'AbortError') return;
         misses += 1;
         if (misses >= 2) showServerDown();
       }).finally(() => {
-        pollInFlight = false;
+        if (gen === pollGen) activePoll = null;
       });
     }, 3000);
   }

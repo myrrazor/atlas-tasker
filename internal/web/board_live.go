@@ -3,6 +3,8 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"hash/fnv"
 	"io"
@@ -49,6 +51,19 @@ type liveDrawer struct {
 // behind can still diff rows. One previous value falls behind as soon as
 // two tabs or a short write burst each move the stamp.
 const liveFPRing = 8
+
+// liveInstanceID changes once per process. A tab whose etag was minted by
+// another process (a restart) resyncs once; later stamps share this id, so
+// ordinary writes stay on the patch path.
+var liveInstanceID = newLiveInstanceID()
+
+func newLiveInstanceID() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return strconv.FormatInt(int64(os.Getpid()), 36)
+	}
+	return hex.EncodeToString(buf)
+}
 
 type liveFPSnap struct {
 	fp   string
@@ -130,6 +145,9 @@ func (s *Server) boardLiveStamp(r *http.Request) string {
 		parts = append(parts, name+"="+strconv.FormatInt(files[name], 10))
 	}
 	parts = append(parts, s.liveProjectionParts(r)...)
+	if liveInstanceID != "" {
+		parts = append(parts, "db:boot="+liveInstanceID)
+	}
 	return strings.Join(parts, "|")
 }
 
@@ -459,6 +477,12 @@ func parseLiveStamp(raw string) (parsedLiveStamp, bool) {
 	return parsed, true
 }
 
+func liveInstanceChanged(prev, cur map[string]string) bool {
+	next := cur["boot"]
+	prevBoot := prev["boot"]
+	return next != "" && prevBoot != "" && prevBoot != next
+}
+
 func fingerprintUnchanged(prev, cur map[string]string) bool {
 	old := prev["fp"]
 	next := cur["fp"]
@@ -488,6 +512,15 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	cur, ok := parseLiveStamp(stamp)
 	if !ok || prev.query != cur.query {
 		return liveBoardBody{}, false
+	}
+	// A restart empties the fingerprint ring and mints a new boot id. The
+	// event tail from the previous process does not include derived rows
+	// (a blocker that completed, a reviewer edited only in markdown), and
+	// publishing the new fingerprint would 304 that stale board forever.
+	// One resync catches the tab up. The same boot id keeps normal writes
+	// on the patch path even when the fingerprint is not in the ring.
+	if liveInstanceChanged(prev.db, cur.db) {
+		return s.liveResync(r)
 	}
 	// Saved views carry their own project, assignee, type and column scope.
 	// Resolve that scope through loadBoard instead of patching raw tickets

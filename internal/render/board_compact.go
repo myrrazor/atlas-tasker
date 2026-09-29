@@ -157,7 +157,7 @@ func NewCompactBoard(project string, columns map[contracts.Status][]contracts.Ti
 		board.ShownCards += col.Shown
 	}
 	if board.Truncated {
-		board.Notes = append(board.Notes, fmt.Sprintf("showing %d of %d cards; use cursor or a named project to page", board.ShownCards, board.TotalCards))
+		board.Notes = append(board.Notes, fmt.Sprintf("showing %d of %d cards; %s", board.ShownCards, board.TotalCards, pagingHint(board.Project, true)))
 	}
 	deriveBoardSignals(&board)
 	return board
@@ -196,14 +196,24 @@ func RestoreColumnTotals(board *CompactBoard, totals, remaining map[string]int) 
 		notes = append(notes, note)
 	}
 	if board.Truncated {
-		hint := "end of board"
-		if hasMore {
-			hint = "use cursor or a named project to page"
-		}
-		notes = append(notes, fmt.Sprintf("showing %d of %d cards; %s", board.ShownCards, board.TotalCards, hint))
+		notes = append(notes, fmt.Sprintf("showing %d of %d cards; %s", board.ShownCards, board.TotalCards, pagingHint(board.Project, hasMore)))
 	}
 	board.Notes = notes
 	deriveBoardSignals(board)
+}
+
+// pagingHint is the continuation phrase on a truncated board. A named
+// project is already scoped, so the note only mentions the cursor. An
+// exhausted page says the board has ended even when the window is shorter
+// than the column.
+func pagingHint(project string, hasMore bool) string {
+	if !hasMore {
+		return "end of board"
+	}
+	if strings.TrimSpace(project) != "" {
+		return "use cursor to page"
+	}
+	return "use cursor or a named project to page"
 }
 
 // UniqueProject returns the only project key on the board, or "" when mixed

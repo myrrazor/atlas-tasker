@@ -509,6 +509,9 @@ func TestBoardRejectsBadCursorAndTypeAndFoldsProject(t *testing.T) {
 	for _, cursors := range []map[string]any{
 		{"ready": "nope"},
 		{"ready": "-1"},
+		{"nosuch": "10"},
+		{"in-review": "0"},
+		{"": "0"},
 	} {
 		_, err := server.CallTool(ctx, "atlas.board", map[string]any{
 			"project": "APP", "cursor_by_status": cursors,

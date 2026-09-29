@@ -414,6 +414,44 @@ func TestLiveBoardTwoTabsPatchWhileTailIsReadable(t *testing.T) {
 	assertLivePatch(t, missed, latest)
 }
 
+func TestLiveBoardResyncsOnceWhenServerInstanceChanges(t *testing.T) {
+	h := newWebHarness(t, false)
+	first := liveBoard(t, h.handler, "")
+	if first.Code != http.StatusOK {
+		t.Fatalf("seed = %d", first.Code)
+	}
+	etag := first.Header().Get("ETag")
+	if !strings.Contains(etag, "db:boot=") {
+		t.Fatalf("stamp missing boot id: %s", etag)
+	}
+	previous := liveInstanceID
+	liveInstanceID = previous + "-restarted"
+	t.Cleanup(func() { liveInstanceID = previous })
+	restarted := liveBoard(t, h.handler, etag)
+	if restarted.Code != http.StatusOK {
+		t.Fatalf("restart poll = %d %s", restarted.Code, restarted.Body.String())
+	}
+	var body liveBoardBody
+	if err := json.Unmarshal(restarted.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Resync {
+		t.Fatalf("restart with a foreign boot id did not resync: %s", restarted.Body.String())
+	}
+	next := restarted.Header().Get("ETag")
+	if !strings.Contains(next, liveInstanceID) {
+		t.Fatalf("resync etag missing new boot id: %s", next)
+	}
+	if _, err := h.actions.MutateTrackedTicket(t.Context(), h.ticketID, "human:owner", "live write", "edit", func(ticket *contracts.TicketSnapshot) error {
+		ticket.Title = "after restart"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	follow := liveBoard(t, h.handler, next)
+	assertLivePatch(t, follow, "after restart")
+}
+
 func assertLivePatch(t *testing.T, res *httptest.ResponseRecorder, title string) {
 	t.Helper()
 	if res.Code != http.StatusOK {
