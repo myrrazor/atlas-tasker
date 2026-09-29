@@ -249,6 +249,7 @@
   data-revision="{{ticketRevision .Ticket}}"
   data-title="{{.Ticket.Title}}"
   data-status="{{.BoardStatus}}"
+  data-stored-status="{{.Ticket.Status}}"
   data-status-label="{{t (statusMessageKey .BoardStatus)}}"
   data-assignee="{{.Ticket.Assignee}}"
   data-reviewer="{{.EffectiveReviewer}}"
@@ -283,7 +284,7 @@
     <span class="eyeline">{{t "board.new.eyeline"}}</span>
     <h1 tabindex="-1">{{t "board.new.title"}}</h1>
   </div>
-  <a href="{{.BoardPath}}?ticket=" class="close-button" aria-label="{{t "common.close"}}">×</a>
+  <a href="{{.CloseBoardPath}}" class="close-button" aria-label="{{t "common.close"}}">×</a>
 </div>
 <form class="drawer-form" method="post" action="{{.ActionPrefix}}/actions/tickets/create" autocomplete="off">
   {{$cf := .FormFor "create"}}
@@ -333,7 +334,7 @@
     <p class="drawer-meta"><span class="status-pill st-{{statusKey $d.BoardStatus}}">{{t (statusMessageKey $d.BoardStatus)}}</span>{{if $d.Ticket.Assignee}} <span class="meta-pair">{{t "board.field.assignee"}} <b>{{$d.Ticket.Assignee}}</b></span>{{end}}{{if $d.EffectiveReviewer}} <span class="meta-pair">{{t "board.field.reviewer"}} <b>{{$d.EffectiveReviewer}}</b></span>{{end}}{{if $d.Ticket.Lease.Actor}} <span class="meta-pair">Claimed <b>{{$d.Ticket.Lease.Actor}}</b></span>{{end}}{{if $d.Ticket.Archived}} <span class="mode-chip readonly">Archived</span>{{end}}</p>
     {{if $d.Ticket.Labels}}<div class="drawer-labels" aria-label="{{t "board.field.labels"}}">{{range $d.Ticket.Labels}}<span>{{.}}</span>{{end}}</div>{{end}}
   </div>
-  <a href="{{.BoardPath}}?ticket=" class="close-button" aria-label="{{t "common.close"}}">×</a>
+  <a href="{{.CloseBoardPath}}" class="close-button" aria-label="{{t "common.close"}}">×</a>
 </div>
 
 {{range .Detail.Warnings}}

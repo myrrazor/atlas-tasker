@@ -83,11 +83,20 @@ func listProjectRefs(tc ToolContext) ([]projectRef, error) {
 func resolveNamedProject(projects []projectRef, key string) (projectRef, []string, bool) {
 	key = strings.TrimSpace(key)
 	keys := make([]string, 0, len(projects))
+	var folded projectRef
+	foundFold := false
 	for _, project := range projects {
 		keys = append(keys, project.Key)
 		if project.Key == key {
 			return project, keys, true
 		}
+		if !foundFold && strings.EqualFold(project.Key, key) {
+			folded = project
+			foundFold = true
+		}
+	}
+	if foundFold {
+		return folded, keys, true
 	}
 	return projectRef{}, keys, false
 }

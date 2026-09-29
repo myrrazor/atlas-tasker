@@ -674,6 +674,19 @@ func (s *Server) applyMoveAction(w http.ResponseWriter, r *http.Request, ctx con
 	if err != nil {
 		return contracts.TicketSnapshot{}, false, err
 	}
+	// The column the drag started from. A live update can refresh the card's
+	// revision onto a new status before the drop lands, and the workflow
+	// check would then reject the new edge. That is a conflict, not an
+	// illegal move of the status the user picked up.
+	if fromRaw := strings.TrimSpace(r.Form.Get("from")); fromRaw != "" {
+		from, err := parseStatusStrict(fromRaw)
+		if err != nil {
+			return contracts.TicketSnapshot{}, false, err
+		}
+		if current.Status != from {
+			return contracts.TicketSnapshot{}, false, errRevisionConflict("ticket was updated; reload and retry")
+		}
+	}
 	if current.Status == to {
 		s.actionSuccess(w, r, id, fmt.Sprintf("%s is already %s", id, statusLabel(to)))
 		return current, true, nil

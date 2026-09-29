@@ -38,6 +38,7 @@ type BoardPage struct {
 	Priority        string
 	Type            string
 	ActiveColumn    contracts.Status
+	ColumnExplicit  bool `json:"-"`
 	// rendered into the page for forms/fetch; never exposed via /api/board
 	CSRFToken string `json:"-"`
 	// submitted values of a rejected form, echoed back so typed content
@@ -64,6 +65,39 @@ type BoardPage struct {
 	NotFound      bool                  `json:"-"`
 	SubmitID      string                `json:"-"`
 	LiveStamp     string                `json:"-"`
+}
+
+// CloseBoardPath is the board URL with the open ticket dropped and the
+// filters kept. Esc and the drawer close link both use it.
+func (p BoardPage) CloseBoardPath() string {
+	q := url.Values{}
+	if p.ProjectExplicit && strings.TrimSpace(p.Project) != "" {
+		q.Set("project", p.Project)
+	}
+	for _, item := range []struct{ key, value string }{
+		{"view", p.View},
+		{"assignee", p.Assignee},
+		{"reviewer", p.Reviewer},
+		{"label", p.Label},
+		{"q", p.Query},
+		{"priority", p.Priority},
+		{"type", p.Type},
+	} {
+		if strings.TrimSpace(item.value) != "" {
+			q.Set(item.key, item.value)
+		}
+	}
+	if p.ActiveColumn.IsValid() && strings.TrimSpace(string(p.ActiveColumn)) != "" && p.ColumnExplicit {
+		q.Set("column", string(p.ActiveColumn))
+	}
+	if p.ShowArchived {
+		q.Set("archived", "1")
+	}
+	encoded := q.Encode()
+	if encoded == "" {
+		return p.BoardPath
+	}
+	return p.BoardPath + "?" + encoded
 }
 
 type WelcomePage struct {
@@ -193,7 +227,8 @@ var boardStatuses = []contracts.Status{
 func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage, error) {
 	query := r.URL.Query()
 	activeColumn := contracts.Status(strings.TrimSpace(query.Get("column")))
-	if !activeColumn.IsValid() {
+	columnExplicit := activeColumn.IsValid()
+	if !columnExplicit {
 		activeColumn = contracts.StatusReady
 	}
 	home, boardPath, schedule, newTicket, prefix := s.navPaths()
@@ -220,6 +255,7 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		Priority:        strings.TrimSpace(query.Get("priority")),
 		Type:            strings.TrimSpace(query.Get("type")),
 		ActiveColumn:    activeColumn,
+		ColumnExplicit:  columnExplicit,
 		CSRFToken:       s.csrfToken(),
 		Flash:           strings.TrimSpace(query.Get("flash")),
 		Error:           strings.TrimSpace(query.Get("error_flash")),

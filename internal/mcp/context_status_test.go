@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	"github.com/myrrazor/atlas-tasker/internal/render"
@@ -479,6 +480,67 @@ func countEnabled(items []ToolInfo) int {
 		}
 	}
 	return n
+}
+
+func TestBoardRejectsBadCursorAndTypeAndFoldsProject(t *testing.T) {
+	t.Setenv("TRACKER_ACTOR", "")
+	root := t.TempDir()
+	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	if err := config.Save(root, contracts.TrackerConfig{Workflow: contracts.WorkflowConfig{CompletionMode: contracts.CompletionModeOpen}}); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := OpenWorkspace(root, nil, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer workspace.Close()
+	ctx := context.Background()
+	if err := workspace.Actions.CreateProject(ctx, contracts.Project{Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		ID: "APP-1", Project: "APP", Title: "Folded", Type: contracts.TicketTypeTask,
+		Status: contracts.StatusReady, Priority: contracts.PriorityMedium,
+		CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}, "human:owner", "seed"); err != nil {
+		t.Fatal(err)
+	}
+	server := NewServer(workspace, Options{Profile: ProfileRead, Now: func() time.Time { return now }}.Normalized())
+	for _, cursors := range []map[string]any{
+		{"ready": "nope"},
+		{"ready": "-1"},
+	} {
+		_, err := server.CallTool(ctx, "atlas.board", map[string]any{
+			"project": "APP", "cursor_by_status": cursors,
+		})
+		if apperr.CodeOf(err) != apperr.CodeInvalidInput {
+			t.Fatalf("cursor %#v error = %v", cursors, err)
+		}
+	}
+	if _, err := server.CallTool(ctx, "atlas.board", map[string]any{"project": "APP", "type": "bogus"}); apperr.CodeOf(err) != apperr.CodeInvalidInput {
+		t.Fatalf("bogus type error = %v", err)
+	}
+	if _, err := server.CallTool(ctx, "atlas.board", map[string]any{"project": "NOPE"}); apperr.CodeOf(err) != apperr.CodeNotFound {
+		t.Fatalf("unknown project error = %v", err)
+	}
+	folded, err := server.CallTool(ctx, "atlas.board", map[string]any{"project": "app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner, _ := folded["payload"].(map[string]any)
+	board, _ := inner["board"].(render.CompactBoard)
+	if board.TotalCards != 1 {
+		t.Fatalf("folded project board = %#v", inner["board"])
+	}
+	done, err := server.CallTool(ctx, "atlas.board", map[string]any{
+		"project": "APP", "cursor_by_status": map[string]any{"ready": "done"},
+	})
+	if err != nil {
+		t.Fatalf("done cursor should stay valid: %v", err)
+	}
+	if done["payload"] == nil {
+		t.Fatal("done cursor returned an empty result")
+	}
 }
 
 func containsString(items []string, want string) bool {

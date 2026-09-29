@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -376,6 +377,75 @@ func posixLocksOn(pid int, path string) int {
 		}
 	}
 	return n
+}
+
+func TestLiveBoardTwoTabsPatchWhileTailIsReadable(t *testing.T) {
+	h := newWebHarness(t, false)
+	firstA := liveBoard(t, h.handler, "")
+	firstB := liveBoard(t, h.handler, "")
+	if firstA.Code != http.StatusOK || firstB.Code != http.StatusOK {
+		t.Fatalf("seed polls = %d %d", firstA.Code, firstB.Code)
+	}
+	etagA := firstA.Header().Get("ETag")
+	etagB := firstB.Header().Get("ETag")
+	if !strings.Contains(etagA, "db:fp=") || !strings.Contains(etagB, "db:fp=") {
+		t.Fatalf("seed etag missing fingerprint: %s", etagA)
+	}
+	var latest string
+	for i := 0; i < 5; i++ {
+		latest = fmt.Sprintf("live wave %d", i)
+		if _, err := h.actions.MutateTrackedTicket(t.Context(), h.ticketID, "human:owner", "live write", "edit", func(ticket *contracts.TicketSnapshot) error {
+			ticket.Title = latest
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		res := liveBoard(t, h.handler, etagA)
+		assertLivePatch(t, res, latest)
+		etagA = res.Header().Get("ETag")
+		if !strings.Contains(etagA, "db:fp=") {
+			t.Fatalf("etag after write omitted fingerprint: %s", etagA)
+		}
+	}
+	lagging := liveBoard(t, h.handler, etagB)
+	assertLivePatch(t, lagging, latest)
+	unknown := withLiveFingerprint(etagB, "deadbeef")
+	missed := liveBoard(t, h.handler, unknown)
+	assertLivePatch(t, missed, latest)
+}
+
+func assertLivePatch(t *testing.T, res *httptest.ResponseRecorder, title string) {
+	t.Helper()
+	if res.Code != http.StatusOK {
+		t.Fatalf("live poll = %d %s", res.Code, res.Body.String())
+	}
+	if !strings.Contains(res.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("live poll fell through to HTML: %s", res.Body.String())
+	}
+	var patch liveBoardBody
+	if err := json.Unmarshal(res.Body.Bytes(), &patch); err != nil {
+		t.Fatal(err)
+	}
+	if patch.Resync {
+		t.Fatalf("resync while the event tail is readable: %s", res.Body.String())
+	}
+	if title != "" && !strings.Contains(res.Body.String(), title) {
+		t.Fatalf("patch missed %q: %s", title, res.Body.String())
+	}
+}
+
+func withLiveFingerprint(etag, fp string) string {
+	const mark = "db:fp="
+	i := strings.Index(etag, mark)
+	if i < 0 {
+		return etag
+	}
+	rest := etag[i+len(mark):]
+	end := strings.IndexAny(rest, "|\"")
+	if end < 0 {
+		return etag[:i+len(mark)] + fp
+	}
+	return etag[:i+len(mark)] + fp + rest[end:]
 }
 
 func liveBoard(t *testing.T, handler http.Handler, etag string) *httptest.ResponseRecorder {

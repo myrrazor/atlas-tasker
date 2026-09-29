@@ -108,6 +108,28 @@ func TestMoveToCurrentStatusIsNoOp(t *testing.T) {
 	}
 }
 
+func TestMoveFromStatusConflictsBeforeWorkflow(t *testing.T) {
+	h := newWebHarness(t, false)
+	legal := h.postMoveFrom(t, h.ticketID, "in_progress", "ready")
+	if legal.code != http.StatusOK {
+		t.Fatalf("stored ready dragged to in_progress = %d %s", legal.code, legal.body)
+	}
+	if _, err := h.actions.MoveTicket(t.Context(), h.ticketID, contracts.StatusBlocked, "human:owner", "status changed on disk"); err != nil {
+		t.Fatal(err)
+	}
+	conflict := h.postMoveFrom(t, h.ticketID, "in_review", "in_progress")
+	if conflict.code != http.StatusConflict {
+		t.Fatalf("drag from the status at pickup = %d %s", conflict.code, conflict.body)
+	}
+	if strings.Contains(conflict.body, "Can't move") || !strings.Contains(conflict.body, "conflict") {
+		t.Fatalf("expected a revision conflict, got %s", conflict.body)
+	}
+	forbidden := h.postMoveFrom(t, h.ticketID, "in_review", "blocked")
+	if forbidden.code != http.StatusBadRequest || !strings.Contains(forbidden.body, "Can't move") {
+		t.Fatalf("matching from-status should still be a workflow rejection, got %d %s", forbidden.code, forbidden.body)
+	}
+}
+
 func TestForbiddenTransitionMapsToConflict(t *testing.T) {
 	h := newWebHarness(t, false)
 	// Seeded ticket is ready; ready -> in_review is forbidden by the workflow.
@@ -719,10 +741,18 @@ func TestRuntimeStateClearedHelper(t *testing.T) {
 
 func (h webHarness) postMove(t *testing.T, ticketID string, status string) httpResult {
 	t.Helper()
+	return h.postMoveFrom(t, ticketID, status, "")
+}
+
+func (h webHarness) postMoveFrom(t *testing.T, ticketID, status, from string) httpResult {
+	t.Helper()
 	form := url.Values{
 		"csrf_token": {"test-csrf"},
 		"status":     {status},
 		"reason":     {"web drag move"},
+	}
+	if from != "" {
+		form.Set("from", from)
 	}
 	return h.doAuthed(t, http.MethodPost, "/actions/tickets/"+ticketID+"/move", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",

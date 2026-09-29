@@ -101,18 +101,20 @@ func TestLegacyBoardTemplateKeepsQuotedBoardPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := BoardPage{
-		Page:          "board",
-		Workspace:     "workspace",
-		Host:          "127.0.0.1",
-		Actor:         "human:owner",
-		CSRFToken:     "csrf",
-		HomePath:      "/",
-		BoardPath:     "/board",
-		ActionPrefix:  "",
-		SchedulePath:  "/schedule",
-		NewTicketPath: "/board?new=1",
-		ShowNew:       true,
-		Project:       "WEB",
+		Page:            "board",
+		Workspace:       "workspace",
+		Host:            "127.0.0.1",
+		Actor:           "human:owner",
+		CSRFToken:       "csrf",
+		HomePath:        "/",
+		BoardPath:       "/board",
+		ActionPrefix:    "",
+		SchedulePath:    "/schedule",
+		NewTicketPath:   "/board?new=1",
+		ShowNew:         true,
+		Project:         "WEB",
+		ProjectExplicit: true,
+		View:            "bugs",
 	}
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "layout", page); err != nil {
@@ -125,7 +127,7 @@ func TestLegacyBoardTemplateKeepsQuotedBoardPaths(t *testing.T) {
 	if !strings.Contains(body, `action="/actions/tickets/create"`) {
 		t.Fatalf("legacy create form action: %s", excerpt(body, "tickets/create"))
 	}
-	if !strings.Contains(body, `href="/board?ticket=" class="close-button"`) {
+	if !strings.Contains(body, `href="/board?project=WEB&amp;view=bugs" class="close-button"`) {
 		t.Fatalf("legacy close button: %s", excerpt(body, "close-button"))
 	}
 }

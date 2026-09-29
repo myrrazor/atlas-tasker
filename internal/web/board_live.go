@@ -45,17 +45,26 @@ type liveDrawer struct {
 	ActionsHTML string `json:"actions_html,omitempty"`
 }
 
+// liveFPRing keeps enough published fingerprints that a tab a few writes
+// behind can still diff rows. One previous value falls behind as soon as
+// two tabs or a short write burst each move the stamp.
+const liveFPRing = 8
+
+type liveFPSnap struct {
+	fp   string
+	rows map[string]uint64
+}
+
 // liveFPCache remembers a logical ticket fingerprint for one projection
 // stamp. Idle polls reuse it and do not list tickets. Row hashes let a
 // later poll patch the tickets that actually changed, including a reindex
 // that lands while other events are appended.
 type liveFPCache struct {
-	mu       sync.Mutex
-	key      string
-	fp       string
-	rows     map[string]uint64
-	prevFP   string
-	prevRows map[string]uint64
+	mu   sync.Mutex
+	key  string
+	fp   string
+	rows map[string]uint64
+	ring []liveFPSnap
 }
 
 // sharedLiveFP lives for the process, keyed by workspace root. Home builds a
@@ -127,6 +136,8 @@ func (s *Server) boardLiveStamp(r *http.Request) string {
 // liveProjectionParts stamps the index files plus a logical fingerprint of
 // ticket rows. A no-op reindex changes file mtimes without changing the
 // fingerprint, so open tabs can advance the etag without rebuilding the board.
+// A stamp that observed a snapshot always carries that snapshot's fingerprint.
+// Omitting it makes the next poll treat the board as unknown and resync.
 func (s *Server) liveProjectionParts(r *http.Request) []string {
 	before := s.projectionStampParts(r.Context())
 	key := strings.Join(before, "|")
@@ -140,18 +151,26 @@ func (s *Server) liveProjectionParts(r *http.Request) []string {
 	fp, rows, gen, computed := s.computeLiveFP(r.Context())
 	after := s.projectionStampParts(r.Context())
 	afterKey := strings.Join(after, "|")
-	if afterKey == "" {
-		return nil
-	}
-	// A commit landed while the rows were read, or the generation on the
-	// stamp is not the generation those rows were read at. Caching that
-	// fingerprint would 304 a stale board. Omit it and let the next poll
-	// try again once the snapshot is stable.
-	if !computed || afterKey != key || gen == "" || !stampCarriesGeneration(after, gen) {
+	if !computed || fp == "" {
+		if afterKey == "" {
+			return nil
+		}
 		return after
 	}
-	cache.store(afterKey, fp, rows)
-	return append(after, "db:fp="+fp)
+	stable := afterKey != "" && afterKey == key && (gen == "" || stampCarriesGeneration(after, gen))
+	if stable {
+		cache.store(afterKey, fp, rows)
+		return append(append([]string{}, after...), "db:fp="+fp)
+	}
+	// A commit landed during the row read. Publish the snapshot's own
+	// generation with the file stamp from before that read. Pairing this
+	// fingerprint with the newer stamp would 304 a stale board.
+	published := stampForSnapshot(before, gen)
+	if len(published) == 0 {
+		return after
+	}
+	cache.store(strings.Join(published, "|"), fp, rows)
+	return append(published, "db:fp="+fp)
 }
 
 func (c *liveFPCache) lookup(key string) (string, bool) {
@@ -168,9 +187,11 @@ func (c *liveFPCache) store(key, fp string, rows map[string]uint64) {
 		return
 	}
 	c.mu.Lock()
-	if c.fp != "" && c.rows != nil {
-		c.prevFP = c.fp
-		c.prevRows = c.rows
+	if c.fp != "" && c.fp != fp && c.rows != nil {
+		c.ring = append(c.ring, liveFPSnap{fp: c.fp, rows: c.rows})
+		if len(c.ring) > liveFPRing {
+			c.ring = append([]liveFPSnap(nil), c.ring[len(c.ring)-liveFPRing:]...)
+		}
 	}
 	c.key = key
 	c.fp = fp
@@ -179,29 +200,42 @@ func (c *liveFPCache) store(key, fp string, rows map[string]uint64) {
 }
 
 // changedSince reports tickets whose rendered row changed since the client
-// stamp's fingerprint. known is false when that fingerprint is not the one
-// this process last published, and the caller should resync.
+// stamp's fingerprint. known is false when that fingerprint was never
+// published by this process. The caller still patches a readable event tail
+// in that case; a resync is only for a tail it cannot apply.
 func (c *liveFPCache) changedSince(fp string) (ids []string, known bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if fp == "" || c.fp == "" {
+	if fp == "" || c.fp == "" || c.rows == nil {
 		return nil, false
 	}
 	if fp == c.fp {
 		return nil, true
 	}
-	if fp != c.prevFP || c.prevRows == nil || c.rows == nil {
+	var base map[string]uint64
+	for i := len(c.ring) - 1; i >= 0; i-- {
+		if c.ring[i].fp == fp && c.ring[i].rows != nil {
+			base = c.ring[i].rows
+			break
+		}
+	}
+	if base == nil {
 		return nil, false
 	}
+	return diffRowHashes(base, c.rows), true
+}
+
+func diffRowHashes(prev, cur map[string]uint64) []string {
 	seen := map[string]struct{}{}
-	for id, hash := range c.rows {
-		if c.prevRows[id] != hash {
+	ids := make([]string, 0)
+	for id, hash := range cur {
+		if prev[id] != hash {
 			ids = append(ids, id)
 			seen[id] = struct{}{}
 		}
 	}
-	for id := range c.prevRows {
-		if _, ok := c.rows[id]; ok {
+	for id := range prev {
+		if _, ok := cur[id]; ok {
 			continue
 		}
 		if _, dup := seen[id]; dup {
@@ -210,7 +244,34 @@ func (c *liveFPCache) changedSince(fp string) (ids []string, known bool) {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	return ids, true
+	return ids
+}
+
+// stampForSnapshot is the file stamp observed before a row read, with the
+// snapshot's own data_version. It is not the stamp taken after the read.
+func stampForSnapshot(before []string, gen string) []string {
+	if len(before) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(before)+1)
+	wrote := false
+	for _, part := range before {
+		if strings.HasPrefix(part, "db:fp=") {
+			continue
+		}
+		if strings.HasPrefix(part, "db:data_version=") {
+			if gen != "" {
+				out = append(out, "db:data_version="+gen)
+				wrote = true
+			}
+			continue
+		}
+		out = append(out, part)
+	}
+	if gen != "" && !wrote {
+		out = append(out, "db:data_version="+gen)
+	}
+	return out
 }
 
 type liveSnapshotter interface {
@@ -434,18 +495,27 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	if strings.TrimSpace(r.URL.Query().Get("view")) != "" {
 		return s.liveResync(r)
 	}
-	// A tail we cannot apply id-by-id still has to land as one resync.
-	// Falling through to a full HTML page wedges a large board, which
-	// discards that page and asks again forever.
-	changed, known := s.fpCache().changedSince(prev.db["fp"])
+	// Resync only when the event tail cannot be applied id-by-id. An unknown
+	// row diff (the client fingerprint is older than the ring, or the previous
+	// stamp had no fingerprint) still patches that tail. Falling through to a
+	// full HTML page wedges a large board: the poller discards it and asks again.
 	tail, tailOK := readGrownTails(s.cfg.Root, prev.files, cur.files)
-	if !tailOK || !known {
-		if tailOK && known && fingerprintUnchanged(prev.db, cur.db) && len(changed) == 0 && len(bytes.TrimSpace(tail)) == 0 {
-			return liveBoardBody{Cards: []liveCardPatch{}}, true
-		}
+	if !tailOK {
 		return s.liveResync(r)
 	}
-	ids := unionIDs(ticketIDsFromTail(tail), changed)
+	changed, known := s.fpCache().changedSince(prev.db["fp"])
+	var ids []string
+	if known {
+		ids = unionIDs(ticketIDsFromTail(tail), changed)
+	} else {
+		ids = ticketIDsFromTail(tail)
+		// A reindex with no new events has nothing in the tail. One resync
+		// catches the tab up, and the response stamp includes a fingerprint
+		// so the same miss does not repeat.
+		if len(ids) == 0 && !fingerprintUnchanged(prev.db, cur.db) && projectionChanged(prev.db, cur.db) {
+			return s.liveResync(r)
+		}
+	}
 	if len(ids) == 0 {
 		// Same rows, new file generation: a no-op reindex. An empty patch
 		// advances the etag; a full resync would reload every card.

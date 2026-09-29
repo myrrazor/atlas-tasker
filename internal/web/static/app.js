@@ -463,7 +463,9 @@
       });
     }
 
+    const closeHref = boardURLWithoutTicket();
     drawer.querySelectorAll('.close-button').forEach((closer) => {
+      closer.setAttribute('href', closeHref);
       closer.addEventListener('click', (event) => {
         if (reduceMotion) return;
         event.preventDefault();
@@ -941,7 +943,11 @@
         ghostClass: 'sortable-ghost',
         chosenClass: 'sortable-chosen',
         dragClass: 'sortable-dragging',
-        onStart: () => {
+        onStart: (event) => {
+          const card = event && event.item;
+          if (card && card.dataset) {
+            card.dataset.dragFrom = card.dataset.storedStatus || card.dataset.status || '';
+          }
           dismissCardPreview();
           activeDragEpoch = dragEpoch;
           dragStartedAt = Date.now();
@@ -974,6 +980,8 @@
             body.set('csrf_token', csrf);
             body.set('status', status);
             body.set('reason', 'web drag move');
+            const fromStatus = card.dataset.dragFrom || live.dataset.dragFrom || '';
+            if (fromStatus) body.set('from', fromStatus);
             if (live.dataset.revision) body.set('expected_revision', live.dataset.revision);
             try {
               const response = await fetch(`${actionPrefix()}/actions/tickets/${encodeURIComponent(ticketID)}/move`, {
@@ -1063,6 +1071,14 @@
     });
   }
 
+  function boardURLWithoutTicket() {
+    const url = boardURL();
+    url.searchParams.delete('ticket');
+    url.searchParams.delete('new');
+    const query = url.searchParams.toString();
+    return url.pathname + (query ? '?' + query : '');
+  }
+
   function setupDrawerEscape() {
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
@@ -1070,6 +1086,7 @@
       if (!closer || event.target.closest('dialog')) return;
       if (document.body.dataset.page !== 'board') return;
       event.preventDefault();
+      closer.setAttribute('href', boardURLWithoutTicket());
       closer.click();
     });
   }
@@ -1181,13 +1198,17 @@
     const stamp = document.querySelector('meta[name="atlas-board-stamp"]');
     if (stamp && stamp.content) boardETag = '"' + stamp.content + '"';
     let misses = 0;
+    let pollInFlight = false;
     window.setInterval(() => {
-      if (document.hidden || dragBlocked()) return;
+      if (document.hidden || dragBlocked() || pollInFlight) return;
+      pollInFlight = true;
       refreshBoard({ attempts: 1, quiet: true }).then(() => {
         misses = 0;
       }).catch(() => {
         misses += 1;
         if (misses >= 2) showServerDown();
+      }).finally(() => {
+        pollInFlight = false;
       });
     }, 3000);
   }

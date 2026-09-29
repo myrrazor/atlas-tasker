@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -315,22 +316,32 @@ func searchTool(tc ToolContext, args map[string]any) (any, error) {
 const defaultBoardPageLimit = 10
 
 func boardTool(tc ToolContext, args map[string]any) (any, error) {
-	if project := strings.TrimSpace(stringArg(args, "project")); project != "" {
+	project := strings.TrimSpace(stringArg(args, "project"))
+	if project != "" {
 		projects, err := listProjectRefs(tc)
 		if err != nil {
 			return nil, err
 		}
-		if _, keys, ok := resolveNamedProject(projects, project); !ok {
+		ref, keys, ok := resolveNamedProject(projects, project)
+		if !ok {
 			return nil, apperr.New(apperr.CodeNotFound, fmt.Sprintf("unknown project %q; known projects: %s", project, strings.Join(keys, ", ")))
 		}
+		project = ref.Key
 	}
 	if _, ok := args["limit"]; ok && args["limit"] != nil && intArg(args, "limit", 0) <= 0 {
 		return nil, apperr.New(apperr.CodeInvalidInput, "limit must be a positive integer")
 	}
+	if err := validateBoardCursors(args); err != nil {
+		return nil, err
+	}
+	ticketType := contracts.TicketType(strings.TrimSpace(stringArg(args, "type")))
+	if ticketType != "" && !ticketType.IsValid() {
+		return nil, apperr.New(apperr.CodeInvalidInput, "invalid ticket type: "+string(ticketType))
+	}
 	view, err := tc.Server.Workspace.Queries.Board(tc.Context, contracts.BoardQueryOptions{
-		Project:  stringArg(args, "project"),
+		Project:  project,
 		Assignee: contracts.Actor(stringArg(args, "assignee")),
-		Type:     contracts.TicketType(stringArg(args, "type")),
+		Type:     ticketType,
 	})
 	if err != nil {
 		return nil, err
@@ -1256,6 +1267,52 @@ func scheduleQueryArgs(args map[string]any) (service.ScheduleQuery, error) {
 }
 
 const boardCursorDone = "done"
+
+func validateBoardCursors(args map[string]any) error {
+	raw, ok := args["cursor_by_status"]
+	if !ok || raw == nil {
+		return nil
+	}
+	check := func(status, cursor string) error {
+		if err := validBoardCursor(cursor); err != nil {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid cursor for %s: %s", status, err.Error()))
+		}
+		return nil
+	}
+	switch value := raw.(type) {
+	case map[string]string:
+		for status, cursor := range value {
+			if err := check(status, cursor); err != nil {
+				return err
+			}
+		}
+	case map[string]any:
+		for status, item := range value {
+			text, ok := item.(string)
+			if !ok {
+				return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid cursor for %s", status))
+			}
+			if err := check(status, text); err != nil {
+				return err
+			}
+		}
+	default:
+		return apperr.New(apperr.CodeInvalidInput, "cursor_by_status must be an object")
+	}
+	return nil
+}
+
+func validBoardCursor(cursor string) error {
+	cursor = strings.TrimSpace(cursor)
+	if cursor == "" || cursor == boardCursorDone {
+		return nil
+	}
+	n, err := strconv.Atoi(cursor)
+	if err != nil || n < 0 {
+		return fmt.Errorf("cursor must be a non-negative integer or %q", boardCursorDone)
+	}
+	return nil
+}
 
 func paginateBoard(view service.BoardViewModel, args map[string]any, maxItems int) map[string]any {
 	total := 0

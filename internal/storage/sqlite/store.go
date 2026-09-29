@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
@@ -54,9 +55,14 @@ type Store struct {
 // liveConn is the process's generation reader. Do not Close it on the poll
 // path: database/sql Conn.Close returns the connection to the pool, and any
 // real close of a sqlite fd drops every fcntl lock this process holds.
+// dev and ino are the index file this connection opened. A delete plus
+// reindex replaces that inode; the pinned connection and its pool would
+// otherwise keep reading the unlinked file.
 type liveConn struct {
 	mu   sync.Mutex
 	conn *sql.Conn
+	dev  uint64
+	ino  uint64
 }
 
 const sourceFingerprintKey = "source_fingerprint"
@@ -121,29 +127,42 @@ func openDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+func (s *Store) currentDB() *sql.DB {
+	if s == nil {
+		return nil
+	}
+	if s.live == nil {
+		return s.DB
+	}
+	s.live.mu.Lock()
+	db := s.DB
+	s.live.mu.Unlock()
+	return db
+}
+
 func (s *Store) execContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	if s.tx != nil {
 		return s.tx.ExecContext(ctx, query, args...)
 	}
-	return s.DB.ExecContext(ctx, query, args...)
+	return s.currentDB().ExecContext(ctx, query, args...)
 }
 
 func (s *Store) queryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	if s.tx != nil {
 		return s.tx.QueryContext(ctx, query, args...)
 	}
-	return s.DB.QueryContext(ctx, query, args...)
+	return s.currentDB().QueryContext(ctx, query, args...)
 }
 
 func (s *Store) queryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	if s.tx != nil {
 		return s.tx.QueryRowContext(ctx, query, args...)
 	}
-	return s.DB.QueryRowContext(ctx, query, args...)
+	return s.currentDB().QueryRowContext(ctx, query, args...)
 }
 
 func (s *Store) inTransaction(ctx context.Context, update func(*Store) error) error {
-	tx, err := s.DB.BeginTx(ctx, nil)
+	tx, err := s.currentDB().BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin projection update: %w", err)
 	}
@@ -186,18 +205,85 @@ func (s *Store) Close() error {
 	return s.DB.Close()
 }
 
+func indexFileID(path string) (uint64, uint64, bool) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return 0, 0, false
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, false
+	}
+	return uint64(stat.Dev), uint64(stat.Ino), true
+}
+
+func (s *Store) noteIndexInodeLocked() {
+	dev, ino, ok := indexFileID(s.Path)
+	if !ok {
+		return
+	}
+	s.live.dev = dev
+	s.live.ino = ino
+}
+
+// indexReplacedLocked reports whether the path's inode is a different file
+// from the one the pinned connection opened. A missing path is not a
+// replacement yet: reindex may still be creating it. Stat does not open the
+// database, so it does not drop this process's locks.
+func (s *Store) indexReplacedLocked() bool {
+	if s.live.ino == 0 {
+		return false
+	}
+	dev, ino, ok := indexFileID(s.Path)
+	if !ok {
+		return false
+	}
+	return dev != s.live.dev || ino != s.live.ino
+}
+
+// reopenIndexLocked swaps the pool onto the index file that now occupies
+// Path. The previous pool's fds stay on the unlinked inode, so closing them
+// releases locks on that deleted file only.
+func (s *Store) reopenIndexLocked() error {
+	fresh, err := openDB(s.Path)
+	if err != nil {
+		return err
+	}
+	if s.live.conn != nil {
+		_ = s.live.conn.Close()
+		s.live.conn = nil
+	}
+	old := s.DB
+	s.DB = fresh
+	s.live.dev = 0
+	s.live.ino = 0
+	if old != nil && old != fresh {
+		_ = old.Close()
+	}
+	return nil
+}
+
 func (s *Store) withLiveConn(ctx context.Context, fn func(*sql.Conn) error) error {
-	if s == nil || s.DB == nil || s.live == nil {
+	if s == nil || s.live == nil {
 		return fmt.Errorf("sqlite store is closed")
 	}
 	s.live.mu.Lock()
 	defer s.live.mu.Unlock()
+	if s.DB == nil {
+		return fmt.Errorf("sqlite store is closed")
+	}
+	if s.live.conn != nil && s.indexReplacedLocked() {
+		if err := s.reopenIndexLocked(); err != nil {
+			return err
+		}
+	}
 	if s.live.conn == nil {
 		conn, err := s.DB.Conn(ctx)
 		if err != nil {
 			return err
 		}
 		s.live.conn = conn
+		s.noteIndexInodeLocked()
 	}
 	return fn(s.live.conn)
 }
@@ -931,7 +1017,7 @@ func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions
 	}
 	query += ` ORDER BY updated_at ASC, id ASC`
 
-	rows, err := s.DB.QueryContext(ctx, query, args...)
+	rows, err := s.currentDB().QueryContext(ctx, query, args...)
 	if err != nil {
 		return contracts.BoardView{}, fmt.Errorf("query board: %w", err)
 	}
@@ -998,7 +1084,7 @@ func (s *Store) queryTicketStatuses(ctx context.Context, ticketIDs []string) (ma
 		placeholders[i] = "?"
 		args[i] = ticketID
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, status FROM tickets WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	rows, err := s.currentDB().QueryContext(ctx, `SELECT id, status FROM tickets WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1073,7 +1159,7 @@ func (s *Store) QuerySearch(ctx context.Context, query contracts.SearchQuery) ([
 	}
 	base += ` ORDER BY updated_at DESC, id ASC`
 
-	rows, err := s.DB.QueryContext(ctx, base, args...)
+	rows, err := s.currentDB().QueryContext(ctx, base, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query search: %w", err)
 	}
@@ -1094,7 +1180,7 @@ func (s *Store) QuerySearch(ctx context.Context, query contracts.SearchQuery) ([
 }
 
 func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.Event, error) {
-	rows, err := s.DB.QueryContext(ctx, `
+	rows, err := s.currentDB().QueryContext(ctx, `
 		SELECT event_id, ts, actor, reason, type, project, ticket_id, payload_json, metadata_json, schema_version
 		FROM events
 		WHERE ticket_id = ?
@@ -1164,7 +1250,7 @@ func (s *Store) QueryCommentCounts(ctx context.Context, ticketIDs []string) (map
 		for _, id := range chunk {
 			args = append(args, id)
 		}
-		rows, err := s.DB.QueryContext(ctx, `
+		rows, err := s.currentDB().QueryContext(ctx, `
 			SELECT ticket_id, COUNT(*)
 			FROM events
 			WHERE type = ? AND ticket_id IN (`+placeholders+`)
