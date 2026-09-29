@@ -246,6 +246,9 @@
     pointerGuard = window.setTimeout(() => {
       heldCardPointers.clear();
       if (dragsInFlight === 0) cardPointerDown = false;
+      // The press blocked a rebind. Run it now that the guard has expired,
+      // unless a drag is still in flight (flush waits for that too).
+      flushPendingSortable();
     }, 15000);
   }, true);
   function clearStuckPointer() {
@@ -253,6 +256,7 @@
     cardPointerDown = false;
     window.clearTimeout(pointerGuard);
     if (dragsInFlight > 0) armDragWatch(dragEpoch, 800);
+    flushPendingSortable();
   }
   // pointerup can beat dragstart. Keep the card frozen across that gap so a
   // live refresh cannot replace it before the drag is real. If Sortable never
@@ -267,12 +271,9 @@
     const epoch = dragEpoch;
     window.setTimeout(() => {
       if (epoch !== dragEpoch || nativeDrag || dragRecentlyActive()) return;
-      if (dragsInFlight === 0) {
-        cardPointerDown = false;
-        return;
-      }
       cardPointerDown = false;
-      armDragWatch(epoch, 800);
+      if (dragsInFlight > 0) armDragWatch(epoch, 800);
+      flushPendingSortable();
     }, 80);
   }
   document.addEventListener('pointerup', releaseCardPointer, true);
@@ -982,12 +983,48 @@
     return document.querySelectorAll('.ticket-card').length;
   }
 
+  // A grid swap can ask for a new Sortable while a press or drag still owns
+  // the previous one. Remember that and bind once the gesture is over.
+  let sortableSetupPending = false;
+  let sortableSetupTimer = 0;
+
+  function sortableGestureLive() {
+    return cardPointerDown || dragsInFlight > 0 || !!document.querySelector('.ticket-card.sortable-chosen, .ticket-card.sortable-ghost, .ticket-card.sortable-dragging, .ticket-card.sortable-fallback');
+  }
+
+  function noteSortableSetupPending() {
+    sortableSetupPending = true;
+    if (sortableSetupTimer) return;
+    sortableSetupTimer = window.setTimeout(flushPendingSortable, 0);
+  }
+
+  function flushPendingSortable() {
+    if (sortableSetupTimer) {
+      window.clearTimeout(sortableSetupTimer);
+      sortableSetupTimer = 0;
+    }
+    if (!sortableSetupPending) return;
+    // Do not destroy an instance that a pointer or drag is still using.
+    if (sortableGestureLive()) {
+      sortableSetupTimer = window.setTimeout(flushPendingSortable, 50);
+      return;
+    }
+    setupSortable();
+  }
+
   function setupSortable() {
     if (!window.Sortable) return;
     // Destroying Sortable between pointerdown and pointerup drops the drag
     // and throws in _onDrop (ownerDocument / removeEventListener on null).
-    if (cardPointerDown || dragsInFlight > 0) return;
-    if (document.querySelector('.ticket-card.sortable-chosen, .ticket-card.sortable-ghost, .ticket-card.sortable-dragging, .ticket-card.sortable-fallback')) return;
+    if (cardPointerDown || dragsInFlight > 0 || document.querySelector('.ticket-card.sortable-chosen, .ticket-card.sortable-ghost, .ticket-card.sortable-dragging, .ticket-card.sortable-fallback')) {
+      noteSortableSetupPending();
+      return;
+    }
+    sortableSetupPending = false;
+    if (sortableSetupTimer) {
+      window.clearTimeout(sortableSetupTimer);
+      sortableSetupTimer = 0;
+    }
     // destroy instances bound to grids that replaceWith detached, or every
     // refresh leaks a full board subtree in long-lived tabs
     boundSortables.forEach((instance) => {
@@ -1032,6 +1069,9 @@
             dedupeTicketCard(String(dropped.dataset.ticketId).replace(/"/g, ''), dropped);
           }
           settleDroppedCard(event.item);
+          // Outside Sortable's _onDrop, so a deferred rebind cannot destroy
+          // the instance that is still finishing this drop.
+          if (sortableSetupPending) window.setTimeout(flushPendingSortable, 0);
         },
         onAdd: (event) => {
           const card = event.item;

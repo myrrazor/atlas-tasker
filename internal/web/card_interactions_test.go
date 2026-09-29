@@ -158,6 +158,9 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 		"pressedCardId",
 		"function dedupeTicketCard(",
 		"cardPointerDown || dragsInFlight > 0",
+		"sortableSetupPending",
+		"function flushPendingSortable(",
+		"function noteSortableSetupPending(",
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("app.js missing interaction contract %q", want)
