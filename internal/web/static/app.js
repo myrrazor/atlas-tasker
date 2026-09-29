@@ -145,6 +145,11 @@
   let dragRearmAt = 0;
   const moveTail = new Map();
   const moveGen = new Map();
+  // Target status of a move that has not returned yet. A second drag started
+  // during that request sends this value as `from`, because the card's stored
+  // status is still the pre-move value. A failed move leaves the server on
+  // the old status, so that `from` is a conflict.
+  const pendingStatus = new Map();
   let boundSortables = [];
   let previewTimer = 0;
   let previewCard = null;
@@ -968,7 +973,8 @@
         onStart: (event) => {
           const card = event && event.item;
           if (card && card.dataset) {
-            card.dataset.dragFrom = card.dataset.storedStatus || card.dataset.status || '';
+            const pending = pendingStatus.get(card.dataset.ticketId);
+            card.dataset.dragFrom = pending || card.dataset.storedStatus || card.dataset.status || '';
           }
           dismissCardPreview();
           activeDragEpoch = dragEpoch;
@@ -990,6 +996,7 @@
           const card = event.item;
           const ticketID = card.dataset.ticketId;
           const status = event.to.dataset.status;
+          pendingStatus.set(ticketID, status);
           const gen = (moveGen.get(ticketID) || 0) + 1;
           moveGen.set(ticketID, gen);
           const prev = moveTail.get(ticketID) || Promise.resolve();
@@ -1049,6 +1056,8 @@
               }
               showFlash(err.message || message('moveFailed', 'Move failed'), true);
               refreshBoard();
+            } finally {
+              if (moveGen.get(ticketID) === gen) pendingStatus.delete(ticketID);
             }
           });
           moveTail.set(ticketID, run);
@@ -1217,15 +1226,21 @@
     let misses = 0;
     let pollGen = 0;
     let activePoll = null;
-    // A poll still running at the next tick is stalled (hung socket, or a
-    // proxy that never answers). Abort it and start the next one so the
-    // guard cannot stick. A poll that finishes inside the interval is left
-    // alone, which keeps a slow resync from being restarted underneath itself.
+    let pollStarted = 0;
+    // A hung poll must not hold the in-flight guard forever. Abort only after
+    // it has been running for 15s, which is longer than a large-board resync,
+    // then start the next one. A slower poll keeps the guard so requests do
+    // not pile up, and it can delay the following poll by at most that long.
+    const pollStallMs = 15000;
     window.setInterval(() => {
       if (document.hidden || dragBlocked()) return;
-      if (activePoll) activePoll.abort();
+      if (activePoll) {
+        if (Date.now() - pollStarted < pollStallMs) return;
+        activePoll.abort();
+      }
       const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
       const gen = ++pollGen;
+      pollStarted = Date.now();
       activePoll = ctrl;
       refreshBoard({ attempts: 1, quiet: true, signal: ctrl && ctrl.signal }).then(() => {
         if (gen !== pollGen) return;

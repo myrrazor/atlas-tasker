@@ -151,6 +151,9 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 		"existing.dataset.storedStatus === next.dataset.storedStatus",
 		"activePoll.abort()",
 		"err.name === 'AbortError'",
+		"const pollStallMs = 15000",
+		"pendingStatus.get(card.dataset.ticketId)",
+		"pendingStatus.set(ticketID, status)",
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("app.js missing interaction contract %q", want)

@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
@@ -55,25 +54,21 @@ type Store struct {
 // liveConn is the process's generation reader. Do not Close it on the poll
 // path: database/sql Conn.Close returns the connection to the pool, and any
 // real close of a sqlite fd drops every fcntl lock this process holds.
-// dev and ino are the index file this connection opened. A delete plus
-// reindex replaces that inode; the pinned connection and its pool would
-// otherwise keep reading the unlinked file.
-// parked keeps pools whose -shm inode is still the live one. Closing them
-// would drop this process's POSIX locks on that inode.
+// indexInfo and shmInfo are the files this connection opened. A delete plus
+// reindex replaces the index inode; the pinned connection would otherwise
+// keep reading the unlinked file.
 type liveConn struct {
-	mu     sync.Mutex
-	conn   *sql.Conn
-	dev    uint64
-	ino    uint64
-	parked []parkedPool
+	mu        sync.Mutex
+	conn      *sql.Conn
+	indexInfo os.FileInfo
+	shmInfo   os.FileInfo
 }
 
-// parkedPool is a previous index pool that still has the live -shm file
-// mapped. conn stays checked out so database/sql does not close its fds.
-type parkedPool struct {
-	db   *sql.DB
-	conn *sql.Conn
-}
+// sqliteDriver is a private modernc driver so every pooled connection can
+// persist its WAL files. The process-wide "sqlite" driver is left alone.
+const sqliteDriver = "atlas-sqlite"
+
+var registerAtlasSQLite sync.Once
 
 const sourceFingerprintKey = "source_fingerprint"
 
@@ -116,9 +111,15 @@ func discardOrphanedSidecars(path string) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("stat index: %w", err)
 	}
+	return removeIndexSidecars(path)
+}
+
+// removeIndexSidecars unlinks the wal and shm directory entries. An open
+// mapping keeps its inode; the next create gets a new file.
+func removeIndexSidecars(path string) error {
 	for _, suffix := range []string{"-wal", "-shm"} {
 		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove orphaned index%s: %w", suffix, err)
+			return fmt.Errorf("remove index%s: %w", suffix, err)
 		}
 	}
 	return nil
@@ -137,7 +138,23 @@ func openDB(path string) (*sql.DB, error) {
 	params.Add("_pragma", "busy_timeout(5000)")
 	params.Add("_pragma", "synchronous(NORMAL)")
 	dsn.RawQuery = params.Encode()
-	db, err := sql.Open("sqlite", dsn.String())
+	registerAtlasSQLite.Do(func() {
+		drv := &modernsqlite.Driver{}
+		drv.RegisterConnectionHook(func(conn modernsqlite.ExecQuerierContext, _ string) error {
+			fc, ok := conn.(modernsqlite.FileControl)
+			if !ok {
+				return fmt.Errorf("sqlite connection has no file control")
+			}
+			// The last connection out of a pool checkpoints and, unless this
+			// is set, deletes the wal and shm by path. A retired pool's path
+			// is the live index, so that delete removes the replacement's
+			// sidecars.
+			_, err := fc.FileControlPersistWAL("main", 1)
+			return err
+		})
+		sql.Register(sqliteDriver, drv)
+	})
+	db, err := sql.Open(sqliteDriver, dsn.String())
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
@@ -230,176 +247,99 @@ func IsCorrupt(err error) bool {
 }
 
 func (s *Store) Close() error {
-	var parked []parkedPool
 	if s.live != nil {
 		s.live.mu.Lock()
 		if s.live.conn != nil {
 			_ = s.live.conn.Close()
 			s.live.conn = nil
 		}
-		parked = s.live.parked
-		s.live.parked = nil
 		s.live.mu.Unlock()
 	}
-	closeParked(parked)
 	if s.DB == nil {
 		return nil
 	}
 	return s.DB.Close()
 }
 
-func closeParked(parked []parkedPool) {
-	for _, pool := range parked {
-		if pool.conn != nil {
-			_ = pool.conn.Close()
-		}
-		if pool.db != nil {
-			_ = pool.db.Close()
-		}
+func sameFile(path string, prev os.FileInfo) bool {
+	if prev == nil {
+		return false
 	}
-}
-
-func indexFileID(path string) (uint64, uint64, bool) {
-	info, err := os.Lstat(path)
+	cur, err := os.Lstat(path)
 	if err != nil {
-		return 0, 0, false
+		return false
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, 0, false
-	}
-	return uint64(stat.Dev), uint64(stat.Ino), true
+	return os.SameFile(prev, cur)
 }
 
-func (s *Store) noteIndexInodeLocked() {
-	dev, ino, ok := indexFileID(s.Path)
-	if !ok {
-		return
+func (s *Store) noteIndexFilesLocked() {
+	if info, err := os.Lstat(s.Path); err == nil {
+		s.live.indexInfo = info
 	}
-	s.live.dev = dev
-	s.live.ino = ino
+	if info, err := os.Lstat(s.Path + "-shm"); err == nil {
+		s.live.shmInfo = info
+	}
 }
 
-// indexReplacedLocked reports whether the path's inode is a different file
-// from the one the pinned connection opened. A missing path is not a
-// replacement yet: reindex may still be creating it. Stat does not open the
-// database, so it does not drop this process's locks.
+// indexReplacedLocked reports whether the path names a different file from
+// the one the pinned connection opened. A missing path is not a replacement
+// yet: reindex may still be creating it. Stat does not open the database, so
+// it does not drop this process's locks.
 func (s *Store) indexReplacedLocked() bool {
-	if s.live.ino == 0 {
+	if s.live.indexInfo == nil {
 		return false
 	}
-	dev, ino, ok := indexFileID(s.Path)
-	if !ok {
+	cur, err := os.Lstat(s.Path)
+	if err != nil {
 		return false
 	}
-	return dev != s.live.dev || ino != s.live.ino
+	return !os.SameFile(s.live.indexInfo, cur)
 }
 
 // reopenIndexLocked swaps the pool onto the index file that now occupies
-// Path. When the replacement also created a new -shm inode, the previous
-// pool's fds refer to the unlinked shm and closing them releases locks on
-// that deleted file only. When only index.sqlite was replaced, the new pool
-// maps the same -shm inode. POSIX locks are per-process: closing any fd that
-// refers to that inode drops the locks the new pool just took, and another
-// process can truncate the mapping (SIGBUS). Those pools stay open. Their
-// unlinked index.sqlite fds are retargeted so they are not a deleted-index leak.
+// Path. Connections persist their wal files, so closing the retired pool
+// cannot unlink the replacement's wal or shm by path. If the replacement
+// left the previous shm in place (the main file was swapped and the sidecars
+// were not), those sidecars belong to the old database and are removed
+// before the new pool opens them. Unlink does not truncate an inode this
+// process still has mapped, and the new pool then gets its own shm, so
+// closing the old pool does not drop the new pool's locks.
 func (s *Store) reopenIndexLocked() error {
-	oldShmDev, oldShmIno, oldShmOK := openSidecarInode(s.Path, "-shm")
+	if sameFile(s.Path+"-shm", s.live.shmInfo) {
+		if err := removeIndexSidecars(s.Path); err != nil {
+			return err
+		}
+		// Unlink failed or the same shm is still at the path. Opening another
+		// pool on that inode and closing it would drop this process's locks.
+		if sameFile(s.Path+"-shm", s.live.shmInfo) {
+			return fmt.Errorf("replaced index still uses the previous -shm file")
+		}
+	}
 	fresh, err := openDB(s.Path)
 	if err != nil {
 		return err
 	}
-	newShmDev, newShmIno, newShmOK := indexFileID(s.Path + "-shm")
-	shareShm := oldShmOK && newShmOK && oldShmDev == newShmDev && oldShmIno == newShmIno
+	if sameFile(s.Path+"-shm", s.live.shmInfo) {
+		_ = fresh.Close()
+		return fmt.Errorf("replaced index still uses the previous -shm file")
+	}
 	pinned := s.live.conn
 	s.live.conn = nil
 	old := s.DB
 	s.DB = fresh
-	s.live.dev = 0
-	s.live.ino = 0
+	s.live.indexInfo = nil
+	s.live.shmInfo = nil
 	if old == nil || old == fresh {
 		if pinned != nil {
 			_ = pinned.Close()
 		}
 		return nil
 	}
-	if shareShm {
-		releaseUnlinkedIndexFDs(s.Path)
-		s.live.parked = append(s.live.parked, parkedPool{db: old, conn: pinned})
-		return nil
-	}
 	if pinned != nil {
 		_ = pinned.Close()
 	}
-	closeParked(s.live.parked)
-	s.live.parked = nil
 	_ = old.Close()
 	return nil
-}
-
-// openSidecarInode reports the inode of an already-open -wal or -shm fd for
-// path. The directory entry may already name a different file; the open fd
-// still refers to the inode this process mapped.
-func openSidecarInode(path, suffix string) (uint64, uint64, bool) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return 0, 0, false
-	}
-	live := abs + suffix
-	deleted := live + " (deleted)"
-	entries, err := os.ReadDir("/proc/self/fd")
-	if err != nil {
-		return 0, 0, false
-	}
-	for _, entry := range entries {
-		target, err := os.Readlink("/proc/self/fd/" + entry.Name())
-		if err != nil || (target != live && target != deleted) {
-			continue
-		}
-		fd, err := strconv.Atoi(entry.Name())
-		if err != nil {
-			continue
-		}
-		var st syscall.Stat_t
-		if syscall.Fstat(fd, &st) != nil || st.Ino == 0 {
-			continue
-		}
-		return uint64(st.Dev), uint64(st.Ino), true
-	}
-	return 0, 0, false
-}
-
-// releaseUnlinkedIndexFDs retargets fds whose path is the unlinked main
-// index. -wal and -shm fds are left alone so their POSIX locks stay held.
-// Dup2 keeps the fd number sqlite stored; the descriptor no longer points
-// at a deleted index file.
-func releaseUnlinkedIndexFDs(path string) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return
-	}
-	deleted := abs + " (deleted)"
-	devnull, err := os.OpenFile("/dev/null", os.O_RDWR, 0)
-	if err != nil {
-		return
-	}
-	defer devnull.Close()
-	nullfd := int(devnull.Fd())
-	entries, err := os.ReadDir("/proc/self/fd")
-	if err != nil {
-		return
-	}
-	for _, entry := range entries {
-		fd, err := strconv.Atoi(entry.Name())
-		if err != nil || fd == nullfd {
-			continue
-		}
-		target, err := os.Readlink("/proc/self/fd/" + entry.Name())
-		if err != nil || target != deleted {
-			continue
-		}
-		_ = syscall.Dup2(nullfd, fd)
-	}
 }
 
 func (s *Store) withLiveConn(ctx context.Context, fn func(*sql.Conn) error) error {
@@ -422,7 +362,7 @@ func (s *Store) withLiveConn(ctx context.Context, fn func(*sql.Conn) error) erro
 			return err
 		}
 		s.live.conn = conn
-		s.noteIndexInodeLocked()
+		s.noteIndexFilesLocked()
 	}
 	return fn(s.live.conn)
 }

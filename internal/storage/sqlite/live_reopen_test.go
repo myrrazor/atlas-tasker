@@ -5,9 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -84,6 +82,12 @@ func TestPinnedConnReopensWhenIndexFileIsReplaced(t *testing.T) {
 	if n := deletedIndexFDs(path); n != 0 {
 		t.Fatalf("replaced index left %d deleted fds", n)
 	}
+	if _, err := os.Stat(path + "-wal"); err != nil {
+		t.Fatalf("reopen removed the replacement wal: %v", err)
+	}
+	if _, err := os.Stat(path + "-shm"); err != nil {
+		t.Fatalf("reopen removed the replacement shm: %v", err)
+	}
 }
 
 func TestHelperProcessRebuildIndex(t *testing.T) {
@@ -146,9 +150,9 @@ func TestPinnedConnReopensWhenOnlyIndexFileIsReplaced(t *testing.T) {
 	if _, err := store.DB.ExecContext(ctx, `UPDATE tickets SET title = ? WHERE id = ?`, "stale-inode", "APP-1"); err != nil {
 		t.Fatal(err)
 	}
-	// An uncheckpointed WAL cannot be replayed onto the replacement database
-	// while this process still holds the shm lock (SQLITE_IOERR_SHORT_READ).
-	// Truncate it first. The shm inode stays, which is the mode-B hazard.
+	// Checkpoint so the only thing left beside the deleted main file is a
+	// quiescent shm. Public Open still discards those sidecars; reopen must
+	// follow the new files and must not delete them when the old pool closes.
 	if _, err := store.DB.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
 		t.Fatal(err)
 	}
@@ -163,10 +167,14 @@ func TestPinnedConnReopensWhenOnlyIndexFileIsReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperProcessRebuildIndex$", "-test.v")
-	cmd.Env = append(os.Environ(), "ATLAS_REBUILD_HELPER=1", "ATLAS_REBUILD_ROOT="+root)
+	cmd.Env = append(os.Environ(), "ATLAS_REBUILD_HELPER=1", "ATLAS_REBUILD_DISCARD=1", "ATLAS_REBUILD_ROOT="+root)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("rebuild helper: %v\n%s", err, out)
+	}
+	shmInfo, err := os.Stat(path + "-shm")
+	if err != nil {
+		t.Fatalf("replacement shm missing before reopen: %v", err)
 	}
 	_, got, err := store.LiveSnapshot(ctx)
 	if err != nil {
@@ -177,6 +185,13 @@ func TestPinnedConnReopensWhenOnlyIndexFileIsReplaced(t *testing.T) {
 	}
 	if n := deletedIndexFDs(path); n != 0 {
 		t.Fatalf("index-only replace left %d deleted index fds", n)
+	}
+	shmAfter, err := os.Stat(path + "-shm")
+	if err != nil {
+		t.Fatalf("reopen removed the replacement shm: %v", err)
+	}
+	if !os.SameFile(shmInfo, shmAfter) {
+		t.Fatal("reopen replaced the live -shm")
 	}
 	shm := path + "-shm"
 	info, err := os.Stat(shm)
@@ -273,6 +288,10 @@ func TestPinnedConnSurvivesReplacingOnlyTheIndexFileWithoutCheckpoint(t *testing
 	if err != nil {
 		t.Fatalf("rebuild helper: %v\n%s", err, out)
 	}
+	shmInfo, err := os.Stat(path + "-shm")
+	if err != nil {
+		t.Fatalf("replacement shm missing before reopen: %v", err)
+	}
 	_, got, err := store.LiveSnapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -282,6 +301,13 @@ func TestPinnedConnSurvivesReplacingOnlyTheIndexFileWithoutCheckpoint(t *testing
 	}
 	if n := deletedIndexFDs(path); n != 0 {
 		t.Fatalf("index-only replace left %d deleted index fds", n)
+	}
+	shmAfter, err := os.Stat(path + "-shm")
+	if err != nil {
+		t.Fatalf("reopen removed the replacement shm: %v", err)
+	}
+	if !os.SameFile(shmInfo, shmAfter) {
+		t.Fatal("reopen replaced the live -shm")
 	}
 	shm := path + "-shm"
 	if locks := posixLocksOn(os.Getpid(), shm); locks == 0 {
@@ -322,6 +348,152 @@ for i in range(40):
 	}
 }
 
+func TestRepeatedIndexReplaceDoesNotLeakFDs(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	if err := (mdstore.ProjectStore{RootDir: root}).CreateProject(ctx, contracts.Project{
+		Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tickets := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return now }}
+	events := &eventstore.Log{RootDir: root}
+	path := filepath.Join(storage.TrackerDir(root), "index.sqlite")
+	store, err := Open(path, tickets, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ticket := contracts.TicketSnapshot{
+		ID: "APP-1", Project: "APP", Title: "fresh-title", Type: contracts.TicketTypeTask,
+		Status: contracts.StatusReady, Priority: contracts.PriorityMedium,
+		CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := tickets.CreateTicket(ctx, ticket); err != nil {
+		t.Fatal(err)
+	}
+	if err := events.AppendEvent(ctx, contracts.Event{
+		EventID: 1, Timestamp: now, Actor: "human:owner", Type: contracts.EventTicketCreated,
+		Project: "APP", TicketID: "APP-1", Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Rebuild(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.LiveSnapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	before := countFDs()
+	if before < 0 {
+		t.Skip("fd count is only available via /proc")
+	}
+	for i := 0; i < 10; i++ {
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(os.Args[0], "-test.run=^TestHelperProcessRebuildIndex$", "-test.v")
+		cmd.Env = append(os.Environ(), "ATLAS_REBUILD_HELPER=1", "ATLAS_REBUILD_DISCARD=1", "ATLAS_REBUILD_ROOT="+root)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("rebuild %d: %v\n%s", i, err, out)
+		}
+		if _, _, err := store.LiveSnapshot(ctx); err != nil {
+			t.Fatalf("reopen %d: %v", i, err)
+		}
+		if n := deletedIndexFDs(path); n != 0 {
+			t.Fatalf("replacement %d left %d deleted index fds", i, n)
+		}
+	}
+	after := countFDs()
+	if after-before > 8 {
+		t.Fatalf("fd count grew from %d to %d across 10 index replacements", before, after)
+	}
+	t.Logf("fds before=%d after=%d", before, after)
+}
+
+func TestReopenDropsStaleSidecarsWhenMainFileIsSwapped(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	if err := (mdstore.ProjectStore{RootDir: root}).CreateProject(ctx, contracts.Project{
+		Key: "APP", Name: "App", CreatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tickets := mdstore.TicketStore{RootDir: root, Clock: func() time.Time { return now }}
+	events := &eventstore.Log{RootDir: root}
+	path := filepath.Join(storage.TrackerDir(root), "index.sqlite")
+	store, err := Open(path, tickets, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ticket := contracts.TicketSnapshot{
+		ID: "APP-1", Project: "APP", Title: "old-title", Type: contracts.TicketTypeTask,
+		Status: contracts.StatusReady, Priority: contracts.PriorityMedium,
+		CreatedAt: now, UpdatedAt: now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}
+	if err := tickets.CreateTicket(ctx, ticket); err != nil {
+		t.Fatal(err)
+	}
+	if err := events.AppendEvent(ctx, contracts.Event{
+		EventID: 1, Timestamp: now, Actor: "human:owner", Type: contracts.EventTicketCreated,
+		Project: "APP", TicketID: "APP-1", Payload: ticket, SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Rebuild(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.LiveSnapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	oldShm, err := os.Stat(path + "-shm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherPath := filepath.Join(t.TempDir(), "index.sqlite")
+	other, err := Open(otherPath, tickets, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Rebuild(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.DB.ExecContext(ctx, `UPDATE tickets SET title = ? WHERE id = ?`, "swapped-title", "APP-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.DB.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Rename replaces the inode and leaves the old wal and shm in place.
+	if err := os.Rename(otherPath, path); err != nil {
+		t.Fatal(err)
+	}
+	_, got, err := store.LiveSnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Title != "swapped-title" {
+		t.Fatalf("swapped index title = %#v", got)
+	}
+	nowShm, err := os.Stat(path + "-shm")
+	if err != nil {
+		t.Fatalf("shm missing after swap: %v", err)
+	}
+	if os.SameFile(oldShm, nowShm) {
+		t.Fatal("reopen kept the previous -shm after the main file was swapped")
+	}
+	if _, err := os.Stat(path + "-wal"); err != nil {
+		t.Fatalf("wal missing after swap: %v", err)
+	}
+}
+
 func deletedIndexFDs(path string) int {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -338,35 +510,6 @@ func deletedIndexFDs(path string) int {
 			continue
 		}
 		if strings.HasPrefix(target, abs) && strings.Contains(target, "(deleted)") {
-			n++
-		}
-	}
-	return n
-}
-
-func posixLocksOn(pid int, path string) int {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0
-	}
-	inode := strconv.FormatUint(stat.Ino, 10)
-	raw, err := os.ReadFile("/proc/locks")
-	if err != nil {
-		return 0
-	}
-	wantPID := strconv.Itoa(pid)
-	n := 0
-	for _, line := range strings.Split(string(raw), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 6 || fields[4] != wantPID {
-			continue
-		}
-		parts := strings.Split(fields[5], ":")
-		if len(parts) == 3 && parts[2] == inode {
 			n++
 		}
 	}
