@@ -154,6 +154,10 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 		"const pollStallMs = 15000",
 		"pendingStatus.get(card.dataset.ticketId)",
 		"pendingStatus.set(ticketID, status)",
+		"heldCardPointers",
+		"pressedCardId",
+		"function dedupeTicketCard(",
+		"cardPointerDown || dragsInFlight > 0",
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("app.js missing interaction contract %q", want)
@@ -166,6 +170,13 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 	}
 	if strings.Contains(js[previewStart:previewStart+previewEnd], "fetch(") {
 		t.Fatal("hover preview must use card data attributes without fetching")
+	}
+	vendor, err := embeddedFiles.ReadFile("static/vendor/sortable.min.js")
+	if err != nil {
+		t.Fatalf("read sortable: %v", err)
+	}
+	if !strings.Contains(string(vendor), "_onDrop:function(t){if(!this.el)return;") {
+		t.Fatal("sortable drop must no-op when its list element is gone")
 	}
 	refreshStart := strings.Index(js, "async function refreshBoard")
 	if refreshStart < 0 {

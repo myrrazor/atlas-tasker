@@ -18,6 +18,7 @@ import (
 
 	"github.com/myrrazor/atlas-tasker/internal/config"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
+	"github.com/myrrazor/atlas-tasker/internal/service"
 	"github.com/myrrazor/atlas-tasker/internal/storage"
 )
 
@@ -145,10 +146,87 @@ func (s *Server) boardLiveStamp(r *http.Request) string {
 		parts = append(parts, name+"="+strconv.FormatInt(files[name], 10))
 	}
 	parts = append(parts, s.liveProjectionParts(r)...)
+	if token := savedViewLiveToken(s.cfg.Root, r.URL.Query().Get("view")); token != "" {
+		// The view file is not part of the URL, so a definition edit must
+		// show up as its own stamp field. Folding it into the query hash
+		// makes the handler fall through to a full HTML page.
+		parts = append(parts, "db:view="+token)
+	}
 	if liveInstanceID != "" {
 		parts = append(parts, "db:boot="+liveInstanceID)
 	}
 	return strings.Join(parts, "|")
+}
+
+// savedViewLiveToken identifies the saved view definition that loadBoard
+// would resolve. It is a file read, not a board query. An empty name means
+// this request is not a saved view.
+func savedViewLiveToken(root, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.TrimSpace(root) == "" {
+		return ""
+	}
+	view, err := (service.ViewStore{Root: root}).LoadView(name)
+	if err != nil {
+		return "missing"
+	}
+	sum := fnv.New64a()
+	_, _ = sum.Write([]byte(string(view.Kind)))
+	_, _ = sum.Write([]byte{0})
+	_, _ = sum.Write([]byte(view.Project))
+	_, _ = sum.Write([]byte{0})
+	_, _ = sum.Write([]byte(view.Assignee))
+	_, _ = sum.Write([]byte{0})
+	_, _ = sum.Write([]byte(view.Type))
+	_, _ = sum.Write([]byte{0})
+	_, _ = sum.Write([]byte(view.Query))
+	_, _ = sum.Write([]byte{0})
+	_, _ = sum.Write([]byte(view.Actor))
+	_, _ = sum.Write([]byte{0})
+	for _, column := range view.Board.Columns {
+		_, _ = sum.Write([]byte(column))
+		_, _ = sum.Write([]byte{0})
+	}
+	_, _ = sum.Write([]byte{0})
+	for _, category := range view.Queue.Categories {
+		_, _ = sum.Write([]byte(category))
+		_, _ = sum.Write([]byte{0})
+	}
+	return strconv.FormatUint(sum.Sum64(), 16)
+}
+
+// liveViewScope is the saved view's own board scope, resolved once per poll
+// the same way RunSavedView does. URL filters still apply afterwards.
+type liveViewScope struct {
+	active   bool
+	project  string
+	assignee contracts.Actor
+	typ      contracts.TicketType
+	columns  map[contracts.Status]struct{}
+}
+
+func (s *Server) liveViewScope(r *http.Request) (liveViewScope, bool) {
+	name := strings.TrimSpace(r.URL.Query().Get("view"))
+	if name == "" {
+		return liveViewScope{}, true
+	}
+	view, err := (service.ViewStore{Root: s.cfg.Root}).LoadView(name)
+	if err != nil || view.Kind != contracts.SavedViewKindBoard {
+		return liveViewScope{}, false
+	}
+	scope := liveViewScope{
+		active:   true,
+		project:  strings.TrimSpace(view.Project),
+		assignee: view.Assignee,
+		typ:      view.Type,
+	}
+	if len(view.Board.Columns) > 0 {
+		scope.columns = make(map[contracts.Status]struct{}, len(view.Board.Columns))
+		for _, column := range view.Board.Columns {
+			scope.columns[column] = struct{}{}
+		}
+	}
+	return scope, true
 }
 
 // liveProjectionParts stamps the index files plus a logical fingerprint of
@@ -522,10 +600,10 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	if liveInstanceChanged(prev.db, cur.db) {
 		return s.liveResync(r)
 	}
-	// Saved views carry their own project, assignee, type and column scope.
-	// Resolve that scope through loadBoard instead of patching raw tickets
-	// with only the URL's filters.
-	if strings.TrimSpace(r.URL.Query().Get("view")) != "" {
+	// A saved view patches with its own project, assignee, type and column
+	// scope. Resync only when that definition changed (or it is not a board).
+	scope, scopeOK := s.liveViewScope(r)
+	if !scopeOK || (scope.active && prev.db["view"] != cur.db["view"]) {
 		return s.liveResync(r)
 	}
 	// Resync only when the event tail cannot be applied id-by-id. An unknown
@@ -562,7 +640,7 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	body := liveBoardBody{Cards: make([]liveCardPatch, 0, len(ids))}
 	openID := strings.TrimSpace(r.URL.Query().Get("ticket"))
 	for _, id := range ids {
-		patch, includeDetail := s.liveCard(r.Context(), r, page, colors, id)
+		patch, includeDetail := s.liveCard(r.Context(), r, page, scope, colors, id)
 		body.Cards = append(body.Cards, patch)
 		if id == openID {
 			body.Drawer = s.openDrawer(r, id)
@@ -657,18 +735,36 @@ func drawerFromTicket(ticket contracts.TicketSnapshot) liveDrawer {
 	}
 }
 
-func (s *Server) liveCard(ctx context.Context, r *http.Request, page BoardPage, colors map[string]string, id string) (liveCardPatch, bool) {
+func (s *Server) liveCard(ctx context.Context, r *http.Request, page BoardPage, scope liveViewScope, colors map[string]string, id string) (liveCardPatch, bool) {
 	ticket, err := s.actions.Tickets.GetTicket(ctx, id)
 	if err != nil || ticket.Archived {
 		return liveCardPatch{ID: id, Remove: true}, false
 	}
-	if page.Project != "" && !strings.EqualFold(ticket.Project, page.Project) {
+	if scope.active {
+		// Match QueryBoard: the view's project, assignee and type are exact,
+		// and the server's --project is not a filter unless the URL set one
+		// (filterBoard's ProjectExplicit path).
+		if scope.project != "" && ticket.Project != scope.project {
+			return liveCardPatch{ID: id, Remove: true}, false
+		}
+		if scope.assignee != "" && ticket.Assignee != scope.assignee {
+			return liveCardPatch{ID: id, Remove: true}, false
+		}
+		if scope.typ != "" && ticket.Type != scope.typ {
+			return liveCardPatch{ID: id, Remove: true}, false
+		}
+	} else if page.Project != "" && !strings.EqualFold(ticket.Project, page.Project) {
 		return liveCardPatch{ID: id, Remove: true}, false
 	}
 	boardStatus := ticket.Status
 	if s.queries != nil {
 		if projected, err := s.queries.BoardStatus(ctx, ticket); err == nil && projected != "" {
 			boardStatus = projected
+		}
+	}
+	if scope.active && len(scope.columns) > 0 {
+		if _, ok := scope.columns[boardStatus]; !ok {
+			return liveCardPatch{ID: id, Remove: true}, false
 		}
 	}
 	filtered := filterBoard(contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{

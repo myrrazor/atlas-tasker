@@ -102,6 +102,225 @@ func TestLiveBoardSavedViewKeepsItsFilters(t *testing.T) {
 			t.Fatal("live update added a task to a bugs-only saved view")
 		}
 	}
+	if patch.Resync {
+		t.Fatal("a ticket edit must patch a saved view, not resync it")
+	}
+}
+
+func TestLiveBoardSavedViewPatchesResolvedScope(t *testing.T) {
+	h := newWebHarness(t, false)
+	ctx := t.Context()
+	if err := (mdstore.ProjectStore{RootDir: h.root}).CreateProject(ctx, contracts.Project{
+		Key: "LIB", Name: "Lib", CreatedAt: h.now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	bug, err := h.actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project: "WEB", Title: "bug in view", Type: contracts.TicketTypeBug,
+		Status: contracts.StatusReady, Priority: contracts.PriorityMedium,
+		CreatedAt: h.now, UpdatedAt: h.now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}, "human:owner", "seed bug")
+	if err != nil {
+		t.Fatal(err)
+	}
+	backlog, err := h.actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project: "WEB", Title: "backlog outside columns", Type: contracts.TicketTypeTask,
+		Status: contracts.StatusBacklog, Priority: contracts.PriorityMedium,
+		CreatedAt: h.now, UpdatedAt: h.now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}, "human:owner", "seed backlog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib, err := h.actions.CreateTrackedTicket(ctx, contracts.TicketSnapshot{
+		Project: "LIB", Title: "lib ticket", Type: contracts.TicketTypeTask,
+		Status: contracts.StatusReady, Priority: contracts.PriorityMedium,
+		CreatedAt: h.now, UpdatedAt: h.now, SchemaVersion: contracts.CurrentSchemaVersion,
+	}, "human:owner", "seed lib")
+	if err != nil {
+		t.Fatal(err)
+	}
+	views := service.ViewStore{Root: h.root}
+	if err := views.SaveView(contracts.SavedView{
+		Name: "bugs", Kind: contracts.SavedViewKindBoard, Type: contracts.TicketTypeBug,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := views.SaveView(contracts.SavedView{
+		Name: "ready-only", Kind: contracts.SavedViewKindBoard, Project: "WEB",
+		Board: contracts.SavedBoardConfig{Columns: []contracts.Status{contracts.StatusReady}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := views.SaveView(contracts.SavedView{
+		Name: "everything", Kind: contracts.SavedViewKindBoard,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := views.SaveView(contracts.SavedView{
+		Name: "find-ready", Kind: contracts.SavedViewKindSearch, Query: "status=ready",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	poll := func(path, etag string) *httptest.ResponseRecorder {
+		t.Helper()
+		return liveBoardAt(t, h.handler, etag, path)
+	}
+	mustPatch := func(path, etag string) (liveBoardBody, string) {
+		t.Helper()
+		res := poll(path, etag)
+		if res.Code != http.StatusOK || !strings.Contains(res.Header().Get("Content-Type"), "application/json") {
+			t.Fatalf("live poll %s = %d %s", path, res.Code, res.Body.String())
+		}
+		var body liveBoardBody
+		if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Resync {
+			t.Fatalf("resync on %s: %s", path, res.Body.String())
+		}
+		return body, res.Header().Get("ETag")
+	}
+	card := func(body liveBoardBody, id string) (liveCardPatch, bool) {
+		for _, item := range body.Cards {
+			if item.ID == id {
+				return item, true
+			}
+		}
+		return liveCardPatch{}, false
+	}
+	editTitle := func(id, title string) {
+		t.Helper()
+		if _, err := h.actions.MutateTrackedTicket(ctx, id, "human:owner", "edit", "retitle", func(ticket *contracts.TicketSnapshot) error {
+			ticket.Title = title
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	first := poll("/board?view=bugs", "")
+	if !strings.Contains(first.Header().Get("ETag"), "db:view=") {
+		t.Fatalf("saved view stamp missing db:view: %s", first.Header().Get("ETag"))
+	}
+	editTitle(bug.ID, "bug entered the view")
+	entered, etag := mustPatch("/board?view=bugs", first.Header().Get("ETag"))
+	got, ok := card(entered, bug.ID)
+	if !ok || got.Remove || !strings.Contains(got.HTML, "bug entered the view") {
+		t.Fatalf("bug edit did not enter the view: %#v", got)
+	}
+	editTitle(h.ticketID, "task stays outside")
+	outside, etag := mustPatch("/board?view=bugs", etag)
+	if got, ok = card(outside, h.ticketID); ok && !got.Remove {
+		t.Fatalf("task edit entered a bugs view: %#v", got)
+	}
+	if _, err := h.actions.MutateTrackedTicket(ctx, bug.ID, "human:owner", "edit", "retype", func(ticket *contracts.TicketSnapshot) error {
+		ticket.Type = contracts.TicketTypeTask
+		ticket.Title = "bug left the view"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	left, etag := mustPatch("/board?view=bugs", etag)
+	if got, ok = card(left, bug.ID); !ok || !got.Remove {
+		t.Fatalf("ticket that left the view was not removed: %#v", got)
+	}
+
+	readyPage := poll("/board?view=ready-only", "")
+	editTitle(h.ticketID, "ready column title")
+	readyPatch, readyETag := mustPatch("/board?view=ready-only", readyPage.Header().Get("ETag"))
+	if got, ok = card(readyPatch, h.ticketID); !ok || got.Remove || !strings.Contains(got.HTML, "ready column title") {
+		t.Fatalf("ready column dropped an in-scope card: %#v", got)
+	}
+	editTitle(backlog.ID, "backlog column title")
+	backlogPatch, colETag := mustPatch("/board?view=ready-only", readyETag)
+	if got, ok = card(backlogPatch, backlog.ID); ok && !got.Remove {
+		t.Fatalf("column filter kept a backlog card: %#v", got)
+	}
+	if _, err := h.actions.MoveTicket(ctx, h.ticketID, contracts.StatusInProgress, "human:owner", "leave ready"); err != nil {
+		t.Fatal(err)
+	}
+	leftReady, _ := mustPatch("/board?view=ready-only", colETag)
+	if got, ok = card(leftReady, h.ticketID); !ok || !got.Remove {
+		t.Fatalf("ticket that left the ready column was not removed: %#v", got)
+	}
+	if _, err := h.actions.MoveTicket(ctx, backlog.ID, contracts.StatusReady, "human:owner", "enter ready"); err != nil {
+		t.Fatal(err)
+	}
+	enteredReady, _ := mustPatch("/board?view=ready-only", colETag)
+	if got, ok = card(enteredReady, backlog.ID); !ok || got.Remove || !strings.Contains(got.HTML, "backlog column title") {
+		t.Fatalf("ticket that entered the ready column was not added: %#v", got)
+	}
+
+	allPage := poll("/board?view=everything", "")
+	editTitle(lib.ID, "lib stays visible")
+	allPatch, _ := mustPatch("/board?view=everything", allPage.Header().Get("ETag"))
+	if got, ok = card(allPatch, lib.ID); !ok || got.Remove || !strings.Contains(got.HTML, "lib stays visible") {
+		t.Fatalf("server default project hid another project's ticket: %#v", got)
+	}
+	// A different query is a different board. The first poll is the full page;
+	// the following edit must still patch, and the explicit project drops LIB.
+	narrow := poll("/board?view=everything&project=WEB", "")
+	if narrow.Code != http.StatusOK || narrow.Header().Get("ETag") == "" {
+		t.Fatalf("explicit project board = %d", narrow.Code)
+	}
+	editTitle(lib.ID, "lib hidden by project filter")
+	hidden, _ := mustPatch("/board?view=everything&project=WEB", narrow.Header().Get("ETag"))
+	if got, ok = card(hidden, lib.ID); ok && !got.Remove {
+		t.Fatalf("explicit project filter kept LIB: %#v", got)
+	}
+	typedPage := poll("/board?view=everything&type=bug", "")
+	if _, err := h.actions.MutateTrackedTicket(ctx, backlog.ID, "human:owner", "edit", "retype", func(ticket *contracts.TicketSnapshot) error {
+		ticket.Type = contracts.TicketTypeBug
+		ticket.Title = "bug passes url type filter"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	typed, typeETag := mustPatch("/board?view=everything&type=bug", typedPage.Header().Get("ETag"))
+	if got, ok = card(typed, backlog.ID); !ok || got.Remove || !strings.Contains(got.HTML, "bug passes url type filter") {
+		t.Fatalf("url type filter dropped an in-scope bug: %#v", got)
+	}
+	editTitle(lib.ID, "task blocked by url type")
+	blocked, _ := mustPatch("/board?view=everything&type=bug", typeETag)
+	if got, ok = card(blocked, lib.ID); ok && !got.Remove {
+		t.Fatalf("url type filter kept a task: %#v", got)
+	}
+
+	defined := poll("/board?view=bugs", etag)
+	before := defined.Header().Get("ETag")
+	if err := views.SaveView(contracts.SavedView{
+		Name: "bugs", Kind: contracts.SavedViewKindBoard, Type: contracts.TicketTypeTask,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	changed := poll("/board?view=bugs", before)
+	var changedBody liveBoardBody
+	if changed.Code != http.StatusOK || !strings.Contains(changed.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("view edit poll = %d %s", changed.Code, changed.Body.String())
+	}
+	if err := json.Unmarshal(changed.Body.Bytes(), &changedBody); err != nil {
+		t.Fatal(err)
+	}
+	if !changedBody.Resync {
+		t.Fatalf("editing the saved view did not resync: %s", changed.Body.String())
+	}
+	if !strings.Contains(changed.Header().Get("ETag"), "db:view=") || changed.Header().Get("ETag") == before {
+		t.Fatalf("view edit did not change the stamp: %s", changed.Header().Get("ETag"))
+	}
+
+	searchFirst := poll("/board?view=find-ready", "")
+	editTitle(h.ticketID, "search view must not patch")
+	searchAfter := poll("/board?view=find-ready", searchFirst.Header().Get("ETag"))
+	if strings.Contains(searchAfter.Header().Get("Content-Type"), "application/json") {
+		var searchBody liveBoardBody
+		if err := json.Unmarshal(searchAfter.Body.Bytes(), &searchBody); err != nil {
+			t.Fatal(err)
+		}
+		if !searchBody.Resync {
+			t.Fatal("a search saved view took the id patch path")
+		}
+	}
 }
 
 func TestLiveBoardResyncRefreshesDrawerActivity(t *testing.T) {

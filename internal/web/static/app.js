@@ -229,17 +229,24 @@
       forceClearDrag();
     }, ms);
   }
+  const heldCardPointers = new Set();
+  let pressedCardId = '';
   document.addEventListener('pointerdown', (event) => {
     if (dragsInFlight > 0 && !dragRecentlyActive()) forceClearDrag();
     const target = event.target;
-    if (!(target && target.closest && target.closest('.ticket-card'))) return;
+    const card = target && target.closest && target.closest('.ticket-card');
+    if (!card) return;
+    heldCardPointers.add(event.pointerId);
+    pressedCardId = String(card.dataset.ticketId || '').replace(/"/g, '');
     cardPointerDown = true;
     window.clearTimeout(pointerGuard);
-    // A press that never receives pointerup (released outside the window,
-    // or the tab changed) must not freeze live updates until the next click.
+    // A press that never receives pointerup must not freeze live updates.
+    // Keep the hold for the whole gesture: a short cutoff rebuilt Sortable
+    // while the button was still down, and the drop threw in _onDrop.
     pointerGuard = window.setTimeout(() => {
+      heldCardPointers.clear();
       if (dragsInFlight === 0) cardPointerDown = false;
-    }, 2000);
+    }, 15000);
   }, true);
   function clearStuckPointer() {
     if (dragRecentlyActive()) return;
@@ -253,6 +260,7 @@
   // pointercancel is not that release: Chrome fires it when the native drag
   // takes the pointer, while the hold is still in progress.
   function releaseCardPointer(event) {
+    if (event && event.pointerId != null) heldCardPointers.delete(event.pointerId);
     if (event && event.type === 'pointercancel' && (nativeDrag || dragsInFlight > 0)) return;
     if (event && event.type === 'pointerup' && nativeDrag) return;
     window.clearTimeout(pointerGuard);
@@ -537,15 +545,40 @@
   // in the fresh grid (and drawer, when provably safe). Typed input, filter
   // fields, and the flash survive; unreachable servers are retried with
   // backoff so a committed-but-unacknowledged move still converges.
+  function cardIsDragging(card) {
+    return !!(card && (card.classList.contains('sortable-chosen') || card.classList.contains('sortable-ghost') || card.classList.contains('sortable-dragging') || card.classList.contains('sortable-fallback')));
+  }
+
+  function ticketCardSelector(id) {
+    return `.ticket-card[data-ticket-id="${id}"]`;
+  }
+
+  // Sortable can leave a second node for one id when a patch inserts a card
+  // the drag has already moved. Later title updates then hit only one of them.
+  function dedupeTicketCard(id, keep) {
+    const cards = Array.from(document.querySelectorAll(ticketCardSelector(id)));
+    if (cards.length <= 1) return cards[0] || null;
+    if (!keep || !keep.isConnected) keep = cards.find(cardIsDragging) || cards[cards.length - 1];
+    cards.forEach((card) => {
+      if (card !== keep) card.remove();
+    });
+    return keep;
+  }
+
   function applyBoardDelta(data) {
     let skipped = false;
     (data.cards || []).forEach((patch) => {
       const id = String(patch.id || '').replace(/"/g, '');
       if (!id) return;
-      const existing = document.querySelector(`.ticket-card[data-ticket-id="${id}"]`);
-      if (existing && (existing.classList.contains('sortable-chosen') || existing.classList.contains('sortable-ghost') || existing.classList.contains('sortable-dragging'))) {
+      const matches = Array.from(document.querySelectorAll(ticketCardSelector(id)));
+      if ((cardPointerDown && pressedCardId && id === pressedCardId) || matches.some(cardIsDragging)) {
         skipped = true;
         return;
+      }
+      let existing = matches[0] || null;
+      if (matches.length > 1) {
+        matches.forEach((card) => card.remove());
+        existing = null;
       }
       if (patch.remove) {
         if (!existing) return;
@@ -814,7 +847,7 @@
   }
 
   function applyBoardResync(data) {
-    const dragging = document.querySelector('.ticket-card.sortable-chosen, .ticket-card.sortable-ghost, .ticket-card.sortable-dragging');
+    const dragging = document.querySelector('.ticket-card.sortable-chosen, .ticket-card.sortable-ghost, .ticket-card.sortable-dragging, .ticket-card.sortable-fallback');
     if (dragging) return false;
     const byStatus = new Map();
     (data.cards || []).forEach((patch) => {
@@ -951,6 +984,10 @@
 
   function setupSortable() {
     if (!window.Sortable) return;
+    // Destroying Sortable between pointerdown and pointerup drops the drag
+    // and throws in _onDrop (ownerDocument / removeEventListener on null).
+    if (cardPointerDown || dragsInFlight > 0) return;
+    if (document.querySelector('.ticket-card.sortable-chosen, .ticket-card.sortable-ghost, .ticket-card.sortable-dragging, .ticket-card.sortable-fallback')) return;
     // destroy instances bound to grids that replaceWith detached, or every
     // refresh leaks a full board subtree in long-lived tabs
     boundSortables.forEach((instance) => {
@@ -990,6 +1027,10 @@
           dragsInFlight = Math.max(0, dragsInFlight - 1);
           cardPointerDown = false;
           dragQuietUntil = Date.now() + 400;
+          const dropped = event.item;
+          if (dropped && dropped.dataset && dropped.dataset.ticketId) {
+            dedupeTicketCard(String(dropped.dataset.ticketId).replace(/"/g, ''), dropped);
+          }
           settleDroppedCard(event.item);
         },
         onAdd: (event) => {
