@@ -1665,3 +1665,15 @@ claims, and “no silent arbitrary filesystem write” below remain.
 - **Confidence:** high
 - **Revisit Trigger:** A new primary demo or an owner-requested change to the installation and later README sections.
 - **Affected PRs/Files:** README presentation follow-up to PR #158; `README.md`, `site/index.html`, `docs/v1-decision-log.md`.
+
+## DEC-120 — Preserve session, revision, and paging guarantees during live updates
+
+- **Decision ID:** DEC-120
+- **Date:** 2026-09-28
+- **Question:** How should PR #167 retain restart and live-update behavior without accepting stale credentials, overwriting concurrent edits, or repeating finished board pages?
+- **Options Considered:** Keep startup token fallbacks and advance every form revision; treat the persisted session as authoritative and advance only reconciled forms. Derive hidden-card counts from total minus shown; track unread cards after each cursor.
+- **Chosen Option:** The locked session object owns token and CSRF state. Expired Home sessions require a fresh terminal claim; failed persistence restores the prior state. Install ignore rules before writing workspace session secrets. Live resync resolves saved views through the normal query service, fingerprints complete ticket rows, and refreshes open-ticket activity. Forms whose contents were not reconciled keep their prior revision. MCP paging carries completed-column sentinels and explicit remaining counts. First-ticket bootstrap validates inputs and built-in templates before creating or registering a workspace.
+- **Why We Chose It:** Startup fallbacks bypassed expiry; broad revision advances could overwrite a remote schedule; omitted finished cursors repeated short columns; partial fingerprints missed reindexed details. The fixes preserve the existing local service and CLI/MCP contracts while making the new live paths obey them.
+- **Confidence:** high
+- **Revisit Trigger:** Session revocation policy, cursor contracts, or live form reconciliation changes.
+- **Affected PRs/Files:** PR #167; `internal/web/`, `internal/mcp/`, `internal/render/board_compact.go`, `internal/cli/`, `internal/app/`, `internal/service/templates.go`, and their regression tests.

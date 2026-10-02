@@ -25,6 +25,19 @@ The server consumes it once and sets an HttpOnly local session cookie. The claim
 is absent from request URLs and JavaScript storage.
 `tracker web serve` still uses `?token=`.
 
+In the current source candidate, private session files let open tabs survive a
+server restart. Home stores its session in the Atlas state directory; a
+single-workspace server stores `.tracker/web-session.json`, which Atlas excludes
+from Git before creating it. Tokens rotate daily with a one-day overlap for open
+tabs. Sessions expire after 14 days without renewal. An expired Home session
+requires a fresh one-time claim from `tracker`; restarting alone does not authorize
+an expired cookie. A failed session-file write keeps the previous session state.
+
+Live boards update changed cards and preserve typed form fields. Saved views keep
+their configured filters. Concurrent changes to the same edit field, or to a
+schedule/relation form whose contents have not been refreshed, keep the earlier
+revision so saving reports a conflict instead of overwriting newer work.
+
 ## What Home shows
 
 | Route | Role |
@@ -77,6 +90,23 @@ Single-workspace `tracker web serve --open` remains: `/`, `/board`, `/schedule`,
 `/settings`. Prefer Home for new setups. See [the web board](../web-board.md)
 and [web board user guide](../web-board-user-guide.md).
 
+## Find a board from the CLI
+
+Ticket commands and the TUI find the nearest initialized workspace above the current
+directory, so you can work from a project subdirectory. They use that board's projects,
+actor configuration, and workflow rules.
+
+Outside every workspace, `tracker board` opens the most recently used available registered
+board and prints its path and other available boards on stderr. With `--project APP`, it
+chooses among registered boards containing `APP`. Without an available board, the command
+fails without creating one.
+
+`tracker ticket create` can initialize an empty directory, or a directory containing only
+`.git`, and create the requested project and first ticket. It validates ticket input before
+scaffolding, registering the workspace, or starting Home. Supply `--actor` or `TRACKER_ACTOR`
+and either `--type` or a built-in `--template`. Existing machine opt-outs still apply. For a
+directory with other files, initialize explicitly with `tracker init` first.
+
 ## Everyday tickets
 
 On `/w/<id>/projects/<key>` you can create a project, then create, edit, assign,
@@ -107,7 +137,7 @@ tracker doctor --repair
 ```
 
 `doctor` always checks the machine. Workspace checks run when the current
-directory is an Atlas root. Outside a workspace it reports
+directory is an Atlas root or a subdirectory of one. Outside a workspace it reports
 `current_workspace: none` and does not create `.tracker`. `--repair` is the
 single repair switch (machine + current workspace when present).
 

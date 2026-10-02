@@ -47,6 +47,6 @@ The canonical data is still:
 If you need to rebuild the read model after an upgrade:
 
 ```bash
-rm -f .tracker/index.sqlite
+rm -f .tracker/index.sqlite .tracker/index.sqlite-wal .tracker/index.sqlite-shm
 tracker reindex
 ```

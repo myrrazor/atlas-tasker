@@ -259,5 +259,5 @@ func mustLocation(t *testing.T, name string) *time.Location {
 }
 
 func formHeaders() map[string]string {
-	return map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://atlas.local"}
+	return map[string]string{"Content-Type": "application/x-www-form-urlencoded", "Origin": "http://127.0.0.1"}
 }

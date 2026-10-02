@@ -5,6 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="atlas-csrf-token" content="{{.CSRFToken}}">
+  {{with liveStamp .}}<meta name="atlas-board-stamp" content="{{.}}">{{end}}
   <title>{{if eq .Page "welcome"}}Atlas Tasker{{else if eq .Page "settings"}}{{t "page.settings.title"}}{{else if eq .Page "schedule"}}Schedule · Atlas Tasker{{else}}{{t "page.board.title"}}{{end}}</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
@@ -110,9 +111,12 @@
     data-move-failed-status="{{t "board.flash.move_failed_status"}}"
     data-move-failed="{{t "board.flash.move_failed"}}"
     data-updated="{{t "board.flash.updated"}}"
-    data-offline="The local server is unreachable. Work stays on disk; retry when Atlas Home is running."
+    data-offline="The local server is unreachable. Work stays on disk; retry when the local server is running."
     data-online="Back online."
-    data-conflict="Someone else changed this ticket. Reload and retry with the current revision."></div>
+    data-conflict="Someone else changed this ticket. Reload and retry with the current revision."
+    data-field-conflict="Someone else changed this field while you were editing. Saving now would overwrite their change, so the revision was kept."
+    data-drag-conflict="Someone else changed this ticket while you were moving it. It was put back."
+    data-ticket-deleted="This ticket was deleted and left the board."></div>
   {{if eq .Page "board"}}<script src="/static/vendor/sortable.min.js"></script>{{end}}
   <script src="/static/app.js"></script>
 </body>

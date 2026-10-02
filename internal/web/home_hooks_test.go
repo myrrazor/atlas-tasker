@@ -43,7 +43,7 @@ func TestNotesSaveFromEditForm(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/edit", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusSeeOther {
 		t.Fatalf("status=%d body=%s", res.code, res.body)
@@ -69,7 +69,7 @@ func TestBulkTicketActionUsesSharedService(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/bulk", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 		"Accept":       "application/json",
 	})
 	if res.code != http.StatusOK {
@@ -100,10 +100,10 @@ func TestActionSuccessRedirectsWithPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	form := url.Values{"csrf_token": {"test-csrf"}, "title": {"renamed"}, "reason": {"web edit"}}
-	req := httptest.NewRequest(http.MethodPost, "http://atlas.local/actions/tickets/"+h.ticketID+"/edit", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/actions/tickets/"+h.ticketID+"/edit", strings.NewReader(form.Encode()))
 	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "test-token"})
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Origin", "http://atlas.local")
+	req.Header.Set("Origin", "http://127.0.0.1")
 	rec := httptest.NewRecorder()
 	prefixed.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther {

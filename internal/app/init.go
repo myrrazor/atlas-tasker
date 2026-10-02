@@ -40,6 +40,9 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 	if err != nil {
 		return InitResult{}, err
 	}
+	if ancestor, findErr := service.FindWorkspaceRoot(root); findErr == nil && ancestor != root {
+		return InitResult{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is inside existing Atlas workspace %s; tracker did not create another board here", root, ancestor))
+	}
 	release, err := a.lockMachine("tracker init")
 	if err != nil {
 		return InitResult{}, err
@@ -51,6 +54,7 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 	}()
 	settings := a.snapshotSettings()
 
+	a.noticef("scaffolding workspace…")
 	scaffold, err := ScaffoldWorkspace(root, ScaffoldOptions{Now: a.opts.Now, GitMode: opts.GitMode})
 	if err != nil {
 		return InitResult{}, err
@@ -122,6 +126,12 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 	}
 
 	if opts.Agents && settings.Agents.AutoInstall && opts.WriteClientCfg {
+		// openclaw `mcp add` probes `tracker mcp serve --global`, and that
+		// probe waits on this same lock. Release it before registration or
+		// the client sits until the timeout kills it.
+		_ = release()
+		release = nil
+		a.noticef("registering agents…")
 		result.Agents = a.setupAgents(ctx, ws)
 		result.Steps = append(result.Steps, agentStep(result.Agents))
 	} else if opts.Agents && settings.Agents.AutoInstall && !opts.WriteClientCfg {
@@ -132,9 +142,12 @@ func (a *App) Init(ctx context.Context, opts InitOptions) (InitResult, error) {
 		result.Steps = append(result.Steps, InitStep{Name: "agents", Status: InitStepSkipped})
 	}
 
-	_ = release()
-	release = nil
+	if release != nil {
+		_ = release()
+		release = nil
+	}
 
+	a.noticef("starting Atlas Home…")
 	result.Service, result.Steps = a.initHomeService(ctx, opts, result.Steps)
 	if err := a.writeInitJournal(result); err != nil {
 		result.Steps = append(result.Steps, InitStep{Name: "journal", Status: InitStepFailed, Detail: err.Error()})
@@ -225,6 +238,22 @@ func (a *App) initHomeService(ctx context.Context, opts InitOptions, steps []Ini
 	}
 	status, err := a.EnsureService(ctx, ServiceOptions{OpenBrowser: opts.OpenHome})
 	if err != nil {
+		if homePortOccupied(err) {
+			if status.URL == "" {
+				status = ServiceStatus{
+					Kind:       "atlas_home_status",
+					Host:       settings.Service.Bind,
+					Port:       settings.Service.Port,
+					URL:        homeURL(settings.Service.Bind, settings.Service.Port),
+					InstanceID: settings.InstanceID,
+					Detail:     err.Error(),
+				}
+			} else if status.Detail == "" {
+				status.Detail = err.Error()
+			}
+			a.noticef("Atlas Home: %s", err.Error())
+			return &status, append(steps, InitStep{Name: "service", Status: InitStepUnverified, Detail: err.Error()})
+		}
 		if status.URL == "" {
 			status = ServiceStatus{
 				Kind:       "atlas_home_status",
@@ -240,6 +269,14 @@ func (a *App) initHomeService(ctx context.Context, opts InitOptions, steps []Ini
 		return &status, append(steps, InitStep{Name: "service", Status: InitStepFailed, Detail: err.Error()})
 	}
 	return &status, append(steps, InitStep{Name: "service", Status: InitStepDone, Detail: status.URL})
+}
+
+func homePortOccupied(err error) bool {
+	if apperr.CodeOf(err) != apperr.CodeConflict {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "owned by a different Atlas instance") || strings.Contains(msg, "occupied by another application")
 }
 
 func ensureInitProject(ctx context.Context, ws *Workspace, root, key, name string) (string, error) {
@@ -347,6 +384,11 @@ func agentStep(report AgentSetupReport) InitStep {
 	}
 	var written, unverified int
 	for _, client := range report.Clients {
+		// The portable descriptor is not a client. It must not turn a killed
+		// openclaw registration into "agents configured".
+		if string(client.Target) == "generic" {
+			continue
+		}
 		switch client.Status {
 		case AgentWritten, AgentPendingClientRestart:
 			written++
@@ -435,6 +477,33 @@ func hasFailedStep(steps []InitStep) bool {
 	return false
 }
 
+func agentOutcome(report AgentSetupReport) string {
+	var configured, failed []string
+	for _, client := range report.Clients {
+		name := string(client.Target)
+		if name == "" || name == "generic" {
+			continue
+		}
+		switch client.Status {
+		case AgentWritten, AgentPendingClientRestart:
+			configured = append(configured, name)
+		case AgentUnverified:
+			failed = append(failed, name)
+		}
+	}
+	var parts []string
+	if len(configured) > 0 {
+		parts = append(parts, "agents configured: "+strings.Join(configured, ", "))
+	}
+	if len(failed) > 0 {
+		parts = append(parts, "agents not registered: "+strings.Join(failed, ", "))
+	}
+	if len(parts) == 0 && report.Attempted {
+		return "no agents registered"
+	}
+	return strings.Join(parts, "; ")
+}
+
 func summarizeInit(result InitResult) string {
 	var parts []string
 	if result.Already {
@@ -449,12 +518,17 @@ func summarizeInit(result InitResult) string {
 		parts = append(parts, "registered")
 	}
 	if result.Agents.Attempted {
-		parts = append(parts, fmt.Sprintf("agents=%d", len(result.Agents.Clients)))
+		if line := agentOutcome(result.Agents); line != "" {
+			parts = append(parts, line)
+		}
 		if info, err := os.Stat(filepath.Join(result.Workspace, "AGENTS.md")); err == nil && info.Mode().IsRegular() {
 			parts = append(parts, "read AGENTS.md for board display in chat")
 		}
 	}
 	for _, step := range result.Steps {
+		if step.Name == "agents" {
+			continue
+		}
 		switch step.Status {
 		case InitStepFailed:
 			parts = append(parts, step.Name+" failed")

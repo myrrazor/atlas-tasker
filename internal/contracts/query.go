@@ -28,6 +28,68 @@ type SearchQuery struct {
 	Terms []SearchTerm `json:"terms"`
 }
 
+// ParseSearchQueryFlexible matches the CLI: a bare word or ticket id such as
+// "rapid" or "APP-12" is a text search. Tokens that already use = or ~ keep
+// the strict parser so a typo in a structured query is still reported.
+func ParseSearchQueryFlexible(raw string) (SearchQuery, error) {
+	query, err := ParseSearchQuery(raw)
+	if err == nil {
+		return query, nil
+	}
+	rewritten, foldErr := foldBareSearchTokens(raw)
+	if foldErr != nil {
+		return SearchQuery{}, foldErr
+	}
+	if rewritten == "" || rewritten == strings.TrimSpace(raw) {
+		return SearchQuery{}, err
+	}
+	next, nextErr := ParseSearchQuery(rewritten)
+	if nextErr != nil {
+		return SearchQuery{}, nextErr
+	}
+	return next, nil
+}
+
+// foldBareSearchTokens turns loose words into a text~ term while leaving
+// status= and the other structured terms in place.
+func foldBareSearchTokens(raw string) (string, error) {
+	tokens := strings.Fields(strings.TrimSpace(raw))
+	if len(tokens) == 0 {
+		return "", nil
+	}
+	out := make([]string, 0, len(tokens)+1)
+	bare := make([]string, 0, len(tokens))
+	flush := func() {
+		if len(bare) == 0 {
+			return
+		}
+		out = append(out, "text~"+strings.Join(bare, " "))
+		bare = bare[:0]
+	}
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+		if isSearchTermStart(token) {
+			flush()
+			// Explicit text terms keep their multi-word value, including
+			// literal operators, just as the strict parser does.
+			if strings.HasPrefix(token, "text~") {
+				for i+1 < len(tokens) && !isSearchTermStart(tokens[i+1]) {
+					i++
+					token += " " + tokens[i]
+				}
+			}
+			out = append(out, token)
+			continue
+		}
+		if strings.ContainsAny(token, "=~") {
+			return "", fmt.Errorf("unsupported query token: %s", token)
+		}
+		bare = append(bare, token)
+	}
+	flush()
+	return strings.Join(out, " "), nil
+}
+
 func ParseSearchQuery(raw string) (SearchQuery, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -45,7 +107,11 @@ func ParseSearchQuery(raw string) (SearchQuery, error) {
 			if value == "" {
 				return SearchQuery{}, fmt.Errorf("status query missing value")
 			}
-			terms = append(terms, SearchTerm{Kind: SearchTermStatus, Value: value})
+			status := Status(strings.ToLower(value))
+			if !status.IsValid() {
+				return SearchQuery{}, fmt.Errorf("invalid status: %s", value)
+			}
+			terms = append(terms, SearchTerm{Kind: SearchTermStatus, Value: string(status)})
 		case strings.HasPrefix(token, "type="):
 			value := strings.TrimPrefix(token, "type=")
 			if value == "" {

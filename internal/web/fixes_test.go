@@ -72,7 +72,7 @@ func TestCreateRejectsBornDoneAndInvalidStatus(t *testing.T) {
 		res := h.doAuthed(t, http.MethodPost, "/actions/tickets/create", form.Encode(), map[string]string{
 			"Content-Type": "application/x-www-form-urlencoded",
 			"Accept":       "application/json",
-			"Origin":       "http://atlas.local",
+			"Origin":       "http://127.0.0.1",
 		})
 		if res.code != http.StatusBadRequest {
 			t.Fatalf("create status=%s: expected 400, got %d body=%s", tt.status, res.code, res.body)
@@ -108,15 +108,41 @@ func TestMoveToCurrentStatusIsNoOp(t *testing.T) {
 	}
 }
 
+func TestMoveFromStatusConflictsBeforeWorkflow(t *testing.T) {
+	h := newWebHarness(t, false)
+	legal := h.postMoveFrom(t, h.ticketID, "in_progress", "ready")
+	if legal.code != http.StatusOK {
+		t.Fatalf("stored ready dragged to in_progress = %d %s", legal.code, legal.body)
+	}
+	if _, err := h.actions.MoveTicket(t.Context(), h.ticketID, contracts.StatusBlocked, "human:owner", "status changed on disk"); err != nil {
+		t.Fatal(err)
+	}
+	conflict := h.postMoveFrom(t, h.ticketID, "in_review", "in_progress")
+	if conflict.code != http.StatusConflict {
+		t.Fatalf("drag from the status at pickup = %d %s", conflict.code, conflict.body)
+	}
+	if strings.Contains(conflict.body, "Can't move") || !strings.Contains(conflict.body, "conflict") {
+		t.Fatalf("expected a revision conflict, got %s", conflict.body)
+	}
+	forbidden := h.postMoveFrom(t, h.ticketID, "in_review", "blocked")
+	if forbidden.code != http.StatusBadRequest || !strings.Contains(forbidden.body, "Can't move") {
+		t.Fatalf("matching from-status should still be a workflow rejection, got %d %s", forbidden.code, forbidden.body)
+	}
+}
+
 func TestForbiddenTransitionMapsToConflict(t *testing.T) {
 	h := newWebHarness(t, false)
 	// Seeded ticket is ready; ready -> in_review is forbidden by the workflow.
+	// The CLI still reports that as a conflict. The board says it is an invalid move.
 	res := h.postMove(t, h.ticketID, "in_review")
-	if res.code != http.StatusConflict {
-		t.Fatalf("expected 409 for forbidden transition, got %d body=%s", res.code, res.body)
+	if res.code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for forbidden transition, got %d body=%s", res.code, res.body)
 	}
-	if !strings.Contains(res.body, `"conflict"`) {
-		t.Fatalf("expected conflict code in envelope, got %s", res.body)
+	if strings.Contains(res.body, `"conflict"`) {
+		t.Fatalf("forbidden move must not be reported as a conflict: %s", res.body)
+	}
+	if !strings.Contains(res.body, "invalid_input") || !strings.Contains(res.body, "Can't move") {
+		t.Fatalf("expected an invalid-move message, got %s", res.body)
 	}
 }
 
@@ -134,7 +160,7 @@ func TestFormMutationErrorRendersBoardWithTypedValues(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/create", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusBadRequest {
 		t.Fatalf("expected create rejection to keep its error status for non-JS posts, got %d", res.code)
@@ -154,7 +180,7 @@ func TestCSRFFailureKeepsErrorStatusForBrowsers(t *testing.T) {
 	form := url.Values{"csrf_token": {"stale"}, "status": {"ready"}}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/move", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusForbidden {
 		t.Fatalf("expected CSRF failure to stay 403 for HTML clients, got %d", res.code)
@@ -187,7 +213,7 @@ func TestRejectedEditEchoesIntoCorrectTicket(t *testing.T) {
 	form := url.Values{"csrf_token": {"stale"}, "title": {"EDIT MEANT FOR SECOND"}}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+second.ID+"/edit", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", res.code)
@@ -229,7 +255,7 @@ func TestDrawerMarksFormEcho(t *testing.T) {
 	form := url.Values{"csrf_token": {"test-csrf"}, "body": {""}}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/comment", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if !strings.Contains(res.body, `data-form-echo="comment"`) {
 		t.Fatalf("expected drawer to be marked as echoing a rejected form:\n%s", excerpt(res.body, "detail-drawer"))
@@ -374,7 +400,7 @@ func TestRejectedCommentActivatesActivityTab(t *testing.T) {
 	form := url.Values{"csrf_token": {"test-csrf"}, "body": {""}}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/comment", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", res.code)
@@ -395,7 +421,7 @@ func TestFormEchoScopedToSubmittedForm(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/comment", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code == http.StatusOK || res.code == http.StatusSeeOther {
 		t.Fatalf("expected empty comment to be rejected, got %d", res.code)
@@ -418,7 +444,7 @@ func TestCreateEchoIncludesTypeAndPriority(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/create", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", res.code)
@@ -438,7 +464,7 @@ func TestRejectedCommentKeepsBody(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/comment", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", res.code)
@@ -459,7 +485,7 @@ func TestClearedFieldsStayClearedOnRejectedEdit(t *testing.T) {
 	}
 	res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/edit", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 	if res.code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", res.code)
@@ -570,7 +596,7 @@ func TestEditRejectsBlankTitleAndInvalidActors(t *testing.T) {
 		res := h.doAuthed(t, http.MethodPost, "/actions/tickets/"+h.ticketID+"/edit", tt.form.Encode(), map[string]string{
 			"Content-Type": "application/x-www-form-urlencoded",
 			"Accept":       "application/json",
-			"Origin":       "http://atlas.local",
+			"Origin":       "http://127.0.0.1",
 		})
 		if res.code != http.StatusBadRequest {
 			t.Fatalf("%s: expected 400, got %d body=%s", tt.name, res.code, res.body)
@@ -715,15 +741,23 @@ func TestRuntimeStateClearedHelper(t *testing.T) {
 
 func (h webHarness) postMove(t *testing.T, ticketID string, status string) httpResult {
 	t.Helper()
+	return h.postMoveFrom(t, ticketID, status, "")
+}
+
+func (h webHarness) postMoveFrom(t *testing.T, ticketID, status, from string) httpResult {
+	t.Helper()
 	form := url.Values{
 		"csrf_token": {"test-csrf"},
 		"status":     {status},
 		"reason":     {"web drag move"},
 	}
+	if from != "" {
+		form.Set("from", from)
+	}
 	return h.doAuthed(t, http.MethodPost, "/actions/tickets/"+ticketID+"/move", form.Encode(), map[string]string{
 		"Content-Type": "application/x-www-form-urlencoded",
 		"Accept":       "application/json",
-		"Origin":       "http://atlas.local",
+		"Origin":       "http://127.0.0.1",
 	})
 }
 

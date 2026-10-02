@@ -71,6 +71,55 @@ func TestParseSearchQueryTextStopsAtNextStructuredTerm(t *testing.T) {
 	}
 }
 
+func TestParseSearchQueryFlexibleKeepsStructuredTerms(t *testing.T) {
+	query, err := ParseSearchQueryFlexible("rapid status=ready")
+	if err != nil {
+		t.Fatalf("mixed text and status: %v", err)
+	}
+	if len(query.Terms) != 2 || query.Terms[0].Kind != SearchTermTextLike || query.Terms[0].Value != "rapid" || query.Terms[1].Value != "ready" {
+		t.Fatalf("unexpected mixed query: %#v", query.Terms)
+	}
+	if _, err := ParseSearchQueryFlexible("status=bogus"); err == nil {
+		t.Fatal("invalid status should be an error")
+	}
+}
+
+func TestParseSearchQueryFlexibleRejectsMalformedStructuredTerms(t *testing.T) {
+	for _, raw := range []string{
+		"statuz=ready",
+		"foo~bar",
+		"rapid statuz=ready",
+		"status=ready rapid foo~bar",
+		"rapid status=bogus",
+	} {
+		t.Run(raw, func(t *testing.T) {
+			if _, err := ParseSearchQueryFlexible(raw); err == nil {
+				t.Fatal("malformed structured token became a text search")
+			}
+		})
+	}
+}
+
+func TestParseSearchQueryFlexiblePreservesExplicitTextPhrase(t *testing.T) {
+	query, err := ParseSearchQueryFlexible("rapid text~multi word foo=bar status=ready")
+	if err != nil {
+		t.Fatalf("mixed explicit text query: %v", err)
+	}
+	want := []SearchTerm{
+		{Kind: SearchTermTextLike, Value: "rapid"},
+		{Kind: SearchTermTextLike, Value: "multi word foo=bar"},
+		{Kind: SearchTermStatus, Value: "ready"},
+	}
+	if len(query.Terms) != len(want) {
+		t.Fatalf("explicit phrase was split: %#v", query.Terms)
+	}
+	for i, term := range want {
+		if query.Terms[i] != term {
+			t.Fatalf("term %d = %#v, want %#v", i, query.Terms[i], term)
+		}
+	}
+}
+
 func TestParseSearchQueryRejectsUnsupportedToken(t *testing.T) {
 	_, err := ParseSearchQuery("foo=bar")
 	if err == nil {

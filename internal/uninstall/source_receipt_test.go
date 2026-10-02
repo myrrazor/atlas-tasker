@@ -122,14 +122,14 @@ func TestEnsureSourceReceiptSkipsNonExecutableOnUnix(t *testing.T) {
 
 func TestLooksPackageManagedPaths(t *testing.T) {
 	cases := map[string]bool{
-		"/usr/local/bin/tracker":               false,
-		"/usr/bin/tracker":                     true,
-		"/bin/tracker":                         true,
-		"/usr/sbin/tracker":                    true,
-		"/nix/store/abc123/bin/tracker":        true,
-		"/opt/local/bin/tracker":               true,
+		"/usr/local/bin/tracker":                 false,
+		"/usr/bin/tracker":                       true,
+		"/bin/tracker":                           true,
+		"/usr/sbin/tracker":                      true,
+		"/nix/store/abc123/bin/tracker":          true,
+		"/opt/local/bin/tracker":                 true,
 		"/opt/homebrew/Cellar/atlas/bin/tracker": true,
-		"/home/dev/go/bin/tracker":             false,
+		"/home/dev/go/bin/tracker":               false,
 	}
 	for path, want := range cases {
 		if got := looksPackageManaged(path); got != want {
@@ -235,8 +235,11 @@ func TestSourceReceiptUninstallRemovesCopyAndKeepsTickets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("apply: %v %#v", err, result)
 	}
-	if _, err := os.Stat(bin); !os.IsNotExist(err) {
-		t.Fatal("source copy should be removed")
+	if result.Status != StatusSoftwareStillInstalled {
+		t.Fatalf("source install must leave the executable and report that: %#v", result)
+	}
+	if _, err := os.Stat(bin); err != nil {
+		t.Fatal("source or go-install executable must stay on disk")
 	}
 	raw, err := os.ReadFile(ticket)
 	if err != nil || string(raw) != "# APP-1\nkeep me\n" {

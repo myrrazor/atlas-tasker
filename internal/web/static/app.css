@@ -1234,6 +1234,8 @@ nav.project-switch a[aria-current="page"] {
 /* ---------- cards ---------- */
 
 .ticket-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 92px;
   position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1627,6 +1629,12 @@ nav.project-switch a[aria-current="page"] {
   background: var(--surface-1);
 }
 
+.drawer-head > div {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+}
+
 .drawer-form.is-saving,
 form.is-saving {
   opacity: 0.72;
@@ -1651,6 +1659,19 @@ form.is-saving {
   line-height: 1.25;
   font-weight: 650;
   letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.not-found {
+  max-width: 36rem;
+  margin: 48px auto;
+  padding: 8px 4px 24px;
+}
+
+.not-found h1 {
+  margin: 0 0 12px;
 }
 
 .drawer-head p,

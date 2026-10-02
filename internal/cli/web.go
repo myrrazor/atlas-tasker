@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/myrrazor/atlas-tasker/internal/app"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
 	webui "github.com/myrrazor/atlas-tasker/internal/web"
 	"github.com/spf13/cobra"
@@ -20,7 +21,7 @@ import (
 
 func newWebCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "web", Short: "Run the local browser Kanban board"}
-	serve := &cobra.Command{Use: "serve", Short: "Serve the local browser Kanban board", RunE: runWebServe}
+	serve := &cobra.Command{Use: "serve", Short: "Serve the local browser Kanban board", Args: cobra.NoArgs, RunE: runWebServe}
 	serve.Flags().String("host", "127.0.0.1", "Loopback host to bind")
 	serve.Flags().Int("port", 0, "Port to bind; 0 chooses a random free port")
 	serve.Flags().String("project", "", "Default project filter")
@@ -62,6 +63,13 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	}
 	defer listener.Close()
 	actualPort := listener.Addr().(*net.TCPAddr).Port
+	if err := app.RefreshManagedIgnores(workspace.root); err != nil {
+		return err
+	}
+	session, err := webui.OpenSession(filepath.Join(workspace.root, ".tracker", "web-session.json"))
+	if err != nil {
+		return err
+	}
 	server, err := webui.NewServer(webui.Services{Actions: workspace.actions, Queries: workspace.queries}, webui.Config{
 		Root:      workspace.root,
 		Workspace: filepath.Base(workspace.root),
@@ -71,6 +79,9 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 		Actor:     actor,
 		ReadOnly:  readOnly,
 		TokenMode: tokenMode,
+		Token:     session.Token(),
+		CSRFToken: session.CSRF(),
+		Session:   session,
 		Clock:     defaultNow,
 	})
 	if err != nil {

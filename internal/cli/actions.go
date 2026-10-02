@@ -46,22 +46,217 @@ type openOptions struct {
 	// skipIndexFreshness: the caller is about to rebuild anyway (reindex), so
 	// don't do it twice
 	skipIndexFreshness bool
+	// skipUseStamp: bootstrap of an empty directory is not "using" a board.
+	// Stamping it would make a scratch ticket the default everywhere.
+	skipUseStamp bool
+	root         string
 }
 
 func openWorkspace() (*workspace, error) {
 	return openWorkspaceWith(openOptions{})
 }
 
+// openBoardWorkspace opens the board that contains this directory, walking up
+// the way git finds a repository. Outside every board, it opens the most
+// recently used registered board and names the others. An empty registry
+// keeps the original error so nothing is scaffolded.
+func openBoardWorkspace(cmd *cobra.Command) (*workspace, error) {
+	ws, err := openWorkspace()
+	if err == nil {
+		return ws, nil
+	}
+	if !uninitializedWorkspaceError(err) {
+		return nil, err
+	}
+	a, appErr := openApp()
+	if appErr != nil {
+		return nil, err
+	}
+	defer func() { _ = a.Close() }()
+	listed, listErr := a.ListWorkspaces(context.Background(), app.ListOptions{})
+	if listErr != nil {
+		return nil, err
+	}
+	available := make([]app.WorkspaceRecord, 0, len(listed))
+	for _, rec := range listed {
+		if rec.Health == app.HealthAvailable && strings.TrimSpace(rec.Path) != "" {
+			available = append(available, rec)
+		}
+	}
+	if len(available) == 0 {
+		return nil, err
+	}
+	candidates := available
+	if cmd != nil {
+		if want, flagErr := cmd.Flags().GetString("project"); flagErr == nil && strings.TrimSpace(want) != "" {
+			matched := boardsWithProject(available, want)
+			if len(matched) == 0 {
+				return nil, apperr.New(apperr.CodeNotFound, fmt.Sprintf("no registered Atlas board contains project %s", strings.TrimSpace(want)))
+			}
+			candidates = matched
+		}
+	}
+	skipped := 0
+	for _, rec := range listed {
+		if rec.Health != app.HealthAvailable {
+			skipped++
+		}
+	}
+	if skipped > 0 && cmd != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "skipped %d registered board(s) that are missing or unavailable\n", skipped)
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if !candidates[i].LastSeenAt.Equal(candidates[j].LastSeenAt) {
+			return candidates[i].LastSeenAt.After(candidates[j].LastSeenAt)
+		}
+		return candidates[i].Path < candidates[j].Path
+	})
+	chosen := candidates[0]
+	fmt.Fprintf(cmd.ErrOrStderr(), "opening Atlas board at %s\n", chosen.Path)
+	if len(available) > 1 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "other registered boards:\n")
+		for _, rec := range available {
+			if rec.Path == chosen.Path {
+				continue
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "- %s\n", rec.Path)
+		}
+	}
+	return openWorkspaceWith(openOptions{root: chosen.Path})
+}
+
+// boardsWithProject keeps registered boards that contain this project key.
+// --project then selects among those boards instead of filtering an unrelated one.
+func boardsWithProject(boards []app.WorkspaceRecord, project string) []app.WorkspaceRecord {
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return nil
+	}
+	matched := make([]app.WorkspaceRecord, 0, 1)
+	for _, board := range boards {
+		entries, err := os.ReadDir(filepath.Join(board.Path, "projects"))
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if strings.EqualFold(entry.Name(), project) {
+				matched = append(matched, board)
+				break
+			}
+		}
+	}
+	return matched
+}
+
+// directoryCanBootstrap is an empty directory, or a fresh git init whose only
+// entry is .git. Anything else is left alone so ticket create does not start
+// a second board beside existing files.
+func directoryCanBootstrap(cwd string) bool {
+	entries, err := os.ReadDir(cwd)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.Name() == ".git" {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func uninitializedWorkspaceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "is not an Atlas workspace;")
+}
+
+// bootstrapEmptyWorkspace initializes the current directory only when ticket
+// create is run in a directory that is empty and not already inside a workspace.
+func bootstrapEmptyWorkspace(cmd *cobra.Command, openErr error) (*workspace, error) {
+	if !uninitializedWorkspaceError(openErr) {
+		return nil, openErr
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, openErr
+	}
+	if !directoryCanBootstrap(cwd) {
+		return nil, openErr
+	}
+	if err := validateBootstrapTicketCreate(cmd, cwd); err != nil {
+		return nil, err
+	}
+	a, err := openApp()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = a.Close() }()
+	jsonMode, _ := cmd.Flags().GetBool("json")
+	if !jsonMode {
+		a.SetNotice(cmd.ErrOrStderr())
+	}
+	project, _ := cmd.Flags().GetString("project")
+	_, initErr := a.Init(commandContext(cmd), app.InitOptions{
+		Root:           cwd,
+		ProjectKey:     project,
+		ProjectName:    project,
+		Register:       true,
+		Agents:         false,
+		Backup:         true,
+		DefaultProject: true,
+		OpenHome:       false,
+		WriteClientCfg: false,
+	})
+	if initErr != nil && !app.IsPartial(initErr) {
+		if _, statErr := os.Stat(filepath.Join(cwd, ".tracker")); statErr != nil {
+			return nil, initErr
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(cwd, ".tracker")); statErr != nil {
+		return nil, initErr
+	}
+	fmt.Fprintf(cmd.ErrOrStderr(), "created a new Atlas board at %s\n", cwd)
+	return openWorkspaceWith(openOptions{skipUseStamp: true})
+}
+
+func validateBootstrapTicketCreate(cmd *cobra.Command, root string) error {
+	queries := service.QueryService{Root: root}
+	raw, _ := cmd.Flags().GetString("actor")
+	actor, err := queries.ResolveActor(commandContext(cmd), contracts.Actor(strings.TrimSpace(raw)))
+	if err != nil {
+		return err
+	}
+	project, _ := cmd.Flags().GetString("project")
+	if !contracts.IsValidProjectKey(project) {
+		return fmt.Errorf("%s", contracts.ProjectKeyValidationMessage())
+	}
+	var template service.TemplateView
+	name, _ := cmd.Flags().GetString("template")
+	if strings.TrimSpace(name) != "" {
+		template, err = app.DefaultTicketTemplate(name)
+		if err != nil {
+			return err
+		}
+	}
+	if _, err := ticketCreateFromFlags(cmd, template, defaultNow()); err != nil {
+		return err
+	}
+	return cmd.Flags().Set("actor", string(actor))
+}
+
 func openWorkspaceWith(opts openOptions) (*workspace, error) {
-	root, err := os.Getwd()
-	if err != nil {
-		return nil, err
+	root := opts.root
+	var err error
+	if root == "" {
+		root, err = os.Getwd()
+		if err != nil {
+			return nil, err
+		}
 	}
-	root, err = service.CanonicalWorkspaceRoot(root)
+	root, err = service.FindWorkspaceRoot(root)
 	if err != nil {
-		return nil, err
-	}
-	if err := requireInitializedWorkspace(root); err != nil {
 		return nil, err
 	}
 	ticketStore := mdstore.TicketStore{RootDir: root, Clock: defaultNow}
@@ -114,7 +309,19 @@ func openWorkspaceWith(opts openOptions) (*workspace, error) {
 	w.actions = service.NewActionService(root, projectStore, ticketStore, eventLog, projection, defaultNow, w.locks, notifier, automation)
 	home, _ := os.UserHomeDir()
 	service.AttachUserState(w.actions, w.queries, home, "")
+	if !opts.skipUseStamp {
+		noteBoardUse(root)
+	}
 	return w, nil
+}
+
+func noteBoardUse(root string) {
+	a, err := openApp()
+	if err != nil {
+		return
+	}
+	defer func() { _ = a.Close() }()
+	a.NoteWorkspaceUse(root)
 }
 
 // init and integrations install bootstrap explicitly; every other workspace

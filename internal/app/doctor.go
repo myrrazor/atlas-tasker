@@ -68,7 +68,7 @@ func (a *App) Doctor(ctx context.Context, opts DoctorOptions) (DoctorReport, err
 		}
 	}
 	if root != "" {
-		if wsRoot, err := service.InitializedWorkspaceRoot(root); err == nil {
+		if wsRoot, err := service.FindWorkspaceRoot(root); err == nil {
 			report.CurrentWorkspace = wsRoot
 			wsReport, repairActions, issueCodes, err := doctorWorkspace(ctx, wsRoot, opts.Repair, a)
 			if err != nil {

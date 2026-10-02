@@ -60,6 +60,21 @@ func parseCursor(cursor string) int {
 	return 0
 }
 
+func boardPayloadFits(payload any, opts Options) bool {
+	if opts.MaxResultBytes <= 0 {
+		return true
+	}
+	limit := opts.MaxResultBytes
+	if limit > 512 {
+		limit -= 256
+	}
+	writer := &limitWriter{Limit: limit}
+	if err := json.NewEncoder(writer).Encode(toolResult("atlas.board", opts.Now(), payload)); err != nil {
+		return false
+	}
+	return !writer.Truncated
+}
+
 func applyResultLimits(kind string, generatedAt time.Time, payload any, opts Options) (map[string]any, bool, error) {
 	result := toolResult(kind, generatedAt, redactLive(payload, opts.IncludeLocalOnlyPaths))
 	if opts.MaxResultBytes <= 0 {

@@ -33,6 +33,21 @@ func TestListenLoopbackNormalizesBeforeBinding(t *testing.T) {
 	}
 }
 
+func TestLoopbackHostAllowsLocalhostAndLoopbackIP(t *testing.T) {
+	if !loopbackHostAllowed("localhost:7432", "127.0.0.1", 7432) {
+		t.Fatal("localhost should reach a 127.0.0.1 listener on the same port")
+	}
+	if !loopbackHostAllowed("127.0.0.1:7432", "localhost", 7432) {
+		t.Fatal("127.0.0.1 should reach a localhost listener on the same port")
+	}
+	if loopbackHostAllowed("evil.example:7432", "127.0.0.1", 7432) {
+		t.Fatal("foreign host must stay rejected")
+	}
+	if loopbackHostAllowed("localhost:7433", "127.0.0.1", 7432) {
+		t.Fatal("a different loopback port must stay rejected")
+	}
+}
+
 func TestServeRejectsWildcardListener(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {

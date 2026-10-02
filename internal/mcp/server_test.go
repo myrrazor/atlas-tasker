@@ -585,6 +585,153 @@ func TestGroupedPaginationUsesIndependentCursors(t *testing.T) {
 	}
 }
 
+func TestBoardDoneCursorDoesNotRestartFinishedColumns(t *testing.T) {
+	ticket := func(id string, status contracts.Status) contracts.TicketSnapshot {
+		return contracts.TicketSnapshot{ID: id, Project: "APP", Title: id, Type: contracts.TicketTypeTask, Status: status, Priority: contracts.PriorityMedium}
+	}
+	fresh := func() service.BoardViewModel {
+		return service.BoardViewModel{Board: contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+			contracts.StatusReady:   {ticket("APP-1", contracts.StatusReady), ticket("APP-2", contracts.StatusReady), ticket("APP-3", contracts.StatusReady)},
+			contracts.StatusBlocked: {ticket("APP-4", contracts.StatusBlocked), ticket("APP-5", contracts.StatusBlocked)},
+		}}}
+	}
+	page := paginateBoard(fresh(), map[string]any{
+		"limit": 1,
+		"cursor_by_status": map[string]any{
+			"ready":   "1",
+			"blocked": "1",
+		},
+	}, 10)
+	next := page["next_cursor_by_status"].(map[string]string)
+	if next["ready"] != "2" || next["blocked"] != boardCursorDone {
+		t.Fatalf("finished column must stay marked done, got %#v", next)
+	}
+	paged := page["board"].(service.BoardViewModel).Board
+	if got := paged.Columns[contracts.StatusBlocked][0].ID; got != "APP-5" {
+		t.Fatalf("last blocked card = %s", got)
+	}
+	if got := paged.Columns[contracts.StatusReady][0].ID; got != "APP-2" {
+		t.Fatalf("ready page = %s", got)
+	}
+
+	held := paginateBoard(fresh(), map[string]any{
+		"limit":            1,
+		"cursor_by_status": map[string]any{"ready": "1", "blocked": boardCursorDone},
+	}, 10)
+	heldNext := held["next_cursor_by_status"].(map[string]string)
+	if heldNext["ready"] != "2" || heldNext["blocked"] != boardCursorDone {
+		t.Fatalf("done column restarted while another column continued: %#v", heldNext)
+	}
+	heldBoard := held["board"].(service.BoardViewModel).Board
+	if len(heldBoard.Columns[contracts.StatusBlocked]) != 0 {
+		t.Fatalf("done cursor restarted blocked: %#v", heldBoard.Columns[contracts.StatusBlocked])
+	}
+
+	echo := map[string]any{}
+	seen := map[string]int{}
+	for step := 0; step < 8; step++ {
+		got := paginateBoard(fresh(), map[string]any{"limit": 1, "cursor_by_status": echo}, 10)
+		board := got["board"].(service.BoardViewModel).Board
+		for _, column := range board.Columns {
+			for _, item := range column {
+				seen[item.ID]++
+			}
+		}
+		echo = map[string]any{}
+		for key, value := range got["next_cursor_by_status"].(map[string]string) {
+			echo[key] = value
+		}
+		if len(echo) == 0 {
+			break
+		}
+	}
+	if len(echo) != 0 {
+		t.Fatalf("echoing next_cursor_by_status did not stop: %#v", echo)
+	}
+	if len(seen) != 5 {
+		t.Fatalf("paging missed cards: %#v", seen)
+	}
+	for id, count := range seen {
+		if count != 1 {
+			t.Fatalf("paging repeated %s %d times", id, count)
+		}
+	}
+
+	first := paginateBoard(fresh(), map[string]any{"limit": 10}, 10)
+	if len(first["next_cursor_by_status"].(map[string]string)) != 0 {
+		t.Fatalf("a board that fits must not invent cursors: %#v", first["next_cursor_by_status"])
+	}
+
+	// A column that fits on page 1 must not be sent again when the caller
+	// echoes the cursor map to fetch the rest of a longer column.
+	short := func() service.BoardViewModel {
+		return service.BoardViewModel{Board: contracts.BoardView{Columns: map[contracts.Status][]contracts.TicketSnapshot{
+			contracts.StatusReady:   {ticket("APP-1", contracts.StatusReady), ticket("APP-2", contracts.StatusReady), ticket("APP-3", contracts.StatusReady)},
+			contracts.StatusBlocked: {ticket("APP-4", contracts.StatusBlocked)},
+		}}}
+	}
+	opened := paginateBoard(short(), map[string]any{"limit": 1}, 10)
+	openedNext := opened["next_cursor_by_status"].(map[string]string)
+	if openedNext["blocked"] != boardCursorDone || openedNext["ready"] == "" || openedNext["ready"] == boardCursorDone {
+		t.Fatalf("short column should be finished while ready continues: %#v", openedNext)
+	}
+	echoed := map[string]any{}
+	for key, value := range openedNext {
+		echoed[key] = value
+	}
+	again := paginateBoard(short(), map[string]any{"limit": 1, "cursor_by_status": echoed}, 10)
+	againBoard := again["board"].(service.BoardViewModel).Board
+	if len(againBoard.Columns[contracts.StatusBlocked]) != 0 {
+		t.Fatalf("finished short column was sent again: %#v", againBoard.Columns[contracts.StatusBlocked])
+	}
+}
+
+func TestBoardPagingKeepsInitiallyFinishedColumnsDone(t *testing.T) {
+	ticket := func(id string, status contracts.Status) contracts.TicketSnapshot {
+		return contracts.TicketSnapshot{ID: id, Project: "APP", Title: id, Type: contracts.TicketTypeTask, Status: status, Priority: contracts.PriorityMedium}
+	}
+	full := map[contracts.Status][]contracts.TicketSnapshot{
+		contracts.StatusReady:   {ticket("APP-1", contracts.StatusReady), ticket("APP-2", contracts.StatusReady), ticket("APP-3", contracts.StatusReady)},
+		contracts.StatusBlocked: {ticket("APP-4", contracts.StatusBlocked)},
+		contracts.StatusDone:    {},
+	}
+	cursors := map[string]any{}
+	seen := map[string]int{}
+	for pageNumber := 1; pageNumber <= 3; pageNumber++ {
+		view := service.BoardViewModel{Board: contracts.BoardView{Columns: cloneBoardColumns(full)}}
+		page := paginateBoard(view, map[string]any{"limit": 1, "cursor_by_status": cursors}, 10)
+		board := page["board"].(service.BoardViewModel).Board
+		for _, tickets := range board.Columns {
+			for _, ticket := range tickets {
+				seen[ticket.ID]++
+			}
+		}
+		pages := page["pages_by_status"].(map[string]map[string]any)
+		if pages["ready"]["remaining"] != 3-pageNumber || pages["blocked"]["remaining"] != 0 || pages["done"]["remaining"] != 0 {
+			t.Fatalf("page %d has incorrect unread counts: %#v", pageNumber, pages)
+		}
+		next := page["next_cursor_by_status"].(map[string]string)
+		if pageNumber < 3 {
+			if next["blocked"] != boardCursorDone || next["done"] != boardCursorDone {
+				t.Fatalf("page %d lost finished columns: %#v", pageNumber, next)
+			}
+		} else if len(next) != 0 {
+			t.Fatalf("final page has unexpected continuation: %#v", next)
+		}
+		cursors = map[string]any{}
+		for status, cursor := range next {
+			cursors[status] = cursor
+		}
+	}
+	for _, tickets := range full {
+		for _, ticket := range tickets {
+			if seen[ticket.ID] != 1 {
+				t.Fatalf("%s appeared %d times while paging", ticket.ID, seen[ticket.ID])
+			}
+		}
+	}
+}
+
 func TestBundleImportPlanPropagatesDetailErrors(t *testing.T) {
 	root := t.TempDir()
 	queries := service.NewQueryService(root, nil, nil, nil, nil, func() time.Time { return time.Now().UTC() })

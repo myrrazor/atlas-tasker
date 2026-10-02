@@ -9,7 +9,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
@@ -42,26 +44,85 @@ type Store struct {
 	// projection was built from. Leave it empty and none of the freshness
 	// bookkeeping runs — handy for stores opened without sources.
 	Root string
+	// live is one long-lived connection for PRAGMA data_version. It is a
+	// pointer so transaction copies of Store share it. Closing a separate
+	// fd on the database or its wal/shm files drops this process's POSIX
+	// locks, so generation must come from a connection SQLite already owns.
+	live *liveConn
 }
+
+// liveConn is the process's generation reader. Do not Close it on the poll
+// path: database/sql Conn.Close returns the connection to the pool, and any
+// real close of a sqlite fd drops every fcntl lock this process holds.
+// indexInfo and shmInfo are the files this connection opened. A delete plus
+// reindex replaces the index inode; the pinned connection would otherwise
+// keep reading the unlinked file.
+type liveConn struct {
+	mu        sync.Mutex
+	conn      *sql.Conn
+	indexInfo os.FileInfo
+	shmInfo   os.FileInfo
+}
+
+// sqliteDriver is a private modernc driver so every pooled connection can
+// persist its WAL files. The process-wide "sqlite" driver is left alone.
+const sqliteDriver = "atlas-sqlite"
+
+var registerAtlasSQLite sync.Once
 
 const sourceFingerprintKey = "source_fingerprint"
 
 var _ contracts.ProjectionStore = (*Store)(nil)
 
 func Open(path string, ticketSource contracts.TicketStore, eventSource contracts.EventLog) (*Store, error) {
+	return open(path, ticketSource, eventSource, true)
+}
+
+func open(path string, ticketSource contracts.TicketStore, eventSource contracts.EventLog, discardOrphans bool) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create sqlite dir: %w", err)
+	}
+	if discardOrphans {
+		if err := discardOrphanedSidecars(path); err != nil {
+			return nil, err
+		}
 	}
 	db, err := openDB(path)
 	if err != nil {
 		return nil, err
 	}
-	store := &Store{Path: path, DB: db, TicketSource: ticketSource, EventSource: eventSource}
+	store := &Store{Path: path, DB: db, TicketSource: ticketSource, EventSource: eventSource, live: &liveConn{}}
 	if err := store.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	return store, nil
+}
+
+// discardOrphanedSidecars removes -wal and -shm when the main index file is
+// already gone. Those sidecars belong to the deleted database. Replaying them
+// onto a new file returns SQLITE_IOERR_SHORT_READ while a live server still
+// holds that shm, which is also how a later reopen shares the inode and
+// SIGBUSes. The projection is rebuilt from markdown and events. Unlink does
+// not truncate an inode the server still has mapped.
+func discardOrphanedSidecars(path string) error {
+	if _, err := os.Lstat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat index: %w", err)
+	}
+	return removeIndexSidecars(path)
+}
+
+// removeIndexSidecars unlinks the wal and shm directory entries. An open
+// mapping keeps its inode; the next create gets a new file.
+func removeIndexSidecars(path string) error {
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove index%s: %w", suffix, err)
+		}
+	}
+	return nil
 }
 
 func openDB(path string) (*sql.DB, error) {
@@ -77,7 +138,23 @@ func openDB(path string) (*sql.DB, error) {
 	params.Add("_pragma", "busy_timeout(5000)")
 	params.Add("_pragma", "synchronous(NORMAL)")
 	dsn.RawQuery = params.Encode()
-	db, err := sql.Open("sqlite", dsn.String())
+	registerAtlasSQLite.Do(func() {
+		drv := &modernsqlite.Driver{}
+		drv.RegisterConnectionHook(func(conn modernsqlite.ExecQuerierContext, _ string) error {
+			fc, ok := conn.(modernsqlite.FileControl)
+			if !ok {
+				return fmt.Errorf("sqlite connection has no file control")
+			}
+			// The last connection out of a pool checkpoints and, unless this
+			// is set, deletes the wal and shm by path. A retired pool's path
+			// is the live index, so that delete removes the replacement's
+			// sidecars.
+			_, err := fc.FileControlPersistWAL("main", 1)
+			return err
+		})
+		sql.Register(sqliteDriver, drv)
+	})
+	db, err := sql.Open(sqliteDriver, dsn.String())
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
@@ -106,29 +183,48 @@ func openDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// lockDB keeps pool retirement from racing with operation startup. Once a
+// query or transaction has started, database/sql retains its driver connection
+// until rows are closed or the transaction completes.
+func (s *Store) lockDB() (*sql.DB, func()) {
+	if s.live == nil {
+		return s.DB, func() {}
+	}
+	s.live.mu.Lock()
+	return s.DB, s.live.mu.Unlock
+}
+
 func (s *Store) execContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	if s.tx != nil {
 		return s.tx.ExecContext(ctx, query, args...)
 	}
-	return s.DB.ExecContext(ctx, query, args...)
+	db, unlock := s.lockDB()
+	defer unlock()
+	return db.ExecContext(ctx, query, args...)
 }
 
 func (s *Store) queryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	if s.tx != nil {
 		return s.tx.QueryContext(ctx, query, args...)
 	}
-	return s.DB.QueryContext(ctx, query, args...)
+	db, unlock := s.lockDB()
+	defer unlock()
+	return db.QueryContext(ctx, query, args...)
 }
 
 func (s *Store) queryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	if s.tx != nil {
 		return s.tx.QueryRowContext(ctx, query, args...)
 	}
-	return s.DB.QueryRowContext(ctx, query, args...)
+	db, unlock := s.lockDB()
+	defer unlock()
+	return db.QueryRowContext(ctx, query, args...)
 }
 
 func (s *Store) inTransaction(ctx context.Context, update func(*Store) error) error {
-	tx, err := s.DB.BeginTx(ctx, nil)
+	db, unlock := s.lockDB()
+	tx, err := db.BeginTx(ctx, nil)
+	unlock()
 	if err != nil {
 		return fmt.Errorf("begin projection update: %w", err)
 	}
@@ -157,10 +253,173 @@ func IsCorrupt(err error) bool {
 }
 
 func (s *Store) Close() error {
+	if s.live != nil {
+		s.live.mu.Lock()
+		if s.live.conn != nil {
+			_ = s.live.conn.Close()
+			s.live.conn = nil
+		}
+		s.live.mu.Unlock()
+	}
 	if s.DB == nil {
 		return nil
 	}
 	return s.DB.Close()
+}
+
+func sameFile(path string, prev os.FileInfo) bool {
+	if prev == nil {
+		return false
+	}
+	cur, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(prev, cur)
+}
+
+func (s *Store) noteIndexFilesLocked() {
+	if info, err := os.Lstat(s.Path); err == nil {
+		s.live.indexInfo = info
+	}
+	if info, err := os.Lstat(s.Path + "-shm"); err == nil {
+		s.live.shmInfo = info
+	}
+}
+
+// indexReplacedLocked reports whether the path names a different file from
+// the one the pinned connection opened. A missing path is not a replacement
+// yet: reindex may still be creating it. Stat does not open the database, so
+// it does not drop this process's locks.
+func (s *Store) indexReplacedLocked() bool {
+	if s.live.indexInfo == nil {
+		return false
+	}
+	cur, err := os.Lstat(s.Path)
+	if err != nil {
+		return false
+	}
+	return !os.SameFile(s.live.indexInfo, cur)
+}
+
+// reopenIndexLocked swaps the pool onto the index file that now occupies
+// Path. Connections persist their wal files, so closing the retired pool
+// cannot unlink the replacement's wal or shm by path. If the replacement
+// left the previous shm in place (the main file was swapped and the sidecars
+// were not), those sidecars belong to the old database and are removed
+// before the new pool opens them. Unlink does not truncate an inode this
+// process still has mapped, and the new pool then gets its own shm, so
+// closing the old pool does not drop the new pool's locks.
+func (s *Store) reopenIndexLocked() error {
+	if sameFile(s.Path+"-shm", s.live.shmInfo) {
+		if err := removeIndexSidecars(s.Path); err != nil {
+			return err
+		}
+		// Unlink failed or the same shm is still at the path. Opening another
+		// pool on that inode and closing it would drop this process's locks.
+		if sameFile(s.Path+"-shm", s.live.shmInfo) {
+			return fmt.Errorf("replaced index still uses the previous -shm file")
+		}
+	}
+	fresh, err := openDB(s.Path)
+	if err != nil {
+		return err
+	}
+	if sameFile(s.Path+"-shm", s.live.shmInfo) {
+		_ = fresh.Close()
+		return fmt.Errorf("replaced index still uses the previous -shm file")
+	}
+	pinned := s.live.conn
+	s.live.conn = nil
+	old := s.DB
+	s.DB = fresh
+	s.live.indexInfo = nil
+	s.live.shmInfo = nil
+	if old == nil || old == fresh {
+		if pinned != nil {
+			_ = pinned.Close()
+		}
+		return nil
+	}
+	if pinned != nil {
+		_ = pinned.Close()
+	}
+	_ = old.Close()
+	return nil
+}
+
+func (s *Store) withLiveConn(ctx context.Context, fn func(*sql.Conn) error) error {
+	if s == nil || s.live == nil {
+		return fmt.Errorf("sqlite store is closed")
+	}
+	s.live.mu.Lock()
+	defer s.live.mu.Unlock()
+	if s.DB == nil {
+		return fmt.Errorf("sqlite store is closed")
+	}
+	if s.live.conn != nil && s.indexReplacedLocked() {
+		if err := s.reopenIndexLocked(); err != nil {
+			return err
+		}
+	}
+	if s.live.conn == nil {
+		conn, err := s.DB.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		s.live.conn = conn
+		s.noteIndexFilesLocked()
+	}
+	return fn(s.live.conn)
+}
+
+// ProjectionGeneration is the SQLite data_version of one pinned connection.
+// It changes when a different connection commits, and it stays put across
+// idle polls. Callers must not open the database files themselves.
+func (s *Store) ProjectionGeneration(ctx context.Context) (string, bool) {
+	var version int64
+	err := s.withLiveConn(ctx, func(conn *sql.Conn) error {
+		return conn.QueryRowContext(ctx, `PRAGMA data_version`).Scan(&version)
+	})
+	if err != nil {
+		return "", false
+	}
+	return strconv.FormatInt(version, 10), true
+}
+
+// LiveSnapshot reads data_version and every ticket on the pinned connection,
+// in one read transaction, so the generation cannot move ahead of the rows.
+func (s *Store) LiveSnapshot(ctx context.Context) (string, []contracts.TicketSnapshot, error) {
+	var version int64
+	var tickets []contracts.TicketSnapshot
+	err := s.withLiveConn(ctx, func(conn *sql.Conn) error {
+		tx, err := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if err := tx.QueryRowContext(ctx, `PRAGMA data_version`).Scan(&version); err != nil {
+			return err
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT `+ticketSelectColumns+` FROM tickets`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		tickets = make([]contracts.TicketSnapshot, 0)
+		for rows.Next() {
+			ticket, err := scanTicket(rows)
+			if err != nil {
+				return err
+			}
+			tickets = append(tickets, ticket)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	return strconv.FormatInt(version, 10), tickets, nil
 }
 
 func (s *Store) migrate() error {
@@ -768,12 +1027,59 @@ func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
 			return err
 		}
 	}
+	if err := s.dropTicketsAbsentFromMarkdown(ctx, project, tickets); err != nil {
+		return err
+	}
 
 	// project-scoped rebuilds don't stamp: the fingerprint is workspace-wide
 	// and a partial rebuild says nothing about the other projects
 	if project == "" {
 		if err := s.recordSourceFingerprint(ctx, true); err != nil {
 			return fmt.Errorf("record source fingerprint: %w", err)
+		}
+	}
+	return nil
+}
+
+// dropTicketsAbsentFromMarkdown removes index rows whose markdown files are
+// gone. Event replay would otherwise keep a deleted ticket on the board.
+func (s *Store) dropTicketsAbsentFromMarkdown(ctx context.Context, project string, live []contracts.TicketSnapshot) error {
+	keep := make(map[string]struct{}, len(live))
+	for _, ticket := range live {
+		id := strings.TrimSpace(ticket.ID)
+		if id != "" {
+			keep[id] = struct{}{}
+		}
+	}
+	query := `SELECT id FROM tickets`
+	args := make([]any, 0, 1)
+	if project != "" {
+		query += ` WHERE project = ?`
+		args = append(args, project)
+	}
+	rows, err := s.queryContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("list indexed tickets: %w", err)
+	}
+	var gone []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		if _, ok := keep[id]; !ok {
+			gone = append(gone, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, id := range gone {
+		if _, err := s.execContext(ctx, `DELETE FROM tickets WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("drop missing ticket %s: %w", id, err)
 		}
 	}
 	return nil
@@ -796,7 +1102,7 @@ func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions
 	}
 	query += ` ORDER BY updated_at ASC, id ASC`
 
-	rows, err := s.DB.QueryContext(ctx, query, args...)
+	rows, err := s.queryContext(ctx, query, args...)
 	if err != nil {
 		return contracts.BoardView{}, fmt.Errorf("query board: %w", err)
 	}
@@ -863,7 +1169,7 @@ func (s *Store) queryTicketStatuses(ctx context.Context, ticketIDs []string) (ma
 		placeholders[i] = "?"
 		args[i] = ticketID
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT id, status FROM tickets WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	rows, err := s.queryContext(ctx, `SELECT id, status FROM tickets WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -930,15 +1236,15 @@ func (s *Store) QuerySearch(ctx context.Context, query contracts.SearchQuery) ([
 			base += ` AND labels_json LIKE ?`
 			args = append(args, "%\""+term.Value+"\"%")
 		case contracts.SearchTermTextLike:
-			base += ` AND LOWER(COALESCE(title,'') || ' ' || COALESCE(summary,'') || ' ' || COALESCE(description,'') || ' ' || COALESCE(notes,'')) LIKE ?`
-			args = append(args, "%"+strings.ToLower(term.Value)+"%")
+			base += ` AND (LOWER(COALESCE(id,'') || ' ' || COALESCE(title,'') || ' ' || COALESCE(summary,'') || ' ' || COALESCE(description,'') || ' ' || COALESCE(notes,'')) LIKE ? OR UPPER(id) = UPPER(?))`
+			args = append(args, "%"+strings.ToLower(term.Value)+"%", term.Value)
 		default:
 			return nil, fmt.Errorf("unsupported search term kind: %s", term.Kind)
 		}
 	}
 	base += ` ORDER BY updated_at DESC, id ASC`
 
-	rows, err := s.DB.QueryContext(ctx, base, args...)
+	rows, err := s.queryContext(ctx, base, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query search: %w", err)
 	}
@@ -959,7 +1265,7 @@ func (s *Store) QuerySearch(ctx context.Context, query contracts.SearchQuery) ([
 }
 
 func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.Event, error) {
-	rows, err := s.DB.QueryContext(ctx, `
+	rows, err := s.queryContext(ctx, `
 		SELECT event_id, ts, actor, reason, type, project, ticket_id, payload_json, metadata_json, schema_version
 		FROM events
 		WHERE ticket_id = ?
@@ -1029,7 +1335,7 @@ func (s *Store) QueryCommentCounts(ctx context.Context, ticketIDs []string) (map
 		for _, id := range chunk {
 			args = append(args, id)
 		}
-		rows, err := s.DB.QueryContext(ctx, `
+		rows, err := s.queryContext(ctx, `
 			SELECT ticket_id, COUNT(*)
 			FROM events
 			WHERE type = ? AND ticket_id IN (`+placeholders+`)

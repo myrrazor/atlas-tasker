@@ -123,9 +123,27 @@ func (a *App) Close() error {
 }
 
 func (a *App) StateDir() string { return a.stateDir }
-func (a *App) Home() string     { return a.home }
-func (a *App) Hub() *Hub        { return a.hub }
-func (a *App) now() time.Time   { return a.opts.Now().UTC() }
+
+// SetNotice sends init and registration progress to w. nil discards it.
+func (a *App) SetNotice(w io.Writer) {
+	if a == nil {
+		return
+	}
+	if w == nil {
+		w = io.Discard
+	}
+	a.opts.Notice = w
+}
+
+func (a *App) noticef(format string, args ...any) {
+	if a == nil || a.opts.Notice == nil {
+		return
+	}
+	fmt.Fprintf(a.opts.Notice, format+"\n", args...)
+}
+func (a *App) Home() string   { return a.home }
+func (a *App) Hub() *Hub      { return a.hub }
+func (a *App) now() time.Time { return a.opts.Now().UTC() }
 
 func (a *App) getenv() func(string) string {
 	if a.opts.Getenv != nil {

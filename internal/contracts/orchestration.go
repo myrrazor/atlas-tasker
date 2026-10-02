@@ -32,6 +32,7 @@ type AgentProvider string
 const (
 	AgentProviderCodex  AgentProvider = "codex"
 	AgentProviderClaude AgentProvider = "claude"
+	AgentProviderGrok   AgentProvider = "grok"
 	AgentProviderHuman  AgentProvider = "human"
 	AgentProviderCustom AgentProvider = "custom"
 )
@@ -39,6 +40,7 @@ const (
 var validAgentProviders = map[AgentProvider]struct{}{
 	AgentProviderCodex:  {},
 	AgentProviderClaude: {},
+	AgentProviderGrok:   {},
 	AgentProviderHuman:  {},
 	AgentProviderCustom: {},
 }

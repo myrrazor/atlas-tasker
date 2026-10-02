@@ -63,7 +63,7 @@ Paged payloads include:
 }
 ```
 
-Grouped reads use independent cursors so short sections do not disappear when a longer section advances:
+Grouped reads use independent cursors so each column or section advances separately:
 
 ```json
 {
@@ -76,6 +76,17 @@ Grouped reads use independent cursors so short sections do not disappear when a 
 ```
 
 Dashboard pagination uses the same shape with `cursor_by_section`.
+
+`atlas.board` defaults to at most 10 cards per status column, bounded by the server's
+`max-items`. An explicit `limit` sets the per-column maximum; Atlas may reduce it to
+fit the result byte cap and records the effective limit in `board.limit` and a board
+note. Pass the entire returned `next_cursor_by_status` map as `cursor_by_status`
+to continue. A `"done"` cursor keeps an exhausted column empty while others continue;
+an omitted cursor starts that column at its first page. Stop when the returned map
+is empty. Each `pages_by_status` entry and compact board column includes `remaining`,
+the number of unread cards after this page. `total` includes the whole column and
+`shown` on compact columns counts only this page, so a final page can still show fewer
+cards than the column total.
 
 `atlas.board` and `atlas.status` accept optional `format`:
 
@@ -92,6 +103,10 @@ The MCP text fallback prefers `chat` when that field is present. Each compact bo
 may include `description`, `acceptance_criteria`, `blocks`, `parent`, and `review_state`
 alongside the existing ID, title, status, priority, type, labels, and `blocked_by` fields.
 MCP Apps hosts can present those extra fields in expandable cards.
+
+`atlas.board` also accepts `format=html`, adding a self-contained `html` fragment
+and `presentation: "html"` for hosts that render raw HTML widgets. Markdown remains
+in the response. This does not establish that an ordinary chat message supports HTML.
 
 Every tracked mutation requires:
 

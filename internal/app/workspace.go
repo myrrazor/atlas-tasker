@@ -28,7 +28,7 @@ type OpenOptions struct {
 }
 
 func OpenWorkspace(root string, opts OpenOptions) (*Workspace, error) {
-	root, err := service.InitializedWorkspaceRoot(root)
+	root, err := service.FindWorkspaceRoot(root)
 	if err != nil {
 		return nil, err
 	}

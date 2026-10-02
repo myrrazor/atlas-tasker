@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,9 +14,34 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 )
 
+func freeLoopbackPort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return port
+}
+
 func TestInitPartialFailureKeepsWorkspaceOnSDKError(t *testing.T) {
 	outside := t.TempDir()
 	machine := testGlobalMachineWithHomeService(t, outside)
+	// A Home already bound to 7432 must not count as this test's service.
+	// The noop spawner still has to fail, on a port nothing else owns.
+	if _, err := machine.UpdateSettings(context.Background(), app.MachineSettingsPatch{
+		Service: &app.ServiceSettings{
+			Bind:      app.DefaultHomeBind,
+			Port:      freeLoopbackPort(t),
+			Enabled:   true,
+			AutoStart: true,
+		},
+	}); err != nil {
+		t.Fatalf("point home service at a free port: %v", err)
+	}
 	root := filepath.Join(outside, "partial")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)

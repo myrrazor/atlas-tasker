@@ -60,6 +60,7 @@ init plus Home.`,
 		RunE:              runRootHome,
 	}
 	root.PersistentFlags().Bool("plain", false, "Disable terminal styling and print plain text output")
+	root.Flags().Bool("version", false, "Print build version metadata")
 	root.Flags().Bool("no-open", false, "Print the Home URL without opening a browser")
 	addReadOutputFlags(root, &outputFlags{})
 
@@ -180,6 +181,9 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	wantIntegrations, _ := cmd.Flags().GetBool("integrations")
 	agents := !skipIntegrations && !noAgents && a.Settings().Agents.AutoInstall
 	jsonMode, _ := cmd.Flags().GetBool("json")
+	if !jsonMode {
+		a.SetNotice(cmd.ErrOrStderr())
+	}
 	openHome := !noOpen && !jsonMode && canPromptIntegrations(cmd)
 	result, err := a.Init(commandContext(cmd), app.InitOptions{
 		Root:           root,
@@ -436,7 +440,7 @@ func newAgentCommand() *cobra.Command {
 	autoSet.Flags().StringArray("argv", nil, "Command argv item; repeat once per argument. Shell interpreters are rejected.")
 	for _, sub := range []*cobra.Command{create, edit} {
 		sub.Flags().String("name", "", "Display name")
-		sub.Flags().String("provider", "", "Provider: codex, claude, human, custom")
+		sub.Flags().String("provider", "", "Provider: codex, claude, grok, human, custom")
 		sub.Flags().StringArray("capability", nil, "Capability tag")
 		sub.Flags().StringArray("ticket-type", nil, "Allowed ticket type")
 		sub.Flags().String("default-runbook", "", "Default runbook")
@@ -1018,15 +1022,20 @@ func resolveMutationActor(cmd *cobra.Command, _ []string) error {
 	if cmd.Annotations["atlas.resolve-actor"] != "true" {
 		return nil
 	}
+	if raw, _ := cmd.Flags().GetString("actor"); strings.TrimSpace(raw) != "" && !contracts.Actor(strings.TrimSpace(raw)).IsValid() {
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid actor: %s", strings.TrimSpace(raw)))
+	}
 	root, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	root, err = service.CanonicalWorkspaceRoot(root)
+	root, err = service.FindWorkspaceRoot(root)
 	if err != nil {
-		return err
-	}
-	if err := requireInitializedWorkspace(root); err != nil {
+		// ticket create bootstraps an empty directory itself. A directory that
+		// is not inside a board continues into the command.
+		if uninitializedWorkspaceError(err) {
+			return nil
+		}
 		return err
 	}
 	raw, _ := cmd.Flags().GetString("actor")
@@ -1136,10 +1145,50 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	ctx := commandContext(cmd)
 	workspace, err := openWorkspace()
 	if err != nil {
-		return err
+		workspace, err = bootstrapEmptyWorkspace(cmd, err)
+		if err != nil {
+			return err
+		}
 	}
 	defer workspace.close()
 
+	project, _ := cmd.Flags().GetString("project")
+	templateName, _ := cmd.Flags().GetString("template")
+	actorRaw, _ := cmd.Flags().GetString("actor")
+	reason, _ := cmd.Flags().GetString("reason")
+	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
+	if err != nil {
+		return err
+	}
+	if _, err := workspace.project.GetProject(ctx, project); err != nil {
+		return err
+	}
+	var template service.TemplateView
+	if strings.TrimSpace(templateName) != "" {
+		template, err = workspace.queries.Template(ctx, templateName)
+		if err != nil {
+			return err
+		}
+	}
+	now := defaultNow()
+	if workspace.actions.Clock != nil {
+		now = workspace.actions.Clock().UTC()
+	}
+	ticket, err := ticketCreateFromFlags(cmd, template, now)
+	if err != nil {
+		return err
+	}
+	ticket, err = workspace.actions.CreateTrackedTicket(ctx, ticket, actor, reason)
+	if err != nil {
+		return err
+	}
+	warnSecretLikeContent(cmd, ticket.Title, ticket.Description, strings.Join(ticket.AcceptanceCriteria, "\n"))
+	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s", ticket.ID, ticket.Title), fmt.Sprintf("created %s", ticket.ID))
+}
+
+// ticketCreateFromFlags validates the same ticket before bootstrap and before
+// creation in an existing workspace. It does not read or write workspace state.
+func ticketCreateFromFlags(cmd *cobra.Command, template service.TemplateView, now time.Time) (contracts.TicketSnapshot, error) {
 	project, _ := cmd.Flags().GetString("project")
 	title, _ := cmd.Flags().GetString("title")
 	title = render.SanitizeDisplayLine(title)
@@ -1156,47 +1205,23 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	permissionProfiles, _ := cmd.Flags().GetStringArray("permission-profile")
 	protected, _ := cmd.Flags().GetBool("protected")
 	sensitive, _ := cmd.Flags().GetBool("sensitive")
-	actorRaw, _ := cmd.Flags().GetString("actor")
-	reason, _ := cmd.Flags().GetString("reason")
-	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
-	if err != nil {
-		return err
-	}
-
-	if _, err := workspace.project.GetProject(ctx, project); err != nil {
-		return err
-	}
-	var template service.TemplateView
-	if strings.TrimSpace(templateName) != "" {
-		template, err = workspace.queries.Template(ctx, templateName)
-		if err != nil {
-			return err
-		}
-	}
 	if strings.TrimSpace(typeValue) == "" && template.Type != "" {
 		typeValue = string(template.Type)
 	}
 	ticketType := contracts.TicketType(typeValue)
 	if !ticketType.IsValid() {
-		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid ticket type: %s (valid: %s)", typeValue, strings.Join(contracts.ValidTicketTypeValues(), ", ")))
+		return contracts.TicketSnapshot{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid ticket type: %s (valid: %s)", typeValue, strings.Join(contracts.ValidTicketTypeValues(), ", ")))
 	}
 	status := contracts.Status(statusValue)
 	if !status.IsValid() {
-		return fmt.Errorf("invalid status: %s (valid: %s)", statusValue, strings.Join(contracts.ValidStatusValues(), ", "))
+		return contracts.TicketSnapshot{}, fmt.Errorf("invalid status: %s (valid: %s)", statusValue, strings.Join(contracts.ValidStatusValues(), ", "))
 	}
 	if status == contracts.StatusDone || status == contracts.StatusCanceled {
-		return fmt.Errorf("status %s is not allowed on ticket create", status)
+		return contracts.TicketSnapshot{}, fmt.Errorf("status %s is not allowed on ticket create", status)
 	}
 	priority := contracts.Priority(priorityValue)
 	if !priority.IsValid() {
-		return fmt.Errorf("invalid priority: %s", priorityValue)
-	}
-	if !actor.IsValid() {
-		return fmt.Errorf("invalid actor: %s", actorRaw)
-	}
-	now := defaultNow()
-	if workspace.actions.Clock != nil {
-		now = workspace.actions.Clock().UTC()
+		return contracts.TicketSnapshot{}, fmt.Errorf("invalid priority: %s", priorityValue)
 	}
 	ticket := contracts.TicketSnapshot{
 		Project:            project,
@@ -1241,21 +1266,23 @@ func runTicketCreate(cmd *cobra.Command, _ []string) error {
 	if strings.TrimSpace(assigneeRaw) != "" {
 		ticket.Assignee = contracts.Actor(strings.TrimSpace(assigneeRaw))
 		if !ticket.Assignee.IsValid() {
-			return fmt.Errorf("invalid assignee actor: %s", assigneeRaw)
+			return contracts.TicketSnapshot{}, fmt.Errorf("invalid assignee actor: %s", assigneeRaw)
 		}
 	}
 	if strings.TrimSpace(reviewerRaw) != "" {
 		ticket.Reviewer = contracts.Actor(strings.TrimSpace(reviewerRaw))
 		if !ticket.Reviewer.IsValid() {
-			return fmt.Errorf("invalid reviewer actor: %s", reviewerRaw)
+			return contracts.TicketSnapshot{}, fmt.Errorf("invalid reviewer actor: %s", reviewerRaw)
 		}
 	}
-	ticket, err = workspace.actions.CreateTrackedTicket(ctx, ticket, actor, reason)
-	if err != nil {
-		return err
+	// The service allocates the real ID while holding its write lock. Validate
+	// the remaining snapshot now with the ID an empty project would receive.
+	preview := ticket
+	preview.ID = strings.TrimSpace(ticket.Project) + "-1"
+	if err := preview.ValidateForCreate(); err != nil {
+		return contracts.TicketSnapshot{}, err
 	}
-	warnSecretLikeContent(cmd, ticket.Title, ticket.Description, strings.Join(ticket.AcceptanceCriteria, "\n"))
-	return writeCommandOutput(cmd, ticket, fmt.Sprintf("# %s\n\n%s", ticket.ID, ticket.Title), fmt.Sprintf("created %s", ticket.ID))
+	return ticket, nil
 }
 
 func runTicketView(cmd *cobra.Command, args []string) error {
@@ -2317,7 +2344,7 @@ func runSweep(cmd *cobra.Command, _ []string) error {
 
 func runBoard(cmd *cobra.Command, _ []string) error {
 	ctx := context.Background()
-	workspace, err := openWorkspace()
+	workspace, err := openBoardWorkspace(cmd)
 	if err != nil {
 		return err
 	}
@@ -2344,6 +2371,23 @@ func runBoard(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 		return writeCommandOutput(cmd, result, markdown, pretty)
+	}
+	if strings.TrimSpace(project) != "" {
+		projects, err := workspace.project.ListProjects(ctx)
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, item := range projects {
+			if strings.EqualFold(item.Key, strings.TrimSpace(project)) {
+				project = item.Key
+				found = true
+				break
+			}
+		}
+		if !found {
+			return apperr.New(apperr.CodeNotFound, fmt.Sprintf("project %s was not found", strings.TrimSpace(project)))
+		}
 	}
 	boardVM, err := workspace.queries.Board(ctx, contracts.BoardQueryOptions{
 		Project:  project,
@@ -3054,14 +3098,9 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return apperr.New(apperr.CodeInvalidInput, "search requires a query or --view")
 	}
 	queryText := strings.TrimSpace(args[0])
-	query, err := contracts.ParseSearchQuery(queryText)
+	query, err := contracts.ParseSearchQueryFlexible(queryText)
 	if err != nil {
-		if !strings.ContainsAny(queryText, "=~") {
-			query, err = contracts.ParseSearchQuery("text~" + queryText)
-		}
-		if err != nil {
-			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%v (try structured terms like status=in_progress, project=AUTH, or text~multi word text)", err))
-		}
+		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%v (try structured terms like status=in_progress, project=AUTH, or text~multi word text)", err))
 	}
 	tickets, err := workspace.queries.Search(ctx, query)
 	if err != nil {

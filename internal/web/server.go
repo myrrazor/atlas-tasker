@@ -15,8 +15,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
@@ -46,6 +48,7 @@ type Config struct {
 	TokenMode   string
 	Token       string
 	CSRFToken   string
+	Session     *Session
 	Clock       func() time.Time
 	Location    *time.Location
 	RoutePrefix string
@@ -55,12 +58,17 @@ type Config struct {
 
 type Server struct {
 	cfg         Config
+	session     *Session
 	actions     *service.ActionService
 	queries     *service.QueryService
 	templates   *template.Template
 	static      fs.FS
 	staticETags map[string]string
 	startedAt   time.Time
+	// liveFP is only the empty-root fallback. Workspace stamps share
+	// fpCacheForRoot so a Home request, which builds a new Server each
+	// time, still hits the fingerprint computed for that root.
+	liveFP *liveFPCache
 }
 
 type contextKey string
@@ -118,6 +126,7 @@ func NewServer(services Services, cfg Config) (*Server, error) {
 	}
 	return &Server{
 		cfg:         cfg,
+		session:     cfg.Session,
 		actions:     services.Actions,
 		queries:     services.Queries,
 		templates:   templates,
@@ -194,7 +203,7 @@ func (s *Server) SessionURL(port int) string {
 	state := s.RuntimeState(port)
 	u, _ := url.Parse(state.URL)
 	q := u.Query()
-	q.Set("token", s.cfg.Token)
+	q.Set("token", s.currentSessionToken())
 	u.RawQuery = q.Encode()
 	return u.String()
 }
@@ -203,6 +212,8 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	if err := validateLoopbackListener(ln); err != nil {
 		return err
 	}
+	signal.Ignore(syscall.SIGPIPE)
+	fmt.Fprintf(os.Stderr, "%s atlas web listening on %s\n", time.Now().Format(time.RFC3339), ln.Addr().String())
 	server := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	done := make(chan error, 1)
 	go func() {
@@ -229,6 +240,10 @@ func (s *Server) security(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
 		r = r.WithContext(ctx)
 		s.writeSecurityHeaders(w, r)
+		if !loopbackHostAllowed(r.Host, s.cfg.Host, s.cfg.Port) {
+			http.Error(w, "host not allowed", http.StatusForbidden)
+			return
+		}
 		if r.Method == http.MethodOptions {
 			http.Error(w, "CORS is not enabled", http.StatusForbidden)
 			return
@@ -277,15 +292,41 @@ func (s *Server) sessionCookieName() string {
 	return sessionCookie
 }
 
+func (s *Server) sessionCookie(token string) *http.Cookie {
+	return &http.Cookie{
+		Name:     s.sessionCookieName(),
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	}
+}
+
+func (s *Server) acceptSessionToken(token string) bool {
+	if s.session != nil {
+		return s.session.Matches(token)
+	}
+	return secureCompare(token, s.cfg.Token)
+}
+
+func (s *Server) currentSessionToken() string {
+	if s.session == nil {
+		return s.cfg.Token
+	}
+	token, _ := s.session.Maintain(time.Now())
+	return token
+}
+
+func (s *Server) csrfToken() string {
+	if s.session != nil {
+		return s.session.CSRF()
+	}
+	return s.cfg.CSRFToken
+}
+
 func (s *Server) validSession(w http.ResponseWriter, r *http.Request) bool {
-	if token := r.URL.Query().Get("token"); secureCompare(token, s.cfg.Token) {
-		http.SetCookie(w, &http.Cookie{
-			Name:     s.sessionCookieName(),
-			Value:    s.cfg.Token,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
-		})
+	if token := r.URL.Query().Get("token"); s.acceptSessionToken(token) {
+		http.SetCookie(w, s.sessionCookie(s.currentSessionToken()))
 		clean := *r.URL
 		q := clean.Query()
 		q.Del("token")
@@ -294,10 +335,13 @@ func (s *Server) validSession(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	cookie, err := r.Cookie(s.sessionCookieName())
-	if err != nil || !secureCompare(cookie.Value, s.cfg.Token) {
+	if err != nil || !s.acceptSessionToken(cookie.Value) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte("Atlas web session required. Start with `tracker web serve --open` to open a session URL.\n"))
 		return false
+	}
+	if current := s.currentSessionToken(); cookie.Value != current {
+		http.SetCookie(w, s.sessionCookie(current))
 	}
 	return true
 }
@@ -316,7 +360,7 @@ func (s *Server) validateMutation(r *http.Request) error {
 	if token == "" {
 		token = r.Form.Get("csrf_token")
 	}
-	if !secureCompare(token, s.cfg.CSRFToken) {
+	if !secureCompare(token, s.csrfToken()) {
 		return apperr.New(apperr.CodePermissionDenied, "invalid csrf token")
 	}
 	return nil
@@ -368,6 +412,7 @@ func (s *Server) writeError(w http.ResponseWriter, r *http.Request, err error, s
 // form — a redirect would both lose everything the user typed (no-store
 // disables bfcache) and read as success to non-browser clients following it.
 func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err error, ticketID string) {
+	err = webActionError(err)
 	if wantsJSON(r) {
 		s.writeError(w, r, err, statusForError(err))
 		return
@@ -410,6 +455,14 @@ func (s *Server) writeActionError(w http.ResponseWriter, r *http.Request, err er
 	case "create", "edit", "comment", "schedule", "link", "unlink", "archive", "claim", "assign":
 		page.Form = r.Form
 		page.FormTarget = target
+	}
+	if target == "create" && apperr.CodeOf(err) == apperr.CodeConflict {
+		form := url.Values{}
+		for key, values := range r.Form {
+			form[key] = append([]string(nil), values...)
+		}
+		form.Del("submit_id")
+		page.Form = form
 	}
 	s.renderPage(w, pageReq, page, statusForError(err))
 }

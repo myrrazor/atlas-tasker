@@ -87,7 +87,7 @@ func TestCanceledTicketKeepsBoardColumnStatusAndMoveOption(t *testing.T) {
 	for _, want := range []string{
 		`class="column is-active-mobile" data-status="canceled"`,
 		`class="status-pill st-canceled">Canceled</span>`,
-		`<option value="canceled">Canceled</option>`,
+		`<option value="canceled" selected>Canceled</option>`,
 	} {
 		if !strings.Contains(res.body, want) {
 			t.Fatalf("canceled board missing %q:\n%s", want, excerpt(res.body, "canceled"))
@@ -137,7 +137,7 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 		"document.addEventListener('scroll', dismissCardPreview, true)",
 		"event.key === 'Escape'",
 		"window.requestAnimationFrame(() =>",
-		"animation: 150",
+		"animation: cardCount() > 200 ? 0 : 150",
 		"ghostClass: 'sortable-ghost'",
 		"chosenClass: 'sortable-chosen'",
 		"function captureBoardMotion(grid)",
@@ -146,6 +146,21 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 		"{ duration: 180, easing }",
 		"settleDroppedCard(event.item)",
 		"'is-count-pulsing'",
+		"function noteLocalMove(",
+		"card.dataset.storedStatus = status",
+		"existing.dataset.storedStatus === next.dataset.storedStatus",
+		"activePoll.abort()",
+		"err.name === 'AbortError'",
+		"const pollStallMs = 15000",
+		"pendingStatus.get(card.dataset.ticketId)",
+		"pendingStatus.set(ticketID, status)",
+		"heldCardPointers",
+		"pressedCardId",
+		"function dedupeTicketCard(",
+		"cardPointerDown || dragsInFlight > 0",
+		"sortableSetupPending",
+		"function flushPendingSortable(",
+		"function noteSortableSetupPending(",
 	} {
 		if !strings.Contains(js, want) {
 			t.Fatalf("app.js missing interaction contract %q", want)
@@ -158,6 +173,13 @@ func TestBoardInteractionAssetsKeepPreviewLocalAndMotionReduced(t *testing.T) {
 	}
 	if strings.Contains(js[previewStart:previewStart+previewEnd], "fetch(") {
 		t.Fatal("hover preview must use card data attributes without fetching")
+	}
+	vendor, err := embeddedFiles.ReadFile("static/vendor/sortable.min.js")
+	if err != nil {
+		t.Fatalf("read sortable: %v", err)
+	}
+	if !strings.Contains(string(vendor), "_onDrop:function(t){if(!this.el)return;") {
+		t.Fatal("sortable drop must no-op when its list element is gone")
 	}
 	refreshStart := strings.Index(js, "async function refreshBoard")
 	if refreshStart < 0 {

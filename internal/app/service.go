@@ -89,13 +89,62 @@ func (ExecSpawner) Start(_ context.Context, exe string, args []string, env []str
 	if len(env) > 0 {
 		cmd.Env = append(os.Environ(), env...)
 	}
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	if err := cmd.Start(); err != nil {
+	// Stdout/Stderr must be *os.File. A non-file writer (including io.Discard)
+	// is copied through a pipe the parent owns; when this short-lived process
+	// exits, the child's next log write gets SIGPIPE and the runtime kills it.
+	logFile := openDaemonLog(args)
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	fmt.Fprintf(logFile, "%s atlas home process starting\n", time.Now().Format(time.RFC3339))
+	err := cmd.Start()
+	if logFile != os.Stderr && logFile != os.Stdout {
+		_ = logFile.Close()
+	}
+	if err != nil {
 		return 0, err
 	}
 	go func() { _ = cmd.Wait() }()
 	return cmd.Process.Pid, nil
+}
+
+func openDaemonLog(args []string) *os.File {
+	stateDir := stateDirFromArgs(args)
+	if stateDir == "" {
+		return devNullFile()
+	}
+	dir := filepath.Join(stateDir, "logs")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return devNullFile()
+	}
+	path := filepath.Join(dir, "home.log")
+	if info, err := os.Stat(path); err == nil && info.Size() > 2<<20 {
+		_ = os.Rename(path, path+".1")
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return devNullFile()
+	}
+	return file
+}
+
+func stateDirFromArgs(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--state-dir" && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(args[i], "--state-dir=") {
+			return strings.TrimPrefix(args[i], "--state-dir=")
+		}
+	}
+	return ""
+}
+
+func devNullFile() *os.File {
+	file, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		return os.Stderr
+	}
+	return file
 }
 
 type NoopSpawner struct{}

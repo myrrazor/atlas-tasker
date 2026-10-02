@@ -92,6 +92,7 @@ func TestNestedInitRefusedAndReInitMessage(t *testing.T) {
 }
 
 func TestTicketCreateRequiresTypeAndActorResolution(t *testing.T) {
+	t.Setenv("TRACKER_ACTOR", "")
 	withTempWorkspace(t)
 	must := func(args ...string) string {
 		t.Helper()

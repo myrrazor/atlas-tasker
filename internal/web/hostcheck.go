@@ -23,7 +23,9 @@ func loopbackHostAllowed(got string, wantHost string, wantPort int) bool {
 	if !isLoopbackHost(host) {
 		return false
 	}
-	if !strings.EqualFold(host, wantHost) {
+	// Bind normalizes "localhost" to 127.0.0.1, so a browser Host of
+	// localhost must still reach a loopback listener. Foreign names do not.
+	if !(isLoopbackHost(wantHost) && isLoopbackHost(host)) && !strings.EqualFold(host, wantHost) {
 		return false
 	}
 	if port == "" {

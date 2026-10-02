@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -88,6 +89,8 @@ func PlanUninstall(ctx context.Context, opts Options) (Plan, error) {
 			ID: "package-manager", Kind: KindPackageManager, Detail: instr, Verified: true,
 		})
 		plan.Notes = append(plan.Notes, instr)
+	} else if receipt.InstallMethod == MethodSource || receipt.InstallMethod == MethodGoInstall {
+		plan.Notes = append(plan.Notes, fmt.Sprintf("%s installed the tracker executable at %s; uninstall will not delete it. Remove that file yourself if you no longer want it.", receipt.InstallMethod, receipt.BinaryPath))
 	} else {
 		plan.Actions = append(plan.Actions, PlanAction{
 			ID: "remove-executable", Kind: KindRemoveFile, Path: receipt.BinaryPath,
@@ -99,6 +102,11 @@ func PlanUninstall(ctx context.Context, opts Options) (Plan, error) {
 	plan.Digest = planDigest(plan)
 	plan.CanApply = plan.Status == StatusPreview && len(verifiedActions(plan)) > 0
 	if !plan.CanApply && plan.Refusal == "" {
+		if receipt.InstallMethod == MethodSource || receipt.InstallMethod == MethodGoInstall {
+			plan.Status = StatusSoftwareStillInstalled
+			plan.Refusal = "the tracker executable was installed from source or go install and was left in place"
+			return plan, nil
+		}
 		plan.Status = StatusRefused
 		plan.Refusal = "nothing verified to remove"
 	}
@@ -116,6 +124,11 @@ func Apply(ctx context.Context, opts Options, yes bool) (Result, error) {
 		return Result{}, apperr.New(apperr.CodeInvalidInput, "uninstall apply requires --yes")
 	}
 	if !plan.CanApply {
+		if plan.Status == StatusSoftwareStillInstalled {
+			result.Status = StatusSoftwareStillInstalled
+			result.Notes = append(result.Notes, plan.Refusal)
+			return result, nil
+		}
 		result.Status = StatusRefused
 		result.Notes = append(result.Notes, plan.Refusal)
 		return result, apperr.New(apperr.CodeConflict, plan.Refusal)
@@ -198,7 +211,7 @@ func Apply(ctx context.Context, opts Options, yes bool) (Result, error) {
 		result.Status = StatusRefused
 		return result, apperr.New(apperr.CodeConflict, "uninstall apply failed: "+result.Failed[0])
 	}
-	if receipt.packageManager() == MethodHomebrew {
+	if receipt.packageManager() == MethodHomebrew || receipt.InstallMethod == MethodSource || receipt.InstallMethod == MethodGoInstall {
 		if _, err := os.Lstat(receipt.BinaryPath); err == nil {
 			result.Status = StatusSoftwareStillInstalled
 			result.Notes = append(result.Notes, "software still installed")
@@ -495,7 +508,7 @@ func preservedList(stateDir string) []string {
 }
 
 func Pretty(plan Plan) string {
-	if plan.Refusal != "" && !plan.CanApply {
+	if plan.Refusal != "" && !plan.CanApply && plan.Status != StatusSoftwareStillInstalled {
 		return "uninstall preview: refused — " + plan.Refusal
 	}
 	var b strings.Builder
@@ -516,6 +529,17 @@ func Pretty(plan Plan) string {
 			b.WriteString(action.Detail)
 			b.WriteString("]")
 		}
+		b.WriteByte('\n')
+	}
+	for _, note := range plan.Notes {
+		if strings.TrimSpace(note) == "" {
+			continue
+		}
+		b.WriteString(note)
+		b.WriteByte('\n')
+	}
+	if plan.Status == StatusSoftwareStillInstalled && strings.TrimSpace(plan.Refusal) != "" {
+		b.WriteString(plan.Refusal)
 		b.WriteByte('\n')
 	}
 	b.WriteString("preserved: registry, backups, workspaces, unrelated client config\n")

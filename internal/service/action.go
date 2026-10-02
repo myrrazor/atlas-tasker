@@ -129,6 +129,10 @@ func (s *ActionService) newEvent(ctx context.Context, project string, at time.Ti
 }
 
 func (s *ActionService) commitMutation(ctx context.Context, purpose string, canonicalKind string, event contracts.Event, writeCanonical func(context.Context) error) error {
+	// A browser reload or tab close cancels the request context between the
+	// event append and the projection update, which leaves a pending journal
+	// and makes doctor fail. The mutation itself must finish either way.
+	ctx = context.WithoutCancel(ctx)
 	ctx = contextWithDefaultReplayMode(ctx)
 	if lockHeld(ctx) {
 		normalized, err := s.normalizeAppendOnlyEvent(ctx, event)

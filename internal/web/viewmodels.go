@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os/user"
@@ -37,6 +38,7 @@ type BoardPage struct {
 	Priority        string
 	Type            string
 	ActiveColumn    contracts.Status
+	ColumnExplicit  bool `json:"-"`
 	// rendered into the page for forms/fetch; never exposed via /api/board
 	CSRFToken string `json:"-"`
 	// submitted values of a rejected form, echoed back so typed content
@@ -60,6 +62,42 @@ type BoardPage struct {
 	SavedViews    []contracts.SavedView `json:"-"`
 	ShowArchived  bool                  `json:"-"`
 	Archived      []TicketCard          `json:"-"`
+	NotFound      bool                  `json:"-"`
+	SubmitID      string                `json:"-"`
+	LiveStamp     string                `json:"-"`
+}
+
+// CloseBoardPath is the board URL with the open ticket dropped and the
+// filters kept. Esc and the drawer close link both use it.
+func (p BoardPage) CloseBoardPath() string {
+	q := url.Values{}
+	if p.ProjectExplicit && strings.TrimSpace(p.Project) != "" {
+		q.Set("project", p.Project)
+	}
+	for _, item := range []struct{ key, value string }{
+		{"view", p.View},
+		{"assignee", p.Assignee},
+		{"reviewer", p.Reviewer},
+		{"label", p.Label},
+		{"q", p.Query},
+		{"priority", p.Priority},
+		{"type", p.Type},
+	} {
+		if strings.TrimSpace(item.value) != "" {
+			q.Set(item.key, item.value)
+		}
+	}
+	if p.ActiveColumn.IsValid() && strings.TrimSpace(string(p.ActiveColumn)) != "" && p.ColumnExplicit {
+		q.Set("column", string(p.ActiveColumn))
+	}
+	if p.ShowArchived {
+		q.Set("archived", "1")
+	}
+	encoded := q.Encode()
+	if encoded == "" {
+		return p.BoardPath
+	}
+	return p.BoardPath + "?" + encoded
 }
 
 type WelcomePage struct {
@@ -189,7 +227,8 @@ var boardStatuses = []contracts.Status{
 func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage, error) {
 	query := r.URL.Query()
 	activeColumn := contracts.Status(strings.TrimSpace(query.Get("column")))
-	if !activeColumn.IsValid() {
+	columnExplicit := activeColumn.IsValid()
+	if !columnExplicit {
 		activeColumn = contracts.StatusReady
 	}
 	home, boardPath, schedule, newTicket, prefix := s.navPaths()
@@ -216,12 +255,24 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 		Priority:        strings.TrimSpace(query.Get("priority")),
 		Type:            strings.TrimSpace(query.Get("type")),
 		ActiveColumn:    activeColumn,
-		CSRFToken:       s.cfg.CSRFToken,
+		ColumnExplicit:  columnExplicit,
+		CSRFToken:       s.csrfToken(),
 		Flash:           strings.TrimSpace(query.Get("flash")),
 		Error:           strings.TrimSpace(query.Get("error_flash")),
 		ShowNew:         query.Get("new") == "1",
 		ShowArchived:    query.Get("archived") == "1",
-		LocationName:    locationName(s.cfg.Location, s.cfg.Clock()),
+		LocationName:    locationName(s.location(), s.cfg.Clock()),
+		SubmitID:        randomToken(),
+	}
+	if page.ProjectExplicit && page.Project != "" && s.queries != nil && s.queries.Projects != nil {
+		if canon, ok := s.canonicalProject(ctx, page.Project); ok {
+			page.Project = canon
+		} else {
+			page.NotFound = true
+			page.Error = fmt.Sprintf("Project %s was not found.", page.Project)
+			page.BoardPath = firstNonEmpty(page.HomePath, "/board")
+			return page, nil
+		}
 	}
 	board, err := s.loadBoard(ctx, page)
 	if err != nil {
@@ -244,7 +295,12 @@ func (s *Server) buildBoardPage(ctx context.Context, r *http.Request) (BoardPage
 	if selected != "" {
 		detail, err := s.ticketDetail(ctx, selected)
 		if err != nil {
-			page.Error = err.Error()
+			if apperr.CodeOf(err) == apperr.CodeNotFound {
+				page.NotFound = true
+				page.Error = fmt.Sprintf("Ticket %s was not found.", selected)
+			} else {
+				page.Error = err.Error()
+			}
 		} else {
 			page.Detail = &detail
 		}
@@ -275,7 +331,7 @@ func (s *Server) buildWelcomePage(ctx context.Context, r *http.Request) (Welcome
 		Workspace:     s.cfg.Workspace,
 		Host:          s.cfg.Host,
 		Actor:         s.cfg.Actor,
-		CSRFToken:     s.cfg.CSRFToken,
+		CSRFToken:     s.csrfToken(),
 		ReadOnly:      s.cfg.ReadOnly,
 		HomePath:      home,
 		BoardPath:     board,
@@ -322,7 +378,7 @@ func (s *Server) buildSettingsPage() (SettingsPage, error) {
 		Workspace:     s.cfg.Workspace,
 		Host:          s.cfg.Host,
 		Actor:         s.cfg.Actor,
-		CSRFToken:     s.cfg.CSRFToken,
+		CSRFToken:     s.csrfToken(),
 		ReadOnly:      s.cfg.ReadOnly,
 		HomePath:      home,
 		BoardPath:     board,
@@ -593,7 +649,7 @@ func (s *Server) ticketDetail(ctx context.Context, ticketID string) (TicketDetai
 		CheckCount: len(view.Checks),
 	}
 	if view.Ticket.Schedule != nil {
-		local := view.Ticket.Schedule.At.In(s.cfg.Location)
+		local := view.Ticket.Schedule.At.In(s.location())
 		detail.ScheduleAtInput = local.Format("2006-01-02T15:04")
 		detail.ScheduleAtLabel = local.Format("Mon, Jan 2 · 15:04")
 	}

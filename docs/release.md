@@ -4,6 +4,8 @@ The [latest stable release](https://github.com/myrrazor/atlas-tasker/releases/la
 
 The v1.17.0 cycle uses [public release gates](release/public-release-gates.md) as the release process. [Local and hosted v1.17.0 evidence](release/v1.17.0-release-evidence.md) records the checks and source commits. Publication results also belong on the [v1.17.0 GitHub release](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.0) so tags remain immutable. Historical v1.16 evidence stays in [v1.16.0-release-evidence.md](release/v1.16.0-release-evidence.md).
 
+The compatible v1.17.1 stability candidate is tracked in [v1.17.1 release evidence](release/v1.17.1-release-evidence.md). It remains unreleased until final local and hosted proof passes.
+
 ## Release States
 
 - Source build: proves the local checkout can compile.

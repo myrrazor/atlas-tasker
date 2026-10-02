@@ -82,6 +82,54 @@ func TestCompactBoardTruncatesAndMarksPagination(t *testing.T) {
 	if !strings.Contains(md, "2 of 5 tickets") && !strings.Contains(md, "showing 2") {
 		t.Fatalf("markdown should indicate truncation:\n%s", md)
 	}
+	if !strings.Contains(md, "+3 more") {
+		t.Fatalf("markdown should count unread cards:\n%s", md)
+	}
+	if !strings.Contains(md, "use cursor to page") || strings.Contains(md, "named project") {
+		t.Fatalf("named project should page by cursor only:\n%s", md)
+	}
+	unnamed := NewCompactBoard("", columns, 2, nil)
+	unnamedMD := CompactBoardMarkdown(unnamed)
+	if !strings.Contains(unnamedMD, "use cursor or a named project to page") {
+		t.Fatalf("unnamed board should mention a named project:\n%s", unnamedMD)
+	}
+}
+
+func TestCompactBoardCursorPagesCountOnlyUnreadCards(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		shown     int
+		remaining int
+		wantMore  string
+	}{
+		{name: "first", shown: 2, remaining: 3, wantMore: "+3 more"},
+		{name: "middle", shown: 2, remaining: 1, wantMore: "+1 more"},
+		{name: "last", shown: 1, remaining: 0},
+		{name: "finished", shown: 0, remaining: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cards := make([]contracts.TicketSnapshot, tc.shown)
+			for i := range cards {
+				cards[i] = contracts.TicketSnapshot{ID: "APP-" + string(rune('1'+i)), Title: "Card", Status: contracts.StatusReady}
+			}
+			board := NewCompactBoard("APP", map[contracts.Status][]contracts.TicketSnapshot{contracts.StatusReady: cards}, 2, nil)
+			RestoreColumnTotals(&board, map[string]int{"ready": 5}, map[string]int{"ready": tc.remaining})
+			if board.TotalCards != 5 || board.ShownCards != tc.shown {
+				t.Fatalf("lost page totals: %#v", board)
+			}
+			md := CompactBoardMarkdown(board)
+			if tc.wantMore != "" {
+				if !strings.Contains(md, tc.wantMore) || strings.Contains(md, "end of board") || strings.Contains(md, "named project") {
+					t.Fatalf("wrong continuation on %s page:\n%s", tc.name, md)
+				}
+				if !strings.Contains(md, "use cursor to page") {
+					t.Fatalf("named project should page by cursor only:\n%s", md)
+				}
+			} else if strings.Contains(md, " more") || !strings.Contains(md, "end of board") {
+				t.Fatalf("exhausted page promises more cards:\n%s", md)
+			}
+		})
+	}
 }
 
 func TestCompactBoardMarkdownEscapesUntrustedText(t *testing.T) {

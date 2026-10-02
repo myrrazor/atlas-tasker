@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/myrrazor/atlas-tasker/internal/app"
 )
 
 // The wrong-CWD footgun: running a read command in a directory that was never
@@ -78,18 +80,11 @@ func TestSubdirectoryOfWorkspacePointsAtTheRealRoot(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(root) })
 
 	out, cliErr := runCLI(t, "board")
-	if cliErr == nil {
-		t.Fatalf("expected board in a workspace subdirectory to fail, got output:\n%s", out)
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		resolvedRoot = root
-	}
-	if !strings.Contains(cliErr.Error(), resolvedRoot) {
-		t.Fatalf("error should name the workspace root %s so the user knows where to cd, got: %v", resolvedRoot, cliErr)
+	if cliErr != nil {
+		t.Fatalf("board in a workspace subdirectory should open the parent board: %v\n%s", cliErr, out)
 	}
 	if _, statErr := os.Stat(filepath.Join(sub, ".tracker")); !os.IsNotExist(statErr) {
-		t.Fatalf("a refused read must not scaffold .tracker in the subdirectory (stat err: %v)", statErr)
+		t.Fatalf("opening the parent board must not scaffold .tracker in the subdirectory (stat err: %v)", statErr)
 	}
 }
 
@@ -102,6 +97,91 @@ func TestInitStillBootstrapsAFreshDirectory(t *testing.T) {
 	}
 	if _, err := runCLI(t, "board"); err != nil {
 		t.Fatalf("board right after init should work: %v", err)
+	}
+}
+
+func TestInvalidFirstTicketDoesNotBootstrapWorkspace(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		env   string
+		flags []string
+		want  string
+	}{
+		{name: "missing actor", want: "actor is required"},
+		{name: "invalid environment actor", env: "agent:", want: "invalid TRACKER_ACTOR"},
+		{name: "invalid explicit actor", flags: []string{"--actor", "agent:"}, want: "invalid actor"},
+		{name: "invalid type", env: "human:owner", flags: []string{"--type", "unknown"}, want: "invalid ticket type"},
+		{name: "missing type", env: "human:owner", flags: []string{"--type", ""}, want: "--type is required"},
+		{name: "invalid status", env: "human:owner", flags: []string{"--status", "unknown"}, want: "invalid status"},
+		{name: "terminal status", env: "human:owner", flags: []string{"--status", "done"}, want: "not allowed on ticket create"},
+		{name: "invalid priority", env: "human:owner", flags: []string{"--priority", "urgent"}, want: "invalid priority"},
+		{name: "invalid assignee", env: "human:owner", flags: []string{"--assignee", "agent:"}, want: "invalid assignee actor"},
+		{name: "invalid reviewer", env: "human:owner", flags: []string{"--reviewer", "human:"}, want: "invalid reviewer actor"},
+		{name: "invalid project", env: "human:owner", flags: []string{"--project", "../APP"}, want: "project key must match"},
+		{name: "empty project", env: "human:owner", flags: []string{"--project", ""}, want: "project key must match"},
+		{name: "empty title", env: "human:owner", flags: []string{"--title", " \t"}, want: "title is required"},
+		{name: "invalid template name", env: "human:owner", flags: []string{"--template", "../task"}, want: "template name must match"},
+		{name: "unknown template", env: "human:owner", flags: []string{"--template", "missing-template"}, want: "file does not exist"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withTempWorkspace(t)
+			t.Setenv("TRACKER_ACTOR", tc.env)
+			state := filepath.Join(os.Getenv("HOME"), "state")
+			registry := filepath.Join(state, "registry.json")
+			before := []byte("{\"format\":\"atlas_workspace_registry_v2\",\"workspaces\":{}}\n")
+			if err := os.WriteFile(registry, before, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			opened := 0
+			override := appOptionsOverride
+			appOptionsOverride = func(opts *app.Options) {
+				opened++
+				override(opts)
+			}
+			args := []string{"ticket", "create", "--project", "APP", "--title", "First ticket", "--type", "task"}
+			out, err := runCLI(t, append(args, tc.flags...)...)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q, got %v\n%s", tc.want, err, out)
+			}
+			entries, err := os.ReadDir(".")
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("invalid ticket created workspace files: %v, %v", entries, err)
+			}
+			after, err := os.ReadFile(registry)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatalf("invalid ticket changed registry: %v", err)
+			}
+			if opened != 0 {
+				t.Fatalf("invalid ticket opened machine app %d times; Home must not start", opened)
+			}
+		})
+	}
+}
+
+func TestFirstTicketBootstrapPreservesValidInputsAndTemplates(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		env   string
+		flags []string
+		want  string
+	}{
+		{name: "explicit actor", flags: []string{"--type", "bug", "--actor", "human:owner"}, want: `"type": "bug"`},
+		{name: "environment actor", env: "human:owner", flags: []string{"--type", "task"}, want: `"type": "task"`},
+		{name: "built-in template", env: "human:owner", flags: []string{"--template", "design"}, want: `"skill_hint": "design"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withTempWorkspace(t)
+			t.Setenv("TRACKER_ACTOR", tc.env)
+			args := []string{"ticket", "create", "--project", "APP", "--title", "First ticket", "--json"}
+			out, err := runCLI(t, append(args, tc.flags...)...)
+			if err != nil || !strings.Contains(out, `"id": "APP-1"`) || !strings.Contains(out, tc.want) {
+				t.Fatalf("valid first create failed: %v\n%s", err, out)
+			}
+			out, err = runCLI(t, "ticket", "view", "APP-1", "--json")
+			if err != nil || !strings.Contains(out, tc.want) {
+				t.Fatalf("created ticket did not retain its fields: %v\n%s", err, out)
+			}
+		})
 	}
 }
 

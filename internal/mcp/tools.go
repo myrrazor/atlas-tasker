@@ -3,8 +3,10 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 	"github.com/myrrazor/atlas-tasker/internal/contracts"
@@ -36,7 +38,7 @@ func ToolSpecs() []ToolSpec {
 		readTool("atlas.context", "Read workspace identity, managed-mode policy, assigned work, and backup health.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"project": stringProp("Optional project key."), "actor": stringProp("Optional Atlas actor for this integration.")})), "QueryService.ManagedModeView", contextTool),
 		readTool("atlas.status", "Read a fresh workspace, project, ticket, agent, or run status with compact Markdown. Use format=chat when answering in Discord, Grokbot, or another ANSI chat stream.", readProfiles, objectSchema(nil, mergeProps(commonReadProps(), map[string]any{"scope": stringProp("Optional scope: workspace, project, ticket, agent, or run."), "project": stringProp("Optional project key."), "ticket_id": stringProp("Optional ticket ID for ticket scope."), "agent_id": stringProp("Optional agent ID for agent scope."), "run_id": stringProp("Optional run ID for run scope."), "actor": stringProp("Optional Atlas actor."), "format": stringProp("Presentation: markdown (default, ANSI-free) or chat (Discord/Grokbot paste-ready ```ansi block).")})), "QueryService.Board", wrapStatusTool),
 		readTool("atlas.backup.status", "Read automatic backup health without target URLs, credentials, or mutation.", readProfiles, objectSchema(nil, map[string]any{}), "QueryService.AutoBackupStatus", backupStatusTool),
-		readTool("atlas.board", "Read the board grouped by status. Use format=chat when answering in Discord, Grokbot, or another ANSI chat stream.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_status", "Optional per-status cursors keyed by Atlas status."), map[string]any{"project": stringProp("Optional project key."), "assignee": stringProp("Optional assignee actor."), "type": stringProp("Optional ticket type."), "format": stringProp("Presentation: markdown (default, ANSI-free) or chat (Discord/Grokbot paste-ready ```ansi block).")})), "QueryService.Board", boardTool),
+		readTool("atlas.board", "Read the board grouped by status. The default page is 10 cards per column; next_cursor_by_status pages the rest. Use format=chat when answering in Discord, Grokbot, or another ANSI chat stream.", readProfiles, objectSchema(nil, mergeProps(groupedReadProps("cursor_by_status", "Optional per-status cursors keyed by Atlas status."), map[string]any{"project": stringProp("Optional project key."), "assignee": stringProp("Optional assignee actor."), "type": stringProp("Optional ticket type."), "format": stringProp("Presentation: markdown (default, ANSI-free), chat (Discord/Grokbot paste-ready ```ansi block), or html (self-contained board fragment).")})), "QueryService.Board", boardTool),
 		readTool("atlas.ticket.view", "Read one ticket detail view.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID.")}), "QueryService.TicketDetail", ticketViewTool),
 		readTool("atlas.ticket.history", "Read ticket event history.", readProfiles, objectSchema([]string{"ticket_id"}, mergeProps(commonReadProps(), map[string]any{"ticket_id": stringProp("Ticket ID.")})), "QueryService.History", ticketHistoryTool),
 		readTool("atlas.ticket.inspect", "Inspect a ticket, policy, links, and git context.", readProfiles, objectSchema([]string{"ticket_id"}, map[string]any{"ticket_id": stringProp("Ticket ID."), "actor": stringProp("Optional actor for policy context.")}), "QueryService.InspectTicket", ticketInspectTool),
@@ -311,19 +313,133 @@ func searchTool(tc ToolContext, args map[string]any) (any, error) {
 	return paginateSlice(items, args, tc.Server.Options.MaxItems, tc.Server.Options.MaxItems), nil
 }
 
+const defaultBoardPageLimit = 10
+
 func boardTool(tc ToolContext, args map[string]any) (any, error) {
+	project := strings.TrimSpace(stringArg(args, "project"))
+	if project != "" {
+		projects, err := listProjectRefs(tc)
+		if err != nil {
+			return nil, err
+		}
+		ref, keys, ok := resolveNamedProject(projects, project)
+		if !ok {
+			return nil, apperr.New(apperr.CodeNotFound, fmt.Sprintf("unknown project %q; known projects: %s", project, strings.Join(keys, ", ")))
+		}
+		project = ref.Key
+	}
+	if _, ok := args["limit"]; ok && args["limit"] != nil && intArg(args, "limit", 0) <= 0 {
+		return nil, apperr.New(apperr.CodeInvalidInput, "limit must be a positive integer")
+	}
+	if err := validateBoardCursors(args); err != nil {
+		return nil, err
+	}
+	ticketType := contracts.TicketType(strings.TrimSpace(stringArg(args, "type")))
+	if ticketType != "" && !ticketType.IsValid() {
+		return nil, apperr.New(apperr.CodeInvalidInput, "invalid ticket type: "+string(ticketType))
+	}
 	view, err := tc.Server.Workspace.Queries.Board(tc.Context, contracts.BoardQueryOptions{
-		Project:  stringArg(args, "project"),
+		Project:  project,
 		Assignee: contracts.Actor(stringArg(args, "assignee")),
-		Type:     contracts.TicketType(stringArg(args, "type")),
+		Type:     ticketType,
 	})
 	if err != nil {
 		return nil, err
 	}
-	paged := paginateBoard(view, args, tc.Server.Options.MaxItems)
+	full := cloneBoardColumns(view.Board.Columns)
+	requested := boardCallLimit(args, tc.Server.Options.MaxItems)
+	limit := requested
+	payload, err := assembleBoardPayload(tc, args, full, limit)
+	if err != nil {
+		return nil, err
+	}
+	if !boardPayloadFits(payload, tc.Server.Options) {
+		for _, smaller := range boardShrinkLimits(limit) {
+			limit = smaller
+			payload, err = assembleBoardPayload(tc, args, full, limit)
+			if err != nil {
+				return nil, err
+			}
+			if boardPayloadFits(payload, tc.Server.Options) {
+				break
+			}
+		}
+	}
+	if !boardPayloadFits(payload, tc.Server.Options) {
+		if board, ok := payload["board"].(render.CompactBoard); ok {
+			clipBoardText(&board, 160)
+			if err := finishBoardPayload(tc, args, payload, board); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if limit < requested {
+		if board, ok := payload["board"].(render.CompactBoard); ok {
+			board.Notes = append(board.Notes, fmt.Sprintf("limit reduced to %d to fit the result cap", limit))
+			if err := finishBoardPayload(tc, args, payload, board); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return payload, nil
+}
+
+func boardShrinkLimits(limit int) []int {
+	ladder := []int{40, 30, 20, 15, defaultBoardPageLimit, 5, 2, 1}
+	out := make([]int, 0, len(ladder))
+	for _, smaller := range ladder {
+		if smaller > 0 && smaller < limit {
+			out = append(out, smaller)
+		}
+	}
+	return out
+}
+
+func boardCallLimit(args map[string]any, maxItems int) int {
+	fallback := defaultBoardPageLimit
+	if maxItems > 0 && fallback > maxItems {
+		fallback = maxItems
+	}
+	if _, ok := args["limit"]; !ok || args["limit"] == nil {
+		return fallback
+	}
+	limit := intArg(args, "limit", fallback)
+	if limit <= 0 {
+		limit = fallback
+	}
+	if maxItems > 0 && limit > maxItems {
+		limit = maxItems
+	}
+	return limit
+}
+
+func assembleBoardPayload(tc ToolContext, args map[string]any, full map[contracts.Status][]contracts.TicketSnapshot, limit int) (map[string]any, error) {
+	pagedArgs := make(map[string]any, len(args)+1)
+	for key, value := range args {
+		pagedArgs[key] = value
+	}
+	pagedArgs["limit"] = limit
+	view := service.BoardViewModel{Board: contracts.BoardView{Columns: cloneBoardColumns(full)}}
+	paged := paginateBoard(view, pagedArgs, tc.Server.Options.MaxItems)
 	cursors, _ := paged["next_cursor_by_status"].(map[string]string)
+	totals := map[string]int{}
+	remaining := map[string]int{}
+	for status, tickets := range full {
+		totals[string(status)] = len(tickets)
+	}
+	for status, page := range paged["pages_by_status"].(map[string]map[string]any) {
+		remaining[status], _ = page["remaining"].(int)
+	}
+	board := render.NewCompactBoard(stringArg(args, "project"), view.Board.Columns, limit, cursors)
+	render.RestoreColumnTotals(&board, totals, remaining)
+	if err := finishBoardPayload(tc, args, paged, board); err != nil {
+		return nil, err
+	}
+	return paged, nil
+}
+
+func finishBoardPayload(tc ToolContext, args map[string]any, paged map[string]any, board render.CompactBoard) error {
 	project := stringArg(args, "project")
-	board := render.NewCompactBoard(project, view.Board.Columns, tc.Server.Options.MaxItems, cursors)
 	if health, err := tc.Server.Workspace.Queries.BackupHealth(tc.Context); err == nil {
 		render.AttachBackup(&board, backupSignalFromHealth(health))
 	}
@@ -332,10 +448,37 @@ func boardTool(tc ToolContext, args map[string]any) (any, error) {
 	paged["markdown"] = render.CompactBoardMarkdown(board)
 	paged["mcp_app"] = newBoardApp(board)
 	paged["board_url"] = board.BoardURL
-	if err := attachChatPresentation(paged, args, board); err != nil {
-		return nil, err
+	return attachChatPresentation(paged, args, board)
+}
+
+func clipBoardText(board *render.CompactBoard, limit int) {
+	if board == nil || limit < 1 {
+		return
 	}
-	return paged, nil
+	for i := range board.Columns {
+		for j := range board.Columns[i].Cards {
+			card := &board.Columns[i].Cards[j]
+			card.Description = clipText(card.Description, limit)
+			if len(card.Acceptance) > 3 {
+				card.Acceptance = card.Acceptance[:3]
+			}
+			for k := range card.Acceptance {
+				card.Acceptance[k] = clipText(card.Acceptance[k], limit)
+			}
+		}
+	}
+}
+
+func clipText(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= limit {
+		return value
+	}
+	cut := limit
+	for cut > 0 && cut < len(value) && !utf8.RuneStart(value[cut]) {
+		cut--
+	}
+	return strings.TrimSpace(value[:cut]) + "…"
 }
 
 func wrapStatusTool(tc ToolContext, args map[string]any) (any, error) {
@@ -1123,19 +1266,118 @@ func scheduleQueryArgs(args map[string]any) (service.ScheduleQuery, error) {
 	return query, nil
 }
 
+const boardCursorDone = "done"
+
+func validateBoardCursors(args map[string]any) error {
+	raw, ok := args["cursor_by_status"]
+	if !ok || raw == nil {
+		return nil
+	}
+	check := func(status, cursor string) error {
+		if !contracts.Status(status).IsValid() {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("unknown cursor status %q", status))
+		}
+		if err := validBoardCursor(cursor); err != nil {
+			return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid cursor for %s: %s", status, err.Error()))
+		}
+		return nil
+	}
+	switch value := raw.(type) {
+	case map[string]string:
+		for status, cursor := range value {
+			if err := check(status, cursor); err != nil {
+				return err
+			}
+		}
+	case map[string]any:
+		for status, item := range value {
+			text, ok := item.(string)
+			if !ok {
+				return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("invalid cursor for %s", status))
+			}
+			if err := check(status, text); err != nil {
+				return err
+			}
+		}
+	default:
+		return apperr.New(apperr.CodeInvalidInput, "cursor_by_status must be an object")
+	}
+	return nil
+}
+
+func validBoardCursor(cursor string) error {
+	cursor = strings.TrimSpace(cursor)
+	if cursor == "" || cursor == boardCursorDone {
+		return nil
+	}
+	n, err := strconv.Atoi(cursor)
+	if err != nil || n < 0 {
+		return fmt.Errorf("cursor must be a non-negative integer or %q", boardCursorDone)
+	}
+	return nil
+}
+
 func paginateBoard(view service.BoardViewModel, args map[string]any, maxItems int) map[string]any {
 	total := 0
 	cursors := stringMapArg(args, "cursor_by_status")
 	pagesByStatus := map[string]map[string]any{}
 	nextByStatus := map[string]string{}
+	hasMore := false
 	for status, tickets := range view.Board.Columns {
-		page := paginateSliceWithCursor(tickets, cursors[string(status)], args, maxItems, maxItems)
-		view.Board.Columns[status] = page.Items.([]contracts.TicketSnapshot)
-		total += page.Total
-		pagesByStatus[string(status)] = map[string]any{"total": page.Total, "next_cursor": page.NextCursor}
-		if page.NextCursor != "" {
-			nextByStatus[string(status)] = page.NextCursor
+		incoming := cursors[string(status)]
+		var page pageResult
+		next := ""
+		remaining := 0
+		if incoming == boardCursorDone {
+			columnTotal := len(tickets)
+			if tickets == nil {
+				tickets = []contracts.TicketSnapshot{}
+			}
+			view.Board.Columns[status] = tickets[:0]
+			page = pageResult{Items: view.Board.Columns[status], Total: columnTotal, NextCursor: boardCursorDone}
+			next = boardCursorDone
+		} else {
+			page = paginateSliceWithCursor(tickets, incoming, args, maxItems, maxItems)
+			view.Board.Columns[status] = page.Items.([]contracts.TicketSnapshot)
+			if page.NextCursor != "" {
+				next = page.NextCursor
+				remaining = page.Total - parseCursor(next)
+				hasMore = true
+			} else {
+				// An omitted cursor means page 1. A finished column has to
+				// stay finished even if it fit on that first page.
+				next = boardCursorDone
+			}
 		}
+		total += page.Total
+		pagesByStatus[string(status)] = map[string]any{"total": page.Total, "remaining": remaining, "next_cursor": next}
+		if next != "" {
+			nextByStatus[string(status)] = next
+		}
+	}
+	// A column that already fit has no cursor. Echoing only the cursors that
+	// continue would otherwise treat that omission as page 1 and send the
+	// same cards again. Mark it done while some other column still pages.
+	// A board that fits entirely keeps an empty cursor map.
+	if hasMore {
+		for status := range view.Board.Columns {
+			if _, ok := nextByStatus[string(status)]; ok {
+				continue
+			}
+			nextByStatus[string(status)] = boardCursorDone
+			if page, ok := pagesByStatus[string(status)]; ok {
+				page["next_cursor"] = boardCursorDone
+			}
+		}
+	}
+	if !hasMore {
+		for key, page := range pagesByStatus {
+			if page["next_cursor"] == boardCursorDone {
+				page["next_cursor"] = ""
+			}
+			pagesByStatus[key] = page
+		}
+		nextByStatus = map[string]string{}
 	}
 	return map[string]any{"board": view, "total": total, "next_cursor_by_status": nextByStatus, "pages_by_status": pagesByStatus}
 }

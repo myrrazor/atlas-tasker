@@ -1,6 +1,33 @@
 {{define "revInput"}}<input type="hidden" name="expected_revision" value="{{ticketRevision .}}">{{end}}
 
+{{define "commentThread"}}
+<div class="comment-thread" data-comment-thread>
+{{$d := .Detail.View}}
+{{range $d.CommentEntries}}
+  <div class="comment-block">
+    <div class="comment-meta">{{.Actor}} <b>{{actorInitials .Actor}}</b> · {{formatTime .Timestamp}}</div>
+    <pre class="comment">{{.Body}}</pre>
+  </div>
+{{else}}<p class="muted">{{t "board.section.no_comments"}}</p>{{end}}
+</div>
+{{end}}
+
+{{define "historyList"}}
+<ol class="history" data-history-list>
+  {{range .Detail.Recent}}<li><b>{{.Type}}</b> {{t "common.by"}} {{.Actor}} <span>{{formatTime .Timestamp}}</span></li>{{else}}<li>{{t "board.section.no_history"}}</li>{{end}}
+</ol>
+{{end}}
+
 {{define "boardContent"}}
+{{if .NotFound}}
+<main class="app-shell">
+  <section class="not-found" role="alert">
+    <h1>Not found</h1>
+    <p>{{.Error}}</p>
+    <p><a class="primary-action" href="{{.BoardPath}}">Back to the board</a></p>
+  </section>
+</main>
+{{else}}
 <main class="app-shell{{if or .Detail .ShowNew}} has-drawer{{end}}">
   <section class="board-shell" aria-label="{{t "board.aria"}}">
     {{if .Flash}}<div class="flash" role="status">{{.Flash}}</div>{{end}}
@@ -196,6 +223,7 @@
   {{end}}
 </main>
 {{end}}
+{{end}}
 
 {{define "column"}}
 <article class="column {{if .ActiveMobile}}is-active-mobile{{end}}" data-status="{{.Status}}">
@@ -221,6 +249,7 @@
   data-revision="{{ticketRevision .Ticket}}"
   data-title="{{.Ticket.Title}}"
   data-status="{{.BoardStatus}}"
+  data-stored-status="{{.Ticket.Status}}"
   data-status-label="{{t (statusMessageKey .BoardStatus)}}"
   data-assignee="{{.Ticket.Assignee}}"
   data-reviewer="{{.EffectiveReviewer}}"
@@ -255,13 +284,14 @@
     <span class="eyeline">{{t "board.new.eyeline"}}</span>
     <h1 tabindex="-1">{{t "board.new.title"}}</h1>
   </div>
-  <a href="{{.BoardPath}}?ticket=" class="close-button" aria-label="{{t "common.close"}}">×</a>
+  <a href="{{.CloseBoardPath}}" class="close-button" aria-label="{{t "common.close"}}">×</a>
 </div>
-<form class="drawer-form" method="post" action="{{.ActionPrefix}}/actions/tickets/create">
+<form class="drawer-form" method="post" action="{{.ActionPrefix}}/actions/tickets/create" autocomplete="off">
+  {{$cf := .FormFor "create"}}
   <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+  <input type="hidden" name="submit_id" value="{{formValue $cf "submit_id" .SubmitID}}">
   <input type="hidden" name="actor" value="{{.Actor}}">
   {{if .Project}}<input type="hidden" name="return_project" value="{{.Project}}">{{end}}
-  {{$cf := .FormFor "create"}}
   {{$ctype := formValue $cf "type" "task"}}
   {{$cprio := formValue $cf "priority" "medium"}}
   <label>{{t "board.field.project"}} <input name="project" value="{{formValue $cf "project" .Project}}" required></label>
@@ -304,7 +334,7 @@
     <p class="drawer-meta"><span class="status-pill st-{{statusKey $d.BoardStatus}}">{{t (statusMessageKey $d.BoardStatus)}}</span>{{if $d.Ticket.Assignee}} <span class="meta-pair">{{t "board.field.assignee"}} <b>{{$d.Ticket.Assignee}}</b></span>{{end}}{{if $d.EffectiveReviewer}} <span class="meta-pair">{{t "board.field.reviewer"}} <b>{{$d.EffectiveReviewer}}</b></span>{{end}}{{if $d.Ticket.Lease.Actor}} <span class="meta-pair">Claimed <b>{{$d.Ticket.Lease.Actor}}</b></span>{{end}}{{if $d.Ticket.Archived}} <span class="mode-chip readonly">Archived</span>{{end}}</p>
     {{if $d.Ticket.Labels}}<div class="drawer-labels" aria-label="{{t "board.field.labels"}}">{{range $d.Ticket.Labels}}<span>{{.}}</span>{{end}}</div>{{end}}
   </div>
-  <a href="{{.BoardPath}}?ticket=" class="close-button" aria-label="{{t "common.close"}}">×</a>
+  <a href="{{.CloseBoardPath}}" class="close-button" aria-label="{{t "common.close"}}">×</a>
 </div>
 
 {{range .Detail.Warnings}}
@@ -323,13 +353,13 @@
 
 <section class="tab-panel {{if eq $activeTab "overview"}}active{{end}}" id="tab-overview">
   <h2>{{t "board.section.description"}}</h2>
-  <pre class="prose">{{if $d.Ticket.Description}}{{$d.Ticket.Description}}{{else}}{{t "board.section.no_description"}}{{end}}</pre>
-  {{if $d.Ticket.Notes}}
-  <h2>Notes</h2>
-  <pre class="prose">{{$d.Ticket.Notes}}</pre>
-  {{end}}
-  <h2>{{t "board.section.acceptance"}}{{if $d.Ticket.AcceptanceCriteria}} <span>{{len $d.Ticket.AcceptanceCriteria}}</span>{{end}}</h2>
-  <ul class="check-list">
+  <pre class="prose" data-drawer-description>{{if $d.Ticket.Description}}{{$d.Ticket.Description}}{{else}}{{t "board.section.no_description"}}{{end}}</pre>
+  <div data-drawer-notes-section {{if not $d.Ticket.Notes}}hidden{{end}}>
+    <h2>Notes</h2>
+    <pre class="prose" data-drawer-notes>{{$d.Ticket.Notes}}</pre>
+  </div>
+  <h2>{{t "board.section.acceptance"}} <span data-drawer-acceptance-count {{if not $d.Ticket.AcceptanceCriteria}}hidden{{end}}>{{len $d.Ticket.AcceptanceCriteria}}</span></h2>
+  <ul class="check-list" data-drawer-acceptance data-empty-label="{{t "board.section.no_acceptance"}}">
     {{range $d.Ticket.AcceptanceCriteria}}<li>{{.}}</li>{{else}}<li>{{t "board.section.no_acceptance"}}</li>{{end}}
   </ul>
   {{$sf := $.FormFor "schedule"}}
@@ -409,12 +439,7 @@
 
 <section class="tab-panel {{if eq $activeTab "activity"}}active{{end}}" id="tab-activity">
   <h2>{{t "board.section.comments"}}</h2>
-  {{range $d.CommentEntries}}
-    <div class="comment-block">
-      <div class="comment-meta">{{.Actor}} <b>{{actorInitials .Actor}}</b> · {{formatTime .Timestamp}}</div>
-      <pre class="comment">{{.Body}}</pre>
-    </div>
-  {{else}}<p class="muted">{{t "board.section.no_comments"}}</p>{{end}}
+  {{template "commentThread" .}}
   <form class="drawer-form compact" method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/comment">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">
@@ -424,9 +449,7 @@
     <button type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.section.add_comment"}}</button>
   </form>
   <h2>{{t "board.section.recent_history"}}</h2>
-  <ol class="history">
-    {{range $.Detail.Recent}}<li><b>{{.Type}}</b> {{t "common.by"}} {{.Actor}} <span>{{formatTime .Timestamp}}</span></li>{{else}}<li>{{t "board.section.no_history"}}</li>{{end}}
-  </ol>
+  {{template "historyList" .}}
 </section>
 
 <section class="tab-panel" id="tab-gates">
@@ -484,7 +507,16 @@
   {{end}}
 </section>
 
+{{template "drawerActions" .}}
+{{end}}
+
+{{define "drawerActions"}}
+{{$d := .Detail.View}}
 <div class="drawer-actions">
+  {{$st := statusKey $d.BoardStatus}}
+  {{$review := printf "%s" $d.Ticket.ReviewState}}
+  {{$mode := printf "%s" $d.EffectivePolicy.CompletionMode}}
+  {{if eq $st "in-progress"}}
   <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/request-review">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">
@@ -492,6 +524,8 @@
     <input type="hidden" name="reason" value="web request review">
     <button class="primary-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.action.request_review"}}</button>
   </form>
+  {{end}}
+  {{if eq $st "in-review"}}
   <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/approve">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">
@@ -499,6 +533,8 @@
     <input type="hidden" name="reason" value="web approve">
     <button class="approve-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.action.approve"}}</button>
   </form>
+  {{end}}
+  {{if or (and (eq $st "in-progress") (eq $mode "open")) (and (eq $st "in-review") (eq $review "approved"))}}
   <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/complete">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">
@@ -506,6 +542,7 @@
     <input type="hidden" name="reason" value="web complete">
     <button class="complete-action" type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.action.complete"}}</button>
   </form>
+  {{end}}
   <form method="post" action="{{.ActionPrefix}}/actions/tickets/{{$d.Ticket.ID}}/claim">
     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
     <input type="hidden" name="actor" value="{{$.Actor}}">
@@ -528,14 +565,15 @@
       <input type="hidden" name="actor" value="{{$.Actor}}">
       {{template "revInput" $d.Ticket}}
       <input type="hidden" name="reason" value="web move">
+      {{$move := printf "%s" $d.BoardStatus}}
       <select name="status" aria-label="New status">
-        <option value="backlog">{{t "board.column.backlog"}}</option>
-        <option value="ready">{{t "board.column.ready"}}</option>
-        <option value="in_progress">{{t "board.column.in_progress"}}</option>
-        <option value="in_review">{{t "board.column.in_review"}}</option>
-        <option value="blocked">{{t "board.column.blocked"}}</option>
-        <option value="done">{{t "board.column.done"}}</option>
-        <option value="canceled">{{t "board.column.canceled"}}</option>
+        <option value="backlog" {{if eq $move "backlog"}}selected{{end}}>{{t "board.column.backlog"}}</option>
+        <option value="ready" {{if eq $move "ready"}}selected{{end}}>{{t "board.column.ready"}}</option>
+        <option value="in_progress" {{if eq $move "in_progress"}}selected{{end}}>{{t "board.column.in_progress"}}</option>
+        <option value="in_review" {{if eq $move "in_review"}}selected{{end}}>{{t "board.column.in_review"}}</option>
+        <option value="blocked" {{if eq $move "blocked"}}selected{{end}}>{{t "board.column.blocked"}}</option>
+        <option value="done" {{if eq $move "done"}}selected{{end}}>{{t "board.column.done"}}</option>
+        <option value="canceled" {{if eq $move "canceled"}}selected{{end}}>{{t "board.column.canceled"}}</option>
       </select>
       <button type="submit" {{if $.ReadOnly}}disabled{{end}}>{{t "board.action.move"}}</button>
     </form>

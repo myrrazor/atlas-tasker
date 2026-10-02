@@ -36,6 +36,7 @@ type CompactColumn struct {
 	Label     string        `json:"label"`
 	Total     int           `json:"total"`
 	Shown     int           `json:"shown"`
+	Remaining int           `json:"remaining"`
 	Truncated bool          `json:"truncated"`
 	Cards     []CompactCard `json:"cards"`
 }
@@ -147,6 +148,7 @@ func NewCompactBoard(project string, columns map[contracts.Status][]contracts.Ti
 			board.Truncated = true
 		}
 		col.Shown = len(shown)
+		col.Remaining = col.Total - col.Shown
 		for _, ticket := range shown {
 			col.Cards = append(col.Cards, compactCardFromTicket(ticket))
 		}
@@ -155,10 +157,63 @@ func NewCompactBoard(project string, columns map[contracts.Status][]contracts.Ti
 		board.ShownCards += col.Shown
 	}
 	if board.Truncated {
-		board.Notes = append(board.Notes, fmt.Sprintf("showing %d of %d cards; use cursor or a named project to page", board.ShownCards, board.TotalCards))
+		board.Notes = append(board.Notes, fmt.Sprintf("showing %d of %d cards; %s", board.ShownCards, board.TotalCards, pagingHint(board.Project, true)))
 	}
 	deriveBoardSignals(&board)
 	return board
+}
+
+// RestoreColumnTotals puts the real column sizes back after a cursor window
+// was passed to NewCompactBoard. Shown stays the page size; Total is the
+// full column. Remaining counts only cards after the current cursor window.
+func RestoreColumnTotals(board *CompactBoard, totals, remaining map[string]int) {
+	if board == nil {
+		return
+	}
+	board.TotalCards = 0
+	board.ShownCards = 0
+	board.Truncated = false
+	hasMore := false
+	for i := range board.Columns {
+		col := &board.Columns[i]
+		if total, ok := totals[col.Status]; ok {
+			col.Total = total
+		}
+		col.Remaining = remaining[col.Status]
+		hasMore = hasMore || col.Remaining > 0
+		col.Truncated = col.Total > col.Shown
+		if col.Truncated {
+			board.Truncated = true
+		}
+		board.TotalCards += col.Total
+		board.ShownCards += col.Shown
+	}
+	notes := make([]string, 0, len(board.Notes)+1)
+	for _, note := range board.Notes {
+		if strings.HasPrefix(note, "showing ") {
+			continue
+		}
+		notes = append(notes, note)
+	}
+	if board.Truncated {
+		notes = append(notes, fmt.Sprintf("showing %d of %d cards; %s", board.ShownCards, board.TotalCards, pagingHint(board.Project, hasMore)))
+	}
+	board.Notes = notes
+	deriveBoardSignals(board)
+}
+
+// pagingHint is the continuation phrase on a truncated board. A named
+// project is already scoped, so the note only mentions the cursor. An
+// exhausted page says the board has ended even when the window is shorter
+// than the column.
+func pagingHint(project string, hasMore bool) string {
+	if !hasMore {
+		return "end of board"
+	}
+	if strings.TrimSpace(project) != "" {
+		return "use cursor to page"
+	}
+	return "use cursor or a named project to page"
 }
 
 // UniqueProject returns the only project key on the board, or "" when mixed
@@ -351,6 +406,9 @@ func populatedColumns(board CompactBoard) []CompactColumn {
 		if col.Total == 0 {
 			continue
 		}
+		if col.Shown == 0 && board.NextCursors[col.Status] == "done" {
+			continue
+		}
 		out = append(out, col)
 	}
 	return out
@@ -415,6 +473,9 @@ func CompactBoardMarkdown(board CompactBoard) string {
 			b.WriteString("- ")
 			b.WriteString(markdownCardItem(card))
 			b.WriteString("\n")
+		}
+		if col.Remaining > 0 {
+			b.WriteString(fmt.Sprintf("- +%d more\n", col.Remaining))
 		}
 		b.WriteString("\n")
 	}

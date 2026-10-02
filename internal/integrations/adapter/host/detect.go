@@ -167,6 +167,10 @@ func (DefaultRunner) Run(ctx context.Context, command adapter.Command) (adapter.
 	if command.Dir != "" {
 		cmd.Dir = command.Dir
 	}
+	// A timeout must actually return. Without WaitDelay, grandchildren that
+	// inherit the pipes keep Wait blocked long after the deadline.
+	cmd.WaitDelay = 250 * time.Millisecond
+	isolateCommand(cmd)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

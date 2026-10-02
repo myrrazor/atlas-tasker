@@ -33,6 +33,7 @@ func parseTemplates() (*template.Template, error) {
 		"statusMessageKey":   statusMessageKey,
 		"ticketRevision":     TicketRevision,
 		"displayName":        displayName,
+		"liveStamp":          liveStamp,
 		"backupCompact":      backupCompact,
 		"t":                  translator(defaultLanguage),
 	}
@@ -153,6 +154,9 @@ func displayName(page any) string {
 	case SettingsPage:
 		return p.Workspace
 	case SchedulePage:
+		if name := strings.TrimSpace(p.DisplayName); name != "" {
+			return name
+		}
 		return p.Workspace
 	case HomePage:
 		if name := strings.TrimSpace(p.DisplayName); name != "" {
@@ -165,6 +169,14 @@ func displayName(page any) string {
 	default:
 		return ""
 	}
+}
+
+func liveStamp(page any) string {
+	board, ok := page.(BoardPage)
+	if !ok {
+		return ""
+	}
+	return board.LiveStamp
 }
 
 func backupCompact(health *service.BackupHealthSummary) string {

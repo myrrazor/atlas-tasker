@@ -9,7 +9,10 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/app"
@@ -24,12 +27,14 @@ type HomeConfig struct {
 	ReadOnly bool
 	Token    string
 	CSRF     string
+	Session  *Session
 	Clock    func() time.Time
 }
 
 type HomeServer struct {
 	application *app.App
 	cfg         HomeConfig
+	session     *Session
 	token       string
 	csrf        string
 	templates   *template.Template
@@ -75,6 +80,7 @@ func NewHomeServer(application *app.App, cfg HomeConfig) (*HomeServer, error) {
 	return &HomeServer{
 		application: application,
 		cfg:         cfg,
+		session:     cfg.Session,
 		token:       cfg.Token,
 		csrf:        cfg.CSRF,
 		templates:   templates,
@@ -119,6 +125,8 @@ func (s *HomeServer) Serve(ctx context.Context, ln net.Listener) error {
 	if err := validateLoopbackListener(ln); err != nil {
 		return err
 	}
+	signal.Ignore(syscall.SIGPIPE)
+	fmt.Fprintf(os.Stderr, "%s atlas home listening on %s\n", time.Now().Format(time.RFC3339), ln.Addr().String())
 	if addr, ok := ln.Addr().(*net.TCPAddr); ok {
 		s.cfg.Port = addr.Port
 	}
@@ -212,7 +220,35 @@ func (s *HomeServer) security(next http.Handler) http.Handler {
 
 func (s *HomeServer) validSession(w http.ResponseWriter, r *http.Request) bool {
 	cookie, err := r.Cookie(s.sessionCookieName())
-	if err != nil || !secureCompare(cookie.Value, s.token) {
+	presented := ""
+	if err == nil {
+		presented = cookie.Value
+	}
+	valid := err == nil && secureCompare(presented, s.token)
+	if s.session != nil {
+		// A persisted session is authoritative, including expiry. Never
+		// fall back to the token captured when this server started.
+		valid = err == nil && s.session.Matches(presented)
+		if valid {
+			current, _ := s.session.Maintain(time.Now())
+			if presented != current {
+				http.SetCookie(w, &http.Cookie{
+					Name:     s.sessionCookieName(),
+					Value:    current,
+					Path:     "/",
+					HttpOnly: true,
+					SameSite: http.SameSiteStrictMode,
+				})
+			}
+		}
+	}
+	if !valid {
+		if r.Header.Get("X-Atlas-Live") == "1" {
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Session expired. Run tracker in a terminal on this computer to sign in again.\n"))
+			return false
+		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte("Atlas Home session required. Open Atlas from `tracker` or `tracker serve`.\n"))
@@ -227,6 +263,20 @@ func (s *HomeServer) validSession(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+func (s *HomeServer) sessionToken() string {
+	if s.session != nil {
+		return s.session.Token()
+	}
+	return s.token
+}
+
+func (s *HomeServer) csrfToken() string {
+	if s.session != nil {
+		return s.session.CSRF()
+	}
+	return s.csrf
 }
 
 func (s *HomeServer) writeClaimPage(w http.ResponseWriter) {
@@ -272,7 +322,7 @@ func (s *HomeServer) validateMutation(r *http.Request) error {
 	if token == "" {
 		token = r.Form.Get("csrf_token")
 	}
-	if !secureCompare(token, s.csrf) {
+	if !secureCompare(token, s.csrfToken()) {
 		return apperr.New(apperr.CodePermissionDenied, "invalid csrf token")
 	}
 	return nil
@@ -308,9 +358,16 @@ func (s *HomeServer) handleClaim(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid session claim", http.StatusUnauthorized)
 		return
 	}
+	if s.session != nil {
+		current, _ := s.session.Maintain(time.Now())
+		if !s.session.Matches(current) {
+			http.Error(w, "could not renew local session", http.StatusInternalServerError)
+			return
+		}
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.sessionCookieName(),
-		Value:    s.token,
+		Value:    s.sessionToken(),
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
@@ -334,9 +391,10 @@ func (s *HomeServer) innerServer(ws *app.Workspace, project string) *Server {
 			Actor:       s.cfg.Actor,
 			ReadOnly:    s.cfg.ReadOnly,
 			TokenMode:   "random",
-			Token:       s.token,
-			CSRFToken:   s.csrf,
+			Token:       s.sessionToken(),
+			CSRFToken:   s.csrfToken(),
 			Clock:       s.cfg.Clock,
+			Location:    time.Local,
 			RoutePrefix: "/w/" + ws.ID,
 			BoardPath:   homeBoardPath(ws.ID, project),
 			HomePath:    "/w/" + ws.ID,
