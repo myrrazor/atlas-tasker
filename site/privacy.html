@@ -91,7 +91,7 @@
       <section aria-labelledby="local-data">
         <h2 id="local-data">What stays on your machine</h2>
         <p>Atlas Tasker stores tickets as Markdown in your repository, with a local event log and rebuildable SQLite index. This marketing site cannot see or receive that project data.</p>
-        <p>The local application (Atlas Home and <code>tracker web serve</code>) may set one essential HttpOnly session cookie on <code>127.0.0.1</code> so the browser can talk to that loopback server. That cookie is not a tracker, is not set by this website, and is used by the loopback app. Home clears a one-time URL fragment before sending the claim to <code>POST /session/claim</code>; the claim is absent from request URLs and JavaScript storage.</p>
+        <p>The local application (Atlas Home and <code>tracker web serve</code>) may set one essential HttpOnly session cookie on <code>127.0.0.1</code> so the browser can talk to that loopback server. That cookie is not a tracker, is not set by this website, and is used by the loopback app. Home clears a one-time URL fragment before sending the claim to <code>POST /session/claim</code>; the claim is absent from request URLs and JavaScript storage. Session secrets persist in private local files to survive restarts; sessions expire and rotate, and workspace session files are excluded from Git.</p>
       </section>
 
       <section aria-labelledby="contact-data">

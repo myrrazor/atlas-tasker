@@ -1037,4 +1037,4 @@ platform: darwin/arm64
 }
 ```
 
-Source builds that are not stamped by release scripts return `version: "dev"`, `commit: "unknown"`, and `build_date: "unknown"`.
+Unstamped source builds can report their module tag from a tagged checkout or Go install; tagged checkouts with local changes can include `+dirty`. Otherwise `version` falls back to `dev+<commit>` when VCS metadata is available, or `dev`. Available VCS metadata supplies the short `commit` (with `-dirty` for local changes) and `build_date` timestamp; missing metadata remains `unknown`. A source version string does not establish hosted release provenance. See [Go version stamping](https://go.dev/doc/go1.24#go-command).

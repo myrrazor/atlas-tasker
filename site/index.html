@@ -190,7 +190,7 @@
           <code id="hero-install" tabindex="0">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
         </div>
         <button class="copy-button" type="button" data-copy="hero-install" aria-label="Copy curl install command">Copy command</button>
-        <p class="command-note">Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) · macOS or Linux · v1.17</p>
+        <p class="command-note">Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) · macOS or Linux · v1.17.1</p>
       </aside>
     </header>
 
@@ -442,7 +442,7 @@
           <p class="section-label">Install</p>
           <h2>One binary. Then initialize here.</h2>
           <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. Workspace initialization is a separate, explicit step. After install, run <code>tracker init</code> in each workspace and restart those agents. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
-          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification. <code>gh</code> does not need a GitHub login for the local bundle check. Unstamped source builds report <code>version: "dev"</code>.</p>
+          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification. <code>gh</code> does not need a GitHub login for the local bundle check. Unstamped source builds can report a module tag from a tagged checkout or Go install, otherwise <code>dev+&lt;commit&gt;</code> with VCS metadata or <code>dev</code>. These version strings do not prove hosted release provenance.</p>
         </div>
 
         <div class="install-options">
@@ -469,7 +469,7 @@
               <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>
               <button class="copy-button" type="button" data-copy="go-install" aria-label="Copy Go install command">Copy</button>
             </div>
-            <p class="requirements">Add <code>$(go env GOPATH)/bin</code> to your <code>PATH</code> if needed. Unstamped source builds report <code>version: "dev"</code>.</p>
+            <p class="requirements">Add <code>$(go env GOPATH)/bin</code> to your <code>PATH</code> if needed. Go installs can report a published module tag without release-build provenance stamps.</p>
           </div>
 
           <a class="release-row" href="https://github.com/myrrazor/atlas-tasker/releases/latest">

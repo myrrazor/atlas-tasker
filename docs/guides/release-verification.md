@@ -10,7 +10,7 @@ go build -o tracker ./cmd/tracker
 ./tracker version --json
 ```
 
-This proves your local checkout can build and that the version JSON contract is available. Unstamped source builds report `version: "dev"`, `commit: "unknown"`, and `build_date: "unknown"`. They do not prove hosted release provenance.
+This proves your local checkout can build and that the version JSON contract is available. Unstamped source builds can report a module tag from a tagged checkout or Go install; other checkouts use `dev+<commit>` with VCS metadata or `dev`. VCS metadata can supply a short commit and timestamp, while absent fields remain `unknown`. These version strings do not prove hosted release provenance.
 
 ## Local Rehearsal
 

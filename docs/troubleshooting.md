@@ -104,7 +104,7 @@ tracker web status
 tracker web serve --open
 ```
 
-The fresh `serve` prints a new session URL. A browser without a session cookie for the server needs that URL; the token is never written to disk.
+A fresh `serve` prints a session URL. A browser without a valid session cookie needs that URL. The session persists in private `.tracker/web-session.json`, excluded from Git, so an unexpired cookie can survive a server restart. Expired sessions need a fresh terminal sign-in.
 
 ## Config not found
 
