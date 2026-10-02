@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -522,8 +523,10 @@ func TestLivePollKeepsSQLiteSHMLock(t *testing.T) {
 	if info.Size() < 32768 {
 		t.Fatalf("shm shrank before the other process opened it: %d", info.Size())
 	}
+	// /proc/locks is Linux-only; the storm, sidecar, and freshness checks
+	// below still exercise the actual SQLite behavior on every platform.
 	locks := posixLocksOn(os.Getpid(), shm)
-	if locks == 0 {
+	if runtime.GOOS == "linux" && locks == 0 {
 		t.Fatal("live polls dropped the process lock on index.sqlite-shm")
 	}
 	before, _ := projection.ProjectionGeneration(ctx)
@@ -550,7 +553,7 @@ for i in range(40):
 	if afterInfo.Size() < 32768 {
 		t.Fatalf("another process truncated index.sqlite-shm to %d bytes", afterInfo.Size())
 	}
-	if locksAfter := posixLocksOn(os.Getpid(), shm); locksAfter == 0 {
+	if locksAfter := posixLocksOn(os.Getpid(), shm); runtime.GOOS == "linux" && locksAfter == 0 {
 		t.Fatal("sqlite lock on index.sqlite-shm was gone after other processes closed it")
 	}
 	got, err := projection.QueryBoard(ctx, contracts.BoardQueryOptions{Project: "WEB"})

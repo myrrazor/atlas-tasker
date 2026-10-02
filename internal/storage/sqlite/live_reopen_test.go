@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -79,7 +80,7 @@ func TestPinnedConnReopensWhenIndexFileIsReplaced(t *testing.T) {
 	if len(got) != 1 || got[0].Title != "fresh-title" {
 		t.Fatalf("pinned connection kept the deleted index, got %#v", got)
 	}
-	if n := deletedIndexFDs(path); n != 0 {
+	if n := deletedIndexFDs(path); runtime.GOOS == "linux" && n != 0 {
 		t.Fatalf("replaced index left %d deleted fds", n)
 	}
 	if _, err := os.Stat(path + "-wal"); err != nil {
@@ -183,7 +184,7 @@ func TestPinnedConnReopensWhenOnlyIndexFileIsReplaced(t *testing.T) {
 	if len(got) != 1 || got[0].Title != "fresh-title" {
 		t.Fatalf("pinned connection kept the deleted index, got %#v", got)
 	}
-	if n := deletedIndexFDs(path); n != 0 {
+	if n := deletedIndexFDs(path); runtime.GOOS == "linux" && n != 0 {
 		t.Fatalf("index-only replace left %d deleted index fds", n)
 	}
 	shmAfter, err := os.Stat(path + "-shm")
@@ -201,7 +202,7 @@ func TestPinnedConnReopensWhenOnlyIndexFileIsReplaced(t *testing.T) {
 	if info.Size() < 32768 {
 		t.Fatalf("shm shrank before the storm: %d", info.Size())
 	}
-	if locks := posixLocksOn(os.Getpid(), shm); locks == 0 {
+	if locks := posixLocksOn(os.Getpid(), shm); runtime.GOOS == "linux" && locks == 0 {
 		t.Fatal("reopen dropped the process lock on the shared -shm")
 	}
 	script := `
@@ -227,7 +228,7 @@ for i in range(40):
 	if after.Size() < 32768 {
 		t.Fatalf("storm truncated -shm to %d", after.Size())
 	}
-	if locks := posixLocksOn(os.Getpid(), shm); locks == 0 {
+	if locks := posixLocksOn(os.Getpid(), shm); runtime.GOOS == "linux" && locks == 0 {
 		t.Fatal("storm cleared the process lock on the shared -shm")
 	}
 	_, afterRows, err := store.LiveSnapshot(ctx)
@@ -299,7 +300,7 @@ func TestPinnedConnSurvivesReplacingOnlyTheIndexFileWithoutCheckpoint(t *testing
 	if len(got) != 1 || got[0].Title != "fresh-title" {
 		t.Fatalf("pinned connection kept the deleted index, got %#v", got)
 	}
-	if n := deletedIndexFDs(path); n != 0 {
+	if n := deletedIndexFDs(path); runtime.GOOS == "linux" && n != 0 {
 		t.Fatalf("index-only replace left %d deleted index fds", n)
 	}
 	shmAfter, err := os.Stat(path + "-shm")
@@ -310,7 +311,7 @@ func TestPinnedConnSurvivesReplacingOnlyTheIndexFileWithoutCheckpoint(t *testing
 		t.Fatal("reopen replaced the live -shm")
 	}
 	shm := path + "-shm"
-	if locks := posixLocksOn(os.Getpid(), shm); locks == 0 {
+	if locks := posixLocksOn(os.Getpid(), shm); runtime.GOOS == "linux" && locks == 0 {
 		t.Fatal("reopen dropped the process lock on -shm")
 	}
 	script := `
@@ -329,7 +330,7 @@ for i in range(40):
 	if err != nil {
 		t.Fatalf("open/close storm: %v %s", err, stormOut)
 	}
-	if locks := posixLocksOn(os.Getpid(), shm); locks == 0 {
+	if locks := posixLocksOn(os.Getpid(), shm); runtime.GOOS == "linux" && locks == 0 {
 		t.Fatal("storm cleared the process lock on -shm")
 	}
 	info, err := os.Stat(shm)
@@ -402,7 +403,7 @@ func TestRepeatedIndexReplaceDoesNotLeakFDs(t *testing.T) {
 		if _, _, err := store.LiveSnapshot(ctx); err != nil {
 			t.Fatalf("reopen %d: %v", i, err)
 		}
-		if n := deletedIndexFDs(path); n != 0 {
+		if n := deletedIndexFDs(path); runtime.GOOS == "linux" && n != 0 {
 			t.Fatalf("replacement %d left %d deleted index fds", i, n)
 		}
 	}
@@ -494,6 +495,8 @@ func TestReopenDropsStaleSidecarsWhenMainFileIsSwapped(t *testing.T) {
 	}
 }
 
+// deletedIndexFDs uses Linux /proc. Its callers assert counts only on Linux;
+// inode replacement, sidecar integrity, and cross-process writes run everywhere.
 func deletedIndexFDs(path string) int {
 	abs, err := filepath.Abs(path)
 	if err != nil {
