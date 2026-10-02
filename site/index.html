@@ -442,7 +442,7 @@
           <p class="section-label">Install</p>
           <h2>One binary. Then initialize here.</h2>
           <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. Workspace initialization is a separate, explicit step. After install, run <code>tracker init</code> in each workspace and restart those agents. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
-          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification. <code>gh</code> does not need a GitHub login for the local bundle check. Unstamped checkout builds report <code>dev+&lt;commit&gt;</code> with VCS metadata, otherwise <code>dev</code>.</p>
+          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification. <code>gh</code> does not need a GitHub login for the local bundle check. Unstamped source builds can report a module tag from a tagged checkout or Go install, otherwise <code>dev+&lt;commit&gt;</code> with VCS metadata or <code>dev</code>. These version strings do not prove hosted release provenance.</p>
         </div>
 
         <div class="install-options">

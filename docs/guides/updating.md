@@ -45,7 +45,7 @@ fails unless it is explicitly allowed. Add `--force` for an intentional reinstal
 tracker update --version v1.11.0 --force --yes
 ```
 
-An unstamped checkout build reports `dev+<commit>` when VCS metadata is available (otherwise `dev`) and can update to a published release.
+An unstamped source build can report a module tag from a tagged checkout or Go install, otherwise `dev+<commit>` with VCS metadata or `dev`. That version string does not establish hosted release provenance; the updater still verifies downloaded release assets.
 The examples above pin a historical release. The [latest release page](https://github.com/myrrazor/atlas-tasker/releases/latest)
 identifies the current stable version and records its hosted verification.
 

@@ -141,7 +141,7 @@
           <pre id="gs-go">go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</pre>
         </div>
         <p>Go installs <code>tracker</code> into <code>$(go env GOPATH)/bin</code> unless <code>GOBIN</code> is set. Add that directory to your <code>PATH</code>.</p>
-        <p>Pin a specific release by exporting <code>VERSION</code> before running the installer. Unstamped checkout builds report <code>dev+&lt;commit&gt;</code> with VCS metadata, otherwise <code>dev</code>, in <code>tracker version --json</code>. Go installs can report a published module tag without release-build stamps.</p>
+        <p>Pin a specific release by exporting <code>VERSION</code> before running the installer. Unstamped source builds can report a module tag from a tagged checkout or Go install, otherwise <code>dev+&lt;commit&gt;</code> with VCS metadata or <code>dev</code>. These version strings do not prove hosted release provenance.</p>
 
         <h2>Keep the binary current</h2>
         <p>Ask Atlas whether a newer release exists, then update when you are ready. The updater verifies the release checksum and GitHub build attestation before it atomically replaces the current binary.</p>

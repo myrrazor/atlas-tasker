@@ -138,7 +138,7 @@
         <p>No. Local checkpoints start at <code>tracker init</code> unless <code>--no-backup</code>. A remote stays a named target you add first, then enable with <code>tracker backup auto enable</code>. <code>tracker setup --yes</code> is not backup consent. Neither init nor setup installs a user-level scheduler. The one-line installer places the binary; run <code>tracker init</code> in each workspace.</p>
 
         <h2>What platforms are supported?</h2>
-        <p>The release installer covers macOS and Linux on arm64 and amd64, verifying checksums and GitHub build attestations on the way in. Building from source needs Go 1.26.6 or newer. Unstamped checkout builds report <code>dev+&lt;commit&gt;</code> with VCS metadata, otherwise <code>dev</code>. Go installs can report a published module tag without release-build stamps.</p>
+        <p>The release installer covers macOS and Linux on arm64 and amd64, verifying checksums and GitHub build attestations on the way in. Building from source needs Go 1.26.6 or newer. Unstamped source builds can report a module tag from a tagged checkout or Go install, otherwise <code>dev+&lt;commit&gt;</code> with VCS metadata or <code>dev</code>. These version strings do not prove hosted release provenance.</p>
 
         <h2>Can I put the web board on my network?</h2>
         <p>No. It binds to <code>127.0.0.1</code> only, with an expiring session stored in a private local file so open tabs survive restarts, and <code>--host</code> refuses anything that is not loopback. The board has no user accounts, so non-loopback serving is not an escape hatch we offer. If you need a shared read-only screen, <code>tracker web serve --read-only</code> on a machine people can see is the sane middle ground.</p>

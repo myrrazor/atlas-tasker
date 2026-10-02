@@ -62,7 +62,7 @@ Optional, with Go 1.26.6 or newer:
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest
 ```
 
-Optional, from this source (unstamped checkout builds report `dev+<commit>` when VCS metadata is available; commands below assume that binary):
+Optional, from this source (an unstamped tagged checkout can report its module tag; other checkouts report `dev+<commit>` with VCS metadata or `dev`; none proves hosted provenance; commands below assume that binary):
 
 ```bash
 git clone https://github.com/myrrazor/atlas-tasker && cd atlas-tasker

@@ -1037,4 +1037,4 @@ platform: darwin/arm64
 }
 ```
 
-Unstamped checkout builds use VCS metadata when available: `version` is `dev+<commit>`, `commit` is the short revision (with `-dirty` for a modified checkout), and `build_date` is the VCS timestamp. Without VCS metadata these fields remain `dev` and `unknown`. Go installs of a published module tag can report that tag as the version, but do not establish release-build provenance.
+Unstamped source builds can report their module tag from a tagged checkout or Go install; tagged checkouts with local changes can include `+dirty`. Otherwise `version` falls back to `dev+<commit>` when VCS metadata is available, or `dev`. Available VCS metadata supplies the short `commit` (with `-dirty` for local changes) and `build_date` timestamp; missing metadata remains `unknown`. A source version string does not establish hosted release provenance. See [Go version stamping](https://go.dev/doc/go1.24#go-command).
