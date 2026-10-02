@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -173,13 +174,24 @@ type model struct {
 	status             string
 	showHelp           bool
 	indexStamp         string
+	reloads            *reloadState
 	dialog             dialogState
 	lastBulk           *service.BulkOperationResult
 	pendingBulk        *service.BulkOperation
 	boardStyle         render.BoardStyle
 }
 
+// reloadState is shared with Init's model copy. Commands reserve their generation
+// when scheduled; results release it when Update receives them. Mutation
+// commands can also start nested reloads, so access is synchronized.
+type reloadState struct {
+	mu         sync.Mutex
+	generation uint64
+	active     int
+}
+
 type loadedMsg struct {
+	generation        uint64
 	board             service.BoardViewModel
 	queue             service.QueueView
 	agentWork         service.AgentWorkView
@@ -331,6 +343,7 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		status:     "loading…",
 		boardStyle: render.BoardStyleTable,
 		indexStamp: projectionStamp(root),
+		reloads:    &reloadState{},
 	}, nil
 }
 
@@ -372,13 +385,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.splash.maybeDismiss()
 		return m, nil
 	case loadedMsg:
+		if msg.generation != 0 && m.reloads != nil {
+			m.reloads.mu.Lock()
+			m.reloads.active--
+			stale := msg.generation != m.reloads.generation
+			m.reloads.mu.Unlock()
+			if stale {
+				next := m.watchRefreshIfNeeded()
+				return m, next
+			}
+		}
 		// even a failed load counts as "ready" -- the splash must never
 		// outlive the data it was waiting for
 		m.splash.dataReady = true
 		m.splash.maybeDismiss()
 		if msg.err != nil {
 			m.status = msg.err.Error()
-			return m, nil
+			next := m.watchRefreshIfNeeded()
+			return m, next
 		}
 		if msg.board.Board.Columns != nil {
 			m.board = msg.board
@@ -470,15 +494,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = "synced"
 		}
-		return m, nil
+		next := m.watchRefreshIfNeeded()
+		return m, next
 	case watchTickMsg:
-		if m.dialog.active() || m.search.Focused() || m.showHelp {
-			return m, watchTick()
-		}
-		stamp := projectionStamp(m.root)
-		if stamp != m.indexStamp {
-			m.indexStamp = stamp
-			return m, tea.Batch(m.refresh(), watchTick())
+		if refresh := m.watchRefreshIfNeeded(); refresh != nil {
+			return m, tea.Batch(refresh, watchTick())
 		}
 		return m, watchTick()
 	case detailMsg:
@@ -822,12 +842,48 @@ func (m model) bodyView() string {
 	}
 }
 
+// watchRefreshIfNeeded leaves the observed stamp unchanged while a load is
+// running. Its completion then schedules one load for the latest disk state.
+func (m *model) watchRefreshIfNeeded() tea.Cmd {
+	if m.reloads == nil || m.dialog.active() || m.search.Focused() || m.showHelp {
+		return nil
+	}
+	m.reloads.mu.Lock()
+	active := m.reloads.active > 0
+	m.reloads.mu.Unlock()
+	if active {
+		return nil
+	}
+	stamp := projectionStamp(m.root)
+	if stamp == m.indexStamp {
+		return nil
+	}
+	m.indexStamp = stamp
+	return m.refresh()
+}
+
+func (m model) trackReload(cmd tea.Cmd) tea.Cmd {
+	if m.reloads == nil {
+		return cmd
+	}
+	m.reloads.mu.Lock()
+	m.reloads.generation++
+	m.reloads.active++
+	generation := m.reloads.generation
+	m.reloads.mu.Unlock()
+	return func() tea.Msg {
+		msg := cmd().(loadedMsg)
+		msg.generation = generation
+		return msg
+	}
+}
+
 func (m model) refresh() tea.Cmd {
 	return m.reload(m.selectedID, strings.TrimSpace(m.search.Value()), "synced")
 }
 
 func (m model) reload(selectedID string, searchQuery string, status string) tea.Cmd {
-	return func() tea.Msg {
+	return m.trackReload(func() tea.Msg {
 		ctx := context.Background()
 		actor := m.actor
 		actorErr := ""
@@ -1000,7 +1056,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 			actorErr:          actorErr,
 			status:            status,
 		}
-	}
+	})
 }
 
 func (m model) searchCmd() tea.Cmd {
@@ -1013,7 +1069,7 @@ func (m model) loadDetail(ticketID string) tea.Cmd {
 }
 
 func (m model) loadSavedView(name string) tea.Cmd {
-	return func() tea.Msg {
+	return m.trackReload(func() tea.Msg {
 		result, err := m.queries.RunSavedView(context.Background(), name, m.actor)
 		if err != nil {
 			return loadedMsg{err: err}
@@ -1062,7 +1118,7 @@ func (m model) loadSavedView(name string) tea.Cmd {
 			msg.status = fmt.Sprintf("loaded next view %s", name)
 		}
 		return msg
-	}
+	})
 }
 
 func (m model) close() {

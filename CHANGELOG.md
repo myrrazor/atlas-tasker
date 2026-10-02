@@ -4,7 +4,7 @@
 
 - Atlas Home and browser boards retain private sessions across restarts, rotate tokens, reject expired cookies, and recover through a fresh local sign-in. Workspace session files stay excluded from Git.
 - Live boards preserve saved-view filters, refresh reindexed ticket details and activity, and keep revision checks on unreconciled forms. Schedule and project forms show validation errors without losing typed input. The TUI detects writes made before its first refresh tick.
-- Live polling retains SQLite connections and recovers after index replacement. Browser updates preserve active drags and saved-view scope. Cross-platform regression tests retain Linux file-descriptor/lock probes and verify replacement and cross-process writes on macOS.
+- Live polling retains SQLite connections and recovers after index replacement. Queries safely acquire connections during index replacement, sleeping tabs resync after their snapshot expires, and TUI polling coalesces slow reloads. Browser updates preserve active drags, keyboard focus, saved-view scope, and revision guards on stale drafts; drawer notes and acceptance criteria refresh. Cross-platform regression tests retain Linux file-descriptor/lock probes and verify replacement and cross-process writes on macOS.
 - MCP board pagination keeps completed columns finished and reports unread counts. Flexible search still rejects malformed structured filters.
 - Valid first-ticket creation can initialize an empty directory; invalid input leaves it untouched. Source and Go-installed uninstall previews and results identify the executable that remains installed.
 

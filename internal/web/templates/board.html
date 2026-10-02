@@ -354,12 +354,12 @@
 <section class="tab-panel {{if eq $activeTab "overview"}}active{{end}}" id="tab-overview">
   <h2>{{t "board.section.description"}}</h2>
   <pre class="prose" data-drawer-description>{{if $d.Ticket.Description}}{{$d.Ticket.Description}}{{else}}{{t "board.section.no_description"}}{{end}}</pre>
-  {{if $d.Ticket.Notes}}
-  <h2>Notes</h2>
-  <pre class="prose" data-drawer-notes>{{$d.Ticket.Notes}}</pre>
-  {{end}}
-  <h2>{{t "board.section.acceptance"}}{{if $d.Ticket.AcceptanceCriteria}} <span>{{len $d.Ticket.AcceptanceCriteria}}</span>{{end}}</h2>
-  <ul class="check-list">
+  <div data-drawer-notes-section {{if not $d.Ticket.Notes}}hidden{{end}}>
+    <h2>Notes</h2>
+    <pre class="prose" data-drawer-notes>{{$d.Ticket.Notes}}</pre>
+  </div>
+  <h2>{{t "board.section.acceptance"}} <span data-drawer-acceptance-count {{if not $d.Ticket.AcceptanceCriteria}}hidden{{end}}>{{len $d.Ticket.AcceptanceCriteria}}</span></h2>
+  <ul class="check-list" data-drawer-acceptance data-empty-label="{{t "board.section.no_acceptance"}}">
     {{range $d.Ticket.AcceptanceCriteria}}<li>{{.}}</li>{{else}}<li>{{t "board.section.no_acceptance"}}</li>{{end}}
   </ul>
   {{$sf := $.FormFor "schedule"}}

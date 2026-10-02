@@ -596,7 +596,7 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	// (a blocker that completed, a reviewer edited only in markdown), and
 	// publishing the new fingerprint would 304 that stale board forever.
 	// One resync catches the tab up. The same boot id keeps normal writes
-	// on the patch path even when the fingerprint is not in the ring.
+	// on the patch path while their fingerprint remains in the ring.
 	if liveInstanceChanged(prev.db, cur.db) {
 		return s.liveResync(r)
 	}
@@ -606,10 +606,8 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	if !scopeOK || (scope.active && prev.db["view"] != cur.db["view"]) {
 		return s.liveResync(r)
 	}
-	// Resync only when the event tail cannot be applied id-by-id. An unknown
-	// row diff (the client fingerprint is older than the ring, or the previous
-	// stamp had no fingerprint) still patches that tail. Falling through to a
-	// full HTML page wedges a large board: the poller discards it and asks again.
+	// Resync when the event tail cannot be applied id-by-id. The JSON resync
+	// also reconciles snapshots that have fallen outside the fingerprint ring.
 	tail, tailOK := readGrownTails(s.cfg.Root, prev.files, cur.files)
 	if !tailOK {
 		return s.liveResync(r)
@@ -619,13 +617,13 @@ func (s *Server) liveBoardPatch(r *http.Request, stamp string) (liveBoardBody, b
 	if known {
 		ids = unionIDs(ticketIDsFromTail(tail), changed)
 	} else {
-		ids = ticketIDsFromTail(tail)
-		// A reindex with no new events has nothing in the tail. One resync
-		// catches the tab up, and the response stamp includes a fingerprint
-		// so the same miss does not repeat.
-		if len(ids) == 0 && !fingerprintUnchanged(prev.db, cur.db) && projectionChanged(prev.db, cur.db) {
+		// A readable tail cannot cover markdown-only or derived row changes.
+		// Advancing the stamp after patching only its IDs would permanently
+		// hide those changes from a tab whose base snapshot was evicted.
+		if !fingerprintUnchanged(prev.db, cur.db) {
 			return s.liveResync(r)
 		}
+		ids = ticketIDsFromTail(tail)
 	}
 	if len(ids) == 0 {
 		// Same rows, new file generation: a no-op reindex. An empty patch

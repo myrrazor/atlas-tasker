@@ -141,6 +141,71 @@ func TestWatchRefreshesWriteBeforeFirstTick(t *testing.T) {
 	}
 }
 
+func TestWatchCoalescesChangesDuringReload(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.close()
+	updated, _ := m.Update(m.refresh()())
+	m = updated.(model)
+	baseline := m.indexStamp
+	// Hold a load's completion without making the test wait for a slow board.
+	held := m.trackReload(func() tea.Msg { return loadedMsg{status: "held"} })
+	generation := m.reloads.generation
+	for _, status := range []contracts.Status{contracts.StatusBlocked, contracts.StatusReady} {
+		if _, err := m.actions.MoveTicket(context.Background(), "APP-1", status, "human:owner", "external change"); err != nil {
+			t.Fatal(err)
+		}
+		updated, _ = m.Update(watchTickMsg{})
+		m = updated.(model)
+		if m.reloads.active != 1 || m.reloads.generation != generation {
+			t.Fatal("watch started an overlapping reload")
+		}
+		if m.indexStamp != baseline {
+			t.Fatal("watch consumed a change before loading it")
+		}
+	}
+	updated, followup := m.Update(held())
+	m = updated.(model)
+	if followup == nil || m.reloads.active != 1 {
+		t.Fatal("completion did not schedule one coalesced reload")
+	}
+	loaded := followup().(loadedMsg)
+	if loaded.err != nil {
+		t.Fatal(loaded.err)
+	}
+	updated, next := m.Update(loaded)
+	m = updated.(model)
+	if next != nil || m.reloads.active != 0 {
+		t.Fatal("coalesced reload did not settle")
+	}
+	if m.detail.Ticket.Status != contracts.StatusReady {
+		t.Fatal("reload missed the latest external change")
+	}
+}
+
+func TestReloadRejectsOlderCompletionAndReleasesFailures(t *testing.T) {
+	root := t.TempDir()
+	m := model{root: root, indexStamp: projectionStamp(root), reloads: &reloadState{}}
+	older := m.trackReload(func() tea.Msg { return loadedMsg{status: "older"} })
+	newer := m.trackReload(func() tea.Msg { return loadedMsg{status: "newer"} })
+	updated, _ := m.Update(newer())
+	m = updated.(model)
+	updated, next := m.Update(older())
+	m = updated.(model)
+	if m.status != "newer" || m.reloads.active != 0 || next != nil {
+		t.Fatal("older completion overwrote newer state or retained an active load")
+	}
+	failed := m.trackReload(func() tea.Msg { return loadedMsg{err: fmt.Errorf("load failed")} })
+	updated, _ = m.Update(failed())
+	m = updated.(model)
+	if m.reloads.active != 0 || m.status != "load failed" {
+		t.Fatal("failed reload did not release its in-flight guard")
+	}
+}
+
 func TestCursorClampsAcrossScreenSizes(t *testing.T) {
 	m := model{
 		screen: screenOwner,

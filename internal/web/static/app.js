@@ -801,6 +801,24 @@
     const notes = root.querySelector('[data-drawer-notes]');
     if (notes && (!notesInput || !controlDirty(notesInput))) {
       notes.textContent = drawer.notes || '';
+      const section = root.querySelector('[data-drawer-notes-section]');
+      if (section) section.hidden = !drawer.notes;
+    }
+    const acceptanceInput = edit && edit.querySelector('[name="acceptance"]');
+    const acceptance = root.querySelector('[data-drawer-acceptance]');
+    if (acceptance && (!acceptanceInput || !controlDirty(acceptanceInput))) {
+      const criteria = String(drawer.acceptance || '').split('\n').filter((item) => item.trim());
+      acceptance.replaceChildren();
+      (criteria.length ? criteria : [acceptance.dataset.emptyLabel || '']).forEach((text) => {
+        const item = document.createElement('li');
+        item.textContent = text;
+        acceptance.appendChild(item);
+      });
+      const count = root.querySelector('[data-drawer-acceptance-count]');
+      if (count) {
+        count.textContent = String(criteria.length);
+        count.hidden = !criteria.length;
+      }
     }
     applyDrawerActions(root, drawer.actions_html);
     syncMoveSelect(root, drawer.status);
@@ -832,7 +850,9 @@
   function noteLocalMove(ticketID, status, revision) {
     const id = String(ticketID || '').replace(/"/g, '');
     if (!id) return;
-    document.querySelectorAll(`.ticket-card[data-ticket-id="${id}"]`).forEach((card) => {
+    const cards = Array.from(document.querySelectorAll(`.ticket-card[data-ticket-id="${id}"]`));
+    const previousRevision = cards[0]?.dataset.revision;
+    cards.forEach((card) => {
       if (status) {
         card.dataset.storedStatus = status;
         card.dataset.status = status;
@@ -844,12 +864,27 @@
     if (!root || root.dataset.formEcho) return;
     if (status) syncMoveSelect(root, status);
     if (!revision) return;
-    root.querySelectorAll('input[name="expected_revision"]').forEach((rev) => setIfClean(rev, revision));
+    // A move reconciles status only. A stale schedule/relation or conflicting
+    // edit must keep its guard, even though this card's move succeeded.
+    const edit = root.querySelector('form[action$="/edit"]');
+    if (edit && !edit.querySelector('[data-remote-changed]')) {
+      edit.querySelectorAll('input[name="expected_revision"]').forEach((rev) => {
+        if (previousRevision && rev.value === previousRevision) setIfClean(rev, revision);
+      });
+    }
+    const actions = root.querySelector('.drawer-actions');
+    if (actions && !actionsDirty(root)) {
+      actions.querySelectorAll('input[name="expected_revision"]').forEach((rev) => {
+        if (previousRevision && rev.value === previousRevision) setIfClean(rev, revision);
+      });
+    }
   }
 
   function applyBoardResync(data) {
     const dragging = document.querySelector('.ticket-card.sortable-chosen, .ticket-card.sortable-ghost, .ticket-card.sortable-dragging, .ticket-card.sortable-fallback');
     if (dragging) return false;
+    const focusedCard = document.activeElement?.closest?.('.ticket-card[data-ticket-id]');
+    const focusedTicketID = focusedCard?.dataset.ticketId;
     const byStatus = new Map();
     (data.cards || []).forEach((patch) => {
       const status = String(patch.status || '');
@@ -882,6 +917,9 @@
     setupSortable();
     setupCardPreviews();
     rewriteCardHrefs();
+    if (focusedTicketID) {
+      document.querySelector(ticketCardSelector(String(focusedTicketID).replace(/"/g, '')))?.focus({ preventScroll: true });
+    }
     return true;
   }
 

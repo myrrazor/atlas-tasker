@@ -602,7 +602,13 @@ func TestLiveBoardTwoTabsPatchWhileTailIsReadable(t *testing.T) {
 	assertLivePatch(t, lagging, latest)
 	unknown := withLiveFingerprint(etagB, "deadbeef")
 	missed := liveBoard(t, h.handler, unknown)
-	assertLivePatch(t, missed, latest)
+	var resync liveBoardBody
+	if err := json.Unmarshal(missed.Body.Bytes(), &resync); err != nil {
+		t.Fatal(err)
+	}
+	if !resync.Resync || !strings.Contains(missed.Body.String(), latest) {
+		t.Fatalf("unknown fingerprint did not resync current rows: %s", missed.Body.String())
+	}
 }
 
 func TestLiveBoardResyncsOnceWhenServerInstanceChanges(t *testing.T) {
@@ -641,6 +647,56 @@ func TestLiveBoardResyncsOnceWhenServerInstanceChanges(t *testing.T) {
 	}
 	follow := liveBoard(t, h.handler, next)
 	assertLivePatch(t, follow, "after restart")
+}
+
+func TestLiveBoardUnknownFingerprintResyncsWithReadableEventTail(t *testing.T) {
+	h := newWebHarness(t, false)
+	other := h.createTicket(t, "event ticket")
+	ticket, err := h.actions.Tickets.GetTicket(t.Context(), h.ticketID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket.ID = "WEB-99"
+	ticket.Title = "markdown ticket"
+	if err := h.actions.Tickets.CreateTicket(t.Context(), ticket); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.projection.Rebuild(t.Context(), ""); err != nil {
+		t.Fatal(err)
+	}
+	first := liveBoard(t, h.handler, "")
+	oldETag := first.Header().Get("ETag")
+	if _, err := h.actions.MutateTrackedTicket(t.Context(), other.ID, "human:owner", "edit", "retitle", func(ticket *contracts.TicketSnapshot) error {
+		ticket.Title = "event change"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ticket.Title = "markdown change without an event"
+	ticket.UpdatedAt = ticket.UpdatedAt.Add(time.Second)
+	if err := h.actions.Tickets.UpdateTicket(t.Context(), ticket); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.projection.Rebuild(t.Context(), ""); err != nil {
+		t.Fatal(err)
+	}
+	// A sleeping tab can fall outside the bounded fingerprint ring. Keep
+	// its readable event offsets but make the old row snapshot unavailable.
+	cache := h.server.fpCache()
+	cache.mu.Lock()
+	cache.ring = nil
+	cache.mu.Unlock()
+	res := liveBoard(t, h.handler, withLiveFingerprint(oldETag, "evicted"))
+	var body liveBoardBody
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Resync || !strings.Contains(res.Body.String(), ticket.Title) || !strings.Contains(res.Body.String(), "event change") {
+		t.Fatal("unknown snapshot must resync both the markdown and event changes")
+	}
+	if idle := liveBoard(t, h.handler, res.Header().Get("ETag")); idle.Code != http.StatusNotModified {
+		t.Fatalf("idle poll = %d, want 304", idle.Code)
+	}
 }
 
 func assertLivePatch(t *testing.T, res *httptest.ResponseRecorder, title string) {

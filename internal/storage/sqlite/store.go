@@ -183,42 +183,48 @@ func openDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
-func (s *Store) currentDB() *sql.DB {
-	if s == nil {
-		return nil
-	}
+// lockDB keeps pool retirement from racing with operation startup. Once a
+// query or transaction has started, database/sql retains its driver connection
+// until rows are closed or the transaction completes.
+func (s *Store) lockDB() (*sql.DB, func()) {
 	if s.live == nil {
-		return s.DB
+		return s.DB, func() {}
 	}
 	s.live.mu.Lock()
-	db := s.DB
-	s.live.mu.Unlock()
-	return db
+	return s.DB, s.live.mu.Unlock
 }
 
 func (s *Store) execContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	if s.tx != nil {
 		return s.tx.ExecContext(ctx, query, args...)
 	}
-	return s.currentDB().ExecContext(ctx, query, args...)
+	db, unlock := s.lockDB()
+	defer unlock()
+	return db.ExecContext(ctx, query, args...)
 }
 
 func (s *Store) queryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	if s.tx != nil {
 		return s.tx.QueryContext(ctx, query, args...)
 	}
-	return s.currentDB().QueryContext(ctx, query, args...)
+	db, unlock := s.lockDB()
+	defer unlock()
+	return db.QueryContext(ctx, query, args...)
 }
 
 func (s *Store) queryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	if s.tx != nil {
 		return s.tx.QueryRowContext(ctx, query, args...)
 	}
-	return s.currentDB().QueryRowContext(ctx, query, args...)
+	db, unlock := s.lockDB()
+	defer unlock()
+	return db.QueryRowContext(ctx, query, args...)
 }
 
 func (s *Store) inTransaction(ctx context.Context, update func(*Store) error) error {
-	tx, err := s.currentDB().BeginTx(ctx, nil)
+	db, unlock := s.lockDB()
+	tx, err := db.BeginTx(ctx, nil)
+	unlock()
 	if err != nil {
 		return fmt.Errorf("begin projection update: %w", err)
 	}
@@ -1096,7 +1102,7 @@ func (s *Store) QueryBoard(ctx context.Context, opts contracts.BoardQueryOptions
 	}
 	query += ` ORDER BY updated_at ASC, id ASC`
 
-	rows, err := s.currentDB().QueryContext(ctx, query, args...)
+	rows, err := s.queryContext(ctx, query, args...)
 	if err != nil {
 		return contracts.BoardView{}, fmt.Errorf("query board: %w", err)
 	}
@@ -1163,7 +1169,7 @@ func (s *Store) queryTicketStatuses(ctx context.Context, ticketIDs []string) (ma
 		placeholders[i] = "?"
 		args[i] = ticketID
 	}
-	rows, err := s.currentDB().QueryContext(ctx, `SELECT id, status FROM tickets WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	rows, err := s.queryContext(ctx, `SELECT id, status FROM tickets WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1238,7 +1244,7 @@ func (s *Store) QuerySearch(ctx context.Context, query contracts.SearchQuery) ([
 	}
 	base += ` ORDER BY updated_at DESC, id ASC`
 
-	rows, err := s.currentDB().QueryContext(ctx, base, args...)
+	rows, err := s.queryContext(ctx, base, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query search: %w", err)
 	}
@@ -1259,7 +1265,7 @@ func (s *Store) QuerySearch(ctx context.Context, query contracts.SearchQuery) ([
 }
 
 func (s *Store) QueryHistory(ctx context.Context, ticketID string) ([]contracts.Event, error) {
-	rows, err := s.currentDB().QueryContext(ctx, `
+	rows, err := s.queryContext(ctx, `
 		SELECT event_id, ts, actor, reason, type, project, ticket_id, payload_json, metadata_json, schema_version
 		FROM events
 		WHERE ticket_id = ?
@@ -1329,7 +1335,7 @@ func (s *Store) QueryCommentCounts(ctx context.Context, ticketIDs []string) (map
 		for _, id := range chunk {
 			args = append(args, id)
 		}
-		rows, err := s.currentDB().QueryContext(ctx, `
+		rows, err := s.queryContext(ctx, `
 			SELECT ticket_id, COUNT(*)
 			FROM events
 			WHERE type = ? AND ticket_id IN (`+placeholders+`)

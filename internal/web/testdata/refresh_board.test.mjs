@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const script = readFileSync(new URL('../static/app.js', import.meta.url), 'utf8');
 
-function boardHarness(responses, { extraNodes = [], location = 'http://127.0.0.1/board?project=WEB' } = {}) {
+function boardHarness(responses, { extraNodes = [], location = 'http://127.0.0.1/board?project=WEB', documentOverrides = {}, windowOverrides = {} } = {}) {
   const requests = [];
   const swaps = [];
   const delays = [];
@@ -23,6 +23,7 @@ function boardHarness(responses, { extraNodes = [], location = 'http://127.0.0.1
     querySelector(selector) { return nodes.get(selector) ?? null; },
     querySelectorAll() { return []; },
     addEventListener() {},
+    ...documentOverrides,
   };
   const window = {
     location: new URL(location),
@@ -33,6 +34,7 @@ function boardHarness(responses, { extraNodes = [], location = 'http://127.0.0.1
       queueMicrotask(callback);
       return delays.length;
     },
+    ...windowOverrides,
   };
   const context = {
     window, document, URL, URLSearchParams, console,
@@ -60,8 +62,9 @@ function boardHarness(responses, { extraNodes = [], location = 'http://127.0.0.1
       }
     },
   };
-  vm.runInNewContext(script, context, { filename: 'app.js' });
-  return { requests, swaps, delays, flash, refresh: window.atlasBoard.refresh };
+  const instrumented = script.replace(/\}\)\(\);\s*$/, 'window.testBoard = { applyDrawerLive, moveTail };\n})();');
+  vm.runInNewContext(instrumented, context, { filename: 'app.js' });
+  return { requests, swaps, delays, flash, refresh: window.atlasBoard.refresh, hooks: window.testBoard };
 }
 
 test('a successful refresh preserves the move confirmation without retrying', async () => {
@@ -95,7 +98,7 @@ function input(value, type = 'text') {
   return { tagName: 'INPUT', type, value, defaultValue: value, dataset: {}, removeAttribute() {} };
 }
 
-function liveDrawerHarness({ dirtyAction = false, conflictingTitle = false } = {}) {
+function liveDrawerHarness({ dirtyAction = false, conflictingTitle = false, overview = false, draggable = false } = {}) {
   const editRevision = input('r1', 'hidden');
   const scheduleRevision = input('r1', 'hidden');
   const relationRevision = input('r1', 'hidden');
@@ -105,9 +108,25 @@ function liveDrawerHarness({ dirtyAction = false, conflictingTitle = false } = {
   const scheduledAt = input('2026-10-01T12:00', 'datetime-local');
   scheduledAt.value = '2026-10-01T15:00';
   const assignee = input('');
+  const notesInput = input('');
+  const acceptanceInput = input('');
+  const notes = { textContent: '' };
+  const notesSection = { hidden: true };
+  const acceptance = {
+    dataset: { emptyLabel: 'No acceptance criteria' }, children: [],
+    replaceChildren() { this.children = []; },
+    appendChild(node) { this.children.push(node); },
+  };
+  const acceptanceCount = { textContent: '0', hidden: true };
   if (dirtyAction) assignee.value = 'human:alice';
   const edit = {
-    querySelector(selector) { return selector === '[name="title"]' ? title : null; },
+    querySelector(selector) {
+      if (selector === '[name="title"]') return title;
+      if (selector === '[data-remote-changed]') return title.dataset.remoteChanged ? title : null;
+      if (overview && selector === '[name="notes"]') return notesInput;
+      if (overview && selector === '[name="acceptance"]') return acceptanceInput;
+      return null;
+    },
     querySelectorAll() { return [editRevision]; },
     contains(node) { return node === editRevision; },
   };
@@ -122,6 +141,10 @@ function liveDrawerHarness({ dirtyAction = false, conflictingTitle = false } = {
     querySelector(selector) {
       if (selector === 'form[action$="/edit"]') return edit;
       if (selector === '.drawer-actions') return actions;
+      if (overview && selector === '[data-drawer-notes]') return notes;
+      if (overview && selector === '[data-drawer-notes-section]') return notesSection;
+      if (overview && selector === '[data-drawer-acceptance]') return acceptance;
+      if (overview && selector === '[data-drawer-acceptance-count]') return acceptanceCount;
       return null;
     },
     querySelectorAll(selector) {
@@ -132,15 +155,135 @@ function liveDrawerHarness({ dirtyAction = false, conflictingTitle = false } = {
       return [];
     },
   };
+  const card = {
+    dataset: { ticketId: 'WEB-1', revision: 'r2', status: 'ready', storedStatus: 'ready' },
+    addEventListener() {}, setAttribute() {},
+  };
+  let sortable;
   const board = boardHarness([{
     cards: [],
-    drawer: { id: 'WEB-1', revision: 'r2', title: 'Remote title', status: 'ready' },
-  }], {
+    drawer: { id: 'WEB-1', revision: 'r2', title: 'Remote title', status: 'ready', notes: 'Remote notes', acceptance: 'First criterion\nSecond criterion' },
+  }, { payload: { status: 'in_progress', revision: 'r3' } }, { cards: [] }], {
     location: 'http://127.0.0.1/board?ticket=WEB-1',
     extraNodes: [['.detail-drawer', drawer]],
+    documentOverrides: {
+      createElement() { return {}; },
+      querySelectorAll(selector) {
+        if (selector === '.ticket-card[data-ticket-id="WEB-1"]' || selector === '.ticket-card' || selector === '.ticket-card[data-ticket-id]') return [card];
+        if (draggable && selector === '.ticket-list') return [{}];
+        return [];
+      },
+    },
+    windowOverrides: draggable ? { Sortable: { create(list, options) { sortable = options; return { destroy() {} }; } } } : {},
   });
-  return { ...board, editRevision, scheduleRevision, relationRevision, actionRevision, title, scheduledAt };
+  return { ...board, editRevision, scheduleRevision, relationRevision, actionRevision, title, scheduledAt, notes, notesSection, acceptance, acceptanceCount, notesInput, acceptanceInput,
+    async drag() {
+      sortable.onAdd({ item: card, to: { dataset: { status: 'in_progress' } } });
+      await board.hooks.moveTail.get('WEB-1');
+    },
+  };
 }
+
+test('a successful drag preserves stale schedule/relation guards and a conflicting edit draft', async () => {
+  const board = liveDrawerHarness({ conflictingTitle: true, draggable: true });
+  await board.refresh();
+  await board.drag();
+  assert.equal(board.requests.length >= 2, true, 'the drag submits a move');
+  assert.equal(board.title.value, 'My draft title');
+  assert.equal(board.editRevision.value, 'r1', 'a successful move must not authorize overwriting the remote title');
+  assert.equal(board.scheduleRevision.value, 'r1', 'a stale schedule keeps its conflict guard');
+  assert.equal(board.relationRevision.value, 'r1');
+  assert.equal(board.actionRevision.value, 'r3', 'reconciled actions advance after the move');
+});
+
+test('a successful drag advances a reconciled edit but preserves a typed action guard', async () => {
+  const board = liveDrawerHarness({ dirtyAction: true, draggable: true });
+  await board.refresh();
+  await board.drag();
+  assert.equal(board.editRevision.value, 'r3');
+  assert.equal(board.actionRevision.value, 'r1');
+});
+
+test('live overview displays initially absent notes and refreshes acceptance entries/count', async () => {
+  const board = liveDrawerHarness({ overview: true });
+  await board.refresh();
+  assert.equal(board.notesSection.hidden, false);
+  assert.equal(board.notes.textContent, 'Remote notes');
+  assert.deepEqual(board.acceptance.children.map(item => item.textContent), ['First criterion', 'Second criterion']);
+  assert.equal(board.acceptanceCount.textContent, '2');
+  assert.equal(board.acceptanceCount.hidden, false);
+  board.hooks.applyDrawerLive({ id: 'WEB-1', revision: 'r3', title: 'Remote title', notes: '', acceptance: '' });
+  assert.equal(board.notesSection.hidden, true, 'cleared notes no longer display an empty section');
+  assert.deepEqual(board.acceptance.children.map(item => item.textContent), ['No acceptance criteria']);
+  assert.equal(board.acceptanceCount.hidden, true);
+});
+
+function resyncFocusHarness({ removed = false, focusElsewhere = false } = {}) {
+  let currentCard;
+  let activeElement;
+  const focusCalls = [];
+  const oldCard = { dataset: { ticketId: 'WEB-1' }, closest() { return this; } };
+  const nextCard = {
+    dataset: { ticketId: 'WEB-1' }, setAttribute() {}, addEventListener() {},
+    focus(options) { focusCalls.push(options); activeElement = this; },
+  };
+  const unrelatedControl = { closest() { return null; } };
+  activeElement = focusElsewhere ? unrelatedControl : oldCard;
+  const list = {
+    dataset: { status: 'ready' },
+    replaceChildren(fragment) {
+      currentCard = fragment?.childNodes[0] || null;
+      if (activeElement === oldCard) activeElement = null;
+    },
+    appendChild() {},
+  };
+  const board = boardHarness([{ resync: true, cards: removed ? [] : [{ status: 'ready', html: '<a class="ticket-card"></a>' }] }], {
+    documentOverrides: {
+      get activeElement() { return activeElement; },
+      querySelector(selector) { return selector === '.ticket-card[data-ticket-id="WEB-1"]' ? currentCard || null : null; },
+      querySelectorAll(selector) {
+        if (selector === '.ticket-list[data-status]') return [list];
+        if (selector === '.ticket-card' || selector === '.ticket-card[data-ticket-id]') return currentCard ? [currentCard] : [];
+        return [];
+      },
+      createElement(tag) {
+        if (tag === 'template') return { content: { querySelector() { return nextCard; } } };
+        return {};
+      },
+      createDocumentFragment() { return { childNodes: [], appendChild(node) { this.childNodes.push(node); } }; },
+    },
+  });
+  return { ...board, focusCalls, get active() { return activeElement; }, nextCard, unrelatedControl };
+}
+
+test('a live resync restores keyboard focus to the same surviving ticket', async () => {
+  const board = resyncFocusHarness();
+  await board.refresh();
+  assert.equal(board.active, board.nextCard);
+  assert.equal(board.focusCalls.length, 1);
+  assert.equal(board.focusCalls[0].preventScroll, true);
+});
+
+test('a live resync does not steal focus from other controls or a removed ticket', async () => {
+  const elsewhere = resyncFocusHarness({ focusElsewhere: true });
+  await elsewhere.refresh();
+  assert.equal(elsewhere.active, elsewhere.unrelatedControl);
+  assert.equal(elsewhere.focusCalls.length, 0);
+  const removed = resyncFocusHarness({ removed: true });
+  await removed.refresh();
+  assert.equal(removed.focusCalls.length, 0);
+});
+
+test('live overview keeps dirty notes and acceptance drafts intact', async () => {
+  const board = liveDrawerHarness({ overview: true });
+  board.notesInput.value = 'My notes';
+  board.acceptanceInput.value = 'My criterion';
+  await board.refresh();
+  assert.equal(board.notesInput.value, 'My notes');
+  assert.equal(board.acceptanceInput.value, 'My criterion');
+  assert.equal(board.notesSection.hidden, true);
+  assert.equal(board.acceptanceCount.hidden, true);
+});
 
 test('live drawer updates preserve revisions for schedule and relation forms that were not reconciled', async () => {
   const board = liveDrawerHarness();
