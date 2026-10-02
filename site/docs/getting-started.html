@@ -131,7 +131,7 @@
         <p>Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>). Attestation uses a local bundle; no GitHub login. The installer places the binary only. Run <code>tracker init</code> in each workspace, then restart detected coding agents so they load Atlas MCP. A written config is not a live connection.</p>
 
         <h2>Install</h2>
-        <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> build (v1.17.0), checks its SHA-256 checksum, verifies the GitHub build attestation with a local bundle, and installs the <code>tracker</code> binary. Workspace initialization is a separate, explicit step. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>); <code>gh</code> does not need a GitHub login. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
+        <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> build (v1.17.1), checks its SHA-256 checksum, verifies the GitHub build attestation with a local bundle, and installs the <code>tracker</code> binary. Workspace initialization is a separate, explicit step. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>); <code>gh</code> does not need a GitHub login. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
         <div class="code-block">
           <div class="snippet-title"><span>release installer · macOS or Linux</span><button class="copy-button" type="button" data-copy="gs-install" aria-label="Copy install command">Copy</button></div>
           <pre id="gs-install">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</pre>
@@ -141,7 +141,7 @@
           <pre id="gs-go">go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</pre>
         </div>
         <p>Go installs <code>tracker</code> into <code>$(go env GOPATH)/bin</code> unless <code>GOBIN</code> is set. Add that directory to your <code>PATH</code>.</p>
-        <p>Pin a specific release by exporting <code>VERSION</code> before running the installer. Unstamped source builds report <code>version: "dev"</code> in <code>tracker version --json</code>, which is expected.</p>
+        <p>Pin a specific release by exporting <code>VERSION</code> before running the installer. Unstamped checkout builds report <code>dev+&lt;commit&gt;</code> with VCS metadata, otherwise <code>dev</code>, in <code>tracker version --json</code>. Go installs can report a published module tag without release-build stamps.</p>
 
         <h2>Keep the binary current</h2>
         <p>Ask Atlas whether a newer release exists, then update when you are ready. The updater verifies the release checksum and GitHub build attestation before it atomically replaces the current binary.</p>
@@ -151,7 +151,7 @@
 tracker update --yes
 
 <span class="c"># install a specific release</span>
-tracker update --version v1.17.0 --yes</pre>
+tracker update --version v1.17.1 --yes</pre>
         </div>
 
         <h2>Initialize a workspace</h2>

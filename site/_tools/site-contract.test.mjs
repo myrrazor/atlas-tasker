@@ -371,7 +371,7 @@ test("public workflow guidance matches the v1.17 release contracts", () => {
   assert.match(changelog, /v1\.12\.0 — Agent Setup And Documentation/i);
   assert.doesNotMatch(changelog, /v1\.12\.0 remains the latest published stable version/i);
   assert.match(pages.get("changelog.html"), /releases\/tag\/v1\.13\.0/i);
-  assert.match(gettingStarted, /tracker update --version v1\.17\.0 --yes/);
+  assert.match(gettingStarted, /tracker update --version v1\.17\.1 --yes/);
   const homeWorkspaces = textContent(pages.get("docs/home.html"));
   const backup = textContent(pages.get("docs/backup.html"));
   const uninstall = textContent(pages.get("docs/uninstall.html"));

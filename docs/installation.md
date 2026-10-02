@@ -4,7 +4,7 @@ Atlas ships one `tracker` binary for macOS and Linux on Intel/AMD and ARM64. The
 [release page](https://github.com/myrrazor/atlas-tasker/releases/latest) lists the
 current **published** archives and their hosted verification. Ordinary
 use is `tracker init` then `tracker` in each workspace, then restart detected
-coding agents. Unstamped source builds report `"version": "dev"`.
+coding agents. Unstamped checkout builds report `dev+<commit>` when VCS metadata is available; builds without it report `dev`.
 
 ## Install a release
 
@@ -139,7 +139,7 @@ go build -o tracker ./cmd/tracker
 ./tracker init
 ```
 
-Unstamped source builds report `version: "dev"` in JSON. You can keep that binary
+Unstamped checkout builds report `dev+<commit>` in JSON when VCS metadata is available; builds without it report `dev`. You can keep that binary
 local or move it onto your `PATH`.
 
 ## Update an existing install

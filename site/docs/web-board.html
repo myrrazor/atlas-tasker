@@ -131,7 +131,7 @@ tracker web open                              <span class="c"># reopen the last 
         </div>
         <ul>
           <li>Home binds <code>127.0.0.1:7432</code> and fails if another app owns that port. Legacy <code>web serve</code> picks a random free port. There is no non-loopback option.</li>
-          <li>Home clears a one-time URL fragment and exchanges it at <code>POST /session/claim</code> for an HttpOnly cookie. Legacy serve still prints <code>?token=</code>. Home keeps pending claims in private local state until consumed or expired. That cookie is essential to the local app; this marketing site sets none.</li>
+          <li>Home clears a one-time URL fragment and exchanges it at <code>POST /session/claim</code> for an HttpOnly cookie. Legacy serve still prints <code>?token=</code>. Home keeps pending claims in private local state until consumed or expired. Sessions persist in private local files, expire, and rotate; workspace session files are excluded from Git. That cookie is essential to the local app; this marketing site sets none.</li>
           <li><code>--read-only</code> serves the board without any mutation controls: handy for a shared screen.</li>
           <li>Runtime status lands, without secrets, under <code>.tracker/runtime/web/server.json</code>, which is how <code>web open</code> and <code>web status</code> find the running server.</li>
         </ul>

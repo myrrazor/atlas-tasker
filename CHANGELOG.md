@@ -1,6 +1,8 @@
 # Changelog
 
-## v1.17.1 - Home and live-board stability (release candidate)
+## v1.17.1 - Home and live-board stability (2026-10-02)
+
+[Download v1.17.1 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.1).
 
 - Atlas Home and browser boards retain private sessions across restarts, rotate tokens, reject expired cookies, and recover through a fresh local sign-in. Workspace session files stay excluded from Git.
 - Live boards preserve saved-view filters, refresh reindexed ticket details and activity, and keep revision checks on unreconciled forms. Schedule and project forms show validation errors without losing typed input. The TUI detects writes made before its first refresh tick.

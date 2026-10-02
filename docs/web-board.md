@@ -49,8 +49,10 @@ The “Run due now” action is the browser equivalent of `tracker schedule tick
 Home binds `127.0.0.1:7432` and exchanges a one-time URL fragment at `POST /session/claim` (HttpOnly
 cookie, no token in the query string). `tracker web serve` still binds
 `127.0.0.1` on a random port, opens a session URL when `--open` is used, and keeps
-`?token=`. Session tokens are never written to disk. That cookie is
-essential to the local app; the marketing site sets none. See [privacy on the site](https://atlastasker.com/privacy.html).
+`?token=`. Session secrets persist in private local files: Home uses
+`home-session.json` in its machine state directory, and legacy serve uses
+`.tracker/web-session.json` (excluded from Git). The files are created with mode
+0600; sessions expire and rotate. That cookie is essential to the local app; the marketing site sets none. See [privacy on the site](https://atlastasker.com/privacy.html).
 
 ## Screenshots
 

@@ -5,7 +5,7 @@ the coding agent so it loads Atlas MCP, then ask for ticket status.
 
 The [latest published release](https://github.com/myrrazor/atlas-tasker/releases/latest)
 is what the one-line installer installs. See verification results on the release
-page. Unstamped source builds report `"version": "dev"`.
+page. Unstamped checkout builds report `dev+<commit>` when VCS metadata is available; builds without it report `dev`.
 
 ## The short path
 

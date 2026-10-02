@@ -1037,4 +1037,4 @@ platform: darwin/arm64
 }
 ```
 
-Source builds that are not stamped by release scripts return `version: "dev"`, `commit: "unknown"`, and `build_date: "unknown"`.
+Unstamped checkout builds use VCS metadata when available: `version` is `dev+<commit>`, `commit` is the short revision (with `-dirty` for a modified checkout), and `build_date` is the VCS timestamp. Without VCS metadata these fields remain `dev` and `unknown`. Go installs of a published module tag can report that tag as the version, but do not establish release-build provenance.

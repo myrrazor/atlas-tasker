@@ -116,7 +116,7 @@
           <pre id="home-open">tracker</pre>
         </div>
         <p>No arguments. Atlas starts or reuses one loopback service on <code>127.0.0.1:7432</code>, opens Home in a terminal, and prints a URL or JSON otherwise. You do not need to be inside a repository. If another app owns that port, the command fails instead of hopping.</p>
-        <p>Home clears its one-time URL fragment before sending the claim to <code>POST /session/claim</code>, which establishes an HttpOnly cookie. The claim is absent from request URLs. <code>tracker web serve</code> still uses <code>?token=</code>.</p>
+        <p>Home clears its one-time URL fragment before sending the claim to <code>POST /session/claim</code>, which establishes an HttpOnly cookie. The claim is absent from request URLs. <code>tracker web serve</code> still uses <code>?token=</code>. Sessions persist in private local files, expire, and rotate so an open tab can survive a service restart. An expired Home session requires a fresh terminal sign-in.</p>
         <h2>Routes</h2>
         <ul>
           <li><code>/</code> Home</li>
