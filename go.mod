@@ -1,6 +1,6 @@
 module github.com/myrrazor/atlas-tasker
 
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
