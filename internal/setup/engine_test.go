@@ -211,9 +211,46 @@ func TestApplyIdempotentAndPermissions(t *testing.T) {
 }
 
 func TestPartialProviderFailureIsIsolated(t *testing.T) {
+	assertPartialProviderFailureIsIsolated(t)
+}
+
+// Regression: the injected failure used to match "grok" anywhere in the
+// absolute step path, so a TMPDIR containing "grok" failed every provider.
+func TestPartialProviderFailureIsIsolatedWithGrokInTempPath(t *testing.T) {
+	// Use os.MkdirTemp, not t.TempDir: t.TempDir fixes its base directory on
+	// first call, so TMPDIR must be set before testEngine calls it.
+	tmp, err := os.MkdirTemp("", "grok-qa-tmp-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmp) })
+	t.Setenv("TMPDIR", tmp)
+	if engine := testEngine(t); !strings.Contains(engine.WorkspaceRoot, "grok") {
+		t.Fatalf("workspace root %q should contain grok for this regression", engine.WorkspaceRoot)
+	}
+	assertPartialProviderFailureIsIsolated(t)
+}
+
+// isGrokStepPath reports whether path lives under a .grok directory relative
+// to the engine's workspace root or home, ignoring the rest of the absolute path.
+func isGrokStepPath(engine *Engine, path string) bool {
+	for _, root := range []string{engine.WorkspaceRoot, engine.Home} {
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if strings.SplitN(filepath.ToSlash(rel), "/", 2)[0] == ".grok" {
+			return true
+		}
+	}
+	return false
+}
+
+func assertPartialProviderFailureIsIsolated(t *testing.T) {
+	t.Helper()
 	engine := testEngine(t)
 	engine.Hooks.AfterStep = func(step adapter.PlanStep) error {
-		if strings.Contains(step.Path, "grok") {
+		if isGrokStepPath(engine, step.Path) {
 			return errors.New("injected grok failure")
 		}
 		return nil
