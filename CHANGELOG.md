@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Grok plugin reviewer steps (`docs/grok-plugin-review.md`) and `scripts/grok-plugin-smoke.py`, a standard-library MCP stdio smoke test that lists tools and calls `atlas_status`.
+- Grok plugin manifest: `.grok-plugin/plugin.json` (version 1.18.0, MIT, logo `assets/brand/atlas-tasker-at-icon.png`) and a root `.mcp.json` that launches the installed `tracker mcp serve --global --tool-profile workflow --tool-name-style portable` over stdio, so Atlas Tasker can be listed in the Grok plugin marketplace as a local plugin.
 - README documents every network endpoint Atlas Tasker can call and every credential or environment variable it reads, from a source audit, for Grok plugin marketplace review.
 
 ## v1.17.1 - Home and live-board stability (2026-10-02)
