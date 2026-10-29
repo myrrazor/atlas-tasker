@@ -56,11 +56,24 @@ Give each agent its own tickets on a shared board. Assignees, leases, and review
 
 The one-liner above is the normal path: latest **published** GitHub release, SHA-256, GitHub build attestation via a local bundle (`gh` required; no GitHub login). Default destination `/usr/local/bin` (`BIN_DIR` to change it, `VERSION` to pin a tag).
 
-Optional, with Go 1.26.6 or newer:
+Optional, with Go (pinned to the current release):
 
 ```bash
-go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest
+go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.17.1
 ```
+
+v1.17.1's `go.mod` declares `go 1.26.6`. With the default `GOTOOLCHAIN=auto`, Go downloads that toolchain only when your local Go is older than 1.26.6; a newer local Go builds directly.
+
+Neither `go install` nor a manual binary install edits your `PATH`. If `command -v tracker` prints nothing, add the install directory to your shell profile and open a new shell, for example:
+
+```bash
+echo 'export PATH="$(go env GOPATH)/bin:$PATH"' >> ~/.bashrc   # go install (zsh: ~/.zshrc)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc       # verified release binary in ~/.local/bin
+```
+
+MCP clients such as Grok launch `tracker` by name, so it must be on the `PATH` they see. `tracker init` also starts (or reuses) the machine-wide Atlas Home service on `http://127.0.0.1:7432/` (loopback only); pass `--no-open` to skip opening it.
+
+Prefer not to pipe a script into your shell? [Install without `curl | sh`](docs/install-without-script.md) covers a checksum- and attestation-verified release binary and a pinned `go install`.
 
 Optional, from this source (an unstamped tagged checkout can report its module tag; other checkouts report `dev+<commit>` with VCS metadata or `dev`; none proves hosted provenance; commands below assume that binary):
 
@@ -85,6 +98,21 @@ Prefer a full-screen view? `tracker tui` — board, queues, ticket detail, searc
 ![Ticket detail with runs, evidence, and timeline](docs/assets/tui-detail.png)
 
 Every ticket is markdown under `projects/`, every change is an append-only event in `.tracker/`, and the SQLite file is a disposable index. If it goes missing, the next command rebuilds it; `tracker doctor --repair` does it on demand.
+
+## Grok plugin
+
+Atlas Tasker ships a Grok Build plugin (`.grok-plugin/plugin.json` and `.mcp.json`). It launches your installed `tracker` binary as a local stdio MCP server (`tracker mcp serve --global --tool-profile workflow --tool-name-style portable`), so Grok can read board status and create, update, claim and complete tickets in your own repo. There is no hosted service, account or API key.
+
+1. Install `tracker` with the verified release binary or `go install` ([install without `curl | sh`](docs/install-without-script.md)) and make sure it is on your `PATH`.
+2. Run `tracker init` in a repo.
+3. Install the plugin:
+
+```bash
+grok plugin install myrrazor/atlas-tasker
+grok mcp doctor atlas-tasker
+```
+
+Confirm the trust prompt (or add `--trust`). Run `grok mcp doctor` from your board's directory; it should report the server healthy with its tools discovered. Reviewers can follow the full [Grok plugin testing steps](docs/grok-plugin-review.md). Endpoints and credentials are listed under [Network endpoints and credentials](#network-endpoints-and-credentials).
 
 ## Atlas Home
 
