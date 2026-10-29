@@ -190,7 +190,7 @@
           <code id="hero-install" tabindex="0">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
         </div>
         <button class="copy-button" type="button" data-copy="hero-install" aria-label="Copy curl install command">Copy command</button>
-        <p class="command-note">Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) · macOS or Linux · v1.17.1</p>
+        <p class="command-note">Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) · macOS or Linux · v1.18</p>
       </aside>
     </header>
 
@@ -461,15 +461,51 @@
 
           <div class="install-option">
             <div class="install-meta">
-              <strong>Optional Go install</strong>
-              <span>Go 1.26.6+</span>
+              <strong>Go install (pinned)</strong>
+              <span>No script · Go downloads 1.26.6 only if yours is older</span>
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
-              <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>
+              <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.17.1</code>
               <button class="copy-button" type="button" data-copy="go-install" aria-label="Copy Go install command">Copy</button>
             </div>
-            <p class="requirements">Add <code>$(go env GOPATH)/bin</code> to your <code>PATH</code> if needed. Go installs can report a published module tag without release-build provenance stamps.</p>
+            <p class="requirements">The install does not edit your <code>PATH</code>: add <code>$(go env GOPATH)/bin</code> to it in your shell profile if <code>command -v tracker</code> prints nothing. Go installs can report a published module tag without release-build provenance stamps.</p>
+          </div>
+
+          <div class="install-option">
+            <div class="install-meta">
+              <strong>Verified release binary</strong>
+              <span>No script · checksum + attestation · needs <code>gh</code>, no login</span>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="bin-download" tabindex="0">gh release download v1.17.1 --repo myrrazor/atlas-tasker --pattern "tracker_1.17.1_linux_amd64.tar.gz" --pattern checksums.txt --pattern attestation-bundle.jsonl</code>
+              <button class="copy-button" type="button" data-copy="bin-download" aria-label="Copy release download command">Copy</button>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="bin-verify" tabindex="0">gh attestation verify tracker_1.17.1_linux_amd64.tar.gz --repo myrrazor/atlas-tasker --bundle attestation-bundle.jsonl --signer-workflow myrrazor/atlas-tasker/.github/workflows/release.yml --source-ref refs/tags/v1.17.1</code>
+              <button class="copy-button" type="button" data-copy="bin-verify" aria-label="Copy attestation verify command">Copy</button>
+            </div>
+            <p class="requirements">Then check the SHA-256 against <code>checksums.txt</code>, extract <code>tracker</code>, and put it in a directory on your <code>PATH</code> such as <code>~/.local/bin</code>. Full steps for every platform: <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/install-without-script.md">install without curl | sh</a>.</p>
+          </div>
+
+          <div class="install-option">
+            <div class="install-meta">
+              <strong>Grok plugin</strong>
+              <span>Local stdio MCP · no account or API key</span>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="grok-plugin" tabindex="0">grok plugin install myrrazor/atlas-tasker</code>
+              <button class="copy-button" type="button" data-copy="grok-plugin" aria-label="Copy Grok plugin install command">Copy</button>
+            </div>
+            <div class="install-command">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code id="grok-doctor" tabindex="0">grok mcp doctor atlas-tasker</code>
+              <button class="copy-button" type="button" data-copy="grok-doctor" aria-label="Copy Grok MCP doctor command">Copy</button>
+            </div>
+            <p class="requirements">Launches your installed <code>tracker mcp serve</code> over stdio so Grok can read the board and manage tickets. Install <code>tracker</code> and run <code>tracker init</code> first. <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/grok-plugin-review.md">Testing steps</a>.</p>
           </div>
 
           <a class="release-row" href="https://github.com/myrrazor/atlas-tasker/releases/latest">
@@ -584,7 +620,7 @@
 
   <footer class="footer">
     <div class="shell footer-inner">
-      <span>Atlas Tasker · MIT</span>
+      <span>Atlas Tasker · MIT · Built by <a href="https://github.com/myrrazor">myrrazor</a></span>
       <div class="footer-links">
         <a href="docs/">Docs</a>
         <a href="cli.html">CLI</a>

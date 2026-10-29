@@ -583,3 +583,16 @@ test("public site omits personal author and direct contact metadata", () => {
     }
   }
 });
+
+test("every footer credits myrrazor and links only to the myrrazor GitHub profile", () => {
+  for (const [file, html] of [...pages, ["404.html", notFound]]) {
+    const footer = html.match(/<footer class="footer">([\s\S]*?)<\/footer>/)?.[1] ?? "";
+    const credit = footer.match(/Built by\s*(<a [^>]*>)?\s*myrrazor\s*(<\/a>)?/);
+    assert.ok(credit, `${file}: footer is missing "Built by myrrazor"`);
+    if (credit[1]) {
+      assert.match(credit[1], /^<a href="https:\/\/github\.com\/myrrazor">$/, `${file}: credit link must be https://github.com/myrrazor`);
+    }
+    assert.doesNotMatch(footer, /@/, `${file}: footer must not contain email addresses`);
+    assert.equal((footer.match(/Built by/g) ?? []).length, 1, `${file}: exactly one credit`);
+  }
+});
