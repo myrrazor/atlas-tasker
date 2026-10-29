@@ -147,7 +147,7 @@ Audited from the source at this commit (`internal/update`, `internal/service`, `
 | `RELEASE_BASE_URL` (your own mirror, `https://` only) | `tracker update` | Only if you set it; loopback `http://` also needs `ALLOW_INSECURE_RELEASE_BASE_URL=1` |
 | Your `notifications.webhook_url` | event notifier (CLI and MCP mutations) | Only if you configure it in workspace settings; JSON `POST` of the event, with a timeout and bounded retries |
 | GitHub via the `gh` CLI (PR create/view/checks, attestation verify) | `tracker gh …`, change/checks sync, `tracker update` | Only those commands; uses your existing `gh` login |
-| Your Git remote (`git fetch` / `git push` of `refs/atlas-sync/*`) | `tracker sync …` | Only after you add a sync remote explicitly |
+| Your Git remote: pushes `refs/atlas-tasker/sync/<workspaceID>`, fetches `+refs/atlas-tasker/sync/*:refs/remotes/atlas-sync/*` (`refs/remotes/atlas-sync/*` is only the local tracking namespace) | `tracker sync …` | Only after you add a sync remote explicitly |
 | `http://127.0.0.1:7432/` (loopback only) | Atlas Home / `tracker web`, MCP board URL, health probe `/healthz` | Local browser board; binds to localhost, never a public interface |
 
 Credentials and environment variables:
@@ -156,7 +156,8 @@ Credentials and environment variables:
 - **GitHub:** `tracker gh` and sync reuse the `gh` CLI's own login and your Git credential helper; Atlas never reads, stores, or prints those tokens. Installing and verifying releases works without a GitHub login.
 - **Browser session:** Atlas Home keeps its local session token in the workspace state directory (excluded from Git) and rotates it; it never leaves the machine.
 - **Webhook URL:** stored in workspace settings; treat it as a secret if it embeds one.
-- Environment variables read: `TRACKER_ACTOR` (default actor), `HOME`, `PATH`, `CLAUDE_CONFIG_DIR` and `CODEX_HOME` (client detection), `NO_COLOR`, `COLUMNS`, and for `tracker update` only `RELEASE_BASE_URL`, `ALLOW_INSECURE_RELEASE_BASE_URL`, `VERIFY_ATTESTATIONS`. None of them is a credential.
+- Environment variables read: `TRACKER_ACTOR` (default actor), `HOME` (also via the Go home-directory lookup), `PATH`, `XDG_STATE_HOME` (state directory for sessions, receipts and backup state, `setup/paths.go` and `service/backup_state.go`), `CLAUDE_CONFIG_DIR` and `CODEX_HOME` (client detection), `NO_COLOR`, `COLUMNS`, and for `tracker update` only `RELEASE_BASE_URL`, `ALLOW_INSECURE_RELEASE_BASE_URL`, `VERIFY_ATTESTATIONS`. None of them is a credential.
+- Passed through to child processes, not read by Atlas: local checkpoint Git runs with a scrubbed environment whose allowlist (`gitSafeEnv`, `service/checkpoint_git.go`) keeps only `PATH`, `HOME`, `USER`, `LOGNAME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_STATE_HOME`, `SSH_AUTH_SOCK`, `SSH_AGENT_PID`, `LANG`, `LC_ALL`, `TZ` and `TMPDIR`. Sync Git, `gh` and the Atlas Home child process inherit your full environment (plus `GIT_TERMINAL_PROMPT=0` for Git), so any `GH_TOKEN` or SSH agent you already use reaches those tools; Atlas itself never reads or logs them.
 
 ## Docs
 
