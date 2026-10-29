@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `docs/install-without-script.md`: install without `curl | sh`, via a checksum- and attestation-verified release binary or a pinned `go install`, linked from the README Install section.
+
 ## v1.17.1 - Home and live-board stability (2026-10-02)
 
 [Download v1.17.1 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.1).
