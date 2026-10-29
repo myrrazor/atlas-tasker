@@ -7,7 +7,7 @@ Two install paths that never pipe a remote script into a shell. Both put a `trac
 Needs `gh` (no GitHub login required), `sha256sum` (on macOS use `shasum -a 256 -c -` in its place) and `tar`. Pick your platform: `linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`.
 
 ```bash
-VERSION=1.17.1
+VERSION=1.18.0
 PLATFORM=linux_amd64
 WORK=$(mktemp -d) && cd "$WORK"
 gh release download "v$VERSION" --repo myrrazor/atlas-tasker \
@@ -23,18 +23,18 @@ mkdir -p "$HOME/.local/bin" && install -m 0755 tracker "$HOME/.local/bin/tracker
 "$HOME/.local/bin/tracker" version
 ```
 
-Expected: `sha256sum` prints `tracker_1.17.1_linux_amd64.tar.gz: OK`, `gh attestation verify` exits 0 (it prints `✓ Verification succeeded!` when run in a terminal), and `tracker version` prints `tracker v1.17.1`. Make sure `$HOME/.local/bin` is on your `PATH`. Stop if either check fails.
+Expected: `sha256sum` prints `tracker_1.18.0_linux_amd64.tar.gz: OK`, `gh attestation verify` exits 0 (it prints `✓ Verification succeeded!` when run in a terminal), and `tracker version` prints `tracker v1.18.0`. Make sure `$HOME/.local/bin` is on your `PATH`. Stop if either check fails.
 
 ## Option B: `go install` from source
 
 Needs Go 1.26.6 or newer (Go downloads the toolchain named in `go.mod` when `GOTOOLCHAIN=auto`, the default). Pin a tag rather than `@latest` so you know what you built:
 
 ```bash
-go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.17.1
+go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.0
 "$(go env GOPATH)/bin/tracker" version
 ```
 
-Expected: `tracker v1.17.1` (commit and build date show `unknown`, because `go install` builds are not release-stamped and carry no build attestation). Make sure `$(go env GOPATH)/bin` is on your `PATH`.
+Expected: `tracker v1.18.0` (commit and build date show `unknown`, because `go install` builds are not release-stamped and carry no build attestation). Make sure `$(go env GOPATH)/bin` is on your `PATH`.
 
 ## Upgrading and removing
 

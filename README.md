@@ -10,7 +10,7 @@
 
 Atlas Tasker is a local-first issue tracker that lives in your repo. Tickets, dependencies, review gates, and audit history are markdown files plus a rebuildable SQLite index — no hosted account. Coding agents (Claude Code, Codex, Cursor, OpenClaw, Grok, anything that speaks MCP) claim work, block on each other, attach evidence, and hand off for review on the same board.
 
-> **New in v1.17.1:** Atlas Home sessions survive server restarts; live boards retain typed drafts, saved views, and active drags during concurrent updates. [Release notes](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.1) · [Home and workspaces](docs/guides/home-and-workspaces.md).
+> **New in v1.18.0:** Atlas Tasker can be listed in the Grok plugin marketplace as a local plugin, and you can install without `curl | sh` via a checksum- and attestation-verified release binary or a pinned `go install`. [Release notes](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.0) · [Install without the script](docs/install-without-script.md).
 
 ## Get started
 
@@ -61,10 +61,10 @@ Prefer not to pipe a script into your shell? [Install without `curl | sh`](docs/
 Optional, with Go 1.26.6 or newer:
 
 ```bash
-go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.17.1
+go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.0
 ```
 
-v1.17.1's `go.mod` declares `go 1.26.6`. With the default `GOTOOLCHAIN=auto`, Go downloads that toolchain only when your local Go is older than 1.26.6; a newer local Go builds directly.
+v1.18.0's `go.mod` declares `go 1.26.10`. With the default `GOTOOLCHAIN=auto`, Go downloads that toolchain only when your local Go is older than 1.26.10; a newer or equal local Go builds directly.
 
 Neither `go install` nor a manual binary install edits your `PATH`. If `command -v tracker` prints nothing, add the install directory to your shell profile and open a new shell, for example:
 
@@ -195,7 +195,7 @@ What Atlas does **not** claim: [security limitations](docs/security-limitations.
 
 ## Status
 
-Atlas Tasker **v1.17.1** improves Home, live-board, schedule, and large-board stability. The installer selects the latest published release. [CHANGELOG.md](CHANGELOG.md) lists the changes. See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
+Atlas Tasker **v1.18.0** adds a Grok plugin and new ways to install without `curl | sh`, with no changes to tracker behavior, the CLI or the MCP tools. The installer selects the latest published release. [CHANGELOG.md](CHANGELOG.md) lists the changes. See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
 
 `v1.9.0` was the first stable release. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 
