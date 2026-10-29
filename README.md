@@ -56,7 +56,7 @@ Give each agent its own tickets on a shared board. Assignees, leases, and review
 
 The one-liner above is the normal path: latest **published** GitHub release, SHA-256, GitHub build attestation via a local bundle (`gh` required; no GitHub login). Default destination `/usr/local/bin` (`BIN_DIR` to change it, `VERSION` to pin a tag).
 
-Optional, with Go (pinned to the current release):
+Optional, with Go 1.26.6 or newer:
 
 ```bash
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.17.1
@@ -72,8 +72,6 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc       # verified releas
 ```
 
 MCP clients such as Grok launch `tracker` by name, so it must be on the `PATH` they see. `tracker init` also starts (or reuses) the machine-wide Atlas Home service on `http://127.0.0.1:7432/` (loopback only); pass `--no-open` to skip opening it.
-
-Prefer not to pipe a script into your shell? [Install without `curl | sh`](docs/install-without-script.md) covers a checksum- and attestation-verified release binary and a pinned `go install`.
 
 Optional, from this source (an unstamped tagged checkout can report its module tag; other checkouts report `dev+<commit>` with VCS metadata or `dev`; none proves hosted provenance; commands below assume that binary):
 
