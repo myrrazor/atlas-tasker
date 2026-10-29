@@ -78,5 +78,5 @@ Optional, inside Grok: run `grok` in `$REVIEW/board`, open `/mcps` to see `atlas
 
 ```bash
 grok plugin uninstall atlas-tasker
-cd / && pkill -f "$GOPATH/bin/tracker" ; rm -rf "$REVIEW"
+cd / && pkill -f "$GOPATH/bin/tracker" ; go clean -modcache && rm -rf "$REVIEW"
 ```
