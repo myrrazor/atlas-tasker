@@ -33,6 +33,8 @@ Expected: a line starting `initialized` and ending `registered; http://127.0.0.1
 
 ## 4. Install and connect the plugin
 
+Until the plugin PRs merge, first run `export PLUGIN_REF=docs/grok-plugin-reviewer-steps`.
+
 ```bash
 git clone -q --branch "${PLUGIN_REF:-main}" https://github.com/myrrazor/atlas-tasker "$REVIEW/plugin"
 grok plugin validate "$REVIEW/plugin"
