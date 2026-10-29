@@ -56,6 +56,8 @@ Give each agent its own tickets on a shared board. Assignees, leases, and review
 
 The one-liner above is the normal path: latest **published** GitHub release, SHA-256, GitHub build attestation via a local bundle (`gh` required; no GitHub login). Default destination `/usr/local/bin` (`BIN_DIR` to change it, `VERSION` to pin a tag).
 
+Prefer not to pipe a script into your shell? [Install without `curl | sh`](docs/install-without-script.md) covers a checksum- and attestation-verified release binary and a pinned `go install`.
+
 Optional, with Go 1.26.6 or newer:
 
 ```bash
