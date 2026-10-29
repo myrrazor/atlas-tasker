@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- README documents every network endpoint Atlas Tasker can call and every credential or environment variable it reads, from a source audit, for Grok plugin marketplace review.
+
 ## v1.17.1 - Home and live-board stability (2026-10-02)
 
 [Download v1.17.1 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.1).

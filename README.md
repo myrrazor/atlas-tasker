@@ -136,6 +136,28 @@ tracker uninstall --yes    # apply; boards stay
 
 [Uninstall](docs/guides/uninstall.md).
 
+## Network endpoints and credentials
+
+Audited from the source at this commit (`internal/update`, `internal/service`, `internal/app`, `internal/web`, `internal/cli`). Atlas Tasker has **no telemetry**, no hosted backend, and **no API keys of its own**. The Grok plugin's MCP server (`tracker mcp serve`, workflow profile) makes no outbound internet calls unless you configure a webhook.
+
+| Endpoint | Called by | When |
+|---|---|---|
+| `https://api.github.com/repos/myrrazor/atlas-tasker/releases/latest` | `tracker update` | Only when you run an update, to find the latest release tag |
+| `https://github.com/myrrazor/atlas-tasker/releases/download/<tag>/<asset>` and `.../checksums.txt` | `tracker update` | Only during an update; the archive is SHA-256-checked and verified with `gh attestation verify` |
+| `RELEASE_BASE_URL` (your own mirror, `https://` only) | `tracker update` | Only if you set it; loopback `http://` also needs `ALLOW_INSECURE_RELEASE_BASE_URL=1` |
+| Your `notifications.webhook_url` | event notifier (CLI and MCP mutations) | Only if you configure it in workspace settings; JSON `POST` of the event, with a timeout and bounded retries |
+| GitHub via the `gh` CLI (PR create/view/checks, attestation verify) | `tracker gh …`, change/checks sync, `tracker update` | Only those commands; uses your existing `gh` login |
+| Your Git remote (`git fetch` / `git push` of `refs/atlas-sync/*`) | `tracker sync …` | Only after you add a sync remote explicitly |
+| `http://127.0.0.1:7432/` (loopback only) | Atlas Home / `tracker web`, MCP board URL, health probe `/healthz` | Local browser board; binds to localhost, never a public interface |
+
+Credentials and environment variables:
+
+- **No Atlas key or token exists.** Nothing to paste into the plugin or `.mcp.json`.
+- **GitHub:** `tracker gh` and sync reuse the `gh` CLI's own login and your Git credential helper; Atlas never reads, stores, or prints those tokens. Installing and verifying releases works without a GitHub login.
+- **Browser session:** Atlas Home keeps its local session token in the workspace state directory (excluded from Git) and rotates it; it never leaves the machine.
+- **Webhook URL:** stored in workspace settings; treat it as a secret if it embeds one.
+- Environment variables read: `TRACKER_ACTOR` (default actor), `HOME`, `PATH`, `CLAUDE_CONFIG_DIR` and `CODEX_HOME` (client detection), `NO_COLOR`, `COLUMNS`, and for `tracker update` only `RELEASE_BASE_URL`, `ALLOW_INSECURE_RELEASE_BASE_URL`, `VERIFY_ATTESTATIONS`. None of them is a credential.
+
 ## Docs
 
 Start at the [docs landing page](docs/README.md), or jump to [installation](docs/installation.md), [getting started](docs/getting-started.md), [v1.16 migration](docs/migration-v1.16.md), [Home](docs/guides/home-and-workspaces.md), [agent integrations](docs/guides/agent-integrations.md), [MCP](docs/guides/mcp-for-agents.md), [compatibility](docs/v1.16-client-compatibility.md), [browser management](docs/v1.16-browser-management.md), [command reference](docs/command-reference.md), or [troubleshooting](docs/troubleshooting.md).
