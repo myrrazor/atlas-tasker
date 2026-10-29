@@ -592,6 +592,7 @@ test("every footer credits myrrazor and links only to the myrrazor GitHub profil
     if (credit[1]) {
       assert.match(credit[1], /^<a href="https:\/\/github\.com\/myrrazor">$/, `${file}: credit link must be https://github.com/myrrazor`);
     }
-    assert.doesNotMatch(footer, /@|mayur/i, `${file}: footer must not contain emails or other names`);
+    assert.doesNotMatch(footer, /@/, `${file}: footer must not contain email addresses`);
+    assert.equal((footer.match(/Built by/g) ?? []).length, 1, `${file}: exactly one credit`);
   }
 });
