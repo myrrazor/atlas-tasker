@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "atlas-tasker": {
+      "type": "stdio",
+      "command": "tracker",
+      "args": ["mcp", "serve", "--global", "--tool-profile", "workflow", "--tool-name-style", "portable"]
+    }
+  }
+}

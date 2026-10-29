@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Grok plugin manifest: `.grok-plugin/plugin.json` (version 1.18.0, MIT, logo `assets/brand/atlas-tasker-at-icon.png`) and a root `.mcp.json` that launches the installed `tracker mcp serve --global --tool-profile workflow --tool-name-style portable` over stdio, so Atlas Tasker can be listed in the Grok plugin marketplace as a local plugin.
+
 ## v1.17.1 - Home and live-board stability (2026-10-02)
 
 [Download v1.17.1 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.1).
