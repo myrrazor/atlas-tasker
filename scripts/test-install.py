@@ -43,6 +43,15 @@ def log_args():
         json.dump(sys.argv[1:], fh)
         fh.write("\n")
 
+if sys.argv[1:] == ["--version"]:
+    ver = os.environ.get("MOCK_GH_VERSION", "2.96.0")
+    if ver == "garbage":
+        print("not a gh banner")
+    else:
+        print(f"gh version {ver} (2026-07-02)")
+        print(f"https://github.com/cli/cli/releases/tag/v{ver}")
+    sys.exit(0)
+
 log_args()
 mode = os.environ.get("MOCK_GH_MODE", "ok")
 if mode == "always-fail":
@@ -225,7 +234,8 @@ class InstallerTests(unittest.TestCase):
             "CODEX_HOME", "CLAUDE_CONFIG_DIR", "TRACKER_ACTOR", "SKIP_INTEGRATIONS",
             "XDG_STATE_HOME", "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN",
             "GH_HOST", "GH_REPO", "GH_PROMPT", "ATTESTATION_BUNDLE_URL",
-            "SIGNER_WORKFLOW", "SOURCE_REF",
+            "SIGNER_WORKFLOW", "SOURCE_REF", "USE_SUDO", "MOCK_GH_VERSION",
+            "ATLAS_INSTALL_TEST_DEFAULT_BIN_DIR",
         ):
             self.env.pop(key, None)
         port = self.server.server_port
@@ -626,6 +636,128 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_installed()
         self.assert_bundle_verify_args()
+
+    # --- gh minimum version (v1.18.0 acceptance blocker 2) ---
+
+    GH_TOO_OLD_MESSAGE = (
+        "Atlas Tasker needs GitHub CLI (gh) 2.96.0 or newer. Upgrade it from "
+        "https://cli.github.com/ (distro packages are often older) and re-run."
+    )
+
+    def test_gh_min_version_constant_matches_message(self):
+        text = self.script.read_text()
+        self.assertIn('GH_MIN_VERSION="2.96.0"', text)
+        self.assertIn(f'GH_TOO_OLD_MESSAGE="{self.GH_TOO_OLD_MESSAGE}"', text)
+
+    def test_distro_gh_too_old_is_rejected_before_download(self):
+        for old in ("2.45.0", "2.46.0", "2.95.9"):
+            with self.subTest(gh=old):
+                self.env["MOCK_GH_VERSION"] = old
+                result = self.run_install()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(self.GH_TOO_OLD_MESSAGE, result.stderr)
+                self.assertIn(f"found gh {old}; minimum is 2.96.0", result.stderr)
+                self.assertFalse((self.bin_dir / "tracker").exists())
+                self.assertEqual(self.archive_gets(), [])
+
+    def test_gh_at_or_above_minimum_is_accepted(self):
+        for ok in ("2.96.0", "2.103.0", "3.0"):
+            with self.subTest(gh=ok):
+                self.env["MOCK_GH_VERSION"] = ok
+                result = self.run_install()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("needs GitHub CLI", result.stderr)
+                self.assert_installed()
+                self.assert_bundle_verify_args()
+
+    def test_unreadable_gh_version_is_rejected(self):
+        self.env["MOCK_GH_VERSION"] = "garbage"
+        result = self.run_install()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(self.GH_TOO_OLD_MESSAGE, result.stderr)
+        self.assertEqual(self.archive_gets(), [])
+
+    def test_old_gh_ignored_when_attestations_disabled(self):
+        self.env["MOCK_GH_VERSION"] = "2.45.0"
+        self.env["VERIFY_ATTESTATIONS"] = "0"
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed()
+
+    # --- non-writable default destination (README one-liner as a normal user) ---
+
+    def locked_default(self):
+        parent = self.case / "usr-local"
+        dest = parent / "bin"
+        dest.mkdir(parents=True)
+        os.chmod(dest, 0o555)
+        self.addCleanup(os.chmod, dest, 0o755)
+        self.env.pop("BIN_DIR", None)
+        self.env["ATLAS_INSTALL_TEST_DEFAULT_BIN_DIR"] = str(dest)
+        return dest
+
+    def test_default_dir_not_writable_falls_back_to_home_local_bin(self):
+        locked = self.locked_default()
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        fallback = self.agent_home / ".local" / "bin"
+        self.assertTrue((fallback / "tracker").is_file())
+        self.assertFalse((locked / "tracker").exists())
+        self.assertIn("installing to $HOME/.local/bin instead", result.stderr)
+        self.assertIn(f"installed tracker v1.12.0-test to {fallback}/tracker", result.stdout)
+        self.assertIn(f"warning: {fallback} is not on PATH", result.stderr)
+        self.assertIn(f'export PATH="{fallback}:$PATH"', result.stderr)
+        receipt = json.loads(self.receipt_path().read_text())
+        self.assertEqual(receipt["binary_path"], f"{fallback}/tracker")
+
+    def test_fallback_dir_on_path_has_no_warning(self):
+        self.locked_default()
+        fallback = self.agent_home / ".local" / "bin"
+        self.env["PATH"] = f"{fallback}:{self.env['PATH']}"
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("is not on PATH", result.stderr)
+
+    def test_explicit_bin_dir_is_never_redirected(self):
+        locked = self.locked_default()
+        self.env["BIN_DIR"] = str(locked)
+        result = self.run_install()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("install directory is not writable", result.stderr)
+        self.assertIn("USE_SUDO=1", result.stderr)
+        self.assertFalse((self.agent_home / ".local" / "bin" / "tracker").exists())
+        self.assertEqual(self.archive_gets(), [])
+
+    def test_use_sudo_opt_in_keeps_default_dir(self):
+        locked = self.locked_default()
+        sudo_log = self.case / "sudo.log"
+        sudo = self.mock_bin / "sudo"
+        sudo.write_text(
+            "#!/bin/sh\n"
+            f'echo "$*" >> "{sudo_log}"\n'
+            f'chmod 755 "{locked}"\n'
+            '"$@"; rc=$?\n'
+            f'chmod 555 "{locked}"\n'
+            "exit $rc\n"
+        )
+        sudo.chmod(0o755)
+        self.env["USE_SUDO"] = "1"
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((locked / "tracker").is_file())
+        self.assertFalse((self.agent_home / ".local" / "bin" / "tracker").exists())
+        self.assertIn("using sudo because USE_SUDO=1", result.stderr)
+        self.assertIn("install -m 0755", sudo_log.read_text())
+
+    def test_sudo_never_used_without_opt_in(self):
+        self.locked_default()
+        sudo_log = self.case / "sudo.log"
+        sudo = self.mock_bin / "sudo"
+        sudo.write_text(f'#!/bin/sh\necho "$*" >> "{sudo_log}"\nexit 1\n')
+        sudo.chmod(0o755)
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(sudo_log.exists())
 
 
 if __name__ == "__main__":
