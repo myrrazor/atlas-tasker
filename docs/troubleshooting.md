@@ -97,7 +97,7 @@ POSTs are ignored. Home init does not write client MCP files. Details:
 
 ## `tracker web open` says the board is not running
 
-`tracker web open` reuses the last recorded server and health-checks it before opening anything. Recorded state outlives crashed or stopped servers, so a fail-fast here just means that server is gone:
+`tracker web open` reuses the last recorded server and health-checks it before opening anything. It opens the session URL (with its token) so a fresh browser signs in; the printed line shows only the bare board URL. Recorded state outlives crashed or stopped servers, so a fail-fast here just means that server is gone:
 
 ```bash
 tracker web status
