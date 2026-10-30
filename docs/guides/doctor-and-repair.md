@@ -38,6 +38,17 @@ The next command is quiet again. A workspace with nothing in it (right after `tr
 
 What does not heal itself is a byte-corrupt file. Every command except `reindex` and `doctor --repair` stops with exit 7 and points at `doctor --repair`, so a damaged index is never silently thrown away underneath a long-running server.
 
+## A damaged ticket file
+
+A ticket file that no longer parses (for example one cut short mid-frontmatter, which fails with `missing frontmatter end`) no longer stops everything:
+
+- `tracker doctor` exits 7 (`repair_needed`) and names the file: `1 ticket file is damaged: projects/APP/tickets/APP-1.md (missing frontmatter end); run 'tracker doctor --repair' ...`.
+- `tracker reindex` still indexes every other ticket, keeps the damaged ticket's last state from the event log on the board, then exits 7 with the same message.
+- `tracker doctor --repair` first copies the damaged file byte-for-byte to `.tracker/quarantine/<UTC time>/projects/<KEY>/tickets/<ID>.md`, then rewrites the ticket from its newest snapshot in the event log. `repair_actions` lists `restored APP-1 from event log (backup: .tracker/quarantine/...)`.
+- If the event log has no snapshot of that ticket (a file written by hand, never through Atlas), repair still makes the backup but leaves the file exactly as it is and exits 7, naming the file and its backup. Fix or remove it by hand, then rerun `tracker doctor --repair`.
+
+Repair never drops a damaged file. Edits made by hand after the last event are not in the log; compare the restored file with the backup if you made any.
+
 ## When To Repair
 
 Use repair when the projection or journaled mutation state needs rebuilding:
