@@ -50,6 +50,36 @@ func sigCaught(pid int) bool {
 	return false
 }
 
+// waitForTrackerExe waits until pid has exec'd bin. The child is a shell that
+// execs the binary, and until that happens the pid is still the shell:
+// reading SigCgt or sending SIGINT then hits sh, which dies with SIGINT and
+// the inherited-ignore case reports "signal: interrupt".
+func waitForTrackerExe(t *testing.T, pid int, bin string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	var last string
+	var lastErr error
+	for {
+		exe, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+		if err == nil && exe == bin {
+			return
+		}
+		if err == nil {
+			last = exe
+			lastErr = nil
+		} else {
+			lastErr = err
+		}
+		if !time.Now().Before(deadline) {
+			if last != "" {
+				t.Fatalf("pid %d did not exec %s before deadline (exe is %s)", pid, bin, last)
+			}
+			t.Fatalf("pid %d did not exec %s before deadline: %v", pid, bin, lastErr)
+		}
+		time.Sleep(100 * time.Microsecond)
+	}
+}
+
 // Edge 4 follow-up: a SIGINT that arrives while serve or web serve is still
 // starting (before the listener is bound) must stop the process, including
 // when SIGINT was inherited as ignored. Every run uses a fresh free port and
@@ -111,6 +141,11 @@ func TestServeStopsOnEarlySIGINT(t *testing.T) {
 							<-waited
 						}
 					})
+					// The pid is the shell until exec. dash catches SIGINT, so
+					// SigCgt can already name SIGINT before tracker is running.
+					if runtime.GOOS == "linux" {
+						waitForTrackerExe(t, cmd.Process.Pid, bin)
+					}
 					if tc.trap != "" {
 						// Under an inherited SIG_IGN the kernel drops a SIGINT
 						// sent before the Go runtime registers for it, so send
