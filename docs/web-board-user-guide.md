@@ -84,5 +84,7 @@ conflict and keep the form. Read-only disables the buttons and leaves the board
 visible.
 
 `tracker web open` reuses the last recorded server and fails fast when that
-server is no longer running. Opening the board in a browser that has no session
-cookie for it requires the session URL printed by `tracker web serve`.
+server is no longer running. It opens the same token session URL that
+`tracker web serve` prints, read from the workspace's private session file, so a
+browser with no session cookie signs in instead of getting a 401. The token goes
+only to the browser; `web open` prints the bare board URL.
