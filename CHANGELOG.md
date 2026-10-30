@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `tracker update`: verifies the release attestation with the installer's exact policy (`--bundle attestation-bundle.jsonl`, `--repo myrrazor/atlas-tasker`, `--signer-workflow myrrazor/atlas-tasker/.github/workflows/release.yml`, `--source-ref refs/tags/<tag>`), so an update without a GitHub token passes. A missing or empty bundle stops the update; there is no weaker fallback.
 - MCP: `tracker mcp approve-operation` now stores approvals for machine-scoped tools such as `atlas.settings.grant_discovery` in the machine state dir, where the global MCP server looks for them, instead of the current workspace. Before, those calls failed with "operation approval not found". Machine-scoped approvals no longer need a workspace, and `tracker mcp approvals list`/`revoke` cover both stores and show each approval's `scope`.
 
 ## v1.18.0 - Grok plugin and install without curl | sh (2026-10-29)

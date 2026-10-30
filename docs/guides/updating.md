@@ -65,3 +65,22 @@ tracker integrations install codex
 See [coding-agent integrations](agent-integrations.md) for all six targets and
 [release verification](release-verification.md) for the difference between a local build and a
 published release.
+
+## How The Attestation Is Verified
+
+`tracker update` checks a release the same way the install script does. Next to the archive and
+`checksums.txt` it downloads the release's `attestation-bundle.jsonl`, then runs:
+
+```bash
+gh attestation verify tracker_<version>_<os>_<arch>.tar.gz \
+  --repo myrrazor/atlas-tasker \
+  --bundle attestation-bundle.jsonl \
+  --signer-workflow myrrazor/atlas-tasker/.github/workflows/release.yml \
+  --source-ref refs/tags/<tag being installed>
+```
+
+The bundle is checked locally, so no GitHub login or `GH_TOKEN` is needed. The attestation has to
+come from the release workflow and from the exact tag you are installing; an attestation from another
+workflow or another tag fails. If the release has no `attestation-bundle.jsonl` (or it is empty),
+the update stops with "refusing to update" and leaves the binary unchanged. It never falls back to a
+weaker check. Only `--skip-attestations` skips provenance, and checksums are still verified.
