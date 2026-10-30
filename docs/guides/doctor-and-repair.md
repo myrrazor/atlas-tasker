@@ -63,6 +63,18 @@ tracker doctor --repair --json
 
 `tracker reindex` is the narrower tool: it only rebuilds the index, and like `doctor --repair` it removes and recreates a corrupt `index.sqlite` instead of refusing to open it.
 
+## A pending restore whose event id is taken
+
+Before the fix for rough edge 19, a restore whose backup carried a newer event log than the destination's could stop with exit 7 `event append failed after canonical write`, leaving `.tracker/mutations/_workspace-000000000001.json` with `event_id 1 must be greater than 2`. The restored files were already written; only the restore's event was missing.
+
+`tracker doctor --repair` now fixes this. When a pending journal's event never landed but its id is already taken in the log, repair copies the journal entry to `.tracker/quarantine/<UTC time>/mutations/`, appends the same event at the next free id and logical clock, and records `renumbered _workspace #1 to #3 and replayed it (journal backup: …)` in `repair_actions`. A journal is treated as already applied only when the event at its id is the same event (same `event_uid`), so a different event at that id is never mistaken for it.
+
+## The same event id used twice
+
+Each workspace numbers its events per project, so two synced workspaces can each have an `APP #2`; that is normal. One workspace issuing `APP #2` for two different events is not: a restore in a build before this fix could reuse the ids of the events it discarded, and a sync peer that had already pulled the old events then holds both. Restores now record the highest ids issued in `.tracker/event-watermark.json` before replacing the event log and number new events above it.
+
+`tracker doctor` reports such a pair with issue code `event_id_reused`, a `warning: event id APP #2 from workspace … is used by 2 different events` line, and `issues.event_id_reuse` in `--json` output. Both events are kept and remain distinct by `event_uid`; `doctor --repair` does not renumber them, because peers already hold those ids. If a ticket title or field looks stuck after such a pull, resolve the open conflict with `tracker conflict resolve <ID> --resolution use_remote` (or `use_local`).
+
 ## If Repair Still Reports Pending Work
 
 Run the read-only check again:
