@@ -42,6 +42,39 @@ func NewApprovalStore(root string, now func() time.Time) ApprovalStore {
 	return ApprovalStore{Root: root, Now: now}
 }
 
+// ApprovalRoot is the single resolver for where an operation approval for
+// spec is stored and looked up. Machine-scoped tools (for example
+// atlas.settings.grant_discovery) run without a bound workspace, so their
+// approvals always live in the machine state dir. Every other tool uses the
+// bound workspace and falls back to the state dir when none is bound. Both
+// `tracker mcp approve-operation` and the MCP server call this, so an
+// approval is always written where the tool will read it.
+func ApprovalRoot(spec ToolSpec, workspaceRoot string, stateDir string) (string, error) {
+	workspaceRoot = strings.TrimSpace(workspaceRoot)
+	stateDir = strings.TrimSpace(stateDir)
+	if spec.Scope == ScopeMachine {
+		if stateDir == "" {
+			return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s is machine-scoped and needs the Atlas machine state dir, which could not be resolved", spec.Name))
+		}
+		return stateDir, nil
+	}
+	if workspaceRoot != "" {
+		return workspaceRoot, nil
+	}
+	if stateDir != "" {
+		return stateDir, nil
+	}
+	return "", apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("%s needs an Atlas workspace for its approval", spec.Name))
+}
+
+// ApprovalScope names the store ApprovalRoot picks: "machine" or "workspace".
+func ApprovalScope(spec ToolSpec) string {
+	if spec.Scope == ScopeMachine {
+		return "machine"
+	}
+	return "workspace"
+}
+
 func (s ApprovalStore) Create(ctx context.Context, operation string, target string, actor string, ttl time.Duration, reason string) (OperationApproval, error) {
 	operation = NormalizeOperation(operation)
 	target = strings.TrimSpace(target)

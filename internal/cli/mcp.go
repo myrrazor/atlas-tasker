@@ -56,7 +56,12 @@ Compound tools bind every material input as a JSON object (keys sorted):
   atlas.worktree.cleanup       {"force":false,"run_id":"<run>"}
 
 confirm_text must equal: execute <tool-name> <target>
-Approving one concrete operation does not authorize another tool, plan, path, URL, or later argument change.`,
+Approving one concrete operation does not authorize another tool, plan, path, URL, or later argument change.
+
+Machine-scoped tools (for example atlas.settings.grant_discovery) store their
+approval in the Atlas machine state dir and can be approved from any directory;
+all other tools store it in the current workspace. The MCP server looks in the
+same place.`,
 		RunE: runMCPApproveOperation,
 	}
 	approve.Flags().String("operation", "", "MCP operation/tool name, for example atlas.change.merge")
@@ -141,6 +146,9 @@ func runMCPServe(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer workspace.Close()
+	if options.StateDir == "" {
+		options.StateDir = mcpStateDir()
+	}
 	server := atlasmcp.NewServer(workspace, options)
 	ctx := commandContext(cmd)
 	if ctx == nil {
@@ -210,10 +218,6 @@ func runMCPTools(cmd *cobra.Command, _ []string) error {
 }
 
 func runMCPApproveOperation(cmd *cobra.Command, _ []string) error {
-	root, err := currentWorkspaceRoot()
-	if err != nil {
-		return err
-	}
 	operationRaw, _ := cmd.Flags().GetString("operation")
 	operation := atlasmcp.NormalizeOperation(operationRaw)
 	spec, ok := atlasmcp.ToolSpecByName(operation)
@@ -227,23 +231,68 @@ func runMCPApproveOperation(cmd *cobra.Command, _ []string) error {
 	actor, _ := cmd.Flags().GetString("actor")
 	reason, _ := cmd.Flags().GetString("reason")
 	ttl, _ := cmd.Flags().GetDuration("ttl")
+	workspaceRoot := ""
+	if spec.Scope != atlasmcp.ScopeMachine {
+		root, err := currentWorkspaceRoot()
+		if err != nil {
+			return err
+		}
+		workspaceRoot = root
+	}
+	root, err := atlasmcp.ApprovalRoot(spec, workspaceRoot, mcpStateDir())
+	if err != nil {
+		return err
+	}
 	approval, err := atlasmcp.NewApprovalStore(root, defaultNow).Create(commandContext(cmd), operation, target, actor, ttl, reason)
 	if err != nil {
 		return err
 	}
-	data := map[string]any{"kind": "mcp_operation_approval", "approval": approval, "confirm_text": fmt.Sprintf("execute %s %s", approval.Operation, approval.Target)}
-	pretty := fmt.Sprintf("approval %s operation=%s target=%s expires=%s", approval.ID, approval.Operation, approval.Target, approval.ExpiresAt.Format(time.RFC3339))
+	scope := atlasmcp.ApprovalScope(spec)
+	data := map[string]any{"kind": "mcp_operation_approval", "approval": approval, "scope": scope, "confirm_text": fmt.Sprintf("execute %s %s", approval.Operation, approval.Target)}
+	pretty := fmt.Sprintf("approval %s operation=%s target=%s scope=%s expires=%s", approval.ID, approval.Operation, approval.Target, scope, approval.ExpiresAt.Format(time.RFC3339))
 	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
+type scopedApproval struct {
+	atlasmcp.OperationApproval
+	Scope string `json:"scope"`
+}
+
+// approvalStores returns the workspace store (when the CWD is a workspace)
+// and the machine store, the same two roots atlasmcp.ApprovalRoot picks from.
+func approvalStores() (map[string]atlasmcp.ApprovalStore, error) {
+	stores := map[string]atlasmcp.ApprovalStore{}
+	if root, err := currentWorkspaceRoot(); err == nil {
+		stores["workspace"] = atlasmcp.NewApprovalStore(root, defaultNow)
+	}
+	if dir := mcpStateDir(); dir != "" {
+		stores["machine"] = atlasmcp.NewApprovalStore(dir, defaultNow)
+	}
+	if len(stores) == 0 {
+		_, err := currentWorkspaceRoot()
+		return nil, err
+	}
+	return stores, nil
+}
+
 func runMCPApprovalsList(cmd *cobra.Command, _ []string) error {
-	root, err := currentWorkspaceRoot()
+	stores, err := approvalStores()
 	if err != nil {
 		return err
 	}
-	approvals, err := atlasmcp.NewApprovalStore(root, defaultNow).List()
-	if err != nil {
-		return err
+	approvals := []scopedApproval{}
+	for _, scope := range []string{"workspace", "machine"} {
+		store, ok := stores[scope]
+		if !ok {
+			continue
+		}
+		items, err := store.List()
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			approvals = append(approvals, scopedApproval{OperationApproval: item, Scope: scope})
+		}
 	}
 	data := map[string]any{"kind": "mcp_operation_approvals", "items": approvals}
 	lines := []string{fmt.Sprintf("mcp approvals count=%d", len(approvals))}
@@ -254,18 +303,24 @@ func runMCPApprovalsList(cmd *cobra.Command, _ []string) error {
 		} else if defaultNow().After(approval.ExpiresAt) {
 			state = "expired"
 		}
-		lines = append(lines, fmt.Sprintf("- %s %s target=%s actor=%s state=%s", approval.ID, approval.Operation, approval.Target, approval.Actor, state))
+		lines = append(lines, fmt.Sprintf("- %s %s target=%s actor=%s scope=%s state=%s", approval.ID, approval.Operation, approval.Target, approval.Actor, approval.Scope, state))
 	}
 	return writeCommandOutput(cmd, data, strings.Join(lines, "\n"), strings.Join(lines, "\n"))
 }
 
 func runMCPApprovalRevoke(cmd *cobra.Command, args []string) error {
-	root, err := currentWorkspaceRoot()
+	stores, err := approvalStores()
 	if err != nil {
 		return err
 	}
-	if err := atlasmcp.NewApprovalStore(root, defaultNow).Revoke(commandContext(cmd), args[0]); err != nil {
-		return err
+	for _, scope := range []string{"workspace", "machine"} {
+		store, ok := stores[scope]
+		if !ok {
+			continue
+		}
+		if err := store.Revoke(commandContext(cmd), args[0]); err != nil {
+			return err
+		}
 	}
 	data := map[string]any{"kind": "mcp_operation_approval_revoked", "id": args[0]}
 	pretty := "revoked " + args[0]
