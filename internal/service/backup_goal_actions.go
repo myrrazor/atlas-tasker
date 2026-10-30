@@ -310,6 +310,14 @@ func (s *ActionService) CreateRestorePlan(ctx context.Context, ref string, actor
 }
 
 func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor contracts.Actor, reason string, yes bool) (RestoreApplyResultView, error) {
+	return s.applyRestorePlan(ctx, ref, "", actor, reason, yes)
+}
+
+// applyRestorePlan applies ref (a plan ID, backup ID or archive path). When
+// artifact is set, the backup content is read from that archive instead of
+// the plan's BackupID, which is how a remote plan is applied to the checkpoint
+// fetched again into a temporary directory.
+func (s *ActionService) applyRestorePlan(ctx context.Context, ref string, artifact string, actor contracts.Actor, reason string, yes bool) (RestoreApplyResultView, error) {
 	if err := s.ensurePreDestructiveCheckpoint(ctx, "restore"); err != nil {
 		return RestoreApplyResultView{}, err
 	}
@@ -328,6 +336,9 @@ func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor 
 		if loaded, loadErr := s.RestorePlans.LoadRestorePlan(ctx, ref); loadErr == nil {
 			stored = loaded
 			artifactRef = loaded.BackupID
+		}
+		if artifact != "" {
+			artifactRef = artifact
 		}
 		integritySnapshot, integrity, err := s.verifyBackupIntegrity(ctx, artifactRef)
 		if err != nil {

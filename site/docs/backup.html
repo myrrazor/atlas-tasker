@@ -124,7 +124,7 @@
 tracker backup auto enable --target private
 tracker backup run --now</pre>
         </div>
-        <p><code>file://</code> drills need <code>--allow-local-file</code> and are not off-device proof. Public GitHub remotes need an explicit public attestation plus <code>--allow-public-github</code>. Restore is <code>tracker backup restore-plan</code> then <code>restore-apply</code>, bound to the stored plan ID and digest.</p>
+        <p><code>file://</code> drills need <code>--allow-local-file</code> and are not off-device proof. Public GitHub remotes need an explicit public attestation plus <code>--allow-public-github</code>. Restore is <code>tracker backup restore-plan</code> then <code>restore-apply</code>, bound to the stored plan ID and digest. From a remote, run <code>tracker backup remote restore-plan &lt;CHECKPOINT&gt; --target &lt;ID&gt;</code>, then <code>tracker backup remote restore-apply &lt;PLAN-ID&gt; --target &lt;ID&gt; --yes</code> with the plan ID it printed.</p>
         <p>Advanced <code>tracker setup --backup --backup-target</code> is still supported. Neither init nor setup installs a user-level scheduler; that stays <code>tracker backup schedule install --yes</code>.</p>
 
       </article>

@@ -55,7 +55,7 @@ Automatic checkpoints use the same restore-safe file set as `backup create`, plu
 
 `file://` remotes are disposable local drills (DEC-088), not an off-device claim. Production schemes are `https` and SSH. Target URLs never store credentials. Public GitHub is refused unless `--attest-private` or (`--attest-public` and `--allow-public-github`). Origin is never inferred.
 
-Remote restore fetches into a temporary isolated bare repository, materializes regular blobs only, and reuses `backup restore-plan` / `backup restore-apply`. Wrong workspace requires `--allow-workspace-mismatch`. A denying `backup_restore` governance policy exits 5 and writes nothing. `--yes` is not authorization.
+Remote restore fetches into a temporary isolated bare repository, materializes regular blobs only, and reuses `backup restore-plan` / `backup restore-apply`. `backup remote restore-apply` takes either the plan ID that `backup remote restore-plan` printed (it fetches the same checkpoint again and applies that exact plan) or a checkpoint ID (it applies the newest plan for that checkpoint). Wrong workspace requires `--allow-workspace-mismatch`. A denying `backup_restore` governance policy exits 5 and writes nothing. `--yes` is not authorization.
 
 The AT114-507 recovery drill restores tickets, collaborators, memberships, mentions, and archive markdown. Exported-only collector roots (`config.toml`, agents, views, automations, subscriptions, runbooks, imports) stay off the restore allowlist because `tracker init` / `tracker setup` recreate them. Allowlist widening is not invented from the drill.
 
