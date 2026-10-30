@@ -74,13 +74,23 @@
     </header>
     <div class="legal-content">
       <section class="shell">
+        <h2>v1.18.0 — Grok plugin and install without curl | sh</h2>
+        <ul>
+          <li>Grok plugin: <code>.grok-plugin/plugin.json</code> and a root <code>.mcp.json</code> let Atlas Tasker be listed in the Grok plugin marketplace as a local plugin. It launches the installed <code>tracker mcp serve</code> over stdio.</li>
+          <li>Install without <code>curl | sh</code> via a checksum- and attestation-verified release binary or a pinned <code>go install</code>.</li>
+          <li>The README lists every network endpoint Atlas Tasker can call and every credential or environment variable it reads. Reviewer steps and an MCP stdio smoke test support marketplace review.</li>
+          <li>No changes to tracker behavior, the CLI or the MCP tools.</li>
+        </ul>
+        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.0">Download v1.18.0 and read its verification results</a>. The installer selects this stable release.</p>
+      </section>
+      <section class="shell">
         <h2>v1.17.1 — Home and live-board stability</h2>
         <ul>
           <li>Home sessions recover across restarts, and schedule and project forms retain typed drafts when validation fails.</li>
           <li>Live boards recover after index replacement, retain saved-view filters and active drags, and refresh ticket details and activity.</li>
           <li>MCP pagination and structured search remain bounded and predictable. First-ticket validation leaves invalid empty directories untouched.</li>
         </ul>
-        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.1">Download v1.17.1 and read its verification results</a>. The installer selects this stable release.</p>
+        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.17.1">Download v1.17.1 and read its verification results</a>.</p>
       </section>
       <section class="shell">
         <h2>v1.17.0 — Chat-native boards and security hardening</h2>
