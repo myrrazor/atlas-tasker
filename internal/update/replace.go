@@ -16,6 +16,13 @@ func defaultAttest(ctx context.Context, archivePath, repo string) error {
 	if err != nil {
 		return apperr.New(apperr.CodeInvalidInput, "gh is required for attestation verification; install GitHub CLI or pass --skip-attestations")
 	}
+	versionOut, err := exec.CommandContext(ctx, gh, "--version").Output()
+	if err != nil {
+		return apperr.Wrap(apperr.CodeInvalidInput, err, "%s", GHTooOldMessage)
+	}
+	if err := checkGHVersion(string(versionOut)); err != nil {
+		return apperr.New(apperr.CodeInvalidInput, err.Error())
+	}
 	cmd := exec.CommandContext(ctx, gh, "attestation", "verify", archivePath, "--repo", repo)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
