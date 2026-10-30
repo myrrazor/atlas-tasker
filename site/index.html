@@ -480,7 +480,7 @@
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
-              <code id="bin-gh-version" tabindex="0">gh --version  # must print gh version 2.102.0 or newer</code>
+              <code id="bin-gh-version" tabindex="0">gh --version 2&gt;/dev/null | awk 'NR==1{split($3,v,"."); ok=(v[1]&gt;2||(v[1]==2&amp;&amp;v[2]&gt;=102))} END{exit !ok}' || { echo "Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run." &gt;&amp;2; false; }</code>
               <button class="copy-button" type="button" data-copy="bin-gh-version" aria-label="Copy gh version check command">Copy</button>
             </div>
             <div class="install-command">

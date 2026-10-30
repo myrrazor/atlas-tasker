@@ -618,8 +618,10 @@ test("minimum gh version and too-old message match across install.sh, README, do
   for (const page of ["docs/getting-started.html", "guide.html", "mcp.html"]) {
     assert.ok(pages.get(page).includes(`${min} or newer`), `${page} names the minimum`);
   }
-  const ghCheck = `gh --version  # must print gh version ${min} or newer`;
-  assert.ok(readme.includes(ghCheck), "README Option A has the gh --version check");
-  assert.ok(manual.includes(ghCheck), "install-without-script Option A has the gh --version check");
-  assert.ok(index.includes(`<code id="bin-gh-version" tabindex="0">${ghCheck}</code>`), "site Option A has the gh --version check");
+  const ghCheck = `gh --version 2>/dev/null | awk 'NR==1{split($3,v,"."); ok=(v[1]>2||(v[1]==2&&v[2]>=${min.split(".")[1]}))} END{exit !ok}' || { echo "${message}" >&2; false; }`;
+  assert.equal(min.split(".")[0], "2", "gh check compares major 2");
+  assert.ok(readme.includes(ghCheck), "README Option A has the gh version check");
+  assert.ok(manual.includes("```bash\n(\nset -e\n" + ghCheck + "\n"), "install-without-script Option A starts with the gh check in a set -e subshell");
+  const escapeHtml = (text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  assert.ok(index.includes(`<code id="bin-gh-version" tabindex="0">${escapeHtml(ghCheck)}</code>`), "site Option A has the gh version check");
 });
