@@ -57,7 +57,7 @@ type Options struct {
 	GOOS           string
 	GOARCH         string
 
-	RunAttest func(ctx context.Context, archivePath, repo string) error
+	RunAttest func(ctx context.Context, req AttestRequest) error
 	Replace   func(srcBinary, destPath string) error
 }
 

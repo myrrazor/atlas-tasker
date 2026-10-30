@@ -11,12 +11,14 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 )
 
-func defaultAttest(ctx context.Context, archivePath, repo string) error {
+func defaultAttest(ctx context.Context, req AttestRequest) error {
+	archivePath, repo := req.ArchivePath, req.Repo
 	gh, err := exec.LookPath("gh")
 	if err != nil {
 		return apperr.New(apperr.CodeInvalidInput, "gh is required for attestation verification; install GitHub CLI or pass --skip-attestations")
 	}
 	cmd := exec.CommandContext(ctx, gh, "attestation", "verify", archivePath, "--repo", repo)
+	cmd.Args = append(cmd.Args, req.policyArgs()...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {

@@ -50,7 +50,15 @@ func downloadVerifyReplace(ctx context.Context, opts Options, tag, asset string)
 	if opts.SkipAttestations {
 		meta.AttestationSkipped = true
 	} else {
-		if err := opts.RunAttest(ctx, archivePath, opts.Repo); err != nil {
+		bundlePath := filepath.Join(tmpDir, AttestationBundleAsset)
+		if err := downloadAttestationBundle(ctx, opts, tag, bundlePath); err != nil {
+			return meta, err
+		}
+		req, err := newAttestRequest(archivePath, bundlePath, opts.Repo, tag)
+		if err != nil {
+			return meta, err
+		}
+		if err := opts.RunAttest(ctx, req); err != nil {
 			return meta, err
 		}
 		meta.AttestationVerified = true
