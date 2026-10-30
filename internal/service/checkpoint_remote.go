@@ -133,17 +133,42 @@ func (s *ActionService) VerifyRemoteCheckpoint(ctx context.Context, targetID, ch
 }
 
 func (s *ActionService) RemoteRestorePlan(ctx context.Context, opts RemoteRestoreOptions) (RestorePlanDetailView, error) {
-	_, archive, cleanup, err := s.fetchAndVerifyRemote(ctx, opts)
+	resolved, archive, cleanup, err := s.fetchAndVerifyRemote(ctx, opts)
 	if cleanup != nil {
 		defer cleanup()
 	}
 	if err != nil {
 		return RestorePlanDetailView{}, err
 	}
-	return s.CreateRestorePlan(ctx, archive, opts.Actor)
+	view, err := s.CreateRestorePlan(ctx, archive, opts.Actor)
+	if err != nil {
+		return RestorePlanDetailView{}, err
+	}
+	// remember the remote source so `remote restore-apply <PLAN-ID>` can
+	// fetch the same checkpoint; these fields are not part of the binding digest
+	view.Plan.SourceRemoteTarget = strings.TrimSpace(opts.TargetID)
+	view.Plan.SourceRemoteCommit = resolved.Commit
+	if err := s.RestorePlans.SaveRestorePlan(ctx, view.Plan); err != nil {
+		return RestorePlanDetailView{}, err
+	}
+	return view, nil
 }
 
 func (s *ActionService) RemoteRestoreApply(ctx context.Context, opts RemoteRestoreOptions) (RestoreApplyResultView, error) {
+	// restore-apply takes <PLAN-ID|CHECKPOINT>. A plan ID is not a checkpoint,
+	// so resolve it to the checkpoint its remote restore-plan fetched (rough
+	// edge 19: it used to be matched against checkpoint names and miss).
+	planID := ""
+	if stored, loadErr := s.RestorePlans.LoadRestorePlan(ctx, strings.TrimSpace(opts.Checkpoint)); loadErr == nil && strings.TrimSpace(opts.Checkpoint) != "" {
+		if stored.SourceRemoteCommit == "" {
+			return RestoreApplyResultView{}, apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("restore plan %s was not made by 'backup remote restore-plan'; apply it with 'tracker backup restore-apply %s' or pass the remote checkpoint id", stored.RestorePlanID, stored.RestorePlanID))
+		}
+		if target := strings.TrimSpace(opts.TargetID); target != "" && stored.SourceRemoteTarget != "" && target != stored.SourceRemoteTarget {
+			return RestoreApplyResultView{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("restore plan %s was made from target %s, not %s", stored.RestorePlanID, stored.SourceRemoteTarget, target))
+		}
+		planID = stored.RestorePlanID
+		opts.Checkpoint = stored.SourceRemoteCommit
+	}
 	_, archive, cleanup, err := s.fetchAndVerifyRemote(ctx, opts)
 	if cleanup != nil {
 		defer cleanup()
@@ -151,7 +176,11 @@ func (s *ActionService) RemoteRestoreApply(ctx context.Context, opts RemoteResto
 	if err != nil {
 		return RestoreApplyResultView{}, err
 	}
-	result, err := s.ApplyRestorePlan(ctx, archive, opts.Actor, opts.Reason, opts.Yes)
+	ref, artifact := archive, ""
+	if planID != "" {
+		ref, artifact = planID, archive
+	}
+	result, err := s.applyRestorePlan(ctx, ref, artifact, opts.Actor, opts.Reason, opts.Yes)
 	if err != nil {
 		return RestoreApplyResultView{}, err
 	}

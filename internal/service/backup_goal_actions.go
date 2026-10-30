@@ -310,6 +310,14 @@ func (s *ActionService) CreateRestorePlan(ctx context.Context, ref string, actor
 }
 
 func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor contracts.Actor, reason string, yes bool) (RestoreApplyResultView, error) {
+	return s.applyRestorePlan(ctx, ref, "", actor, reason, yes)
+}
+
+// applyRestorePlan applies ref (a plan ID, backup ID or archive path). When
+// artifact is set, the backup content is read from that archive instead of
+// the plan's BackupID, which is how a remote plan is applied to the checkpoint
+// fetched again into a temporary directory.
+func (s *ActionService) applyRestorePlan(ctx context.Context, ref string, artifact string, actor contracts.Actor, reason string, yes bool) (RestoreApplyResultView, error) {
 	if err := s.ensurePreDestructiveCheckpoint(ctx, "restore"); err != nil {
 		return RestoreApplyResultView{}, err
 	}
@@ -328,6 +336,9 @@ func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor 
 		if loaded, loadErr := s.RestorePlans.LoadRestorePlan(ctx, ref); loadErr == nil {
 			stored = loaded
 			artifactRef = loaded.BackupID
+		}
+		if artifact != "" {
+			artifactRef = artifact
 		}
 		integritySnapshot, integrity, err := s.verifyBackupIntegrity(ctx, artifactRef)
 		if err != nil {
@@ -400,7 +411,9 @@ func (s *ActionService) ApplyRestorePlan(ctx context.Context, ref string, actor 
 		if err != nil {
 			return RestoreApplyResultView{}, err
 		}
-		if err := s.commitMutation(ctx, "apply backup restore", "backup_restore", event, func(ctx context.Context) error {
+		// the restore may replace the event log with the backup's; the restore
+		// event's id is reassigned above that log after the write (edge 19)
+		if err := s.commitMutation(withCanonicalEventLogSwap(ctx), "apply backup restore", "backup_restore", event, func(ctx context.Context) error {
 			for _, item := range plan.Items {
 				if item.Action == contracts.RestorePlanSkip {
 					skipped++

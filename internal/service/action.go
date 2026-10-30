@@ -148,6 +148,13 @@ func (s *ActionService) commitMutation(ctx context.Context, purpose string, cano
 		return err
 	}
 	if writeCanonical != nil {
+		if canonicalEventLogSwap(ctx) {
+			// remember every id the old log issued before it is replaced
+			if err := raiseEventWatermark(ctx, s.Root, s.Events); err != nil {
+				_ = s.journal().Complete(journal.ID)
+				return err
+			}
+		}
 		if err := writeCanonical(ctx); err != nil {
 			_ = s.journal().Complete(journal.ID)
 			return err
@@ -157,6 +164,20 @@ func (s *ActionService) commitMutation(ctx context.Context, purpose string, cano
 			return apperr.Wrap(apperr.CodeRepairNeeded, markErr, "record canonical mutation stage")
 		}
 		journal = updated
+		if canonicalEventLogSwap(ctx) {
+			reallocated, changed, err := s.reallocateAfterLogSwap(ctx, event)
+			if err != nil {
+				_, _ = s.journal().Mark(journal, journal.Stage, err.Error())
+				return apperr.Wrap(apperr.CodeRepairNeeded, err, "reassign event id after event log swap")
+			}
+			if changed {
+				rekeyed, err := s.journal().Rekey(journal, reallocated)
+				if err != nil {
+					return apperr.Wrap(apperr.CodeRepairNeeded, err, "rekey mutation journal after event log swap")
+				}
+				journal, event = rekeyed, reallocated
+			}
+		}
 	}
 	if err := s.Events.AppendEvent(ctx, event); err != nil {
 		_, _ = s.journal().Mark(journal, journal.Stage, err.Error())
@@ -218,7 +239,11 @@ func (s *ActionService) NextEventID(ctx context.Context, project string) (int64,
 		if err != nil {
 			return 0, err
 		}
-		var maxID int64
+		mark, err := loadEventWatermark(s.Root)
+		if err != nil {
+			return 0, err
+		}
+		maxID := mark.Projects[project]
 		for _, event := range events {
 			if event.EventID > maxID {
 				maxID = event.EventID
@@ -234,7 +259,11 @@ func (s *ActionService) NextLogicalClock(ctx context.Context) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		var maxClock int64
+		mark, err := loadEventWatermark(s.Root)
+		if err != nil {
+			return 0, err
+		}
+		maxClock := mark.LogicalClock
 		for _, event := range events {
 			if event.LogicalClock > maxClock {
 				maxClock = event.LogicalClock
@@ -1331,4 +1360,44 @@ func (s *ActionService) loadTicketsMap(ctx context.Context) (map[string]contract
 		mapped[ticket.ID] = ticket
 	}
 	return mapped, nil
+}
+
+type canonicalEventLogSwapKey struct{}
+
+// withCanonicalEventLogSwap marks a mutation whose canonical write can replace
+// the event log itself (backup restore). Its event id and logical clock were
+// allocated against the old log, so they are reassigned after the write.
+func withCanonicalEventLogSwap(ctx context.Context) context.Context {
+	return context.WithValue(ctx, canonicalEventLogSwapKey{}, true)
+}
+
+func canonicalEventLogSwap(ctx context.Context) bool {
+	swapped, _ := ctx.Value(canonicalEventLogSwapKey{}).(bool)
+	return swapped
+}
+
+// reallocateAfterLogSwap gives event the next id and logical clock of the log
+// as it is now on disk, recomputing its uid. changed is false when the
+// original allocation is still valid.
+func (s *ActionService) reallocateAfterLogSwap(ctx context.Context, event contracts.Event) (contracts.Event, bool, error) {
+	nextID, err := s.NextEventID(ctx, event.Project)
+	if err != nil {
+		return event, false, err
+	}
+	nextClock, err := s.NextLogicalClock(ctx)
+	if err != nil {
+		return event, false, err
+	}
+	if nextID == event.EventID && nextClock <= event.LogicalClock {
+		return event, false, nil
+	}
+	return renumberEvent(event, nextID, max(nextClock, event.LogicalClock)), true, nil
+}
+
+// renumberEvent moves an event that never landed to a new id and clock.
+func renumberEvent(event contracts.Event, id int64, clock int64) contracts.Event {
+	event.EventID = id
+	event.LogicalClock = clock
+	event.EventUID = contracts.CanonicalEventUID(contracts.Event{EventID: id, Timestamp: event.Timestamp.UTC(), OriginWorkspaceID: event.OriginWorkspaceID, LogicalClock: clock, Type: event.Type, Project: event.Project, TicketID: event.TicketID, SchemaVersion: event.SchemaVersion})
+	return contracts.NormalizeEvent(event)
 }
