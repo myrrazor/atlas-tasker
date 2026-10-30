@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -42,6 +43,11 @@ func executeWithSurface(args []string, stdout io.Writer, stderr io.Writer, surfa
 		}()
 	}
 	if err := root.Execute(); err != nil {
+		if errors.Is(err, errServeInterrupted) {
+			// A serve that was interrupted before it finished starting is a
+			// clean, user-requested stop: exit 130 like a shell does on SIGINT.
+			return 130
+		}
 		if wantsJSON(args) {
 			payload, payloadErr := versionedJSONPayload(apperr.Envelope(err))
 			if payloadErr != nil {
