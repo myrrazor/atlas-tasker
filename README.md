@@ -111,7 +111,7 @@ Prefer a full-screen view? `tracker tui` — board, queues, ticket detail, searc
 
 ![Ticket detail with runs, evidence, and timeline](docs/assets/tui-detail.png)
 
-Every ticket is markdown under `projects/`, every change is an append-only event in `.tracker/`, and the SQLite file is a disposable index. If it goes missing, the next command rebuilds it; `tracker doctor --repair` does it on demand.
+Every ticket is markdown under `projects/`, every change is an append-only event in `.tracker/`, and the SQLite file is a disposable index. If it goes missing, the next command rebuilds it; `tracker doctor --repair` does it on demand. A ticket file that is cut short or no longer parses is named by `tracker doctor` (exit 7), and `tracker doctor --repair` backs it up to `.tracker/quarantine/` and restores it from the event log.
 
 ## Grok plugin
 
@@ -130,7 +130,7 @@ Confirm the trust prompt (or add `--trust`). Run `grok mcp doctor` from your boa
 
 ## Atlas Home
 
-`tracker` starts or reuses one machine-wide Home service on `127.0.0.1:7432`. It works outside a repo. If something else owns that port, Atlas fails instead of silently moving.
+`tracker` starts or reuses one machine-wide Home service on `127.0.0.1:7432`. It works outside a repo. If something else owns that port, Atlas fails instead of silently moving; set `service.port` in the machine `settings.json` or stop the other listener. `tracker init` still creates the workspace (exit 0) but says the port isn't yours instead of printing its URL.
 
 Home opens with a one-time claim in the URL fragment, then `POST /session/claim` for an HttpOnly loopback cookie. That cookie is essential to the local app, not a marketing tracker. The site at [atlastasker.com](https://atlastasker.com) sets none.
 

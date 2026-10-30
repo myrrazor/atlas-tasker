@@ -152,11 +152,37 @@ func (j MutationJournal) Reconcile(ctx context.Context, events contracts.EventLo
 		return actions, nil
 	}
 	for _, entry := range entries {
-		exists, err := eventExists(ctx, events, entry.Event.Project, entry.Event.EventID)
+		state, err := journalEventState(ctx, events, entry.Event)
 		if err != nil {
 			return nil, err
 		}
-		if !exists {
+		if state == journalEventCollides {
+			// The event never landed, but its id is taken in the log (rough
+			// edge 19: a restore swapped in a log that already reached it).
+			// Keep the original entry in quarantine and replay the same event
+			// above the current max id instead of failing or skipping it.
+			backup, err := j.quarantineEntry(entry)
+			if err != nil {
+				return nil, err
+			}
+			nextID, nextClock, err := nextEventPosition(ctx, j.Root, events, entry.Event.Project)
+			if err != nil {
+				return nil, err
+			}
+			oldID := entry.Event.EventID
+			entry.Event = renumberEvent(entry.Event, nextID, max(nextClock, entry.Event.LogicalClock))
+			if err := events.AppendEvent(ctx, entry.Event); err != nil {
+				_, _ = j.Mark(entry, entry.Stage, err.Error())
+				return nil, apperr.Wrap(apperr.CodeRepairNeeded, err, "reconcile renumbered mutation event")
+			}
+			entry, err = j.Mark(entry, MutationStageEventAppended, "")
+			if err != nil {
+				return nil, apperr.Wrap(apperr.CodeRepairNeeded, err, "mark reconciled event append")
+			}
+			actions = append(actions, fmt.Sprintf("renumbered %s #%d to #%d and replayed it (journal backup: %s)", entry.Event.Project, oldID, nextID, backup))
+			continue
+		}
+		if state == journalEventMissing {
 			if err := events.AppendEvent(ctx, entry.Event); err != nil {
 				_, _ = j.Mark(entry, entry.Stage, err.Error())
 				return nil, apperr.Wrap(apperr.CodeRepairNeeded, err, "reconcile pending mutation event")
@@ -200,6 +226,108 @@ func RepairWorkspace(ctx context.Context, root string, clock func() time.Time, e
 		actions = append(actions, "rebuilt projection")
 	}
 	return RepairReport{Pending: len(entries), Actions: actions}, nil
+}
+
+type journalEventPresence int
+
+const (
+	journalEventMissing journalEventPresence = iota
+	journalEventLanded
+	journalEventCollides
+)
+
+// journalEventState says whether a journaled event is in the log. An event is
+// only "landed" if the event with its id is the same event (same uid); a
+// different event at that id, or a log that is already past it, is a
+// collision that a plain append would reject.
+func journalEventState(ctx context.Context, log contracts.EventLog, event contracts.Event) (journalEventPresence, error) {
+	all, err := log.StreamEvents(ctx, event.Project, 0)
+	if err != nil {
+		return journalEventMissing, err
+	}
+	var maxID int64
+	for _, existing := range all {
+		if existing.Project != event.Project {
+			continue
+		}
+		if event.EventUID != "" && existing.EventUID == event.EventUID {
+			return journalEventLanded, nil
+		}
+		if existing.EventID == event.EventID && (event.EventUID == "" || existing.EventUID == "") {
+			return journalEventLanded, nil
+		}
+		if existing.EventID > maxID {
+			maxID = existing.EventID
+		}
+	}
+	if event.EventID <= maxID {
+		return journalEventCollides, nil
+	}
+	return journalEventMissing, nil
+}
+
+func nextEventPosition(ctx context.Context, root string, log contracts.EventLog, project string) (int64, int64, error) {
+	all, err := log.StreamEvents(ctx, "", 0)
+	if err != nil {
+		return 0, 0, err
+	}
+	mark, err := loadEventWatermark(root)
+	if err != nil {
+		return 0, 0, err
+	}
+	maxID, maxClock := mark.Projects[project], mark.LogicalClock
+	for _, existing := range all {
+		if existing.Project == project && existing.EventID > maxID {
+			maxID = existing.EventID
+		}
+		clock := existing.LogicalClock
+		if clock == 0 {
+			clock = existing.EventID
+		}
+		if clock > maxClock {
+			maxClock = clock
+		}
+	}
+	return maxID + 1, maxClock + 1, nil
+}
+
+// quarantineEntry copies a journal entry to .tracker/quarantine/<time>/mutations/
+// before repair changes it, and returns the copy's workspace-relative path.
+func (j MutationJournal) quarantineEntry(entry MutationJournalEntry) (string, error) {
+	raw, err := os.ReadFile(j.entryPath(entry.ID))
+	if err != nil {
+		return "", fmt.Errorf("read mutation journal %s: %w", entry.ID, err)
+	}
+	dir := filepath.Join(storage.TrackerDir(j.Root), "quarantine", j.now().Format("20060102T150405Z"), "mutations")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("create quarantine dir: %w", err)
+	}
+	backup := filepath.Join(dir, entry.ID)
+	if err := os.WriteFile(backup, raw, 0o644); err != nil {
+		return "", fmt.Errorf("back up mutation journal %s: %w", entry.ID, err)
+	}
+	return storage.RelativeToRoot(j.Root, backup), nil
+}
+
+// Rekey moves a pending entry to the journal id of its reassigned event.
+func (j MutationJournal) Rekey(entry MutationJournalEntry, event contracts.Event) (MutationJournalEntry, error) {
+	oldID := entry.ID
+	entry.Event = event
+	entry.ID = journalID(event)
+	entry.UpdatedAt = j.now()
+	if entry.ID == oldID {
+		return entry, j.writeEntry(entry)
+	}
+	if _, err := os.Stat(j.entryPath(entry.ID)); err == nil {
+		return MutationJournalEntry{}, apperr.New(apperr.CodeRepairNeeded, fmt.Sprintf("mutation journal %s is still pending from an earlier write; run 'tracker doctor --repair'", entry.ID))
+	}
+	if err := j.writeEntry(entry); err != nil {
+		return MutationJournalEntry{}, err
+	}
+	if err := j.Complete(oldID); err != nil {
+		return MutationJournalEntry{}, err
+	}
+	return entry, nil
 }
 
 func eventExists(ctx context.Context, log contracts.EventLog, project string, eventID int64) (bool, error) {

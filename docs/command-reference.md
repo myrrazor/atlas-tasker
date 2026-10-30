@@ -429,7 +429,7 @@ Rules:
 - `tracker backup remote list --target <TARGET-ID>`
 - `tracker backup remote verify <CHECKPOINT> --target <TARGET-ID>`
 - `tracker backup remote restore-plan <CHECKPOINT> --target <TARGET-ID> [--allow-workspace-mismatch]`
-- `tracker backup remote restore-apply <CHECKPOINT> --target <TARGET-ID> --yes --actor <ACTOR> --reason <TEXT> [--allow-workspace-mismatch]`
+- `tracker backup remote restore-apply <PLAN-ID|CHECKPOINT> --target <TARGET-ID> --yes --actor <ACTOR> --reason <TEXT> [--allow-workspace-mismatch]`
 - `tracker backup schedule plan|status`
 - `tracker backup schedule install|remove|repair --yes`
 - `tracker backup prune plan`

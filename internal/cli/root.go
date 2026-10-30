@@ -1968,13 +1968,29 @@ func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repai
 	if err != nil {
 		return err
 	}
-	tickets, err := ticketStore.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	repairActions := make([]string, 0)
+	tickets, damaged, err := ticketStore.ScanTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
 	if err != nil {
 		return err
 	}
+	if len(damaged) > 0 {
+		if !repair {
+			return &storage.DamagedTicketsError{Root: root, Files: damaged}
+		}
+		salvage, err := mdstore.RestoreDamagedTickets(ctx, root, damaged, eventLog, defaultNow)
+		if err != nil {
+			return err
+		}
+		if len(salvage.Unresolved) > 0 {
+			return mdstore.UnresolvedDamageError(root, salvage)
+		}
+		repairActions = append(repairActions, salvage.Actions...)
+		if tickets, err = ticketStore.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true}); err != nil {
+			return err
+		}
+	}
 	projectionPath := filepath.Join(storage.TrackerDir(root), "index.sqlite")
 	projection, err := sqlitestore.Open(projectionPath, ticketStore, eventLog)
-	repairActions := make([]string, 0)
 	if err != nil {
 		if !repair {
 			if sqlitestore.IsCorrupt(err) {
@@ -2106,11 +2122,21 @@ func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repai
 			indexReport["current_fingerprint"] = current
 		}
 	}
+	// the same event id issued twice by one origin (an id reused after a
+	// restore); peers cannot tell those events apart by id. Rewriting synced
+	// ids would break peers, so doctor reports it and --repair leaves it.
+	reusedIDs := service.DetectEventIDReuse(events)
 	issueCodes := append([]string{}, orchestrationReport.IssueCodes...)
 	issueCodes = append(issueCodes, migration.ReasonCodes...)
+	if len(reusedIDs) > 0 {
+		issueCodes = append(issueCodes, "event_id_reused")
+	}
 	sort.Strings(issueCodes)
 	issueCodes = slices.Compact(issueCodes)
 	message := fmt.Sprintf("doctor ok: %d events scanned, %d projects, %d tickets", len(events), len(projects), len(tickets))
+	for _, reuse := range reusedIDs {
+		message += fmt.Sprintf("\nwarning: event id %s #%d from workspace %s is used by %d different events (%s)", reuse.Project, reuse.EventID, reuse.OriginWorkspaceID, len(reuse.EventUIDs), strings.Join(reuse.EventUIDs, ", "))
+	}
 	payload := map[string]any{
 		"ok":             true,
 		"events_scanned": len(events),
@@ -2127,6 +2153,7 @@ func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repai
 			"project_issues": projectIssues,
 			"ticket_issues":  ticketIssues,
 			"orchestration":  orchestrationReport,
+			"event_id_reuse": reusedIDs,
 		},
 	}
 	if auto, autoErr := queries.AutoBackupStatus(ctx); autoErr == nil {

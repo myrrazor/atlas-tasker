@@ -923,128 +923,158 @@ func (s *Store) IsStale(ctx context.Context) (stale bool, stored string, current
 // Rebuild commits the complete projection atomically in the existing database.
 // Other open processes continue reading their snapshot until commit, then see
 // the rebuilt state without reopening or writing an unlinked database file.
+//
+// Damaged ticket files don't stop the rebuild: the healthy tickets are
+// indexed, the damaged ones keep the state replayed from the event log, and
+// a *storage.DamagedTicketsError naming them is returned after the commit.
 func (s *Store) Rebuild(ctx context.Context, project string) error {
-	return s.inTransaction(ctx, func(working *Store) error { return working.rebuildInPlace(ctx, project) })
+	var damaged []storage.DamagedTicketFile
+	if err := s.inTransaction(ctx, func(working *Store) error {
+		var err error
+		damaged, err = working.rebuildInPlace(ctx, project)
+		return err
+	}); err != nil {
+		return err
+	}
+	if len(damaged) > 0 {
+		return &storage.DamagedTicketsError{Root: s.Root, Files: damaged}
+	}
+	return nil
 }
 
-func (s *Store) rebuildInPlace(ctx context.Context, project string) error {
+type damageAwareTicketSource interface {
+	ScanTickets(ctx context.Context, opts contracts.TicketListOptions) ([]contracts.TicketSnapshot, []storage.DamagedTicketFile, error)
+}
+
+func (s *Store) rebuildInPlace(ctx context.Context, project string) ([]storage.DamagedTicketFile, error) {
 	if s.TicketSource == nil || s.EventSource == nil {
-		return fmt.Errorf("rebuild requires ticket and event sources")
+		return nil, fmt.Errorf("rebuild requires ticket and event sources")
 	}
 	if project == "" {
 		if _, err := s.execContext(ctx, `DELETE FROM tickets`); err != nil {
-			return fmt.Errorf("clear tickets: %w", err)
+			return nil, fmt.Errorf("clear tickets: %w", err)
 		}
 		if _, err := s.execContext(ctx, `DELETE FROM agents`); err != nil {
-			return fmt.Errorf("clear agents: %w", err)
+			return nil, fmt.Errorf("clear agents: %w", err)
 		}
 		if _, err := s.execContext(ctx, `DELETE FROM runs`); err != nil {
-			return fmt.Errorf("clear runs: %w", err)
+			return nil, fmt.Errorf("clear runs: %w", err)
 		}
 		if _, err := s.execContext(ctx, `DELETE FROM changes`); err != nil {
-			return fmt.Errorf("clear changes: %w", err)
+			return nil, fmt.Errorf("clear changes: %w", err)
 		}
 		if _, err := s.execContext(ctx, `DELETE FROM checks`); err != nil {
-			return fmt.Errorf("clear checks: %w", err)
+			return nil, fmt.Errorf("clear checks: %w", err)
 		}
 		if _, err := s.execContext(ctx, `DELETE FROM gates`); err != nil {
-			return fmt.Errorf("clear gates: %w", err)
+			return nil, fmt.Errorf("clear gates: %w", err)
 		}
 		if _, err := s.execContext(ctx, `DELETE FROM evidence`); err != nil {
-			return fmt.Errorf("clear evidence: %w", err)
+			return nil, fmt.Errorf("clear evidence: %w", err)
 		}
 		if _, err := s.execContext(ctx, `DELETE FROM handoffs`); err != nil {
-			return fmt.Errorf("clear handoffs: %w", err)
+			return nil, fmt.Errorf("clear handoffs: %w", err)
 		}
 		if _, err := s.execContext(ctx, `DELETE FROM events`); err != nil {
-			return fmt.Errorf("clear events: %w", err)
+			return nil, fmt.Errorf("clear events: %w", err)
 		}
 	} else {
 		if _, err := s.execContext(ctx, `DELETE FROM tickets WHERE project = ?`, project); err != nil {
-			return fmt.Errorf("clear project tickets: %w", err)
+			return nil, fmt.Errorf("clear project tickets: %w", err)
 		}
 		if _, err := s.execContext(ctx, `DELETE FROM events WHERE project = ?`, project); err != nil {
-			return fmt.Errorf("clear project events: %w", err)
+			return nil, fmt.Errorf("clear project events: %w", err)
 		}
 	}
 
 	events, err := s.EventSource.StreamEvents(ctx, project, 0)
 	if err != nil {
-		return fmt.Errorf("load events from source: %w", err)
+		return nil, fmt.Errorf("load events from source: %w", err)
 	}
 	for _, event := range events {
 		if err := s.insertEventOnly(ctx, event); err != nil {
-			return err
+			return nil, err
 		}
 		for _, ticket := range extractTicketSnapshots(event.Payload) {
 			if err := s.upsertTicket(ctx, ticket); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for _, agent := range extractAgentProfiles(event.Payload) {
 			if err := s.upsertAgent(ctx, agent); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for _, run := range extractRunSnapshots(event.Payload) {
 			if err := s.upsertRun(ctx, run); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for _, change := range extractChangeRefs(event.Payload) {
 			if err := s.upsertChange(ctx, change); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for _, check := range extractCheckResults(event.Payload) {
 			if err := s.upsertCheck(ctx, check); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for _, gate := range extractGateSnapshots(event.Payload) {
 			if err := s.upsertGate(ctx, gate); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for _, evidence := range extractEvidenceItems(event.Payload) {
 			if err := s.upsertEvidence(ctx, evidence); err != nil {
-				return err
+				return nil, err
 			}
 		}
 		for _, handoff := range extractHandoffPackets(event.Payload) {
 			if err := s.upsertHandoff(ctx, handoff); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 
-	tickets, err := s.TicketSource.ListTickets(ctx, contracts.TicketListOptions{Project: project, IncludeArchived: true})
+	listOpts := contracts.TicketListOptions{Project: project, IncludeArchived: true}
+	var tickets []contracts.TicketSnapshot
+	var damaged []storage.DamagedTicketFile
+	if scanner, ok := s.TicketSource.(damageAwareTicketSource); ok {
+		tickets, damaged, err = scanner.ScanTickets(ctx, listOpts)
+	} else {
+		tickets, err = s.TicketSource.ListTickets(ctx, listOpts)
+	}
 	if err != nil {
-		return fmt.Errorf("load tickets from source: %w", err)
+		return nil, fmt.Errorf("load tickets from source: %w", err)
 	}
 	for _, ticket := range tickets {
 		if err := s.insertTicketIfMissing(ctx, ticket); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	if err := s.dropTicketsAbsentFromMarkdown(ctx, project, tickets); err != nil {
-		return err
+	// a damaged file still exists on disk: keep its replayed row on the board
+	if err := s.dropTicketsAbsentFromMarkdown(ctx, project, tickets, damaged); err != nil {
+		return nil, err
 	}
 
 	// project-scoped rebuilds don't stamp: the fingerprint is workspace-wide
 	// and a partial rebuild says nothing about the other projects
 	if project == "" {
 		if err := s.recordSourceFingerprint(ctx, true); err != nil {
-			return fmt.Errorf("record source fingerprint: %w", err)
+			return nil, fmt.Errorf("record source fingerprint: %w", err)
 		}
 	}
-	return nil
+	return damaged, nil
 }
 
 // dropTicketsAbsentFromMarkdown removes index rows whose markdown files are
 // gone. Event replay would otherwise keep a deleted ticket on the board.
-func (s *Store) dropTicketsAbsentFromMarkdown(ctx context.Context, project string, live []contracts.TicketSnapshot) error {
-	keep := make(map[string]struct{}, len(live))
+func (s *Store) dropTicketsAbsentFromMarkdown(ctx context.Context, project string, live []contracts.TicketSnapshot, damaged []storage.DamagedTicketFile) error {
+	keep := make(map[string]struct{}, len(live)+len(damaged))
+	for _, file := range damaged {
+		keep[file.TicketID] = struct{}{}
+	}
 	for _, ticket := range live {
 		id := strings.TrimSpace(ticket.ID)
 		if id != "" {

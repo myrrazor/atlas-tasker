@@ -174,6 +174,9 @@ const (
 	InitStepFailed     InitStepStatus = "failed"
 	InitStepConfigured InitStepStatus = "configured"
 	InitStepUnverified InitStepStatus = "unverified"
+	// InitStepConflict means the step could not run because something this
+	// instance does not own (another Atlas Home or another app) holds the port.
+	InitStepConflict InitStepStatus = "conflict"
 )
 
 type InitStep struct {
@@ -447,7 +450,17 @@ type ServiceStatus struct {
 	PID        int    `json:"pid,omitempty"`
 	IdentityOK bool   `json:"identity_ok"`
 	Detail     string `json:"detail,omitempty"`
+	// PortOwner is set when the configured port is held by something other
+	// than this instance's Home. URL is then empty: OwnerURL is not ours.
+	PortOwner       string `json:"port_owner,omitempty"`
+	OwnerInstanceID string `json:"owner_instance_id,omitempty"`
+	OwnerURL        string `json:"owner_url,omitempty"`
 }
+
+const (
+	PortOwnerOtherAtlas = "other_atlas_instance"
+	PortOwnerOtherApp   = "other_application"
+)
 
 type ServiceOptions struct {
 	OpenBrowser bool

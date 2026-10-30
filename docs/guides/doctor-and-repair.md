@@ -38,6 +38,17 @@ The next command is quiet again. A workspace with nothing in it (right after `tr
 
 What does not heal itself is a byte-corrupt file. Every command except `reindex` and `doctor --repair` stops with exit 7 and points at `doctor --repair`, so a damaged index is never silently thrown away underneath a long-running server.
 
+## A damaged ticket file
+
+A ticket file that no longer parses (for example one cut short mid-frontmatter, which fails with `missing frontmatter end`) no longer stops everything:
+
+- `tracker doctor` exits 7 (`repair_needed`) and names the file: `1 ticket file is damaged: projects/APP/tickets/APP-1.md (missing frontmatter end); run 'tracker doctor --repair' ...`.
+- `tracker reindex` still indexes every other ticket, keeps the damaged ticket's last state from the event log on the board, then exits 7 with the same message.
+- `tracker doctor --repair` first copies the damaged file byte-for-byte to `.tracker/quarantine/<UTC time>/projects/<KEY>/tickets/<ID>.md`, then rewrites the ticket from its newest snapshot in the event log. `repair_actions` lists `restored APP-1 from event log (backup: .tracker/quarantine/...)`.
+- If the event log has no snapshot of that ticket (a file written by hand, never through Atlas), repair still makes the backup but leaves the file exactly as it is and exits 7, naming the file and its backup. Fix or remove it by hand, then rerun `tracker doctor --repair`.
+
+Repair never drops a damaged file. Edits made by hand after the last event are not in the log; compare the restored file with the backup if you made any.
+
 ## When To Repair
 
 Use repair when the projection or journaled mutation state needs rebuilding:
@@ -51,6 +62,18 @@ tracker doctor --repair --json
 `doctor --json` reports an `index` object with or without `--repair` — `stale_before_repair`, `rebuilt`, `stored_fingerprint`, `current_fingerprint` — so a script can tell "repair ran and found nothing" from "repair replaced a stale index".
 
 `tracker reindex` is the narrower tool: it only rebuilds the index, and like `doctor --repair` it removes and recreates a corrupt `index.sqlite` instead of refusing to open it.
+
+## A pending restore whose event id is taken
+
+Before the fix for rough edge 19, a restore whose backup carried a newer event log than the destination's could stop with exit 7 `event append failed after canonical write`, leaving `.tracker/mutations/_workspace-000000000001.json` with `event_id 1 must be greater than 2`. The restored files were already written; only the restore's event was missing.
+
+`tracker doctor --repair` now fixes this. When a pending journal's event never landed but its id is already taken in the log, repair copies the journal entry to `.tracker/quarantine/<UTC time>/mutations/`, appends the same event at the next free id and logical clock, and records `renumbered _workspace #1 to #3 and replayed it (journal backup: …)` in `repair_actions`. A journal is treated as already applied only when the event at its id is the same event (same `event_uid`), so a different event at that id is never mistaken for it.
+
+## The same event id used twice
+
+Each workspace numbers its events per project, so two synced workspaces can each have an `APP #2`; that is normal. One workspace issuing `APP #2` for two different events is not: a restore in a build before this fix could reuse the ids of the events it discarded, and a sync peer that had already pulled the old events then holds both. Restores now record the highest ids issued in `.tracker/event-watermark.json` before replacing the event log and number new events above it.
+
+`tracker doctor` reports such a pair with issue code `event_id_reused`, a `warning: event id APP #2 from workspace … is used by 2 different events` line, and `issues.event_id_reuse` in `--json` output. Both events are kept and remain distinct by `event_uid`; `doctor --repair` does not renumber them, because peers already hold those ids. If a ticket title or field looks stuck after such a pull, resolve the open conflict with `tracker conflict resolve <ID> --resolution use_remote` (or `use_local`).
 
 ## If Repair Still Reports Pending Work
 
