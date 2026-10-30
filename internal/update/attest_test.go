@@ -14,10 +14,10 @@ import (
 	"testing"
 )
 
-// fakeGH stands in for the real gh. It answers --version, logs the argv of
+// fakeGHScript stands in for the real gh. It answers --version, logs the argv of
 // `attestation verify`, and, like the real policy check, fails unless the
 // signer workflow and source ref match what the attestation was built from.
-const fakeGH = `#!/bin/sh
+const fakeGHScript = `#!/bin/sh
 if [ "$1" = "--version" ]; then echo "gh version 2.103.0 (2026-10-01)"; exit 0; fi
 printf '%s\n' "$@" > "$FAKE_GH_LOG"
 if [ -n "${GH_TOKEN:-}${GITHUB_TOKEN:-}" ]; then echo "token must not be needed" >&2; exit 9; fi
@@ -43,7 +43,7 @@ func installFakeGH(t *testing.T) string {
 		t.Skip("shell stub")
 	}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(fakeGH), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(fakeGHScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))

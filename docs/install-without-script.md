@@ -4,9 +4,12 @@ Two install paths that never pipe a remote script into a shell. Both put a `trac
 
 ## Option A: verified release binary (recommended)
 
-Needs `gh` (no GitHub login required), `sha256sum` (on macOS use `shasum -a 256 -c -` in its place) and `tar`. Pick your platform: `linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`.
+Needs `gh` 2.102.0 or newer (no GitHub login required; older `gh`, including Ubuntu 24.04's 2.45.0 and Debian 13's 2.46.0, asks for `gh auth login` and has no `gh attestation`), `sha256sum` (on macOS use `shasum -a 256 -c -` in its place) and `tar`. Pick your platform: `linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`.
 
 ```bash
+(
+set -e
+gh --version 2>/dev/null | awk 'NR==1{f=$3; split(f,v,"."); ok=(f~/^[0-9]+\.[0-9]+/ && (v[1]+0>2 || (v[1]+0==2 && v[2]+0>=102)))} END{if(!ok){print "Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run. " (f=="" ? "gh not found" : "Found gh " f "; minimum is 2.102.0") > "/dev/stderr"; exit 1}}'
 VERSION=1.18.0
 PLATFORM=linux_amd64
 WORK=$(mktemp -d) && cd "$WORK"
@@ -20,10 +23,18 @@ gh attestation verify "tracker_${VERSION}_${PLATFORM}.tar.gz" --repo myrrazor/at
   --source-ref "refs/tags/v$VERSION"
 tar -xzf "tracker_${VERSION}_${PLATFORM}.tar.gz" tracker
 mkdir -p "$HOME/.local/bin" && install -m 0755 tracker "$HOME/.local/bin/tracker"
+cd / && rm -rf "$WORK"
 "$HOME/.local/bin/tracker" version
+)
 ```
 
-Expected: `sha256sum` prints `tracker_1.18.0_linux_amd64.tar.gz: OK`, `gh attestation verify` exits 0 (it prints `✓ Verification succeeded!` when run in a terminal), and `tracker version` prints `tracker v1.18.0`. Make sure `$HOME/.local/bin` is on your `PATH`. Stop if either check fails.
+Expected: `sha256sum` prints `tracker_1.18.0_linux_amd64.tar.gz: OK`, `gh attestation verify` exits 0 (it prints `✓ Verification succeeded!` when run in a terminal), and `tracker version` prints `tracker v1.18.0`. Make sure `$HOME/.local/bin` is on your `PATH`. The block runs in a subshell with `set -e`, so it stops at the first failing step (old or missing `gh`, checksum, attestation) without closing your terminal, and removes its temporary folder when it succeeds. Stop if either check fails.
+
+If `gh --version` is older than 2.102.0, upgrade first. The install script stops with the same message:
+
+```text
+Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run.
+```
 
 ## Option B: `go install` from source
 

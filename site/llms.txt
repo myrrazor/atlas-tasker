@@ -4,7 +4,7 @@
 
 Atlas Tasker is a free, MIT-licensed, local-first issue tracker for macOS and Linux. Tickets are Markdown files in your repository, every change is an audited event, and humans and coding agents share queues, dependencies, runs, evidence, gates, and handoffs. Ordinary onboarding is `tracker init` then `tracker`. Lightweight by design: no hosted account. The Home service is a local loopback process, not a cloud daemon. v1.18.0 adds a Grok plugin and new ways to install without `curl | sh`, with no changes to tracker behavior, the CLI or the MCP tools.
 
-The one-line installer selects the latest published GitHub release (v1.18.0). It needs curl, tar, and GitHub CLI (gh) for local attestation-bundle verification without GitHub login. `go install ...@latest` builds the latest tagged module from source and can report its published module tag, without release-build provenance stamps. Ordinary onboarding is `tracker init` then `tracker`. See verification results on the GitHub release page.
+The one-line installer selects the latest published GitHub release (v1.18.0). It needs curl, tar, and GitHub CLI (gh) 2.102.0 or newer for local attestation-bundle verification without GitHub login. `go install ...@latest` builds the latest tagged module from source and can report its published module tag, without release-build provenance stamps. Ordinary onboarding is `tracker init` then `tracker`. See verification results on the GitHub release page.
 
 Install the published binary with `curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh`.
 

@@ -11,11 +11,34 @@ import (
 	"github.com/myrrazor/atlas-tasker/internal/apperr"
 )
 
-func defaultAttest(ctx context.Context, req AttestRequest) error {
-	archivePath, repo := req.ArchivePath, req.Repo
+// defaultCheckGH enforces the gh floor before any update mode touches the
+// network, so --check, --dry-run and --yes fail the same way on an old gh.
+func defaultCheckGH(ctx context.Context) error {
+	_, err := lookupGH(ctx)
+	return err
+}
+
+// lookupGH finds gh on PATH and enforces GHMinVersion.
+func lookupGH(ctx context.Context) (string, error) {
 	gh, err := exec.LookPath("gh")
 	if err != nil {
-		return apperr.New(apperr.CodeInvalidInput, "gh is required for attestation verification; install GitHub CLI or pass --skip-attestations")
+		return "", apperr.New(apperr.CodeInvalidInput, "gh is required for attestation verification; install GitHub CLI or pass --skip-attestations")
+	}
+	versionOut, err := exec.CommandContext(ctx, gh, "--version").Output()
+	if err != nil {
+		return "", apperr.Wrap(apperr.CodeInvalidInput, err, "%s", GHTooOldMessage)
+	}
+	if err := checkGHVersion(string(versionOut)); err != nil {
+		return "", apperr.New(apperr.CodeInvalidInput, err.Error())
+	}
+	return gh, nil
+}
+
+func defaultAttest(ctx context.Context, req AttestRequest) error {
+	archivePath, repo := req.ArchivePath, req.Repo
+	gh, err := lookupGH(ctx)
+	if err != nil {
+		return err
 	}
 	cmd := exec.CommandContext(ctx, gh, "attestation", "verify", archivePath, "--repo", repo)
 	cmd.Args = append(cmd.Args, req.policyArgs()...)

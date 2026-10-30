@@ -27,9 +27,19 @@ Atlas requires `--yes` before it replaces the current executable. The install di
 writable by the current user. Replacement is staged next to the existing binary, preserves its file
 mode, and rolls the old binary back into place if the final rename fails.
 
-Attestation verification uses `gh attestation verify`, so the GitHub CLI must be installed unless
-you explicitly pass `--skip-attestations`. Skipping attestations still verifies `checksums.txt`, but
-it gives up the additional build-provenance check.
+Attestation verification uses `gh attestation verify`, so GitHub CLI **2.102.0 or newer** must be
+installed unless you explicitly pass `--skip-attestations`. That is the same floor as the install
+script: 2.97.0 and 2.102.0 fixed `gh attestation verify` signer-policy bypasses
+([GHSA-mm27-mwq9-fr5g](https://github.com/cli/cli/security/advisories/GHSA-mm27-mwq9-fr5g),
+[GHSA-4mq3-hpgx-9cx8](https://github.com/cli/cli/security/advisories/GHSA-4mq3-hpgx-9cx8)). With an
+older `gh`, `tracker update` stops before verifying with:
+
+```text
+Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run.
+```
+
+Skipping attestations still verifies `checksums.txt`, but it gives up the additional
+build-provenance check.
 
 ## Pin Or Reinstall A Version
 

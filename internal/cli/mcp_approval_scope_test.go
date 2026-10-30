@@ -128,3 +128,54 @@ func TestMCPApproveOperationWorkspaceScopedStaysInWorkspace(t *testing.T) {
 		t.Fatalf("workspace round trip: %v", err)
 	}
 }
+
+func revokeJSON(t *testing.T, id string) (scope string, found bool) {
+	t.Helper()
+	out, err := runCLI(t, "mcp", "approvals", "revoke", id, "--json")
+	if err != nil {
+		t.Fatalf("revoke %s: %v\n%s", id, err, out)
+	}
+	var got struct {
+		Kind  string `json:"kind"`
+		ID    string `json:"id"`
+		Scope string `json:"scope"`
+		Found bool   `json:"found"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("parse revoke: %v\n%s", err, out)
+	}
+	if got.Kind != "mcp_operation_approval_revoked" || got.ID != id {
+		t.Fatalf("unexpected revoke payload: %s", out)
+	}
+	return got.Scope, got.Found
+}
+
+func TestMCPApprovalsRevokeJSONReportsScope(t *testing.T) {
+	withTempWorkspace(t)
+	if _, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	approve := func(args ...string) string {
+		out, err := runCLI(t, append([]string{"mcp", "approve-operation", "--actor", "human:owner", "--reason", "revoke scope", "--json"}, args...)...)
+		if err != nil {
+			t.Fatalf("approve: %v\n%s", err, out)
+		}
+		var got approveOutput
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.Approval.ID
+	}
+	machineID := approve("--operation", "atlas.settings.grant_discovery", "--target", filepath.Join(t.TempDir(), "projects"))
+	workspaceID := approve("--operation", "atlas.change.merge", "--target", "CHG-1")
+
+	if scope, found := revokeJSON(t, machineID); scope != "machine" || !found {
+		t.Fatalf("machine revoke scope=%q found=%v", scope, found)
+	}
+	if scope, found := revokeJSON(t, workspaceID); scope != "workspace" || !found {
+		t.Fatalf("workspace revoke scope=%q found=%v", scope, found)
+	}
+	if scope, found := revokeJSON(t, machineID); scope != "" || found {
+		t.Fatalf("second revoke must report not found, got scope=%q found=%v", scope, found)
+	}
+}

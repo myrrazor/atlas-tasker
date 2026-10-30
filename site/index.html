@@ -190,7 +190,7 @@
           <code id="hero-install" tabindex="0">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
         </div>
         <button class="copy-button" type="button" data-copy="hero-install" aria-label="Copy curl install command">Copy command</button>
-        <p class="command-note">Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) · macOS or Linux · v1.18</p>
+        <p class="command-note">Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) 2.102.0+ · macOS or Linux · v1.18</p>
       </aside>
     </header>
 
@@ -442,7 +442,8 @@
           <p class="section-label">Install</p>
           <h2>One binary. Then initialize here.</h2>
           <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> release, checks its SHA-256 checksum, verifies the GitHub build attestation, and installs <code>tracker</code>. Workspace initialization is a separate, explicit step. After install, run <code>tracker init</code> in each workspace and restart those agents. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
-          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) for attestation verification. <code>gh</code> does not need a GitHub login for the local bundle check. Unstamped source builds can report a module tag from a tagged checkout or Go install, otherwise <code>dev+&lt;commit&gt;</code> with VCS metadata or <code>dev</code>. These version strings do not prove hosted release provenance.</p>
+          <p class="requirements">Requires <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) <strong id="gh-min-version">2.102.0 or newer</strong> for attestation verification. <code>gh</code> does not need a GitHub login for the local bundle check. With an older <code>gh</code> (Ubuntu 24.04 and Debian 13 ship 2.45 and 2.46) the installer stops with: <span id="gh-too-old-message">Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run.</span></p>
+          <p class="requirements"> Unstamped source builds can report a module tag from a tagged checkout or Go install, otherwise <code>dev+&lt;commit&gt;</code> with VCS metadata or <code>dev</code>. These version strings do not prove hosted release provenance.</p>
         </div>
 
         <div class="install-options">
@@ -456,7 +457,7 @@
               <code id="curl-install" tabindex="0">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
               <button class="copy-button" type="button" data-copy="curl-install" aria-label="Copy release installer command">Copy</button>
             </div>
-            <p class="requirements">The installer only places the binary. If stdout is a terminal and the current directory is already an Atlas workspace, it may offer <code>tracker setup</code> and defaults to No. Set <code>SKIP_INTEGRATIONS=1</code> to suppress the offer; unattended installs never prompt.</p>
+            <p class="requirements">The installer only places the binary. If stdout is a terminal and the current directory is already an Atlas workspace, it may offer <code>tracker setup</code> and defaults to No. Set <code>SKIP_INTEGRATIONS=1</code> to suppress the offer; unattended installs never prompt. If <code>/usr/local/bin</code> isn't writable it installs to <code>~/.local/bin</code> and prints the <code>PATH</code> line to add; <code>USE_SUDO=1</code> opts in to <code>sudo</code> instead, and an explicit <code>BIN_DIR</code> is never changed.</p>
           </div>
 
           <div class="install-option">
@@ -475,19 +476,32 @@
           <div class="install-option">
             <div class="install-meta">
               <strong>Verified release binary</strong>
-              <span>No script · checksum + attestation · needs <code>gh</code>, no login</span>
+              <span>No script · checksum + attestation · needs <code>gh</code> 2.102.0+, no login</span>
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
-              <code id="bin-download" tabindex="0">gh release download v1.18.0 --repo myrrazor/atlas-tasker --pattern "tracker_1.18.0_linux_amd64.tar.gz" --pattern checksums.txt --pattern attestation-bundle.jsonl</code>
-              <button class="copy-button" type="button" data-copy="bin-download" aria-label="Copy release download command">Copy</button>
+              <code id="bin-option-a" class="install-block" tabindex="0">(
+set -e
+gh --version 2&gt;/dev/null | awk 'NR==1{f=$3; split(f,v,"."); ok=(f~/^[0-9]+\.[0-9]+/ &amp;&amp; (v[1]+0&gt;2 || (v[1]+0==2 &amp;&amp; v[2]+0&gt;=102)))} END{if(!ok){print "Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run. " (f=="" ? "gh not found" : "Found gh " f "; minimum is 2.102.0") &gt; "/dev/stderr"; exit 1}}'
+VERSION=1.18.0
+PLATFORM=linux_amd64
+WORK=$(mktemp -d) &amp;&amp; cd "$WORK"
+gh release download "v$VERSION" --repo myrrazor/atlas-tasker \
+  --pattern "tracker_${VERSION}_${PLATFORM}.tar.gz" --pattern checksums.txt \
+  --pattern attestation-bundle.jsonl
+grep " dist/tracker_${VERSION}_${PLATFORM}.tar.gz$" checksums.txt | sed "s# dist/# #" | sha256sum -c -
+gh attestation verify "tracker_${VERSION}_${PLATFORM}.tar.gz" --repo myrrazor/atlas-tasker \
+  --bundle attestation-bundle.jsonl \
+  --signer-workflow myrrazor/atlas-tasker/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$VERSION"
+tar -xzf "tracker_${VERSION}_${PLATFORM}.tar.gz" tracker
+mkdir -p "$HOME/.local/bin" &amp;&amp; install -m 0755 tracker "$HOME/.local/bin/tracker"
+cd / &amp;&amp; rm -rf "$WORK"
+"$HOME/.local/bin/tracker" version
+)</code>
+              <button class="copy-button" type="button" data-copy="bin-option-a" aria-label="Copy the verified release binary install block">Copy</button>
             </div>
-            <div class="install-command">
-              <span class="prompt" aria-hidden="true">$</span>
-              <code id="bin-verify" tabindex="0">gh attestation verify tracker_1.18.0_linux_amd64.tar.gz --repo myrrazor/atlas-tasker --bundle attestation-bundle.jsonl --signer-workflow myrrazor/atlas-tasker/.github/workflows/release.yml --source-ref refs/tags/v1.18.0</code>
-              <button class="copy-button" type="button" data-copy="bin-verify" aria-label="Copy attestation verify command">Copy</button>
-            </div>
-            <p class="requirements">Then check the SHA-256 against <code>checksums.txt</code>, extract <code>tracker</code>, and put it in a directory on your <code>PATH</code> such as <code>~/.local/bin</code>. Full steps for every platform: <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/install-without-script.md">install without curl | sh</a>.</p>
+            <p class="requirements">Paste the whole block. It runs in a <code>set -e</code> subshell: it stops right after the <code>gh</code> check if <code>gh</code> is missing or older than 2.102.0, otherwise checks the SHA-256 and attestation, installs <code>tracker</code> to <code>~/.local/bin</code> and removes its temporary folder. Set <code>PLATFORM</code> for your machine. Full steps for every platform: <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/install-without-script.md">install without curl | sh</a>.</p>
           </div>
 
           <div class="install-option">

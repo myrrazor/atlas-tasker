@@ -95,6 +95,7 @@ func TestRunCheckAndApply(t *testing.T) {
 		GOOS:             runtime.GOOS,
 		GOARCH:           runtime.GOARCH,
 		HTTPClient:       server.Client(),
+		CheckGH:          func(context.Context) error { return nil },
 		RunAttest: func(ctx context.Context, req AttestRequest) error {
 			attestCalls++
 			if filepath.Base(req.ArchivePath) != asset {
