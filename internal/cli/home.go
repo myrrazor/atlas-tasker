@@ -128,5 +128,7 @@ func runHomeServe(cmd *cobra.Command, _ []string) error {
 	}
 	_ = boundHost
 	fmt.Fprintf(cmd.OutOrStdout(), "Atlas Home http://%s/\n", ln.Addr().String())
-	return server.Serve(commandContext(cmd), ln)
+	serveCtx, stop := serveSignalContext(commandContext(cmd), cmd.ErrOrStderr())
+	defer stop()
+	return server.Serve(serveCtx, ln)
 }

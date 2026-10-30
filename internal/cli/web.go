@@ -6,11 +6,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/app"
@@ -100,7 +98,7 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 			fmt.Fprintf(cmd.ErrOrStderr(), "open browser failed: %v\n", err)
 		}
 	}
-	serveCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	serveCtx, stop := serveSignalContext(ctx, cmd.ErrOrStderr())
 	defer stop()
 	return server.Serve(serveCtx, listener)
 }
