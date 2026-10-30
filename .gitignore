@@ -41,3 +41,7 @@ CLAW_REVIEW_*.md
 !/.tracker/evidence/*/
 !/.tracker/evidence/**/*.md
 /.atlas-tasker-worktrees/
+
+# Python bytecode
+__pycache__/
+*.pyc
