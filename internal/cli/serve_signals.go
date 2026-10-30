@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/myrrazor/atlas-tasker/internal/earlysignal"
 )
 
 // serveShutdownGrace bounds how long a long-running server may take to stop
@@ -41,7 +43,12 @@ var serveExit = os.Exit
 // cleanup would otherwise leave behind with a dead pid.
 func serveSignalContext(parent context.Context, stderr io.Writer, onForceExit func()) (context.Context, func()) {
 	ctx, cancel := context.WithCancel(parent)
-	signals := make(chan os.Signal, 2)
+	// Reuse the channel registered during package init when there is one,
+	// so a signal that arrived while the CLI was still starting is not lost.
+	signals := earlysignal.Take()
+	if signals == nil {
+		signals = make(chan os.Signal, 2)
+	}
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	done := make(chan struct{})
 	go func() {
