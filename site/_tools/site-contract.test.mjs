@@ -618,10 +618,22 @@ test("minimum gh version and too-old message match across install.sh, README, do
   for (const page of ["docs/getting-started.html", "guide.html", "mcp.html"]) {
     assert.ok(pages.get(page).includes(`${min} or newer`), `${page} names the minimum`);
   }
-  const ghCheck = `gh --version 2>/dev/null | awk 'NR==1{split($3,v,"."); ok=(v[1]>2||(v[1]==2&&v[2]>=${min.split(".")[1]}))} END{exit !ok}' || { echo "${message}" >&2; false; }`;
+  const ghCheck = `gh --version 2>/dev/null | awk 'NR==1{f=$3; split(f,v,"."); ok=(f~/^[0-9]+\\.[0-9]+/ && (v[1]+0>2 || (v[1]+0==2 && v[2]+0>=${min.split(".")[1]})))} END{if(!ok){print "${message} " (f=="" ? "gh not found" : "Found gh " f "; minimum is ${min}") > "/dev/stderr"; exit 1}}'`;
   assert.equal(min.split(".")[0], "2", "gh check compares major 2");
   assert.ok(readme.includes(ghCheck), "README Option A has the gh version check");
-  assert.ok(manual.includes("```bash\n(\nset -e\n" + ghCheck + "\n"), "install-without-script Option A starts with the gh check in a set -e subshell");
-  const escapeHtml = (text) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  assert.ok(index.includes(`<code id="bin-gh-version" tabindex="0">${escapeHtml(ghCheck)}</code>`), "site Option A has the gh version check");
+  const docBlock = manual.match(/## Option A[\s\S]*?```bash\n([\s\S]*?)\n```/)?.[1];
+  assert.ok(docBlock?.startsWith("(\nset -e\n" + ghCheck + "\n") && docBlock.endsWith("\n)"), "install-without-script Option A is a set -e subshell starting with the gh check");
+  const unescape = (text) => text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+  const siteBlock = index.match(/<code id="bin-option-a" class="install-block" tabindex="0">([\s\S]*?)<\/code>/)?.[1];
+  assert.ok(siteBlock, "site Option A is one copyable block");
+  assert.equal(unescape(siteBlock).trim(), docBlock, "site Option A block matches docs/install-without-script.md");
+  assert.ok(index.includes('data-copy="bin-option-a"'), "site Option A block has a Copy button");
+  for (const [file, html] of pages) {
+    for (const [, id, body] of html.matchAll(/<code id="([^"]+)"[^>]*>([\s\S]*?)<\/code>/g)) {
+      const text = unescape(body).trim();
+      if (/gh (release download|attestation verify)/.test(text)) {
+        assert.ok(text.startsWith("(\nset -e\n" + ghCheck + "\n") && text.endsWith("\n)"), `${file} #${id}: gh download/verify only inside the guarded set -e block`);
+      }
+    }
+  }
 });

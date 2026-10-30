@@ -66,10 +66,10 @@ Checksum verification is always on.
 
 Prefer not to pipe a script into your shell? [Install without `curl | sh`](docs/install-without-script.md) covers a checksum- and attestation-verified release binary and a pinned `go install`.
 
-For the verified release binary (Option A), check `gh` first. It prints the installer's message and fails if `gh` is missing or older than 2.102.0:
+For the verified release binary (Option A), check `gh` first. It prints the installer's message and fails if `gh` is missing, unreadable or older than 2.102.0. The full Option A block in [Install without `curl | sh`](docs/install-without-script.md) starts with this line inside a `set -e` subshell, so nothing else runs after a failed check:
 
 ```bash
-gh --version 2>/dev/null | awk 'NR==1{split($3,v,"."); ok=(v[1]>2||(v[1]==2&&v[2]>=102))} END{exit !ok}' || { echo "Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run." >&2; false; }
+gh --version 2>/dev/null | awk 'NR==1{f=$3; split(f,v,"."); ok=(f~/^[0-9]+\.[0-9]+/ && (v[1]+0>2 || (v[1]+0==2 && v[2]+0>=102)))} END{if(!ok){print "Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run. " (f=="" ? "gh not found" : "Found gh " f "; minimum is 2.102.0") > "/dev/stderr"; exit 1}}'
 ```
 
 Optional, with Go 1.26.6 or newer:
