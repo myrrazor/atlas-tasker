@@ -143,7 +143,18 @@ func runWebOpen(cmd *cobra.Command, _ []string) error {
 	if health := webHealth(state.URL); health != "ok" {
 		return fmt.Errorf("web board at %s is not running (health: %s); start it with `tracker web serve --open`", state.URL, health)
 	}
-	if err := openURLFunc(state.URL); err != nil {
+	// The board rejects requests without the session cookie, so open the same
+	// token URL `web serve` prints. The token goes only to the browser; the
+	// printed line keeps showing the bare board URL.
+	token, err := webui.ReadSessionToken(filepath.Join(workspace.root, ".tracker", "web-session.json"))
+	if err != nil {
+		return fmt.Errorf("read web session: %w; restart it with `tracker web serve --open`", err)
+	}
+	sessionURL, err := webui.SessionURLFor(state.URL, token)
+	if err != nil {
+		return err
+	}
+	if err := openURLFunc(sessionURL); err != nil {
 		return err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "opened %s\n", state.URL)

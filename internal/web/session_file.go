@@ -2,6 +2,9 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -222,4 +225,38 @@ func validSessionSecret(value string) bool {
 		return false
 	}
 	return strings.Trim(value, "0123456789abcdefABCDEF") == ""
+}
+
+// ReadSessionToken returns the current token from the session file without
+// creating, extending or rotating it. `tracker web open` uses it so the URL it
+// hands the browser authenticates the same way the printed session URL does.
+func ReadSessionToken(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	var doc sessionDocument
+	if err := json.Unmarshal(raw, &doc); err != nil || !validSessionSecret(doc.Token) {
+		return "", errors.New("web session file is invalid")
+	}
+	if !doc.ExpiresAt.IsZero() && time.Now().UTC().After(doc.ExpiresAt.UTC()) {
+		return "", errors.New("web session has expired")
+	}
+	return doc.Token, nil
+}
+
+// SessionURLFor adds the session token to a recorded loopback board URL. It
+// refuses non-loopback URLs so the token never leaves the machine.
+func SessionURLFor(boardURL string, token string) (string, error) {
+	u, err := url.Parse(boardURL)
+	if err != nil || u.Scheme != "http" || !isLoopbackHost(u.Hostname()) {
+		return "", fmt.Errorf("recorded web board URL is not a loopback http URL")
+	}
+	if !validSessionSecret(token) {
+		return "", errors.New("web session token is invalid")
+	}
+	q := u.Query()
+	q.Set("token", token)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }
