@@ -486,6 +486,7 @@ gh --version 2&gt;/dev/null | awk 'NR==1{f=$3; split(f,v,"."); ok=(f~/^[0-9]+\.[
 VERSION=1.18.1
 PLATFORM=linux_amd64
 WORK=$(mktemp -d) &amp;&amp; cd "$WORK"
+trap 'cd / &amp;&amp; rm -rf "$WORK"' EXIT
 gh release download "v$VERSION" --repo myrrazor/atlas-tasker \
   --pattern "tracker_${VERSION}_${PLATFORM}.tar.gz" --pattern checksums.txt \
   --pattern attestation-bundle.jsonl
