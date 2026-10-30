@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- MCP: `tracker mcp approve-operation` now stores approvals for machine-scoped tools such as `atlas.settings.grant_discovery` in the machine state dir, where the global MCP server looks for them, instead of the current workspace. Before, those calls failed with "operation approval not found". Machine-scoped approvals no longer need a workspace, and `tracker mcp approvals list`/`revoke` cover both stores and show each approval's `scope`.
+
 ## v1.18.0 - Grok plugin and install without curl | sh (2026-10-29)
 
 [Download v1.18.0 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.0).

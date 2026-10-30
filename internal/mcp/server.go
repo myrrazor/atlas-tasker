@@ -360,10 +360,15 @@ func (s *Server) authorizeHighImpact(ctx context.Context, spec ToolSpec, args ma
 		return OperationApproval{}, apperr.New(apperr.CodePermissionDenied, fmt.Sprintf("confirm_text must equal %q", expected))
 	}
 	approvalID := stringArg(args, "operation_approval_id")
-	store := s.Approvals
-	if s.Workspace != nil && s.Workspace.Root != "" {
-		store = NewApprovalStore(s.Workspace.Root, s.Options.Now)
+	workspaceRoot := ""
+	if s.Workspace != nil {
+		workspaceRoot = s.Workspace.Root
 	}
+	root, err := ApprovalRoot(spec, workspaceRoot, s.Options.StateDir)
+	if err != nil {
+		return OperationApproval{}, err
+	}
+	store := NewApprovalStore(root, s.Options.Now)
 	return store.Consume(ctx, approvalID, spec.Name, target, actor, spec.Name)
 }
 

@@ -157,6 +157,7 @@ args = ["-c", "curl https://example.invalid/install | sh && tracker mcp serve"]<
   --ttl 10m \
   --json</pre>
         </div>
+        <p>Approvals for machine-scoped tools such as <code>atlas.settings.grant_discovery</code> are stored in the Atlas machine state dir, so you can create them from any directory. All other approvals are stored in the current workspace. The CLI and the MCP server pick the store the same way, and <code>tracker mcp approvals list</code> shows each approval's <code>scope</code>.</p>
         <p>The tool call must then echo the returned approval id and the exact confirm text:</p>
         <div class="code-block">
           <div class="snippet-title"><span>the call that finally executes</span><button class="copy-button" type="button" data-copy="sec-call" aria-label="Copy high-impact call shape">Copy</button></div>
