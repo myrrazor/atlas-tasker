@@ -122,13 +122,15 @@ func runHomeServe(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	// Register the signal handler before binding and printing the banner so a
+	// Ctrl-C sent as soon as the banner appears is never lost.
+	serveCtx, stop := serveSignalContext(commandContext(cmd), cmd.ErrOrStderr(), nil)
+	defer stop()
 	ln, boundHost, err := webui.ListenLoopback(host, port)
 	if err != nil {
 		return err
 	}
 	_ = boundHost
 	fmt.Fprintf(cmd.OutOrStdout(), "Atlas Home http://%s/\n", ln.Addr().String())
-	serveCtx, stop := serveSignalContext(commandContext(cmd), cmd.ErrOrStderr())
-	defer stop()
 	return server.Serve(serveCtx, ln)
 }

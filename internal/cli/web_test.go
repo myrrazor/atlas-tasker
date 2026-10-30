@@ -97,3 +97,27 @@ func TestWebOpenOpensAuthenticatedSessionURL(t *testing.T) {
 		t.Fatalf("web open must not print the session token:\n%s", out)
 	}
 }
+
+// A second Ctrl-C exits with 130 and used to leave server.json naming a dead
+// pid; `web status` must report that record as stale, not as a live server.
+func TestWebStatusReportsDeadPIDAsStale(t *testing.T) {
+	withTempWorkspace(t)
+	if out, err := runCLI(t, "init"); err != nil {
+		t.Fatalf("init failed: %v\n%s", err, out)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	state := webui.RuntimeState{Host: "127.0.0.1", Port: 1, URL: "http://127.0.0.1:1/board", PID: 999999, StartedAt: time.Now().UTC()}
+	if err := webui.WriteRuntimeState(wd, state); err != nil {
+		t.Fatalf("write runtime state: %v", err)
+	}
+	out, err := runCLI(t, "web", "status", "--json")
+	if err != nil {
+		t.Fatalf("web status: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, `"stale": true`) || !strings.Contains(out, `"health": "stale"`) {
+		t.Fatalf("expected a stale record, got:\n%s", out)
+	}
+}

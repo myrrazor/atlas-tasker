@@ -24,7 +24,11 @@ var serveExit = os.Exit
 // why Ctrl-C used to leave `tracker serve` running. A second signal, or a
 // shutdown that outlives serveShutdownGrace, exits immediately so the
 // process can't stay wedged.
-func serveSignalContext(parent context.Context, stderr io.Writer) (context.Context, func()) {
+//
+// onForceExit, when non-nil, runs just before a forced exit so the caller can
+// remove state (such as the web board's server.json) that a skipped deferred
+// cleanup would otherwise leave behind with a dead pid.
+func serveSignalContext(parent context.Context, stderr io.Writer, onForceExit func()) (context.Context, func()) {
 	ctx, cancel := context.WithCancel(parent)
 	signals := make(chan os.Signal, 2)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
@@ -41,9 +45,15 @@ func serveSignalContext(parent context.Context, stderr io.Writer) (context.Conte
 		select {
 		case <-signals:
 			fmt.Fprintln(stderr, "second interrupt; exiting without waiting for shutdown")
+			if onForceExit != nil {
+				onForceExit()
+			}
 			serveExit(130)
 		case <-timer.C:
 			fmt.Fprintf(stderr, "shutdown did not finish within %s; exiting\n", serveShutdownGrace)
+			if onForceExit != nil {
+				onForceExit()
+			}
 			serveExit(1)
 		case <-done:
 		}

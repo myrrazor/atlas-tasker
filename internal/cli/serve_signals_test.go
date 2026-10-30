@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -66,10 +67,15 @@ func TestServeStopsCleanlyOnSIGINT(t *testing.T) {
 				for sc.Scan() {
 					if strings.Contains(sc.Text(), "Atlas Home") {
 						ready <- true
-						return
+						break
 					}
 				}
-				ready <- false
+				for sc.Scan() {
+				}
+				select {
+				case ready <- false:
+				default:
+				}
 			}()
 			select {
 			case ok := <-ready:
@@ -81,6 +87,9 @@ func TestServeStopsCleanlyOnSIGINT(t *testing.T) {
 				_ = cmd.Process.Kill()
 				t.Fatalf("serve never became ready: %s", stderr.String())
 			}
+			// Wait until the server answers /healthz so SIGINT lands on a
+			// fully started process, not one still in startup.
+			waitHealthz(t, port)
 			if err := cmd.Process.Signal(syscall.SIGINT); err != nil {
 				t.Fatal(err)
 			}
@@ -106,7 +115,7 @@ func TestServeSignalContextSecondSignalExits(t *testing.T) {
 	serveExit = func(code int) { exited <- code }
 	t.Cleanup(func() { serveExit = oldExit })
 	var stderr bytes.Buffer
-	ctx, stop := serveSignalContext(context.Background(), &stderr)
+	ctx, stop := serveSignalContext(context.Background(), &stderr, nil)
 	defer stop()
 	_ = syscall.Kill(os.Getpid(), syscall.SIGINT)
 	select {
@@ -125,13 +134,61 @@ func TestServeSignalContextSecondSignalExits(t *testing.T) {
 	}
 }
 
+func waitHealthz(t *testing.T, port int) {
+	t.Helper()
+	client := &http.Client{Timeout: time.Second}
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/healthz", port))
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("serve on port %d never answered /healthz", port)
+}
+
+// A forced exit skips deferred cleanup, so the caller's hook must run first
+// (web serve uses it to remove server.json instead of leaving a dead pid).
+func TestServeSignalContextForcedExitRunsCleanup(t *testing.T) {
+	exited := make(chan int, 1)
+	oldExit := serveExit
+	cleaned := make(chan struct{}, 1)
+	serveExit = func(code int) {
+		select {
+		case <-cleaned:
+			cleaned <- struct{}{}
+		default:
+			t.Error("forced exit ran before cleanup")
+		}
+		exited <- code
+	}
+	t.Cleanup(func() { serveExit = oldExit })
+	ctx, stop := serveSignalContext(context.Background(), &bytes.Buffer{}, func() { cleaned <- struct{}{} })
+	defer stop()
+	_ = syscall.Kill(os.Getpid(), syscall.SIGINT)
+	<-ctx.Done()
+	_ = syscall.Kill(os.Getpid(), syscall.SIGINT)
+	select {
+	case code := <-exited:
+		if code != 130 {
+			t.Fatalf("exit code = %d, want 130", code)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("second SIGINT did not force an exit")
+	}
+}
+
 func TestServeSignalContextBoundsHungShutdown(t *testing.T) {
 	exited := make(chan int, 1)
 	oldExit, oldGrace := serveExit, serveShutdownGrace
 	serveExit = func(code int) { exited <- code }
 	serveShutdownGrace = 200 * time.Millisecond
 	t.Cleanup(func() { serveExit, serveShutdownGrace = oldExit, oldGrace })
-	ctx, stop := serveSignalContext(context.Background(), &bytes.Buffer{})
+	ctx, stop := serveSignalContext(context.Background(), &bytes.Buffer{}, nil)
 	defer stop()
 	_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 	<-ctx.Done()
