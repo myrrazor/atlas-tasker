@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- MCP: `tracker mcp approvals revoke --json` now reports `scope` (`workspace` or `machine`, as in `approvals list`) and `found`, so you can tell which store held the revoked approval.
 - MCP: `tracker mcp approve-operation` now stores approvals for machine-scoped tools such as `atlas.settings.grant_discovery` in the machine state dir, where the global MCP server looks for them, instead of the current workspace. Before, those calls failed with "operation approval not found". Machine-scoped approvals no longer need a workspace, and `tracker mcp approvals list`/`revoke` cover both stores and show each approval's `scope`.
 
 ## v1.18.0 - Grok plugin and install without curl | sh (2026-10-29)
