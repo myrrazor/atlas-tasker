@@ -6,11 +6,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
+	"sync/atomic"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/app"
@@ -40,11 +39,23 @@ func newWebCommand() *cobra.Command {
 
 func runWebServe(cmd *cobra.Command, _ []string) error {
 	ctx := commandContext(cmd)
+	// Register for SIGINT/SIGTERM before opening the workspace or binding, so
+	// an early Ctrl-C (even one inherited as ignored) is not lost. A forced
+	// exit (second signal or hung shutdown) skips defers, so it removes
+	// server.json itself; root is set once the workspace is open.
+	var root atomic.Value // string; read by the signal goroutine
+	serveCtx, stop := serveSignalContext(ctx, cmd.ErrOrStderr(), func() {
+		if r, _ := root.Load().(string); r != "" {
+			_ = webui.ClearRuntimeStateOwnedBy(r, os.Getpid())
+		}
+	})
+	defer stop()
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
 	}
 	defer workspace.close()
+	root.Store(workspace.root)
 	host, _ := cmd.Flags().GetString("host")
 	port, _ := cmd.Flags().GetInt("port")
 	project, _ := cmd.Flags().GetString("project")
@@ -56,6 +67,9 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	actor, err := workspace.queries.ResolveActor(ctx, contracts.Actor(strings.TrimSpace(actorRaw)))
 	if err != nil {
 		return err
+	}
+	if serveInterruptedEarly(serveCtx) {
+		return errServeInterrupted
 	}
 	listener, host, err := webui.ListenLoopback(host, port)
 	if err != nil {
@@ -100,8 +114,6 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 			fmt.Fprintf(cmd.ErrOrStderr(), "open browser failed: %v\n", err)
 		}
 	}
-	serveCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	return server.Serve(serveCtx, listener)
 }
 
@@ -126,6 +138,10 @@ func runWebStatus(cmd *cobra.Command, _ []string) error {
 		"started_at": state.StartedAt,
 		"health":     webHealth(state.URL),
 	}
+	if webui.RuntimeStateStale(state) {
+		stateMap["health"] = "stale"
+		stateMap["stale"] = true
+	}
 	md := fmt.Sprintf("## Web Board\n\n- URL: %s\n- PID: %d\n- Health: %s\n", state.URL, state.PID, stateMap["health"])
 	pretty := fmt.Sprintf("web board %s pid=%d health=%s", state.URL, state.PID, stateMap["health"])
 	return writeCommandOutput(cmd, stateMap, md, pretty)
@@ -142,6 +158,9 @@ func runWebOpen(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	// stale state outlives crashed/stopped servers; don't open a dead URL
+	if webui.RuntimeStateStale(state) {
+		return fmt.Errorf("web board at %s is not running (stale server record, pid %d); start it with `tracker web serve --open`", state.URL, state.PID)
+	}
 	if health := webHealth(state.URL); health != "ok" {
 		return fmt.Errorf("web board at %s is not running (health: %s); start it with `tracker web serve --open`", state.URL, health)
 	}

@@ -92,6 +92,12 @@ func newServeCommand() *cobra.Command {
 }
 
 func runHomeServe(cmd *cobra.Command, _ []string) error {
+	// Register for SIGINT/SIGTERM before anything else (opening the app,
+	// session or listener). signal.Notify also re-enables a SIGINT that was
+	// inherited as ignored, so the earlier this runs the smaller the window
+	// in which an early Ctrl-C can be lost.
+	serveCtx, stop := serveSignalContext(commandContext(cmd), cmd.ErrOrStderr(), nil)
+	defer stop()
 	stateDir, _ := cmd.Flags().GetString("state-dir")
 	a, err := openAppWithState(stateDir)
 	if err != nil {
@@ -122,11 +128,14 @@ func runHomeServe(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	if serveInterruptedEarly(serveCtx) {
+		return errServeInterrupted
+	}
 	ln, boundHost, err := webui.ListenLoopback(host, port)
 	if err != nil {
 		return err
 	}
 	_ = boundHost
 	fmt.Fprintf(cmd.OutOrStdout(), "Atlas Home http://%s/\n", ln.Addr().String())
-	return server.Serve(commandContext(cmd), ln)
+	return server.Serve(serveCtx, ln)
 }

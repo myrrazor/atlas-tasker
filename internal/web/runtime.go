@@ -72,3 +72,9 @@ func ReadRuntimeState(root string) (RuntimeState, error) {
 	}
 	return state, nil
 }
+
+// RuntimeStateStale reports whether server.json records a server whose
+// process is gone (for example one that exited on a second Ctrl-C).
+func RuntimeStateStale(state RuntimeState) bool {
+	return !pidAlive(state.PID)
+}
