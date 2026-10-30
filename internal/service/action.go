@@ -148,6 +148,13 @@ func (s *ActionService) commitMutation(ctx context.Context, purpose string, cano
 		return err
 	}
 	if writeCanonical != nil {
+		if canonicalEventLogSwap(ctx) {
+			// remember every id the old log issued before it is replaced
+			if err := raiseEventWatermark(ctx, s.Root, s.Events); err != nil {
+				_ = s.journal().Complete(journal.ID)
+				return err
+			}
+		}
 		if err := writeCanonical(ctx); err != nil {
 			_ = s.journal().Complete(journal.ID)
 			return err
@@ -232,7 +239,11 @@ func (s *ActionService) NextEventID(ctx context.Context, project string) (int64,
 		if err != nil {
 			return 0, err
 		}
-		var maxID int64
+		mark, err := loadEventWatermark(s.Root)
+		if err != nil {
+			return 0, err
+		}
+		maxID := mark.Projects[project]
 		for _, event := range events {
 			if event.EventID > maxID {
 				maxID = event.EventID
@@ -248,7 +259,11 @@ func (s *ActionService) NextLogicalClock(ctx context.Context) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		var maxClock int64
+		mark, err := loadEventWatermark(s.Root)
+		if err != nil {
+			return 0, err
+		}
+		maxClock := mark.LogicalClock
 		for _, event := range events {
 			if event.LogicalClock > maxClock {
 				maxClock = event.LogicalClock

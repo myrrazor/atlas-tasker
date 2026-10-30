@@ -131,8 +131,10 @@ func TestRemoteRestoreApplyByPlanIDAfterSourceLocalRestore(t *testing.T) {
 	checkpoint := freshDestination(t, target)
 	plan := mustJSON(t, "backup", "remote", "restore-plan", checkpoint, "--target", "local-drill", "--allow-workspace-mismatch")
 	planID := dig(plan, "plan", "restore_plan_id").(string)
+	before := maxEventIDs(t)
 	mustJSON(t, "backup", "remote", "restore-apply", planID, "--target", "local-drill", "--allow-workspace-mismatch", "--yes", "--actor", "human:owner", "--reason", "qa")
 	assertRestoredCleanly(t)
+	assertNewEventsAbove(t, before)
 }
 
 func TestRemoteRestoreApplyByCheckpointAfterSourceLocalRestore(t *testing.T) {
@@ -140,8 +142,10 @@ func TestRemoteRestoreApplyByCheckpointAfterSourceLocalRestore(t *testing.T) {
 	target := sourceWithPriorLocalRestore(t)
 	checkpoint := freshDestination(t, target)
 	mustJSON(t, "backup", "remote", "restore-plan", checkpoint, "--target", "local-drill", "--allow-workspace-mismatch")
+	before := maxEventIDs(t)
 	mustJSON(t, "backup", "remote", "restore-apply", checkpoint, "--target", "local-drill", "--allow-workspace-mismatch", "--yes", "--actor", "human:owner", "--reason", "qa")
 	assertRestoredCleanly(t)
+	assertNewEventsAbove(t, before)
 }
 
 // A workspace already stuck by the old ordering: the restore's canonical files
@@ -212,5 +216,46 @@ func TestDoctorRepairRenumbersStuckRestoreJournal(t *testing.T) {
 	backups, _ := filepath.Glob(filepath.Join(storage.TrackerDir(root), "quarantine", "*", "mutations", journalName))
 	if len(backups) != 1 {
 		t.Fatalf("the original journal entry should be backed up once, found %v", backups)
+	}
+}
+
+func maxEventIDs(t *testing.T) map[string]int64 {
+	t.Helper()
+	root, _ := os.Getwd()
+	events, err := (&eventstore.Log{RootDir: root}).StreamEvents(t.Context(), "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]int64{}
+	for _, event := range events {
+		out[event.Project] = max(out[event.Project], event.EventID)
+	}
+	return out
+}
+
+// every event appended by or after the restore lands above the ids the
+// workspace had issued before it, even when the restored log is shorter
+func assertNewEventsAbove(t *testing.T, before map[string]int64) {
+	t.Helper()
+	mustJSON(t, "ticket", "edit", "APP-1", "--title", "After remote restore", "--actor", "human:owner")
+	root, _ := os.Getwd()
+	events, err := (&eventstore.Log{RootDir: root}).StreamEvents(t.Context(), "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restoreSeen, editSeen bool
+	for _, event := range events {
+		switch {
+		case event.Type == contracts.EventBackupRestored && event.EventID > before[event.Project]:
+			restoreSeen = true
+		case event.Project == "APP" && strings.Contains(toJSON(event.Payload), "After remote restore"):
+			if event.EventID <= before["APP"] {
+				t.Fatalf("post-restore edit reused APP #%d (pre-restore max %d)", event.EventID, before["APP"])
+			}
+			editSeen = true
+		}
+	}
+	if !restoreSeen || !editSeen {
+		t.Fatalf("restore event above %v: %t, edit seen: %t", before, restoreSeen, editSeen)
 	}
 }

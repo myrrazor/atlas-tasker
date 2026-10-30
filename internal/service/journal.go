@@ -165,7 +165,7 @@ func (j MutationJournal) Reconcile(ctx context.Context, events contracts.EventLo
 			if err != nil {
 				return nil, err
 			}
-			nextID, nextClock, err := nextEventPosition(ctx, events, entry.Event.Project)
+			nextID, nextClock, err := nextEventPosition(ctx, j.Root, events, entry.Event.Project)
 			if err != nil {
 				return nil, err
 			}
@@ -266,12 +266,16 @@ func journalEventState(ctx context.Context, log contracts.EventLog, event contra
 	return journalEventMissing, nil
 }
 
-func nextEventPosition(ctx context.Context, log contracts.EventLog, project string) (int64, int64, error) {
+func nextEventPosition(ctx context.Context, root string, log contracts.EventLog, project string) (int64, int64, error) {
 	all, err := log.StreamEvents(ctx, "", 0)
 	if err != nil {
 		return 0, 0, err
 	}
-	var maxID, maxClock int64
+	mark, err := loadEventWatermark(root)
+	if err != nil {
+		return 0, 0, err
+	}
+	maxID, maxClock := mark.Projects[project], mark.LogicalClock
 	for _, existing := range all {
 		if existing.Project == project && existing.EventID > maxID {
 			maxID = existing.EventID
