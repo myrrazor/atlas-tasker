@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/myrrazor/atlas-tasker/internal/app"
@@ -38,11 +39,23 @@ func newWebCommand() *cobra.Command {
 
 func runWebServe(cmd *cobra.Command, _ []string) error {
 	ctx := commandContext(cmd)
+	// Register for SIGINT/SIGTERM before opening the workspace or binding, so
+	// an early Ctrl-C (even one inherited as ignored) is not lost. A forced
+	// exit (second signal or hung shutdown) skips defers, so it removes
+	// server.json itself; root is set once the workspace is open.
+	var root atomic.Value // string; read by the signal goroutine
+	serveCtx, stop := serveSignalContext(ctx, cmd.ErrOrStderr(), func() {
+		if r, _ := root.Load().(string); r != "" {
+			_ = webui.ClearRuntimeStateOwnedBy(r, os.Getpid())
+		}
+	})
+	defer stop()
 	workspace, err := openWorkspace()
 	if err != nil {
 		return err
 	}
 	defer workspace.close()
+	root.Store(workspace.root)
 	host, _ := cmd.Flags().GetString("host")
 	port, _ := cmd.Flags().GetInt("port")
 	project, _ := cmd.Flags().GetString("project")
@@ -55,14 +68,9 @@ func runWebServe(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	// Register the signal handler before binding and printing the URLs so a
-	// Ctrl-C sent right after startup is never lost. A forced exit (second
-	// signal or hung shutdown) skips defers, so it removes server.json itself.
-	root := workspace.root
-	serveCtx, stop := serveSignalContext(ctx, cmd.ErrOrStderr(), func() {
-		_ = webui.ClearRuntimeStateOwnedBy(root, os.Getpid())
-	})
-	defer stop()
+	if serveInterruptedEarly(serveCtx) {
+		return errServeInterrupted
+	}
 	listener, host, err := webui.ListenLoopback(host, port)
 	if err != nil {
 		return err

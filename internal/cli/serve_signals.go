@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,16 @@ import (
 // serveShutdownGrace bounds how long a long-running server may take to stop
 // after the first SIGINT/SIGTERM before the process exits anyway.
 var serveShutdownGrace = 10 * time.Second
+
+// errServeInterrupted is returned when SIGINT/SIGTERM arrives before the
+// server has bound its listener. Execute maps it to exit status 130.
+var errServeInterrupted = errors.New("interrupted before the server started")
+
+// serveInterruptedEarly reports whether the serve context was cancelled by a
+// signal during startup, i.e. before the listener was bound.
+func serveInterruptedEarly(ctx context.Context) bool {
+	return ctx.Err() != nil
+}
 
 // serveExit is swappable for tests.
 var serveExit = os.Exit
