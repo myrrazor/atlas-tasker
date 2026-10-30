@@ -44,7 +44,7 @@ def log_args():
         fh.write("\n")
 
 if sys.argv[1:] == ["--version"]:
-    ver = os.environ.get("MOCK_GH_VERSION", "2.96.0")
+    ver = os.environ.get("MOCK_GH_VERSION", "2.102.0")
     if ver == "garbage":
         print("not a gh banner")
     else:
@@ -640,28 +640,28 @@ class InstallerTests(unittest.TestCase):
     # --- gh minimum version (v1.18.0 acceptance blocker 2) ---
 
     GH_TOO_OLD_MESSAGE = (
-        "Atlas Tasker needs GitHub CLI (gh) 2.96.0 or newer. Upgrade it from "
+        "Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from "
         "https://cli.github.com/ (distro packages are often older) and re-run."
     )
 
     def test_gh_min_version_constant_matches_message(self):
         text = self.script.read_text()
-        self.assertIn('GH_MIN_VERSION="2.96.0"', text)
+        self.assertIn('GH_MIN_VERSION="2.102.0"', text)
         self.assertIn(f'GH_TOO_OLD_MESSAGE="{self.GH_TOO_OLD_MESSAGE}"', text)
 
     def test_distro_gh_too_old_is_rejected_before_download(self):
-        for old in ("2.45.0", "2.46.0", "2.95.9"):
+        for old in ("2.45.0", "2.46.0", "2.96.0", "2.101.1"):
             with self.subTest(gh=old):
                 self.env["MOCK_GH_VERSION"] = old
                 result = self.run_install()
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(self.GH_TOO_OLD_MESSAGE, result.stderr)
-                self.assertIn(f"found gh {old}; minimum is 2.96.0", result.stderr)
+                self.assertIn(f"found gh {old}; minimum is 2.102.0", result.stderr)
                 self.assertFalse((self.bin_dir / "tracker").exists())
                 self.assertEqual(self.archive_gets(), [])
 
     def test_gh_at_or_above_minimum_is_accepted(self):
-        for ok in ("2.96.0", "2.103.0", "3.0"):
+        for ok in ("2.102.0", "2.103.0", "2.110.0", "3.0"):
             with self.subTest(gh=ok):
                 self.env["MOCK_GH_VERSION"] = ok
                 result = self.run_install()

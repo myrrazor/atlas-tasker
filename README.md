@@ -14,7 +14,7 @@ Atlas Tasker is a local-first issue tracker that lives in your repo. Tickets, de
 
 ## Get started
 
-Install Atlas Tasker. Requires `curl`, `tar`, and [GitHub CLI](https://cli.github.com/) (`gh`) **2.96.0 or newer**; provenance verification works without signing in to GitHub.
+Install Atlas Tasker. Requires `curl`, `tar`, and [GitHub CLI](https://cli.github.com/) (`gh`) **2.102.0 or newer**; provenance verification works without signing in to GitHub.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh
@@ -56,10 +56,10 @@ Give each agent its own tickets on a shared board. Assignees, leases, and review
 
 The one-liner above is the normal path: latest **published** GitHub release, SHA-256, GitHub build attestation via a local bundle (`gh` required; no GitHub login). Default destination `/usr/local/bin`. If that directory isn't writable and you didn't set `BIN_DIR`, the installer puts `tracker` in `~/.local/bin` instead (creating it) and prints the `PATH` line to add if that directory isn't on your `PATH`. It never runs `sudo` unless you opt in with `USE_SUDO=1`, which keeps `/usr/local/bin`. An explicit `BIN_DIR` is used as is, and the installer stops if it isn't writable. `VERSION` pins a tag.
 
-**Minimum `gh`: 2.96.0.** Older releases can't download public release assets without a GitHub login, and releases before 2.49.0 have no `gh attestation` command, so distro packages such as Ubuntu 24.04's gh 2.45.0 and Debian 13's gh 2.46.0 don't work. The installer checks `gh --version` before downloading anything and stops with:
+**Minimum `gh`: 2.102.0.** Releases before 2.96.0 can't download public release assets without a GitHub login, and releases before 2.49.0 have no `gh attestation` command. The floor is 2.102.0 because of two `gh attestation verify` security fixes: 2.97.0 stopped lookalike `--signer-workflow` names from bypassing the signer check ([GHSA-mm27-mwq9-fr5g](https://github.com/cli/cli/security/advisories/GHSA-mm27-mwq9-fr5g)), and 2.102.0 made `--source-ref` matching case-sensitive ([GHSA-4mq3-hpgx-9cx8](https://github.com/cli/cli/security/advisories/GHSA-4mq3-hpgx-9cx8)). Distro packages such as Ubuntu 24.04's gh 2.45.0 and Debian 13's gh 2.46.0 don't work. The installer checks `gh --version` before downloading anything and stops with:
 
 ```text
-Atlas Tasker needs GitHub CLI (gh) 2.96.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run.
+Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run.
 ```
 
 Checksum verification is always on.

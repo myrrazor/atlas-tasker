@@ -18,12 +18,18 @@ else
 fi
 USE_SUDO="${USE_SUDO:-0}"
 SUDO=""
-# Lowest gh that both downloads public release assets without a login
-# (2.96.0, cli/cli#13723) and has `gh attestation verify --bundle
-# --signer-workflow --source-ref` (2.68.0). Keep in sync with README.md,
-# docs/install-without-script.md and site/index.html (site contract test).
-GH_MIN_VERSION="2.96.0"
-GH_TOO_OLD_MESSAGE="Atlas Tasker needs GitHub CLI (gh) 2.96.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run."
+# Minimum gh for the no-login download + attestation check (cli/cli release notes):
+#   2.96.0  `gh release download` works on public repos without auth (cli/cli#13723)
+#   2.97.0  `gh attestation verify` escapes --signer-repo/--signer-workflow in the
+#           certificate matcher; lookalike names could bypass it (GHSA-mm27-mwq9-fr5g)
+#   2.102.0 `gh attestation verify` compares --source-ref case-sensitively
+#           (GHSA-4mq3-hpgx-9cx8) and matches the whole --signer-workflow identity,
+#           not just its prefix (GHSA-wjmr-j3rp-mh2g)
+# install.sh passes --signer-workflow and --source-ref, so 2.102.0 is the floor.
+# Keep in sync with README.md, docs/install-without-script.md, docs/guides/updating.md
+# and site/ (site contract test).
+GH_MIN_VERSION="2.102.0"
+GH_TOO_OLD_MESSAGE="Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run."
 VERSION="${VERSION:-latest}"
 RELEASE_BASE_URL="${RELEASE_BASE_URL:-}"
 VERIFY_ATTESTATIONS="${VERIFY_ATTESTATIONS:-1}"
