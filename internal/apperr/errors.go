@@ -57,6 +57,10 @@ func CodeOf(err error) Code {
 	if errors.As(err, &appErr) && appErr.Code != "" {
 		return appErr.Code
 	}
+	var repairable interface{ RepairNeeded() bool }
+	if errors.As(err, &repairable) && repairable.RepairNeeded() {
+		return CodeRepairNeeded
+	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return CodeBusy
 	}

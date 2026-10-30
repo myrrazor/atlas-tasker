@@ -153,7 +153,7 @@
               <tr><td><code>4</code></td><td>conflict</td><td>Forbidden status transition, ticket already claimed, resource already exists. The workflow saying no, as designed.</td></tr>
               <tr><td><code>5</code></td><td>permission_denied</td><td>Policy, separation of duties, or the wrong reviewer.</td></tr>
               <tr><td><code>6</code></td><td>busy</td><td>Another writer holds the workspace lock. Waiting a few seconds and retrying is legitimate.</td></tr>
-              <tr><td><code>7</code></td><td>repair_needed</td><td>The index is unreadable, or read-only <code>doctor</code> found it stale against the sources. Run <code>tracker doctor --repair</code> or <code>tracker reindex</code>. A merely missing or stale index heals itself on the next command.</td></tr>
+              <tr><td><code>7</code></td><td>repair_needed</td><td>The index is unreadable, a ticket file is damaged (named in the message), or read-only <code>doctor</code> found it stale against the sources. Run <code>tracker doctor --repair</code> or <code>tracker reindex</code>. A merely missing or stale index heals itself on the next command.</td></tr>
             </tbody>
           </table>
         </div>

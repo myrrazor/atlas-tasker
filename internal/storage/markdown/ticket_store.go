@@ -100,21 +100,43 @@ func (s TicketStore) UpdateTicket(_ context.Context, ticket contracts.TicketSnap
 	return nil
 }
 
-func (s TicketStore) ListTickets(_ context.Context, opts contracts.TicketListOptions) ([]contracts.TicketSnapshot, error) {
+// ListTickets fails on the first ticket file it can't decode, naming the file.
+// Use ScanTickets to keep going and collect the damaged files instead.
+func (s TicketStore) ListTickets(ctx context.Context, opts contracts.TicketListOptions) ([]contracts.TicketSnapshot, error) {
+	tickets, damaged, err := s.ScanTickets(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	if len(damaged) > 0 {
+		return nil, &storage.DamagedTicketsError{Root: s.RootDir, Files: damaged}
+	}
+	return tickets, nil
+}
+
+// ScanTickets lists the decodable tickets and returns every ticket file that
+// could not be decoded separately, so one damaged file can't hide the rest.
+func (s TicketStore) ScanTickets(_ context.Context, opts contracts.TicketListOptions) ([]contracts.TicketSnapshot, []storage.DamagedTicketFile, error) {
 	matches, err := filepath.Glob(s.ticketGlob(opts.Project))
 	if err != nil {
-		return nil, fmt.Errorf("glob tickets: %w", err)
+		return nil, nil, fmt.Errorf("glob tickets: %w", err)
 	}
 
 	tickets := make([]contracts.TicketSnapshot, 0, len(matches))
+	damaged := make([]storage.DamagedTicketFile, 0)
 	for _, match := range matches {
 		raw, err := os.ReadFile(match)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		ticket, err := DecodeTicketMarkdown(string(raw))
 		if err != nil {
-			return nil, err
+			damaged = append(damaged, storage.DamagedTicketFile{
+				Path:     match,
+				Project:  filepath.Base(filepath.Dir(filepath.Dir(match))),
+				TicketID: strings.TrimSuffix(filepath.Base(match), ".md"),
+				Reason:   err.Error(),
+			})
+			continue
 		}
 		ticket = contracts.NormalizeTicketSnapshot(ticket)
 		if !opts.IncludeArchived && ticket.Archived {
@@ -143,9 +165,9 @@ func (s TicketStore) ListTickets(_ context.Context, opts contracts.TicketListOpt
 	})
 
 	if opts.Limit > 0 && len(tickets) > opts.Limit {
-		return tickets[:opts.Limit], nil
+		return tickets[:opts.Limit], damaged, nil
 	}
-	return tickets, nil
+	return tickets, damaged, nil
 }
 
 func (s TicketStore) SoftDeleteTicket(ctx context.Context, id string, actor contracts.Actor, reason string) error {
