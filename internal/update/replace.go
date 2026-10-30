@@ -34,12 +34,14 @@ func lookupGH(ctx context.Context) (string, error) {
 	return gh, nil
 }
 
-func defaultAttest(ctx context.Context, archivePath, repo string) error {
+func defaultAttest(ctx context.Context, req AttestRequest) error {
+	archivePath, repo := req.ArchivePath, req.Repo
 	gh, err := lookupGH(ctx)
 	if err != nil {
 		return err
 	}
 	cmd := exec.CommandContext(ctx, gh, "attestation", "verify", archivePath, "--repo", repo)
+	cmd.Args = append(cmd.Args, req.policyArgs()...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {

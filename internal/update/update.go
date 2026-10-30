@@ -57,7 +57,7 @@ type Options struct {
 	GOOS           string
 	GOARCH         string
 
-	RunAttest func(ctx context.Context, archivePath, repo string) error
+	RunAttest func(ctx context.Context, req AttestRequest) error
 	// CheckGH enforces the gh version floor up front (skipped with
 	// SkipAttestations). Defaults to defaultCheckGH.
 	CheckGH func(ctx context.Context) error

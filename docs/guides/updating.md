@@ -28,7 +28,8 @@ writable by the current user. Replacement is staged next to the existing binary,
 mode, and rolls the old binary back into place if the final rename fails.
 
 Attestation verification uses `gh attestation verify`, so GitHub CLI **2.102.0 or newer** must be
-installed unless you explicitly pass `--skip-attestations`. That is the same floor as the install
+installed unless you explicitly skip attestations (`--skip-attestations` or `VERIFY_ATTESTATIONS=0`,
+see below). That is the same floor as the install
 script: 2.97.0 and 2.102.0 fixed `gh attestation verify` signer-policy bypasses
 ([GHSA-mm27-mwq9-fr5g](https://github.com/cli/cli/security/advisories/GHSA-mm27-mwq9-fr5g),
 [GHSA-4mq3-hpgx-9cx8](https://github.com/cli/cli/security/advisories/GHSA-4mq3-hpgx-9cx8)). With an
@@ -75,3 +76,32 @@ tracker integrations install codex
 See [coding-agent integrations](agent-integrations.md) for all six targets and
 [release verification](release-verification.md) for the difference between a local build and a
 published release.
+
+## How The Attestation Is Verified
+
+`tracker update` checks a release the same way the install script does. Next to the archive and
+`checksums.txt` it downloads the release's `attestation-bundle.jsonl`, then runs:
+
+```bash
+gh attestation verify tracker_<version>_<os>_<arch>.tar.gz \
+  --repo myrrazor/atlas-tasker \
+  --bundle attestation-bundle.jsonl \
+  --signer-workflow myrrazor/atlas-tasker/.github/workflows/release.yml \
+  --source-ref refs/tags/<tag being installed>
+```
+
+The bundle is checked locally, so no GitHub login or `GH_TOKEN` is needed. The attestation has to
+come from the release workflow and from the exact tag you are installing; an attestation from another
+workflow or another tag fails. If the release has no `attestation-bundle.jsonl` (or it is empty),
+the update stops with "refusing to update" and leaves the binary unchanged. It never falls back to a
+weaker check.
+
+Two explicit opt-outs skip provenance, and both still verify `checksums.txt`:
+
+- `tracker update --skip-attestations`.
+- The environment variable `VERIFY_ATTESTATIONS=0` (exactly `0`). `tracker update` treats it the
+  same as `--skip-attestations`: no `gh` version check and no `gh attestation verify`. The install
+  script reads the same variable and then neither requires `gh` nor verifies the attestation.
+
+Both are meant for local, unattested test fixtures. Don't set `VERIFY_ATTESTATIONS=0` in a shell
+profile or CI environment where real updates run.

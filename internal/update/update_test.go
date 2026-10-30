@@ -74,6 +74,9 @@ func TestRunCheckAndApply(t *testing.T) {
 	mux.HandleFunc("/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(checksums))
 	})
+	mux.HandleFunc("/"+AttestationBundleAsset, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}` + "\n"))
+	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
@@ -93,13 +96,16 @@ func TestRunCheckAndApply(t *testing.T) {
 		GOARCH:           runtime.GOARCH,
 		HTTPClient:       server.Client(),
 		CheckGH:          func(context.Context) error { return nil },
-		RunAttest: func(ctx context.Context, archivePath, repo string) error {
+		RunAttest: func(ctx context.Context, req AttestRequest) error {
 			attestCalls++
-			if filepath.Base(archivePath) != asset {
-				t.Fatalf("unexpected archive path %q", archivePath)
+			if filepath.Base(req.ArchivePath) != asset {
+				t.Fatalf("unexpected archive path %q", req.ArchivePath)
 			}
-			if repo != DefaultRepo {
-				t.Fatalf("unexpected repo %q", repo)
+			if req.Repo != DefaultRepo {
+				t.Fatalf("unexpected repo %q", req.Repo)
+			}
+			if filepath.Base(req.BundlePath) != AttestationBundleAsset || req.SourceRef != "refs/tags/"+tag {
+				t.Fatalf("unexpected attestation policy %+v", req)
 			}
 			return nil
 		},
