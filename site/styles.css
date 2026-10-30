@@ -733,6 +733,10 @@ figcaption {
   padding-inline: 10px;
 }
 
+.install-command code.install-block {
+  white-space: pre;
+}
+
 .release-row {
   display: flex;
   min-height: 78px;
