@@ -596,3 +596,23 @@ test("every footer credits myrrazor and links only to the myrrazor GitHub profil
     assert.equal((footer.match(/Built by/g) ?? []).length, 1, `${file}: exactly one credit`);
   }
 });
+
+test("minimum gh version and too-old message match across install.sh, README, docs and site", async () => {
+  const script = await readFile(new URL("../../scripts/install.sh", import.meta.url), "utf8");
+  const manual = await readFile(new URL("../../docs/install-without-script.md", import.meta.url), "utf8");
+  const min = script.match(/^GH_MIN_VERSION="([0-9.]+)"$/m)?.[1];
+  const message = script.match(/^GH_TOO_OLD_MESSAGE="([^"]+)"$/m)?.[1];
+  assert.ok(min, "install.sh must define GH_MIN_VERSION");
+  assert.ok(message, "install.sh must define GH_TOO_OLD_MESSAGE");
+  assert.ok(message.includes(`${min} or newer`), "message must name GH_MIN_VERSION");
+  const index = pages.get("index.html");
+  assert.ok(readme.includes(`**Minimum \`gh\`: ${min}.**`), "README names the minimum");
+  assert.ok(readme.includes(message), "README quotes the installer message");
+  assert.ok(manual.includes(`Needs \`gh\` ${min} or newer`), "install-without-script names the minimum");
+  assert.ok(manual.includes(message), "install-without-script quotes the installer message");
+  assert.ok(index.includes(`<strong id="gh-min-version">${min} or newer</strong>`), "site names the minimum");
+  assert.ok(index.includes(`<span id="gh-too-old-message">${message}</span>`), "site quotes the installer message");
+  for (const page of ["docs/getting-started.html", "guide.html", "mcp.html"]) {
+    assert.ok(pages.get(page).includes(`${min} or newer`), `${page} names the minimum`);
+  }
+});

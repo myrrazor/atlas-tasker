@@ -76,7 +76,7 @@
       <section class="shell">
         <h2>1 · Install</h2>
         <p><code>curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code></p>
-        <p>The one-line installer is the normal path for the latest published release. It needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>). It fetches the latest published release, checks its SHA-256 checksum, verifies the GitHub build attestation with a local bundle (no GitHub login), and installs <code>tracker</code>. Workspace initialization is a separate, explicit step. An interactive terminal may offer <code>tracker init</code> for the displayed current directory; it defaults to No. Unattended installs never prompt or initialize. Optional Go install: <code>go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>. Details: <a href="docs/getting-started.html">getting started</a>.</p>
+        <p>The one-line installer is the normal path for the latest published release. It needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) 2.96.0 or newer. It fetches the latest published release, checks its SHA-256 checksum, verifies the GitHub build attestation with a local bundle (no GitHub login), and installs <code>tracker</code>. Workspace initialization is a separate, explicit step. An interactive terminal may offer <code>tracker init</code> for the displayed current directory; it defaults to No. Unattended installs never prompt or initialize. Optional Go install: <code>go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</code>. Details: <a href="docs/getting-started.html">getting started</a>.</p>
       </section>
       <section class="shell">
         <h2>2 · Initialize, restart, ask</h2>

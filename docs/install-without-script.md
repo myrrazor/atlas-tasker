@@ -4,7 +4,7 @@ Two install paths that never pipe a remote script into a shell. Both put a `trac
 
 ## Option A: verified release binary (recommended)
 
-Needs `gh` (no GitHub login required), `sha256sum` (on macOS use `shasum -a 256 -c -` in its place) and `tar`. Pick your platform: `linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`.
+Needs `gh` 2.96.0 or newer (no GitHub login required; older `gh`, including Ubuntu 24.04's 2.45.0 and Debian 13's 2.46.0, asks for `gh auth login` and has no `gh attestation`), `sha256sum` (on macOS use `shasum -a 256 -c -` in its place) and `tar`. Pick your platform: `linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`.
 
 ```bash
 VERSION=1.18.0
@@ -24,6 +24,12 @@ mkdir -p "$HOME/.local/bin" && install -m 0755 tracker "$HOME/.local/bin/tracker
 ```
 
 Expected: `sha256sum` prints `tracker_1.18.0_linux_amd64.tar.gz: OK`, `gh attestation verify` exits 0 (it prints `✓ Verification succeeded!` when run in a terminal), and `tracker version` prints `tracker v1.18.0`. Make sure `$HOME/.local/bin` is on your `PATH`. Stop if either check fails.
+
+If `gh --version` is older than 2.96.0, upgrade first. The install script stops with the same message:
+
+```text
+Atlas Tasker needs GitHub CLI (gh) 2.96.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run.
+```
 
 ## Option B: `go install` from source
 

@@ -128,7 +128,7 @@
         </div>
         <p>The Grok demonstration reads Atlas through MCP and shows the result in Grok’s terminal interface. A real Grok Build capture lives on the <a href="../#get-started">homepage Get started section</a>.</p>
 
-        <p>Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>). Attestation uses a local bundle; no GitHub login. The installer places the binary only. Run <code>tracker init</code> in each workspace, then restart detected coding agents so they load Atlas MCP. A written config is not a live connection.</p>
+        <p>Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) 2.96.0 or newer. If <code>/usr/local/bin</code> isn't writable, the installer uses <code>~/.local/bin</code> and prints the <code>PATH</code> line to add (<code>USE_SUDO=1</code> opts in to <code>sudo</code>). Attestation uses a local bundle; no GitHub login. The installer places the binary only. Run <code>tracker init</code> in each workspace, then restart detected coding agents so they load Atlas MCP. A written config is not a live connection.</p>
 
         <h2>Install</h2>
         <p>The one-line installer is the normal path. It fetches the latest <strong>published</strong> build (v1.18.0), checks its SHA-256 checksum, verifies the GitHub build attestation with a local bundle, and installs the <code>tracker</code> binary. Workspace initialization is a separate, explicit step. It needs <code>curl</code>, <code>tar</code>, and the GitHub CLI (<code>gh</code>); <code>gh</code> does not need a GitHub login. See verification results on the <a href="https://github.com/myrrazor/atlas-tasker/releases/latest">GitHub release page</a>.</p>
