@@ -63,6 +63,12 @@ tracker doctor --repair --json
 
 `tracker reindex` is the narrower tool: it only rebuilds the index, and like `doctor --repair` it removes and recreates a corrupt `index.sqlite` instead of refusing to open it.
 
+## A pending restore whose event id is taken
+
+Before the fix for rough edge 19, a restore whose backup carried a newer event log than the destination's could stop with exit 7 `event append failed after canonical write`, leaving `.tracker/mutations/_workspace-000000000001.json` with `event_id 1 must be greater than 2`. The restored files were already written; only the restore's event was missing.
+
+`tracker doctor --repair` now fixes this. When a pending journal's event never landed but its id is already taken in the log, repair copies the journal entry to `.tracker/quarantine/<UTC time>/mutations/`, appends the same event at the next free id and logical clock, and records `renumbered _workspace #1 to #3 and replayed it (journal backup: …)` in `repair_actions`. A journal is treated as already applied only when the event at its id is the same event (same `event_uid`), so a different event at that id is never mistaken for it.
+
 ## If Repair Still Reports Pending Work
 
 Run the read-only check again:

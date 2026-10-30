@@ -411,7 +411,9 @@ func (s *ActionService) applyRestorePlan(ctx context.Context, ref string, artifa
 		if err != nil {
 			return RestoreApplyResultView{}, err
 		}
-		if err := s.commitMutation(ctx, "apply backup restore", "backup_restore", event, func(ctx context.Context) error {
+		// the restore may replace the event log with the backup's; the restore
+		// event's id is reassigned above that log after the write (edge 19)
+		if err := s.commitMutation(withCanonicalEventLogSwap(ctx), "apply backup restore", "backup_restore", event, func(ctx context.Context) error {
 			for _, item := range plan.Items {
 				if item.Action == contracts.RestorePlanSkip {
 					skipped++
