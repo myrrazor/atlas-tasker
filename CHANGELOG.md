@@ -4,6 +4,7 @@
 
 - Installer: requires GitHub CLI 2.96.0 or newer and checks `gh --version` before downloading, stopping with an upgrade message that names the minimum. Older `gh` (Ubuntu 24.04's 2.45.0, Debian 13's 2.46.0) can't download public release assets without a login and has no `gh attestation`. README, `docs/install-without-script.md` and atlastasker.com name the same minimum and message.
 - Installer: when the default `/usr/local/bin` isn't writable and `BIN_DIR` isn't set, the one-liner installs to `~/.local/bin` (creating it) and prints a `PATH` hint instead of failing. `USE_SUDO=1` opts in to `sudo` for `/usr/local/bin`; an explicit `BIN_DIR` is never redirected. Checksum verification stays mandatory.
+- MCP: `tracker mcp approve-operation` now stores approvals for machine-scoped tools such as `atlas.settings.grant_discovery` in the machine state dir, where the global MCP server looks for them, instead of the current workspace. Before, those calls failed with "operation approval not found". Machine-scoped approvals no longer need a workspace, and `tracker mcp approvals list`/`revoke` cover both stores and show each approval's `scope`.
 
 ## v1.18.0 - Grok plugin and install without curl | sh (2026-10-29)
 
