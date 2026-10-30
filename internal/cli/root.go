@@ -1968,13 +1968,29 @@ func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repai
 	if err != nil {
 		return err
 	}
-	tickets, err := ticketStore.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
+	repairActions := make([]string, 0)
+	tickets, damaged, err := ticketStore.ScanTickets(ctx, contracts.TicketListOptions{IncludeArchived: true})
 	if err != nil {
 		return err
 	}
+	if len(damaged) > 0 {
+		if !repair {
+			return &storage.DamagedTicketsError{Root: root, Files: damaged}
+		}
+		salvage, err := mdstore.RestoreDamagedTickets(ctx, root, damaged, eventLog, defaultNow)
+		if err != nil {
+			return err
+		}
+		if len(salvage.Unresolved) > 0 {
+			return mdstore.UnresolvedDamageError(root, salvage)
+		}
+		repairActions = append(repairActions, salvage.Actions...)
+		if tickets, err = ticketStore.ListTickets(ctx, contracts.TicketListOptions{IncludeArchived: true}); err != nil {
+			return err
+		}
+	}
 	projectionPath := filepath.Join(storage.TrackerDir(root), "index.sqlite")
 	projection, err := sqlitestore.Open(projectionPath, ticketStore, eventLog)
-	repairActions := make([]string, 0)
 	if err != nil {
 		if !repair {
 			if sqlitestore.IsCorrupt(err) {
