@@ -10,7 +10,7 @@
 
 Atlas Tasker is a local-first issue tracker that lives in your repo. Tickets, dependencies, review gates, and audit history are markdown files plus a rebuildable SQLite index — no hosted account. Coding agents (Claude Code, Codex, Cursor, OpenClaw, Grok, anything that speaks MCP) claim work, block on each other, attach evidence, and hand off for review on the same board.
 
-> **New in v1.18.0:** Atlas Tasker can be listed in the Grok plugin marketplace as a local plugin, and you can install without `curl | sh` via a checksum- and attestation-verified release binary or a pinned `go install`. [Release notes](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.0) · [Install without the script](docs/install-without-script.md).
+> **New in v1.18.1:** fixes from the v1.18.0 acceptance run. The installer and `tracker update` need GitHub CLI 2.102.0 or newer and stop early with an upgrade message, `tracker update` verifies attestations without a GitHub token, the installer falls back to `~/.local/bin`, and MCP machine-scoped approvals work. Upgrading from v1.18.0 or older? Reinstall instead of `tracker update` (see the release notes). [Release notes](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.1) · [Install without the script](docs/install-without-script.md).
 
 ## Get started
 
@@ -75,10 +75,10 @@ gh --version 2>/dev/null | awk 'NR==1{f=$3; split(f,v,"."); ok=(f~/^[0-9]+\.[0-9
 Optional, with Go 1.26.6 or newer:
 
 ```bash
-go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.0
+go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.1
 ```
 
-v1.18.0's `go.mod` declares `go 1.26.10`. With the default `GOTOOLCHAIN=auto`, Go downloads that toolchain only when your local Go is older than 1.26.10; a newer or equal local Go builds directly.
+v1.18.1's `go.mod` declares `go 1.26.10`. With the default `GOTOOLCHAIN=auto`, Go downloads that toolchain only when your local Go is older than 1.26.10; a newer or equal local Go builds directly.
 
 Neither `go install` nor a manual binary install edits your `PATH`. If `command -v tracker` prints nothing, add the install directory to your shell profile and open a new shell, for example:
 
@@ -209,7 +209,7 @@ What Atlas does **not** claim: [security limitations](docs/security-limitations.
 
 ## Status
 
-Atlas Tasker **v1.18.0** adds a Grok plugin and new ways to install without `curl | sh`, with no changes to tracker behavior, the CLI or the MCP tools. The installer selects the latest published release. [CHANGELOG.md](CHANGELOG.md) lists the changes. See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
+Atlas Tasker **v1.18.1** is a fix release for v1.18.0: a GitHub CLI 2.102.0 floor with an early check, token-free attestation verification in `tracker update`, an installer fallback to `~/.local/bin`, and MCP machine-scoped approval fixes. The installer selects the latest published release. [CHANGELOG.md](CHANGELOG.md) lists the changes. See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
 
 `v1.9.0` was the first stable release. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 
