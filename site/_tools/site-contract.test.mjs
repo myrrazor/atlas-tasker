@@ -612,6 +612,9 @@ test("minimum gh version and too-old message match across install.sh, README, do
   assert.ok(manual.includes(message), "install-without-script quotes the installer message");
   assert.ok(index.includes(`<strong id="gh-min-version">${min} or newer</strong>`), "site names the minimum");
   assert.ok(index.includes(`<span id="gh-too-old-message">${message}</span>`), "site quotes the installer message");
+  const updating = await readFile(new URL("../../docs/guides/updating.md", import.meta.url), "utf8");
+  assert.ok(updating.includes(`**${min} or newer**`), "updating guide names the minimum");
+  assert.ok(updating.includes(message), "updating guide quotes the message");
   for (const page of ["docs/getting-started.html", "guide.html", "mcp.html"]) {
     assert.ok(pages.get(page).includes(`${min} or newer`), `${page} names the minimum`);
   }
