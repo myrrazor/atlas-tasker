@@ -74,6 +74,21 @@
     </header>
     <div class="legal-content">
       <section class="shell">
+        <h2>v1.18.1 — Install, update and MCP approval fixes</h2>
+        <ul>
+          <li>The installer and <code>tracker update</code> need GitHub CLI (<code>gh</code>) 2.102.0 or newer and stop before downloading with an upgrade message. The no-script install block starts with a real <code>gh</code> check and stops cleanly when <code>gh</code> is missing or too old.</li>
+          <li>When <code>/usr/local/bin</code> isn't writable and <code>BIN_DIR</code> isn't set, the installer uses <code>~/.local/bin</code> instead of failing.</li>
+          <li><code>tracker update</code> verifies the release attestation with the installer's exact policy and the local bundle, so updates work without a GitHub token.</li>
+          <li>MCP: approvals for machine-scoped tools are stored where the global MCP server looks for them, and <code>tracker mcp approvals revoke --json</code> reports <code>scope</code> and <code>found</code>.</li>
+          <li><code>tracker backup remote restore-apply</code> accepts the plan ID that <code>remote restore-plan</code> printed, and restores no longer get stuck on an event id the restored log already uses or reuse ids of discarded events. <code>tracker doctor --repair</code> clears a workspace already stuck this way.</li>
+          <li>A truncated or unparseable ticket file is named by <code>doctor</code> and <code>reindex</code> (exit 7), and <code>tracker doctor --repair</code> backs it up and restores it from the event log.</li>
+          <li><code>tracker web open</code> signs the browser in instead of getting HTTP 401, and Ctrl-C stops <code>tracker web serve</code> and Atlas Home, including during startup.</li>
+          <li><code>tracker init</code> no longer shows another Atlas instance's Home port (such as <code>127.0.0.1:7432</code>) as this workspace's Home; it names the owner and points to <code>service.port</code>.</li>
+          <li>Upgrading from v1.18.0 or older: the old updater can't verify without a token, so reinstall with the installer or the no-script steps.</li>
+        </ul>
+        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.1">Download v1.18.1 and read its verification results</a>. The installer selects this stable release.</p>
+      </section>
+      <section class="shell">
         <h2>v1.18.0 — Grok plugin and install without curl | sh</h2>
         <ul>
           <li>Grok plugin: <code>.grok-plugin/plugin.json</code> and a root <code>.mcp.json</code> let Atlas Tasker be listed in the Grok plugin marketplace as a local plugin. It launches the installed <code>tracker mcp serve</code> over stdio.</li>
@@ -81,7 +96,7 @@
           <li>The README lists every network endpoint Atlas Tasker can call and every credential or environment variable it reads. Reviewer steps and an MCP stdio smoke test support marketplace review.</li>
           <li>No changes to tracker behavior, the CLI or the MCP tools.</li>
         </ul>
-        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.0">Download v1.18.0 and read its verification results</a>. The installer selects this stable release.</p>
+        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.0">Download v1.18.0 and read its verification results</a>.</p>
       </section>
       <section class="shell">
         <h2>v1.17.1 — Home and live-board stability</h2>

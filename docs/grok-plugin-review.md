@@ -16,11 +16,11 @@ export TRACKER_ACTOR=human:reviewer
 ## 2. Install the `tracker` binary (no `curl | sh`)
 
 ```bash
-go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.0
+go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.1
 tracker version
 ```
 
-Expected: first line `tracker v1.18.0`.
+Expected: first line `tracker v1.18.1`.
 
 ## 3. Create a board
 
@@ -42,7 +42,7 @@ grok plugin install "$REVIEW/plugin" --trust
 grok mcp doctor atlas-tasker
 ```
 
-Expected: `Plugin manifest is valid.` with `name: atlas-tasker` and `version: 1.18.0`; `Installed 1 plugin(s) ... atlas-tasker`; and from the doctor:
+Expected: `Plugin manifest is valid.` with `name: atlas-tasker` and `version: 1.18.1`; `Installed 1 plugin(s) ... atlas-tasker`; and from the doctor:
 
 ```text
   atlas-tasker (stdio: tracker mcp serve --global --tool-profile workflow --tool-name-style portable)
@@ -63,7 +63,7 @@ python3 "$REVIEW/plugin/scripts/grok-plugin-smoke.py" "$REVIEW/plugin/.mcp.json"
 Expected (tool list abbreviated):
 
 ```text
-server: {'name': 'atlas-tasker', 'version': 'v1.18.0'}
+server: {'name': 'atlas-tasker', 'version': 'v1.18.1'}
 tools (104): atlas_activity, atlas_agent_available, ... atlas_status, ... atlas_ticket_create, ...
 atlas_status isError: False
 # Atlas status

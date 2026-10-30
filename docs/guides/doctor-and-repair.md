@@ -19,10 +19,11 @@ side effect.
 
 Read-only workspace doctor still checks consistency between Atlas markdown, events, and the SQLite projection. It should not mutate workspace state.
 
-Two things it will refuse to call `ok`:
+Three things it will refuse to call `ok`:
 
 - an index file sqlite cannot read at all (truncated, overwritten, not sqlite) — `repair_needed`, exit 7
 - an index that opens fine but was built from different sources than the ones on disk — also exit 7, with both fingerprints in the message: `projection index is stale (index built from events=12 tickets=4, sources now events=13 tickets=5)`
+- a ticket file that is cut short or no longer parses — `repair_needed`, exit 7, and the message names the file. `tracker doctor --repair` copies it to `.tracker/quarantine/` first, then restores it from the event log, and leaves it in place if the log has no copy. `tracker reindex` rebuilds an unreadable index but does not repair a damaged ticket. `tracker board` and `tracker search` still exit 0 while a ticket file is damaged; they read the projection and do not scan ticket markdown.
 
 The second case is the one that used to slip through. `doctor` counted events and tickets from the files and printed `doctor ok`, without ever asking whether the index agreed.
 
