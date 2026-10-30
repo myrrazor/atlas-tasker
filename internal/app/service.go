@@ -321,10 +321,25 @@ func (a *App) EnsureService(ctx context.Context, opts ServiceOptions) (ServiceSt
 		return status, a.maybeOpen(opts, status)
 	}
 	if probe.Occupied && probe.Atlas && probe.InstanceID != settings.InstanceID {
-		return ServiceStatus{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("port %s is owned by a different Atlas instance %s", net.JoinHostPort(host, strconv.Itoa(port)), probe.InstanceID))
+		return ServiceStatus{
+			Kind:            "atlas_home_status",
+			Host:            host,
+			Port:            port,
+			InstanceID:      settings.InstanceID,
+			PortOwner:       PortOwnerOtherAtlas,
+			OwnerInstanceID: probe.InstanceID,
+			OwnerURL:        homeURL(host, port),
+		}, apperr.New(apperr.CodeConflict, fmt.Sprintf("port %s is owned by a different Atlas instance %s", net.JoinHostPort(host, strconv.Itoa(port)), probe.InstanceID))
 	}
 	if probe.Occupied {
-		return ServiceStatus{}, apperr.New(apperr.CodeConflict, fmt.Sprintf("port %s is occupied by another application; Atlas will not pick a different port", net.JoinHostPort(host, strconv.Itoa(port))))
+		return ServiceStatus{
+			Kind:       "atlas_home_status",
+			Host:       host,
+			Port:       port,
+			InstanceID: settings.InstanceID,
+			PortOwner:  PortOwnerOtherApp,
+			OwnerURL:   homeURL(host, port),
+		}, apperr.New(apperr.CodeConflict, fmt.Sprintf("port %s is occupied by another application; Atlas will not pick a different port", net.JoinHostPort(host, strconv.Itoa(port))))
 	}
 
 	unit := a.serviceUnit()
