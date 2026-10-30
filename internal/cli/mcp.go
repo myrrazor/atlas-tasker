@@ -313,17 +313,34 @@ func runMCPApprovalRevoke(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// scope reports which store held the approval, the same values
+	// `approvals list` uses; it is empty when neither store had it.
+	revokedScope := ""
 	for _, scope := range []string{"workspace", "machine"} {
 		store, ok := stores[scope]
 		if !ok {
 			continue
 		}
+		items, err := store.List()
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			if item.ID == args[0] && revokedScope == "" {
+				revokedScope = scope
+			}
+		}
 		if err := store.Revoke(commandContext(cmd), args[0]); err != nil {
 			return err
 		}
 	}
-	data := map[string]any{"kind": "mcp_operation_approval_revoked", "id": args[0]}
+	data := map[string]any{"kind": "mcp_operation_approval_revoked", "id": args[0], "scope": revokedScope, "found": revokedScope != ""}
 	pretty := "revoked " + args[0]
+	if revokedScope != "" {
+		pretty += " scope=" + revokedScope
+	} else {
+		pretty += " (not found)"
+	}
 	return writeCommandOutput(cmd, data, pretty, pretty)
 }
 
