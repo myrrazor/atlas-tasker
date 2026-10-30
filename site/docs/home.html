@@ -115,7 +115,7 @@
           <div class="snippet-title"><span>from anywhere</span><button class="copy-button" type="button" data-copy="home-open" aria-label="Copy tracker command">Copy</button></div>
           <pre id="home-open">tracker</pre>
         </div>
-        <p>No arguments. Atlas starts or reuses one loopback service on <code>127.0.0.1:7432</code>, opens Home in a terminal, and prints a URL or JSON otherwise. You do not need to be inside a repository. If another app owns that port, the command fails instead of hopping.</p>
+        <p>No arguments. Atlas starts or reuses one loopback service on <code>127.0.0.1:7432</code>, opens Home in a terminal, and prints a URL or JSON otherwise. You do not need to be inside a repository. If another app owns that port, the command fails instead of hopping. If <code>tracker init</code> finds another Atlas instance (or another app) on the port, it still creates the workspace and exits 0, but it says the port belongs to that instance, not this one, and does not print its URL as yours; <code>--json</code> reports <code>"url": ""</code>, <code>port_owner</code> and a <code>conflict</code> service step. Set <code>service.port</code> in the machine <code>settings.json</code> to a free port, or stop that instance.</p>
         <p>Home clears its one-time URL fragment before sending the claim to <code>POST /session/claim</code>, which establishes an HttpOnly cookie. The claim is absent from request URLs. <code>tracker web serve</code> still uses <code>?token=</code>. Sessions persist in private local files, expire, and rotate so an open tab can survive a service restart. An expired Home session requires a fresh terminal sign-in.</p>
         <h2>Routes</h2>
         <ul>

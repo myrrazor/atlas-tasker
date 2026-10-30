@@ -4,8 +4,10 @@
 
 `tracker` with no args binds `127.0.0.1:7432`. If another app owns that port, or a
 different Atlas instance is already there, the command fails instead of moving. Check
-`tracker doctor --json` and stop the conflicting listener. Do not invent a second
-daemon per workspace.
+`tracker doctor --json` and stop the conflicting listener, or set `service.port` in
+`$STATEDIR/settings.json` to a free port. Do not invent a second daemon per workspace.
+
+`tracker init` still creates the workspace and exits 0, but it does not print that port's URL as yours: it says the port belongs to another Atlas instance (or another application), names the `service.port` key in the machine `settings.json` to change, and reports `"url": ""`, `port_owner`, `owner_instance_id` and `owner_url` with service step status `conflict` in `--json`.
 
 ## `tracker doctor --repair` keeps finding pending work
 

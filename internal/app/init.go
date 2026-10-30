@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -239,20 +241,25 @@ func (a *App) initHomeService(ctx context.Context, opts InitOptions, steps []Ini
 	status, err := a.EnsureService(ctx, ServiceOptions{OpenBrowser: opts.OpenHome})
 	if err != nil {
 		if homePortOccupied(err) {
-			if status.URL == "" {
+			// The port belongs to someone else: never report its URL as ours.
+			if status.PortOwner == "" {
 				status = ServiceStatus{
 					Kind:       "atlas_home_status",
 					Host:       settings.Service.Bind,
 					Port:       settings.Service.Port,
-					URL:        homeURL(settings.Service.Bind, settings.Service.Port),
 					InstanceID: settings.InstanceID,
-					Detail:     err.Error(),
+					PortOwner:  PortOwnerOtherApp,
+					OwnerURL:   homeURL(settings.Service.Bind, settings.Service.Port),
 				}
-			} else if status.Detail == "" {
-				status.Detail = err.Error()
 			}
-			a.noticef("Atlas Home: %s", err.Error())
-			return &status, append(steps, InitStep{Name: "service", Status: InitStepUnverified, Detail: err.Error()})
+			status.URL = ""
+			status.ClaimURL = ""
+			status.Running = false
+			status.Reused = false
+			status.IdentityOK = false
+			status.Detail = a.foreignPortDetail(status)
+			a.noticef("warning: %s", status.Detail)
+			return &status, append(steps, InitStep{Name: "service", Status: InitStepConflict, Detail: status.Detail})
 		}
 		if status.URL == "" {
 			status = ServiceStatus{
@@ -269,6 +276,21 @@ func (a *App) initHomeService(ctx context.Context, opts InitOptions, steps []Ini
 		return &status, append(steps, InitStep{Name: "service", Status: InitStepFailed, Detail: err.Error()})
 	}
 	return &status, append(steps, InitStep{Name: "service", Status: InitStepDone, Detail: status.URL})
+}
+
+// foreignPortDetail explains, without claiming the URL, who holds the Home
+// port and how to get this instance its own Home.
+func (a *App) foreignPortDetail(status ServiceStatus) string {
+	addr := net.JoinHostPort(status.Host, strconv.Itoa(status.Port))
+	fix := fmt.Sprintf("set service.port in %s to a free port, then run `tracker`", settingsPath(a.stateDir))
+	if status.PortOwner == PortOwnerOtherAtlas {
+		owner := "another Atlas instance"
+		if status.OwnerInstanceID != "" {
+			owner += " (" + status.OwnerInstanceID + ")"
+		}
+		return fmt.Sprintf("Atlas Home not started: %s belongs to %s, not this one; %s, or stop that instance", addr, owner, fix)
+	}
+	return fmt.Sprintf("Atlas Home not started: %s is in use by another application; %s, or stop that application", addr, fix)
 }
 
 func homePortOccupied(err error) bool {
@@ -534,6 +556,8 @@ func summarizeInit(result InitResult) string {
 			parts = append(parts, step.Name+" failed")
 		case InitStepUnverified:
 			parts = append(parts, step.Name+" unverified")
+		case InitStepConflict:
+			parts = append(parts, step.Detail)
 		case InitStepConfigured:
 			parts = append(parts, step.Name+" configured")
 		}

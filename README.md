@@ -130,7 +130,7 @@ Confirm the trust prompt (or add `--trust`). Run `grok mcp doctor` from your boa
 
 ## Atlas Home
 
-`tracker` starts or reuses one machine-wide Home service on `127.0.0.1:7432`. It works outside a repo. If something else owns that port, Atlas fails instead of silently moving.
+`tracker` starts or reuses one machine-wide Home service on `127.0.0.1:7432`. It works outside a repo. If something else owns that port, Atlas fails instead of silently moving; set `service.port` in the machine `settings.json` or stop the other listener. `tracker init` still creates the workspace (exit 0) but says the port isn't yours instead of printing its URL.
 
 Home opens with a one-time claim in the URL fragment, then `POST /session/claim` for an HttpOnly loopback cookie. That cookie is essential to the local app, not a marketing tracker. The site at [atlastasker.com](https://atlastasker.com) sets none.
 

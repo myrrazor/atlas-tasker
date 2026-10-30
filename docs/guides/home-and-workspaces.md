@@ -17,7 +17,9 @@ of opening a browser. You do not need to be inside a repository.
 
 Home binds `127.0.0.1:7432` by default. If another process already owns that
 port, or an Atlas instance with a different identity is listening there, the
-command fails. It does not hop to a random port.
+command fails. It does not hop to a random port. To run this instance's Home
+elsewhere, set `service.port` in `$STATEDIR/settings.json`, or stop the other
+instance. `tracker init` still creates the workspace and exits 0, but it does not print that port's URL as yours: it says the port belongs to another Atlas instance (or another application), names the `service.port` key in the machine `settings.json` to change, and reports `"url": ""`, `port_owner`, `owner_instance_id` and `owner_url` with service step status `conflict` in `--json`.
 
 Home opens with a one-time claim in the URL fragment. A local script clears the
 fragment with `history.replaceState`, then sends it to `POST /session/claim`.
