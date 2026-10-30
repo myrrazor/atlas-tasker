@@ -8,7 +8,28 @@ set -eu
 
 REPO="myrrazor/atlas-tasker"
 BIN_NAME="tracker"
-BIN_DIR="${BIN_DIR:-/usr/local/bin}"
+# ATLAS_INSTALL_TEST_DEFAULT_BIN_DIR is a test hook (scripts/test-install.py).
+DEFAULT_BIN_DIR="${ATLAS_INSTALL_TEST_DEFAULT_BIN_DIR:-/usr/local/bin}"
+if [ -n "${BIN_DIR:-}" ]; then
+  BIN_DIR_EXPLICIT=1
+else
+  BIN_DIR_EXPLICIT=0
+  BIN_DIR="$DEFAULT_BIN_DIR"
+fi
+USE_SUDO="${USE_SUDO:-0}"
+SUDO=""
+# Minimum gh for the no-login download + attestation check (cli/cli release notes):
+#   2.96.0  `gh release download` works on public repos without auth (cli/cli#13723)
+#   2.97.0  `gh attestation verify` escapes --signer-repo/--signer-workflow in the
+#           certificate matcher; lookalike names could bypass it (GHSA-mm27-mwq9-fr5g)
+#   2.102.0 `gh attestation verify` compares --source-ref case-sensitively
+#           (GHSA-4mq3-hpgx-9cx8) and matches the whole --signer-workflow identity,
+#           not just its prefix (GHSA-wjmr-j3rp-mh2g)
+# install.sh passes --signer-workflow and --source-ref, so 2.102.0 is the floor.
+# Keep in sync with README.md, docs/install-without-script.md, docs/guides/updating.md
+# and site/ (site contract test).
+GH_MIN_VERSION="2.102.0"
+GH_TOO_OLD_MESSAGE="Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run."
 VERSION="${VERSION:-latest}"
 RELEASE_BASE_URL="${RELEASE_BASE_URL:-}"
 VERIFY_ATTESTATIONS="${VERIFY_ATTESTATIONS:-1}"
@@ -23,9 +44,39 @@ need_cmd() {
     echo "missing required command: $1" >&2
     if [ "$1" = "gh" ]; then
       echo "GitHub CLI is required to verify release attestations locally (no GitHub login)." >&2
-      echo "Install it from https://cli.github.com/ then re-run." >&2
+      echo "$GH_TOO_OLD_MESSAGE" >&2
       echo "VERIFY_ATTESTATIONS=0 skips provenance and is only for local unattested fixtures." >&2
     fi
+    exit 1
+  fi
+}
+
+# Prints 1 when version $1 >= $2 (dotted numeric), else 0.
+version_at_least() {
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    na = split(a, x, "."); nb = split(b, y, ".")
+    n = (na > nb) ? na : nb
+    for (i = 1; i <= n; i++) {
+      xi = (i <= na) ? x[i] + 0 : 0
+      yi = (i <= nb) ? y[i] + 0 : 0
+      if (xi > yi) { print 1; exit }
+      if (xi < yi) { print 0; exit }
+    }
+    print 1
+  }'
+}
+
+need_gh_version() {
+  gh_line="$(gh --version 2>/dev/null | head -n1 || true)"
+  gh_version="$(printf '%s' "$gh_line" | sed -n 's/^gh version \([0-9][0-9]*\.[0-9][0-9]*\(\.[0-9][0-9]*\)*\).*/\1/p')"
+  if [ -z "$gh_version" ]; then
+    echo "$GH_TOO_OLD_MESSAGE" >&2
+    echo "could not read the version from: gh --version" >&2
+    exit 1
+  fi
+  if [ "$(version_at_least "$gh_version" "$GH_MIN_VERSION")" != "1" ]; then
+    echo "$GH_TOO_OLD_MESSAGE" >&2
+    echo "found gh ${gh_version}; minimum is ${GH_MIN_VERSION}" >&2
     exit 1
   fi
 }
@@ -199,7 +250,9 @@ checksum_file() {
   exit 1
 }
 
-check_install_destination() {
+# Returns 0 when BIN_DIR can be written by this user, 1 when it is not
+# writable, and exits for invalid values.
+probe_install_destination() {
   case "$BIN_DIR" in
     /*) ;;
     *)
@@ -213,17 +266,15 @@ check_install_destination() {
     exit 1
   fi
   if [ -e "$BIN_DIR/$BIN_NAME" ] && [ ! -w "$BIN_DIR/$BIN_NAME" ]; then
-    echo "cannot replace ${BIN_DIR}/${BIN_NAME} (not writable)" >&2
-    echo "retry with BIN_DIR=\"\$HOME/.local/bin\" or another writable directory" >&2
-    exit 1
+    unwritable_reason="cannot replace ${BIN_DIR}/${BIN_NAME} (not writable)"
+    return 1
   fi
   if [ -d "$BIN_DIR" ]; then
     if [ ! -w "$BIN_DIR" ]; then
-      echo "install directory is not writable: ${BIN_DIR}" >&2
-      echo "retry with BIN_DIR=\"\$HOME/.local/bin\" or another writable directory" >&2
-      exit 1
+      unwritable_reason="install directory is not writable: ${BIN_DIR}"
+      return 1
     fi
-    return
+    return 0
   fi
   parent="$BIN_DIR"
   while [ ! -d "$parent" ]; do
@@ -234,8 +285,45 @@ check_install_destination() {
     parent="$next"
   done
   if [ ! -d "$parent" ] || [ ! -w "$parent" ]; then
-    echo "cannot create install directory ${BIN_DIR} (not writable: ${parent})" >&2
-    echo "retry with BIN_DIR=\"\$HOME/.local/bin\" or another writable directory" >&2
+    unwritable_reason="cannot create install directory ${BIN_DIR} (not writable: ${parent})"
+    return 1
+  fi
+  return 0
+}
+
+# Default BIN_DIR is /usr/local/bin. When it is not writable and BIN_DIR
+# was not set, fall back to $HOME/.local/bin. USE_SUDO=1 opts in to sudo
+# for the original directory instead. An explicit BIN_DIR is never changed.
+check_install_destination() {
+  unwritable_reason=""
+  if probe_install_destination; then
+    return
+  fi
+  if [ "$USE_SUDO" = "1" ]; then
+    if ! command -v sudo >/dev/null 2>&1; then
+      echo "$unwritable_reason" >&2
+      echo "USE_SUDO=1 was set but sudo is not installed" >&2
+      exit 1
+    fi
+    echo "${unwritable_reason}; using sudo because USE_SUDO=1" >&2
+    SUDO="sudo"
+    return
+  fi
+  if [ "$BIN_DIR_EXPLICIT" = "1" ]; then
+    echo "$unwritable_reason" >&2
+    echo "retry with BIN_DIR=\"\$HOME/.local/bin\" or another writable directory, or USE_SUDO=1" >&2
+    exit 1
+  fi
+  if [ -z "${HOME:-}" ] || [ "${HOME#/}" = "$HOME" ]; then
+    echo "$unwritable_reason" >&2
+    echo "HOME is not an absolute path, so there is no ~/.local/bin fallback; set BIN_DIR or USE_SUDO=1" >&2
+    exit 1
+  fi
+  echo "${unwritable_reason}; installing to \$HOME/.local/bin instead (USE_SUDO=1 keeps ${BIN_DIR})" >&2
+  BIN_DIR="$HOME/.local/bin"
+  if ! probe_install_destination; then
+    echo "$unwritable_reason" >&2
+    echo "retry with BIN_DIR set to a writable directory, or USE_SUDO=1" >&2
     exit 1
   fi
 }
@@ -246,7 +334,7 @@ warn_if_bin_dir_not_on_path() {
   esac
   echo "warning: ${BIN_DIR} is not on PATH. Add it for this session:" >&2
   echo "  export PATH=\"${BIN_DIR}:\$PATH\"" >&2
-  echo "This installer does not edit shell profiles." >&2
+  echo "To keep it, add that line to ~/.profile (zsh: ~/.zshrc). This installer does not edit shell profiles." >&2
 }
 
 payload_looks_like_api_wrapper() {
@@ -504,6 +592,7 @@ need_cmd sed
 need_sha256
 if [ "$VERIFY_ATTESTATIONS" != "0" ]; then
   need_cmd gh
+  need_gh_version
 fi
 
 OS_NAME="$(detect_os)"
@@ -536,8 +625,8 @@ if [ ! -f "$TMP_DIR/$BIN_NAME" ]; then
   echo "archive is missing ${BIN_NAME}" >&2
   exit 1
 fi
-install -d "$BIN_DIR"
-install "$TMP_DIR/$BIN_NAME" "$BIN_DIR/$BIN_NAME"
+$SUDO install -d "$BIN_DIR"
+$SUDO install -m 0755 "$TMP_DIR/$BIN_NAME" "$BIN_DIR/$BIN_NAME"
 
 echo "installed ${BIN_NAME} ${TAG} to ${BIN_DIR}/${BIN_NAME}"
 write_install_receipt

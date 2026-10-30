@@ -58,7 +58,10 @@ type Options struct {
 	GOARCH         string
 
 	RunAttest func(ctx context.Context, archivePath, repo string) error
-	Replace   func(srcBinary, destPath string) error
+	// CheckGH enforces the gh version floor up front (skipped with
+	// SkipAttestations). Defaults to defaultCheckGH.
+	CheckGH func(ctx context.Context) error
+	Replace func(srcBinary, destPath string) error
 }
 
 // Result is the stable JSON shape behind `tracker update --json`.
@@ -91,6 +94,13 @@ func Run(ctx context.Context, opts Options) (Result, error) {
 		Kind:           KindResult,
 		CurrentVersion: opts.CurrentVersion,
 		Executable:     opts.ExecutablePath,
+	}
+
+	// Same gh floor for --check, --dry-run and --yes, before any network work.
+	if !opts.SkipAttestations {
+		if err := opts.CheckGH(ctx); err != nil {
+			return result, err
+		}
 	}
 
 	tag, err := resolveTargetTag(ctx, opts)
@@ -163,6 +173,9 @@ func normalizeOptions(opts Options) Options {
 	}
 	if opts.RunAttest == nil {
 		opts.RunAttest = defaultAttest
+	}
+	if opts.CheckGH == nil {
+		opts.CheckGH = defaultCheckGH
 	}
 	if opts.Replace == nil {
 		opts.Replace = replaceExecutable
