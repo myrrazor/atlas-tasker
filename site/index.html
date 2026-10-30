@@ -462,11 +462,11 @@
           <div class="install-option">
             <div class="install-meta">
               <strong>Go install (pinned)</strong>
-              <span>No script · Go downloads 1.26.6 only if yours is older</span>
+              <span>No script · Go downloads 1.26.10 only if yours is older</span>
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
-              <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.17.1</code>
+              <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.0</code>
               <button class="copy-button" type="button" data-copy="go-install" aria-label="Copy Go install command">Copy</button>
             </div>
             <p class="requirements">The install does not edit your <code>PATH</code>: add <code>$(go env GOPATH)/bin</code> to it in your shell profile if <code>command -v tracker</code> prints nothing. Go installs can report a published module tag without release-build provenance stamps.</p>
@@ -479,12 +479,12 @@
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
-              <code id="bin-download" tabindex="0">gh release download v1.17.1 --repo myrrazor/atlas-tasker --pattern "tracker_1.17.1_linux_amd64.tar.gz" --pattern checksums.txt --pattern attestation-bundle.jsonl</code>
+              <code id="bin-download" tabindex="0">gh release download v1.18.0 --repo myrrazor/atlas-tasker --pattern "tracker_1.18.0_linux_amd64.tar.gz" --pattern checksums.txt --pattern attestation-bundle.jsonl</code>
               <button class="copy-button" type="button" data-copy="bin-download" aria-label="Copy release download command">Copy</button>
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
-              <code id="bin-verify" tabindex="0">gh attestation verify tracker_1.17.1_linux_amd64.tar.gz --repo myrrazor/atlas-tasker --bundle attestation-bundle.jsonl --signer-workflow myrrazor/atlas-tasker/.github/workflows/release.yml --source-ref refs/tags/v1.17.1</code>
+              <code id="bin-verify" tabindex="0">gh attestation verify tracker_1.18.0_linux_amd64.tar.gz --repo myrrazor/atlas-tasker --bundle attestation-bundle.jsonl --signer-workflow myrrazor/atlas-tasker/.github/workflows/release.yml --source-ref refs/tags/v1.18.0</code>
               <button class="copy-button" type="button" data-copy="bin-verify" aria-label="Copy attestation verify command">Copy</button>
             </div>
             <p class="requirements">Then check the SHA-256 against <code>checksums.txt</code>, extract <code>tracker</code>, and put it in a directory on your <code>PATH</code> such as <code>~/.local/bin</code>. Full steps for every platform: <a href="https://github.com/myrrazor/atlas-tasker/blob/main/docs/install-without-script.md">install without curl | sh</a>.</p>

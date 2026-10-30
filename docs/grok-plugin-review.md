@@ -16,11 +16,11 @@ export TRACKER_ACTOR=human:reviewer
 ## 2. Install the `tracker` binary (no `curl | sh`)
 
 ```bash
-go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.17.1
+go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.0
 tracker version
 ```
 
-Expected: first line `tracker v1.17.1`.
+Expected: first line `tracker v1.18.0`.
 
 ## 3. Create a board
 
@@ -63,7 +63,7 @@ python3 "$REVIEW/plugin/scripts/grok-plugin-smoke.py" "$REVIEW/plugin/.mcp.json"
 Expected (tool list abbreviated):
 
 ```text
-server: {'name': 'atlas-tasker', 'version': 'v1.17.1'}
+server: {'name': 'atlas-tasker', 'version': 'v1.18.0'}
 tools (104): atlas_activity, atlas_agent_available, ... atlas_status, ... atlas_ticket_create, ...
 atlas_status isError: False
 # Atlas status

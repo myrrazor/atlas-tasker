@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v1.18.0 - Grok plugin and install without curl | sh (2026-10-29)
+
+[Download v1.18.0 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.0).
+
+- Install docs, README, Grok plugin reviewer steps and atlastasker.com now pin v1.18.0 (`go install …@v1.18.0`, release binary `tracker_1.18.0_*`), and the README toolchain note matches `go 1.26.10`.
 - README Grok plugin section and install fixes (pinned `go install`, accurate `GOTOOLCHAIN=auto` wording, PATH setup, Atlas Home note); atlastasker.com install section adds the Grok plugin, the verified release binary and pinned `go install`, labeled v1.18. Every footer credits "Built by myrrazor".
 - Grok plugin reviewer steps (`docs/grok-plugin-review.md`) and `scripts/grok-plugin-smoke.py`, a standard-library MCP stdio smoke test that lists tools and calls `atlas_status`.
 - Grok plugin manifest: `.grok-plugin/plugin.json` (version 1.18.0, MIT, logo `assets/brand/atlas-tasker-at-icon.png`) and a root `.mcp.json` that launches the installed `tracker mcp serve --global --tool-profile workflow --tool-name-style portable` over stdio, so Atlas Tasker can be listed in the Grok plugin marketplace as a local plugin.
