@@ -894,6 +894,8 @@ Slash command examples:
 - `tracker mcp approvals list --json`
 - `tracker mcp approvals revoke <APPROVAL-ID>`
 
+Approvals for machine-scoped tools (`atlas.settings.grant_discovery` and the other tools `tracker mcp tools --global` lists with scope `machine`) are stored in the Atlas machine state dir (`~/.local/state/atlas-tasker` on Linux, `~/Library/Application Support/Atlas Tasker` on macOS, or `$XDG_STATE_HOME/atlas-tasker`), so you can create them from any directory. All other approvals are stored in the current workspace. The CLI and the MCP server pick the store the same way, and `tracker mcp approvals list` shows each approval's `scope`.
+
 `tracker mcp serve` and `tracker mcp tools` default to `--tool-profile workflow`, matching managed
 registration. Pass `--tool-profile read` or `--read-only` for a read catalog. The Go MCP library still
 defaults empty options to `read`. High-impact tools stay hidden unless `--dangerously-allow-high-impact-tools`
