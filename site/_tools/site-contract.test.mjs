@@ -618,4 +618,8 @@ test("minimum gh version and too-old message match across install.sh, README, do
   for (const page of ["docs/getting-started.html", "guide.html", "mcp.html"]) {
     assert.ok(pages.get(page).includes(`${min} or newer`), `${page} names the minimum`);
   }
+  const ghCheck = `gh --version  # must print gh version ${min} or newer`;
+  assert.ok(readme.includes(ghCheck), "README Option A has the gh --version check");
+  assert.ok(manual.includes(ghCheck), "install-without-script Option A has the gh --version check");
+  assert.ok(index.includes(`<code id="bin-gh-version" tabindex="0">${ghCheck}</code>`), "site Option A has the gh --version check");
 });

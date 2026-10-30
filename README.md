@@ -66,6 +66,12 @@ Checksum verification is always on.
 
 Prefer not to pipe a script into your shell? [Install without `curl | sh`](docs/install-without-script.md) covers a checksum- and attestation-verified release binary and a pinned `go install`.
 
+For the verified release binary (Option A), check `gh` first:
+
+```bash
+gh --version  # must print gh version 2.102.0 or newer
+```
+
 Optional, with Go 1.26.6 or newer:
 
 ```bash

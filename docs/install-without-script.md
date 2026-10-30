@@ -7,6 +7,7 @@ Two install paths that never pipe a remote script into a shell. Both put a `trac
 Needs `gh` 2.102.0 or newer (no GitHub login required; older `gh`, including Ubuntu 24.04's 2.45.0 and Debian 13's 2.46.0, asks for `gh auth login` and has no `gh attestation`), `sha256sum` (on macOS use `shasum -a 256 -c -` in its place) and `tar`. Pick your platform: `linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`.
 
 ```bash
+gh --version  # must print gh version 2.102.0 or newer
 VERSION=1.18.0
 PLATFORM=linux_amd64
 WORK=$(mktemp -d) && cd "$WORK"
