@@ -120,7 +120,7 @@ Neither installation route signs into an agent provider or starts an autonomous 
 
 ## Install with Go or build from source
 
-With Go 1.26.6 or newer:
+Building from source requires Go 1.26.10 or newer (`go 1.26.10` in `go.mod`; there is no `toolchain` directive). Published v1.18.1 release binaries were built with go1.26.10:
 
 ```bash
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest

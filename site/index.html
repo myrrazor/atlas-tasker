@@ -85,7 +85,7 @@
         "name": "What platforms does Atlas Tasker support?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "The release installer supports macOS and Linux on arm64 and amd64. Building from source requires Go 1.26.6 or newer."
+          "text": "The release installer supports macOS and Linux on arm64 and amd64. Published v1.18.1 release binaries were built with go1.26.10. Building from source requires Go 1.26.10 or newer (go 1.26.10 in go.mod; there is no toolchain directive)."
         }
       },
       {
@@ -463,14 +463,14 @@
           <div class="install-option">
             <div class="install-meta">
               <strong>Go install (pinned)</strong>
-              <span>No script · Go downloads 1.26.10 only if yours is older</span>
+              <span>No script · source minimum Go 1.26.10</span>
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
               <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.1</code>
               <button class="copy-button" type="button" data-copy="go-install" aria-label="Copy Go install command">Copy</button>
             </div>
-            <p class="requirements">The install does not edit your <code>PATH</code>: add <code>$(go env GOPATH)/bin</code> to it in your shell profile if <code>command -v tracker</code> prints nothing. Go installs can report a published module tag without release-build provenance stamps.</p>
+            <p class="requirements">Building from source requires Go 1.26.10 or newer (<code>go 1.26.10</code> in <code>go.mod</code>; there is no <code>toolchain</code> directive). With <code>GOTOOLCHAIN=auto</code>, Go downloads Go 1.26.10 only when your local toolchain is older. Published v1.18.1 release binaries were built with go1.26.10. The install does not edit your <code>PATH</code>: add <code>$(go env GOPATH)/bin</code> to it in your shell profile if <code>command -v tracker</code> prints nothing. Go installs can report a published module tag without release-build provenance stamps.</p>
           </div>
 
           <div class="install-option">
@@ -587,7 +587,7 @@ cd / &amp;&amp; rm -rf "$WORK"
         </details>
         <details>
           <summary>What platforms does Atlas Tasker support?</summary>
-          <p>The release installer supports macOS and Linux on arm64 and amd64. Building from source requires Go 1.26.6 or newer.</p>
+          <p>The release installer supports macOS and Linux on arm64 and amd64. Published v1.18.1 release binaries were built with go1.26.10. Building from source requires Go 1.26.10 or newer (go 1.26.10 in go.mod; there is no toolchain directive).</p>
         </details>
         <details>
           <summary>How do coding agents use it?</summary>

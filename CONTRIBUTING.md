@@ -41,7 +41,7 @@ If your change affects release scripts, docs snippets, terminal output, MCP, sig
 
 ## Local Setup
 
-Atlas is a Go CLI. CI builds with Go 1.26.6 (same as the `go` line in `go.mod`); use that locally when possible.
+Atlas is a Go CLI. Building from source requires Go 1.26.10 or newer (`go 1.26.10` in `go.mod`; there is no `toolchain` directive). CI uses Go 1.26.10. Published v1.18.1 release binaries were built with go1.26.10. Use Go 1.26.10 locally when possible.
 
 ```bash
 git clone https://github.com/myrrazor/atlas-tasker.git
