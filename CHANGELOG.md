@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Release rehearsal commits the workspace files `tracker init` creates before it dispatches, so the smoke no longer stops with `dirty_repo`. The extra sync workspaces use separate directory names so their default projects do not clash. When `VERSION` is not set, it uses the latest `vMAJOR.MINOR.PATCH` git tag instead of a hardcoded version.
+
 ## v1.18.2 - Quarantine, checksum and installer fixes (2026-10-31)
 
 [Download v1.18.2 and read its verification results](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.2).
