@@ -2,7 +2,7 @@
 
 These steps check the Atlas Tasker Grok plugin end to end in a throwaway home directory: install, connect, list tools, call one tool. They make no changes outside the temporary directory, except that `tracker init` starts the local Atlas Home board on `http://127.0.0.1:7432/` (loopback only).
 
-Requirements: Go 1.26.6+, Git, Python 3, and the `grok` CLI (Grok Build). No Atlas account, API key or GitHub login is needed.
+Requirements: Building from source requires Go 1.26.10 or newer, plus Git, Python 3, and the `grok` CLI (Grok Build). No Atlas account, API key or GitHub login is needed.
 
 ## 1. Fresh environment
 
