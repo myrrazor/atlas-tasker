@@ -1,6 +1,6 @@
 {
   "name": "atlas-tasker",
-  "version": "1.18.2",
+  "version": "1.18.3",
   "description": "Atlas Tasker for Grok Build: a local-first, git-backed ticket board for humans and agents. Launches the installed `tracker` binary's stdio MCP server (`tracker mcp serve`) so Grok can read board status, create and update tickets, and record work, all stored as Markdown in your own repo. No hosted service and no account required.",
   "author": {
     "name": "myrrazor",

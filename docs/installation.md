@@ -28,11 +28,11 @@ tracker version --json
 ```
 
 `BIN_DIR` selects the destination and `VERSION` pins a published tag.
-`1.18.2` and `v1.18.2` both request tag `v1.18.2`. Leave `VERSION` unset for the latest release.
+`1.18.3` and `v1.18.3` both request tag `v1.18.3`. Leave `VERSION` unset for the latest release.
 When running a checked-out installer, for example:
 
 ```bash
-VERSION=1.18.2 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=1.18.3 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 ```
 
 Inspect installer scripts before running them. Use repository or release URLs,
