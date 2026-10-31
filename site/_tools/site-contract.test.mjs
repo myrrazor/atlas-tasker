@@ -387,6 +387,32 @@ test("public workflow guidance matches the v1.17 release contracts", () => {
   }
 });
 
+test("hero install note shows the full pinned release version", () => {
+  const index = pages.get("index.html");
+  const pinned = index.match(
+    /id="go-install"[^>]*>go install github\.com\/myrrazor\/atlas-tasker\/cmd\/tracker@(v\d+\.\d+\.\d+)<\/code>/,
+  )?.[1];
+  assert.equal(pinned, "v1.18.1");
+  const note = index.match(/<p class="command-note">([\s\S]*?)<\/p>/)?.[1] ?? "";
+  assert.equal(
+    note.match(/· (v\d+\.\d+\.\d+)\s*$/)?.[1],
+    pinned,
+    "hero command note must show MAJOR.MINOR.PATCH, same as the pinned go install",
+  );
+  assert.equal(index.match(/\bVERSION=(\d+\.\d+\.\d+)\b/)?.[1], pinned.slice(1));
+  const current = [
+    [pages.get("mcp.html"), /published binary \((v\d+\.\d+\.\d+)\)/],
+    [pages.get("docs/getting-started.html"), /published<\/strong> build \((v\d+\.\d+\.\d+)\)/],
+    [pages.get("docs/getting-started.html"), /tracker update --version (v\d+\.\d+\.\d+)/],
+    [pages.get("cli.html"), /"version": "(v\d+\.\d+\.\d+)"/],
+    [pages.get("docs/json-and-exit-codes.html"), /"version": "(v\d+\.\d+\.\d+)"/],
+    [llms, /latest published GitHub release \((v\d+\.\d+\.\d+)\)/],
+  ];
+  for (const [source, pattern] of current) {
+    assert.equal(source.match(pattern)?.[1], pinned);
+  }
+});
+
 test("README and site wordmarks match the canonical application wordmark", () => {
   assert.match(readme, /src="assets\/brand\/atlas-tasker-terminal-wordmark\.svg"/);
   assert.ok(readmeWordmark.equals(canonicalWordmark));
