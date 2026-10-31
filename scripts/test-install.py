@@ -491,6 +491,16 @@ class InstallerTests(unittest.TestCase):
             self.assertFalse((self.workspace / ".tracker").exists())
             self.assertTrue(os.access(self.bin_dir / "tracker", os.X_OK))
 
+    def test_dist_prefix_checksum_still_installs(self):
+        checksum_path = self.assets / "checksums.txt"
+        checksum_path.write_text(f"{self.archive_digest}  dist/{self.archive}\n")
+        try:
+            result = self.run_install()
+        finally:
+            checksum_path.write_text(self.checksum)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed()
+
     def test_bad_checksum_stops_before_install_or_init(self):
         checksum_path = self.assets / "checksums.txt"
         checksum_path.write_text(f"{'0' * 64}  {self.archive}\n")

@@ -67,7 +67,6 @@ jobs:
           fi
           archive="tracker_${version}_${GOOS}_${GOARCH}.tar.gz"
           tar -czf "dist/${archive}" -C dist tracker
-          shasum -a 256 "dist/${archive}" > "dist/${archive}.sha256"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -95,10 +94,7 @@ jobs:
           go run github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0 app -json -output "dist/sbom-${GITHUB_REF_NAME}.cdx.json" -main cmd/tracker .
           test -s "dist/sbom-${GITHUB_REF_NAME}.cdx.json"
       - name: Build checksums file
-        run: |
-          set -eu
-          cat dist/*.sha256 > dist/checksums.txt
-          shasum -a 256 "dist/sbom-${GITHUB_REF_NAME}.cdx.json" >> dist/checksums.txt
+        run: sh scripts/write-release-checksums.sh dist
       - name: Attest release archives
         id: attest
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2

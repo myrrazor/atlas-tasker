@@ -500,6 +500,7 @@ verify_archive() {
   expected_sum="$(awk -v file="$archive_name" '
     {
       name = $2
+      sub(/^dist\//, "", name)
       sub(/^.*\//, "", name)
       if (name == file) {
         print $1
