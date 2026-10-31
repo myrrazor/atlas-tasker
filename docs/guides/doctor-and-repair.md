@@ -50,6 +50,8 @@ A ticket file that no longer parses (for example one cut short mid-frontmatter, 
 
 Repair never drops a damaged file. Edits made by hand after the last event are not in the log; compare the restored file with the backup if you made any.
 
+Copies under `.tracker/quarantine/`, including the journal backups below, are git-ignored. `tracker init` writes the rule for a new shared or private workspace. On an existing workspace, run `tracker doctor --repair` once: it refreshes the ignore rules before writing a backup, and a second repair does not add the rule again. Shared mode updates the managed block in the root `.gitignore` (`/.tracker/quarantine/`). Private mode updates `.git/info/exclude`. Unmanaged mode has no root block, so repair ignores `/quarantine/` from `.tracker/.gitignore`. Ticket files stay tracked.
+
 ## When To Repair
 
 Use repair when the projection or journaled mutation state needs rebuilding:

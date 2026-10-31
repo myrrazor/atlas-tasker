@@ -287,8 +287,9 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue(lines, "gh was not invoked")
         return json.loads(lines[-1])
 
-    def assert_bundle_verify_args(self, args=None):
+    def assert_bundle_verify_args(self, args=None, version=None):
         args = args if args is not None else self.last_gh_args()
+        version = version or self.env["VERSION"]
         self.assertEqual(args[0], "attestation")
         self.assertEqual(args[1], "verify")
         self.assertTrue(any(part.endswith(".tar.gz") for part in args[:4]))
@@ -303,7 +304,7 @@ class InstallerTests(unittest.TestCase):
         )
         self.assertEqual(
             args[args.index("--source-ref") + 1],
-            f"refs/tags/{self.env['VERSION']}",
+            f"refs/tags/{version}",
         )
         bundle = args[args.index("--bundle") + 1]
         self.assertTrue(bundle.endswith("attestation-bundle.jsonl") or "attestation" in bundle)
@@ -315,8 +316,9 @@ class InstallerTests(unittest.TestCase):
     def archive_gets(self):
         return [path for path in self.server.gets if path.endswith(".tar.gz")]
 
-    def assert_installed(self, expected=None):
+    def assert_installed(self, expected=None, version=None):
         expected = expected or self.tracker
+        version = version or self.env["VERSION"]
         installed = self.bin_dir / "tracker"
         self.assertTrue(os.access(installed, os.X_OK))
         self.assertEqual(hashlib.sha256(installed.read_bytes()).digest(),
@@ -327,9 +329,9 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(data["format"], "atlas_install_receipt_v1")
         self.assertEqual(data["install_method"], "script")
         self.assertEqual(data["binary_path"], str(installed))
-        self.assertEqual(data["version"], self.env["VERSION"])
+        self.assertEqual(data["version"], version)
         self.assertEqual(data["binary_sha256"], hashlib.sha256(installed.read_bytes()).hexdigest())
-        payload = f"{data['binary_path']}\n{data['binary_sha256']}\nscript\n{self.env['VERSION']}\n"
+        payload = f"{data['binary_path']}\n{data['binary_sha256']}\nscript\n{version}\n"
         self.assertEqual(data["digest"], hashlib.sha256(payload.encode()).hexdigest())
 
     def terminal_install(self, answers, expect_success=True):
@@ -490,6 +492,16 @@ class InstallerTests(unittest.TestCase):
             self.assertIn("tracker init", output)
             self.assertFalse((self.workspace / ".tracker").exists())
             self.assertTrue(os.access(self.bin_dir / "tracker", os.X_OK))
+
+    def test_dist_prefix_checksum_still_installs(self):
+        checksum_path = self.assets / "checksums.txt"
+        checksum_path.write_text(f"{self.archive_digest}  dist/{self.archive}\n")
+        try:
+            result = self.run_install()
+        finally:
+            checksum_path.write_text(self.checksum)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed()
 
     def test_bad_checksum_stops_before_install_or_init(self):
         checksum_path = self.assets / "checksums.txt"
@@ -758,6 +770,112 @@ class InstallerTests(unittest.TestCase):
         result = self.run_install()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(sudo_log.exists())
+
+    def test_version_with_leading_v_installs_that_tag(self):
+        self.env["VERSION"] = "v1.12.0-test"
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed(version="v1.12.0-test")
+        self.assert_bundle_verify_args(version="v1.12.0-test")
+        archive = f"/tracker_1.12.0-test_{self.os_name}_{self.arch}.tar.gz"
+        gets = self.archive_gets()
+        self.assertIn(archive, gets)
+        self.assertFalse(any("tracker_v1.12.0-test" in path for path in gets))
+        self.assertIn(f"installed tracker v1.12.0-test to {self.bin_dir}/tracker", result.stdout)
+
+    def test_version_without_leading_v_normalizes_to_v_tag(self):
+        self.env["VERSION"] = "1.12.0-test"
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_installed(version="v1.12.0-test")
+        self.assert_bundle_verify_args(version="v1.12.0-test")
+        archive = f"/tracker_1.12.0-test_{self.os_name}_{self.arch}.tar.gz"
+        gets = self.archive_gets()
+        self.assertIn(archive, gets)
+        self.assertIn(f"installed tracker v1.12.0-test to {self.bin_dir}/tracker", result.stdout)
+
+    def test_missing_tag_names_release_and_url(self):
+        archive = f"tracker_9.9.9_{self.os_name}_{self.arch}.tar.gz"
+        url = f"{self.env['RELEASE_BASE_URL']}/{archive}"
+        message = f"atlas-tasker: release v9.9.9 not found at {url}"
+        for version in ("9.9.9", "v9.9.9"):
+            with self.subTest(version=version):
+                self.server.gets.clear()
+                self.env["VERSION"] = version
+                result = self.run_install()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertNotIn("curl:", result.stderr)
+                self.assertNotIn("vv9.9.9", result.stderr)
+                self.assertFalse((self.bin_dir / "tracker").exists())
+
+    def recording_curl(self):
+        """curl that records each URL and fails with HTTP 404, without a network."""
+        fake = self.case / "curl-bin"
+        fake.mkdir()
+        curl = fake / "curl"
+        curl.write_text(
+            "#!/bin/sh\n"
+            'log="${ATLAS_TEST_CURL_LOG:?}"\n'
+            'url=""\n'
+            'prev=""\n'
+            'write_http=""\n'
+            'for arg in "$@"; do\n'
+            '  case "$prev" in\n'
+            "    -w) write_http=1 ;;\n"
+            "  esac\n"
+            '  case "$arg" in\n'
+            '    https://*|http://*) url="$arg" ;;\n'
+            "  esac\n"
+            '  prev="$arg"\n'
+            "done\n"
+            'printf "%s\\n" "$url" >> "$log"\n'
+            'if [ -n "$write_http" ]; then\n'
+            "  printf '%s' 404\n"
+            "fi\n"
+            'echo "curl: (22) The requested URL returned error: 404" >&2\n'
+            "exit 22\n"
+        )
+        curl.chmod(0o755)
+        log = self.case / "curl-urls.txt"
+        log.write_text("")
+        self.env["PATH"] = f"{fake}:{self.env['PATH']}"
+        self.env["ATLAS_TEST_CURL_LOG"] = str(log)
+        self.env.pop("RELEASE_BASE_URL", None)
+        self.env["VERIFY_ATTESTATIONS"] = "0"
+        return log
+
+    def test_github_download_url_uses_v_tag_when_missing(self):
+        """VERSION with or without v requests the v tag on the GitHub asset URL."""
+        log = self.recording_curl()
+        archive = f"tracker_1.18.1_{self.os_name}_{self.arch}.tar.gz"
+        url = f"https://github.com/myrrazor/atlas-tasker/releases/download/v1.18.1/{archive}"
+        message = f"atlas-tasker: release v1.18.1 not found at {url}"
+        for version in ("1.18.1", "v1.18.1"):
+            with self.subTest(version=version):
+                log.write_text("")
+                self.env["VERSION"] = version
+                result = self.run_install()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertNotIn("curl:", result.stderr)
+                self.assertNotIn("vv1.18.1", result.stderr)
+                self.assertNotIn("vv1.18.1", log.read_text())
+                self.assertIn(url, log.read_text().splitlines())
+
+    def test_unset_version_still_requests_latest_release(self):
+        log = self.recording_curl()
+        self.env.pop("VERSION", None)
+        result = self.run_install()
+        self.assertNotEqual(result.returncode, 0)
+        urls = [line for line in log.read_text().splitlines() if line]
+        self.assertIn(
+            "https://api.github.com/repos/myrrazor/atlas-tasker/releases/latest",
+            urls,
+        )
+        self.assertFalse(any("/releases/download/" in url for url in urls))
+        self.assertNotIn("vlatest", result.stderr)
+        self.assertIn("failed to resolve Atlas Tasker release version", result.stderr)
 
 
 if __name__ == "__main__":

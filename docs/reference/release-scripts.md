@@ -4,6 +4,7 @@ Release scripts are proof helpers, not marketing status.
 
 - `scripts/install.sh`: verifies and installs a published archive.
 - `scripts/verify-release.sh`: verifies checksums and GitHub attestations by default.
+- `scripts/write-release-checksums.sh`: writes `checksums.txt` beside the release archives and SBOM. Each line is `<sha256>  <bare filename>`, matching the uploaded asset name.
 - `scripts/release-rehearsal.sh`: builds local archives and runs an installer smoke.
 - `scripts/stability-smoke.sh`: runs a local end-to-end smoke.
 - `scripts/preflight-release.sh`: release-manager entrypoint for local preflight checks and optional security proof generation.
@@ -19,7 +20,7 @@ VERSION=v1.16.0-rc1 ./scripts/release-rehearsal.sh
 VERSION=v1.16.0-rc1 ./scripts/verify-release.sh ./tracker_1.15.0-rc1_darwin_arm64.tar.gz
 ```
 
-`scripts/install.sh`, `scripts/verify-release.sh`, `scripts/preflight-release.sh`, `scripts/release-rehearsal.sh`, and `scripts/validate-rc.sh` validate `VERSION` before using it for stamped builds or downloads. Release downloads require `https://` unless a local rehearsal explicitly sets `ALLOW_INSECURE_RELEASE_BASE_URL=1` for loopback HTTP.
+`scripts/install.sh`, `scripts/verify-release.sh`, `scripts/preflight-release.sh`, `scripts/release-rehearsal.sh`, and `scripts/validate-rc.sh` validate `VERSION` before using it for stamped builds or downloads. `scripts/install.sh` accepts `VERSION=1.18.2` and `VERSION=v1.18.2` as tag `v1.18.2`. Leaving `VERSION` unset still installs the latest release. A missing tag or asset exits non-zero with `atlas-tasker: release <tag> not found at <url>`. Release downloads require `https://` unless a local rehearsal explicitly sets `ALLOW_INSECURE_RELEASE_BASE_URL=1` for loopback HTTP.
 
 `scripts/preflight-release.sh` is POSIX `sh` compatible. By default it checks shell syntax, builds a stamped local binary, and verifies the `tracker version --json` contract. It does not claim hosted release proof.
 

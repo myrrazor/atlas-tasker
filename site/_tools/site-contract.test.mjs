@@ -371,7 +371,7 @@ test("public workflow guidance matches the v1.17 release contracts", () => {
   assert.match(changelog, /v1\.12\.0 — Agent Setup And Documentation/i);
   assert.doesNotMatch(changelog, /v1\.12\.0 remains the latest published stable version/i);
   assert.match(pages.get("changelog.html"), /releases\/tag\/v1\.13\.0/i);
-  assert.match(gettingStarted, /tracker update --version v1\.18\.1 --yes/);
+  assert.match(gettingStarted, /tracker update --version v1\.18\.2 --yes/);
   const homeWorkspaces = textContent(pages.get("docs/home.html"));
   const backup = textContent(pages.get("docs/backup.html"));
   const uninstall = textContent(pages.get("docs/uninstall.html"));
@@ -392,7 +392,7 @@ test("hero install note shows the full pinned release version", () => {
   const pinned = index.match(
     /id="go-install"[^>]*>go install github\.com\/myrrazor\/atlas-tasker\/cmd\/tracker@(v\d+\.\d+\.\d+)<\/code>/,
   )?.[1];
-  assert.equal(pinned, "v1.18.1");
+  assert.equal(pinned, "v1.18.2");
   const note = index.match(/<p class="command-note">([\s\S]*?)<\/p>/)?.[1] ?? "";
   assert.equal(
     note.match(/· (v\d+\.\d+\.\d+)\s*$/)?.[1],

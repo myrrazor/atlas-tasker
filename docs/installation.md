@@ -27,17 +27,19 @@ export PATH="$HOME/.local/bin:$PATH"
 tracker version --json
 ```
 
-`BIN_DIR` selects the destination and `VERSION` pins a published tag. When running
-a checked-out installer, for example:
+`BIN_DIR` selects the destination and `VERSION` pins a published tag.
+`1.18.2` and `v1.18.2` both request tag `v1.18.2`. Leave `VERSION` unset for the latest release.
+When running a checked-out installer, for example:
 
 ```bash
-VERSION=v1.16.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=1.18.2 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 ```
 
 Inspect installer scripts before running them. Use repository or release URLs,
 and do not run commands copied from untrusted issues or comments.
 
 Checksum mismatch, missing bundle, or identity failure refuses the install.
+A missing tag or asset prints `atlas-tasker: release <tag> not found at <url>` and exits non-zero.
 There is no checksum-only fallback. `VERIFY_ATTESTATIONS=0` is an explicit
 local-fixture override, not a normal install.
 
@@ -120,7 +122,7 @@ Neither installation route signs into an agent provider or starts an autonomous 
 
 ## Install with Go or build from source
 
-With Go 1.26.6 or newer:
+Building from source requires Go 1.26.10 or newer:
 
 ```bash
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest
