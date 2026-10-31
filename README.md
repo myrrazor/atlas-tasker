@@ -72,13 +72,13 @@ For the verified release binary (Option A), check `gh` first. It prints the inst
 gh --version 2>/dev/null | awk 'NR==1{f=$3; split(f,v,"."); ok=(f~/^[0-9]+\.[0-9]+/ && (v[1]+0>2 || (v[1]+0==2 && v[2]+0>=102)))} END{if(!ok){print "Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run. " (f=="" ? "gh not found" : "Found gh " f "; minimum is 2.102.0") > "/dev/stderr"; exit 1}}'
 ```
 
-Optional source install. Building from source requires Go 1.26.10 or newer (`go 1.26.10` in `go.mod`; there is no `toolchain` directive):
+Building from source requires Go 1.26.10 or newer:
 
 ```bash
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.1
 ```
 
-That `go` line is the minimum Go for a source build. With the default `GOTOOLCHAIN=auto`, Go downloads Go 1.26.10 only when your local toolchain is older than 1.26.10; a local Go 1.26.10 or newer builds directly. Published v1.18.1 release binaries were built with go1.26.10.
+With the default `GOTOOLCHAIN=auto`, Go downloads Go 1.26.10 only when your local toolchain is older than 1.26.10; a local Go 1.26.10 or newer builds directly.
 
 Neither `go install` nor a manual binary install edits your `PATH`. If `command -v tracker` prints nothing, add the install directory to your shell profile and open a new shell, for example:
 

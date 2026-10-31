@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Docs: building from source requires Go 1.26.10 or newer (`go 1.26.10` in `go.mod`; there is no `toolchain` directive). README, CONTRIBUTING, install docs, the Grok plugin reviewer steps, and atlastasker.com now say that. Published v1.18.1 release binaries were built with go1.26.10.
+- Docs: building from source requires Go 1.26.10 or newer.
 - `.tracker/quarantine/` is excluded from Git, the same way `.tracker/web-session.json` is. `tracker init` writes the rule for new shared and private workspaces. Existing workspaces, including ones created before this release, get it when `tracker doctor --repair` refreshes ignore rules, and a second repair does not add the rule again. Shared, private, and unmanaged modes all leave the quarantine copy untracked; ticket files stay tracked.
 
 ## v1.18.1 - Install, update and MCP approval fixes (2026-10-30)

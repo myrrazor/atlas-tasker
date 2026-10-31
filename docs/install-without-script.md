@@ -39,7 +39,7 @@ Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli
 
 ## Option B: `go install` from source
 
-Building from source requires Go 1.26.10 or newer (`go 1.26.10` in `go.mod`; there is no `toolchain` directive). With the default `GOTOOLCHAIN=auto`, Go downloads Go 1.26.10 when your local toolchain is older than 1.26.10. Published v1.18.1 release binaries were built with go1.26.10. Pin a tag rather than `@latest` so you know what you built:
+Building from source requires Go 1.26.10 or newer. With the default `GOTOOLCHAIN=auto`, Go downloads Go 1.26.10 when your local toolchain is older than 1.26.10. Pin a tag rather than `@latest` so you know what you built:
 
 ```bash
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.1
