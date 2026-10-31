@@ -278,6 +278,7 @@ ARCHIVE_NAME="$(basename "$ARCHIVE_PATH")"
 EXPECTED_SUM="$(awk -v file="$ARCHIVE_NAME" '
   {
     name = $2
+    sub(/^dist\//, "", name)
     sub(/^.*\//, "", name)
     if (name == file) {
       print $1

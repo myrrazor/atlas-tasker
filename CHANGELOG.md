@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Release `checksums.txt` lines are `<sha256>  <asset filename>` with no `dist/` directory. `sha256sum -c checksums.txt` now succeeds in the folder where the release assets were downloaded. `scripts/install.sh`, `scripts/verify-release.sh`, and `tracker update` still accept the `dist/<filename>` lines published through v1.18.1.
 - `.tracker/quarantine/` is excluded from Git, the same way `.tracker/web-session.json` is. `tracker init` writes the rule for new shared and private workspaces. Existing workspaces, including ones created before this release, get it when `tracker doctor --repair` refreshes ignore rules, and a second repair does not add the rule again. Shared, private, and unmanaged modes all leave the quarantine copy untracked; ticket files stay tracked.
 
 ## v1.18.1 - Install, update and MCP approval fixes (2026-10-30)
