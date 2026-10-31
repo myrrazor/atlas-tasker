@@ -31,6 +31,8 @@ cd / && rm -rf "$WORK"
 
 Expected: `sha256sum` prints `tracker_1.18.1_linux_amd64.tar.gz: OK`, `gh attestation verify` exits 0 (it prints `✓ Verification succeeded!` when run in a terminal), and `tracker version` prints `tracker v1.18.1`. Make sure `$HOME/.local/bin` is on your `PATH`. The block runs in a subshell with `set -e`, so it stops at the first failing step (old or missing `gh`, checksum, attestation) without closing your terminal, and removes its temporary folder when it succeeds. Stop if either check fails.
 
+Releases through v1.18.1 record `dist/<filename>` in `checksums.txt`, so the `grep` and `sed` above are required before `sha256sum -c` for those downloads. Later releases write the bare asset filename. In a folder that contains those assets and `checksums.txt`, `sha256sum -c checksums.txt` is enough. `scripts/install.sh` and `tracker update` accept both forms.
+
 If `gh --version` is older than 2.102.0, upgrade first. The install script stops with the same message:
 
 ```text

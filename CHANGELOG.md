@@ -3,7 +3,10 @@
 ## Unreleased
 
 - Docs: building from source requires Go 1.26.10 or newer.
-- `.tracker/quarantine/` is excluded from Git, the same way `.tracker/web-session.json` is. `tracker init` writes the rule for new shared and private workspaces. Existing workspaces, including ones created before this release, get it when `tracker doctor --repair` refreshes ignore rules, and a second repair does not add the rule again. Shared, private, and unmanaged modes all leave the quarantine copy untracked; ticket files stay tracked.
+- atlastasker.com hero install note shows the full published release (v1.18.1), matching the pinned `go install` and the rest of the site. The site contract test requires that note to use the same `vMAJOR.MINOR.PATCH` pin, so a minor-only label cannot drift again.
+- Site docs: the `tracker version --json` samples on the CLI page and the JSON and exit codes page match the published v1.18.1 linux/amd64 binary (commit `fe3d0f8a8598027fa4c6c3648b116f981881f355`, build date `2026-10-31T00:39:04Z`, `go1.26.10`, platform `linux/amd64`, keys in the binary's alphabetical order).
+- Release `checksums.txt` lines are `<sha256>  <asset filename>` with no `dist/` directory. `sha256sum -c checksums.txt` now succeeds in the folder where the release assets were downloaded. `scripts/install.sh`, `scripts/verify-release.sh`, and `tracker update` still accept the `dist/<filename>` lines published through v1.18.1.
+- `.tracker/quarantine/` is excluded from Git, the same way `.tracker/web-session.json` is. `tracker init` writes the rule for new shared and private workspaces. Existing workspaces, including ones created before this release, get it when `tracker doctor --repair` refreshes ignore rules, and a second repair does not add the rule again. Shared mode updates the managed block in the root `.gitignore` (`/.tracker/quarantine/`), private mode updates `.git/info/exclude`, and unmanaged mode ignores `/quarantine/` from `.tracker/.gitignore`. Ticket files stay tracked. Documented in the README, `docs/guides/doctor-and-repair.md`, `docs/troubleshooting.md`, `docs/command-reference.md`, the site FAQ and changelog, and the v1.18.1 known-issues note.
 
 ## v1.18.1 - Install, update and MCP approval fixes (2026-10-30)
 

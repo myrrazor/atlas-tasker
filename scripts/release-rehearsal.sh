@@ -58,11 +58,7 @@ mkdir -p "$DIST_DIR" "$WORK_DIR" "$INSTALL_DIR"
 
 GOOS="$OS_NAME" GOARCH="$ARCH_NAME" CGO_ENABLED=0 go build -trimpath -ldflags="$LDFLAGS" -o "$DIST_DIR/$BIN_NAME" "$ROOT_DIR/cmd/tracker"
 tar -czf "$DIST_DIR/$ARCHIVE" -C "$DIST_DIR" "$BIN_NAME"
-if command -v shasum >/dev/null 2>&1; then
-  shasum -a 256 "$DIST_DIR/$ARCHIVE" > "$DIST_DIR/checksums.txt"
-else
-  sha256sum "$DIST_DIR/$ARCHIVE" > "$DIST_DIR/checksums.txt"
-fi
+sh "$ROOT_DIR/scripts/write-release-checksums.sh" "$DIST_DIR"
 
 PORT_FILE="$DIST_DIR/http.port"
 python3 - <<'PY' "$DIST_DIR" "$PORT_FILE" &

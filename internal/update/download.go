@@ -132,7 +132,7 @@ func verifyChecksum(archivePath, archiveName, checksumsPath string) error {
 		if len(fields) < 2 {
 			continue
 		}
-		name := filepath.Base(fields[1])
+		name := releaseChecksumName(fields[1])
 		if name == archiveName {
 			expected = fields[0]
 			break
@@ -155,6 +155,14 @@ func verifyChecksum(archivePath, archiveName, checksumsPath string) error {
 		return apperr.New(apperr.CodeInvalidInput, fmt.Sprintf("checksum mismatch for %s: expected %s got %s", archiveName, expected, actual))
 	}
 	return nil
+}
+
+// releaseChecksumName is the uploaded asset filename from one checksums.txt
+// field. Releases through v1.18.1 wrote a leading "dist/" that is not part of
+// the asset name. Any other directory prefix is removed the same way.
+func releaseChecksumName(field string) string {
+	name := strings.TrimPrefix(field, "dist/")
+	return filepath.Base(name)
 }
 
 func extractBinary(archivePath, destDir, binaryName string) (string, error) {
