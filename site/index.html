@@ -190,7 +190,7 @@
           <code id="hero-install" tabindex="0">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</code>
         </div>
         <button class="copy-button" type="button" data-copy="hero-install" aria-label="Copy curl install command">Copy command</button>
-        <p class="command-note">Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) 2.102.0+ · macOS or Linux · v1.18.1</p>
+        <p class="command-note">Needs <code>curl</code>, <code>tar</code>, and GitHub CLI (<code>gh</code>) 2.102.0+ · macOS or Linux · v1.18.2</p>
       </aside>
     </header>
 
@@ -467,7 +467,7 @@
             </div>
             <div class="install-command">
               <span class="prompt" aria-hidden="true">$</span>
-              <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.1</code>
+              <code id="go-install" tabindex="0">go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.2</code>
               <button class="copy-button" type="button" data-copy="go-install" aria-label="Copy Go install command">Copy</button>
             </div>
             <p class="requirements">Building from source requires Go 1.26.10 or newer. With <code>GOTOOLCHAIN=auto</code>, Go downloads Go 1.26.10 only when your local toolchain is older. The install does not edit your <code>PATH</code>: add <code>$(go env GOPATH)/bin</code> to it in your shell profile if <code>command -v tracker</code> prints nothing. Go installs can report a published module tag without release-build provenance stamps.</p>
@@ -483,14 +483,14 @@
               <code id="bin-option-a" class="install-block" tabindex="0">(
 set -e
 gh --version 2&gt;/dev/null | awk 'NR==1{f=$3; split(f,v,"."); ok=(f~/^[0-9]+\.[0-9]+/ &amp;&amp; (v[1]+0&gt;2 || (v[1]+0==2 &amp;&amp; v[2]+0&gt;=102)))} END{if(!ok){print "Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run. " (f=="" ? "gh not found" : "Found gh " f "; minimum is 2.102.0") &gt; "/dev/stderr"; exit 1}}'
-VERSION=1.18.1
+VERSION=1.18.2
 PLATFORM=linux_amd64
 WORK=$(mktemp -d) &amp;&amp; cd "$WORK"
 trap 'cd / &amp;&amp; rm -rf "$WORK"' EXIT
 gh release download "v$VERSION" --repo myrrazor/atlas-tasker \
   --pattern "tracker_${VERSION}_${PLATFORM}.tar.gz" --pattern checksums.txt \
   --pattern attestation-bundle.jsonl
-grep " dist/tracker_${VERSION}_${PLATFORM}.tar.gz$" checksums.txt | sed "s# dist/# #" | sha256sum -c -
+grep -E " (dist/)?tracker_${VERSION}_${PLATFORM}.tar.gz$" checksums.txt | sed "s# dist/# #" | sha256sum -c -
 gh attestation verify "tracker_${VERSION}_${PLATFORM}.tar.gz" --repo myrrazor/atlas-tasker \
   --bundle attestation-bundle.jsonl \
   --signer-workflow myrrazor/atlas-tasker/.github/workflows/release.yml \
