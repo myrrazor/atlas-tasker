@@ -12,6 +12,7 @@ func workspaceGitignoreBlock() string {
 		"# Local-only Atlas paths (not ticket markdown under projects/).",
 		"/.tracker/mutations/",
 		"/.tracker/runtime/",
+		"/.tracker/quarantine/",
 		"/.tracker/*.log",
 		"/.tracker/sync/mirror/",
 		"/.tracker/sync/staging/",
@@ -67,12 +68,13 @@ func RefreshManagedIgnores(root string) error {
 	}
 	_, err := upsertManagedBlock(filepath.Join(dir, ".gitignore"), strings.Join([]string{
 		ManagedGitignoreBegin,
-		"# Local web session and submission state; never commit these files.",
+		"# Local web session, submission state, and repair quarantine; never commit these files.",
 		"/web-session.json",
 		"/web-session.json.tmp",
 		"/web-create-submits.json",
 		"/web-create-submits.json.tmp",
 		"/web-create-submits.lock",
+		"/quarantine/",
 		ManagedGitignoreEnd,
 		"",
 	}, "\n"))
