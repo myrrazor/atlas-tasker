@@ -1021,7 +1021,7 @@ preserving stricter completion modes and custom reviewer overrides.
 tracker v1.13.0
 commit: abc123
 build date: 2026-09-09T12:00:00Z
-go: go1.26.6
+go: go1.26.10
 platform: darwin/arm64
 ```
 
@@ -1034,7 +1034,7 @@ platform: darwin/arm64
   "version": "v1.13.0",
   "commit": "abc123",
   "build_date": "2026-09-09T12:00:00Z",
-  "go_version": "go1.26.6",
+  "go_version": "go1.26.10",
   "platform": "darwin/arm64"
 }
 ```
