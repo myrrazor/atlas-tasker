@@ -4,6 +4,7 @@ Release scripts are proof helpers, not marketing status.
 
 - `scripts/install.sh`: verifies and installs a published archive.
 - `scripts/verify-release.sh`: verifies checksums and GitHub attestations by default.
+- `scripts/write-release-checksums.sh`: writes `checksums.txt` beside the release archives and SBOM. Each line is `<sha256>  <bare filename>`, matching the uploaded asset name.
 - `scripts/release-rehearsal.sh`: builds local archives and runs an installer smoke.
 - `scripts/stability-smoke.sh`: runs a local end-to-end smoke.
 - `scripts/preflight-release.sh`: release-manager entrypoint for local preflight checks and optional security proof generation.

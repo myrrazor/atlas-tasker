@@ -139,6 +139,10 @@ tracker doctor --repair --json
 
 If repair still reports pending work, inspect `.tracker/mutations/` and `.tracker/events/*.jsonl` before deleting anything.
 
+## Quarantine backups and Git
+
+Repair copies under `.tracker/quarantine/` are git-ignored. `tracker init` writes the rule for a new shared or private workspace. On an existing workspace, run `tracker doctor --repair` once to refresh the ignore rules. Repair does that before it writes a backup, and a second repair does not add the rule again. Shared mode updates the managed block in the root `.gitignore`, private mode updates `.git/info/exclude`, and unmanaged mode ignores `/quarantine/` from `.tracker/.gitignore`. Ticket files stay tracked.
+
 ## Invalid event log
 
 An invalid event log is source-of-truth damage, not just a projection issue.

@@ -72,13 +72,13 @@ For the verified release binary (Option A), check `gh` first. It prints the inst
 gh --version 2>/dev/null | awk 'NR==1{f=$3; split(f,v,"."); ok=(f~/^[0-9]+\.[0-9]+/ && (v[1]+0>2 || (v[1]+0==2 && v[2]+0>=102)))} END{if(!ok){print "Atlas Tasker needs GitHub CLI (gh) 2.102.0 or newer. Upgrade it from https://cli.github.com/ (distro packages are often older) and re-run. " (f=="" ? "gh not found" : "Found gh " f "; minimum is 2.102.0") > "/dev/stderr"; exit 1}}'
 ```
 
-Optional, with Go 1.26.6 or newer:
+Building from source requires Go 1.26.10 or newer:
 
 ```bash
 go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.1
 ```
 
-v1.18.1's `go.mod` declares `go 1.26.10`. With the default `GOTOOLCHAIN=auto`, Go downloads that toolchain only when your local Go is older than 1.26.10; a newer or equal local Go builds directly.
+With the default `GOTOOLCHAIN=auto`, Go downloads Go 1.26.10 only when your local toolchain is older than 1.26.10; a local Go 1.26.10 or newer builds directly.
 
 Neither `go install` nor a manual binary install edits your `PATH`. If `command -v tracker` prints nothing, add the install directory to your shell profile and open a new shell, for example:
 
@@ -111,7 +111,7 @@ Prefer a full-screen view? `tracker tui` — board, queues, ticket detail, searc
 
 ![Ticket detail with runs, evidence, and timeline](docs/assets/tui-detail.png)
 
-Every ticket is markdown under `projects/`, every change is an append-only event in `.tracker/`, and the SQLite file is a disposable index. If it goes missing, the next command rebuilds it; `tracker doctor --repair` does it on demand. A ticket file that is cut short or no longer parses is named by `tracker doctor` (exit 7), and `tracker doctor --repair` backs it up to `.tracker/quarantine/` and restores it from the event log.
+Every ticket is markdown under `projects/`, every change is an append-only event in `.tracker/`, and the SQLite file is a disposable index. If it goes missing, the next command rebuilds it; `tracker doctor --repair` does it on demand. A ticket file that is cut short or no longer parses is named by `tracker doctor` (exit 7), and `tracker doctor --repair` backs it up to `.tracker/quarantine/` and restores it from the event log. Quarantine backups are git-ignored. On an existing workspace, run `tracker doctor --repair` once to refresh the ignore rules.
 
 ## Grok plugin
 

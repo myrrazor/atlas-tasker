@@ -137,10 +137,10 @@
           <pre id="gs-install">curl -fsSL https://raw.githubusercontent.com/myrrazor/atlas-tasker/main/scripts/install.sh | sh</pre>
         </div>
         <div class="code-block">
-          <div class="snippet-title"><span>optional Go install · Go 1.26.6+</span><button class="copy-button" type="button" data-copy="gs-go" aria-label="Copy go install command">Copy</button></div>
+          <div class="snippet-title"><span>optional Go install · Go 1.26.10+</span><button class="copy-button" type="button" data-copy="gs-go" aria-label="Copy go install command">Copy</button></div>
           <pre id="gs-go">go install github.com/myrrazor/atlas-tasker/cmd/tracker@latest</pre>
         </div>
-        <p>Go installs <code>tracker</code> into <code>$(go env GOPATH)/bin</code> unless <code>GOBIN</code> is set. Add that directory to your <code>PATH</code>.</p>
+        <p>Go installs <code>tracker</code> into <code>$(go env GOPATH)/bin</code> unless <code>GOBIN</code> is set. Add that directory to your <code>PATH</code>. Building from source requires Go 1.26.10 or newer.</p>
         <p>Pin a specific release by exporting <code>VERSION</code> before running the installer. <code>VERSION=1.18.1</code> and <code>VERSION=v1.18.1</code> both install tag <code>v1.18.1</code>. Leave <code>VERSION</code> unset for the latest release. Unstamped source builds can report a module tag from a tagged checkout or Go install, otherwise <code>dev+&lt;commit&gt;</code> with VCS metadata or <code>dev</code>. These version strings do not prove hosted release provenance.</p>
 
         <h2>Keep the binary current</h2>

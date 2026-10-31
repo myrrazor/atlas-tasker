@@ -67,6 +67,7 @@ need_cmd sh
 for script in \
   scripts/install.sh \
   scripts/verify-release.sh \
+  scripts/write-release-checksums.sh \
   scripts/release-rehearsal.sh \
   scripts/preflight-release-proof.sh \
   scripts/preflight-release.sh \

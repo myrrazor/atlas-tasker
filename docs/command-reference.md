@@ -825,6 +825,7 @@ Rules:
 - `doctor` audits orchestration snapshots and derived state in addition to tickets and projection health
 - `doctor --json` reports run, gate, handoff, evidence, runtime, and worktree issue counts under `issues.orchestration`
 - `doctor --repair` may rebuild projection state and reconcile Git worktree metadata, but it will not recreate missing worktrees, runtime artifacts, or evidence artifacts
+- `doctor --repair` refreshes managed ignore rules before it writes anything under `.tracker/quarantine/`, so those backups are git-ignored. On an existing workspace, run it once; a second repair does not add the rule again. Shared mode updates the root `.gitignore` block (`/.tracker/quarantine/`), private mode updates `.git/info/exclude`, and unmanaged mode ignores `/quarantine/` from `.tracker/.gitignore`. Ticket files stay tracked.
 
 ## Notify
 
@@ -1021,7 +1022,7 @@ preserving stricter completion modes and custom reviewer overrides.
 tracker v1.13.0
 commit: abc123
 build date: 2026-09-09T12:00:00Z
-go: go1.26.6
+go: go1.26.10
 platform: darwin/arm64
 ```
 
@@ -1034,7 +1035,7 @@ platform: darwin/arm64
   "version": "v1.13.0",
   "commit": "abc123",
   "build_date": "2026-09-09T12:00:00Z",
-  "go_version": "go1.26.6",
+  "go_version": "go1.26.10",
   "platform": "darwin/arm64"
 }
 ```
