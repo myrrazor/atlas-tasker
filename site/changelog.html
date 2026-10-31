@@ -74,6 +74,15 @@
     </header>
     <div class="legal-content">
       <section class="shell">
+        <h2>v1.18.3 — TUI live-board and release rehearsal fixes</h2>
+        <ul>
+          <li>Release rehearsal commits the workspace files <code>tracker init</code> creates before it dispatches, so the smoke no longer stops with <code>dirty_repo</code>. When <code>VERSION</code> is unset, it uses the latest <code>vMAJOR.MINOR.PATCH</code> git tag.</li>
+          <li>The TUI watch loop follows SQLite <code>data_version</code>. A commit that lands before the next tick is still loaded when a WAL spill moves the file stamp first, and a failed generation read still reloads on the next tick.</li>
+          <li>Docs, site and plugin pins moved to v1.18.3.</li>
+        </ul>
+        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.3">Download v1.18.3 and read its verification results</a>. The installer selects this stable release.</p>
+      </section>
+      <section class="shell">
         <h2>v1.18.2 — Quarantine, checksum and installer fixes</h2>
         <ul>
           <li>Repair copies under <code>.tracker/quarantine/</code> are git-ignored. On an existing workspace, run <code>tracker doctor --repair</code> once to refresh the ignore rules.</li>
@@ -81,7 +90,7 @@
           <li>The installer accepts <code>VERSION=1.18.2</code> or <code>VERSION=v1.18.2</code> and names a missing release with its URL.</li>
           <li>Docs: building from source needs Go 1.26.10 or newer, and the <code>tracker version --json</code> samples match a real release binary.</li>
         </ul>
-        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.2">Download v1.18.2 and read its verification results</a>. The installer selects this stable release.</p>
+        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.2">Download v1.18.2 and read its verification results</a>.</p>
       </section>
       <section class="shell">
         <h2>v1.18.1 — Install, update and MCP approval fixes</h2>

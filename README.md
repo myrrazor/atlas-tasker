@@ -10,7 +10,7 @@
 
 Atlas Tasker is a local-first issue tracker that lives in your repo. Tickets, dependencies, review gates, and audit history are markdown files plus a rebuildable SQLite index — no hosted account. Coding agents (Claude Code, Codex, Cursor, OpenClaw, Grok, anything that speaks MCP) claim work, block on each other, attach evidence, and hand off for review on the same board.
 
-> **New in v1.18.2:** a small fix release. Repair copies under `.tracker/quarantine/` are git-ignored (run `tracker doctor --repair` once on an existing workspace), release `checksums.txt` lists bare asset names so `sha256sum -c checksums.txt` works in the download folder, and the installer accepts `VERSION=1.18.2` or `VERSION=v1.18.2` and names a missing release clearly. The docs now say Go 1.26.10 or newer for source builds. [Release notes](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.2) · [Install without the script](docs/install-without-script.md).
+> **New in v1.18.3:** a small fix release. The TUI watch loop follows SQLite `data_version`, so a commit that lands before the next tick is still loaded when a WAL spill moves the file stamp first, and a failed generation read still reloads on the next tick. Release rehearsal commits the workspace files `tracker init` creates before it dispatches, so the smoke no longer stops with `dirty_repo`, and an unset `VERSION` uses the latest `vMAJOR.MINOR.PATCH` git tag. [Release notes](https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.3) · [Install without the script](docs/install-without-script.md).
 
 ## Get started
 
@@ -54,7 +54,7 @@ Give each agent its own tickets on a shared board. Assignees, leases, and review
 
 ## Install
 
-The one-liner above is the normal path: latest **published** GitHub release, SHA-256, GitHub build attestation via a local bundle (`gh` required; no GitHub login). Default destination `/usr/local/bin`. If that directory isn't writable and you didn't set `BIN_DIR`, the installer puts `tracker` in `~/.local/bin` instead (creating it) and prints the `PATH` line to add if that directory isn't on your `PATH`. It never runs `sudo` unless you opt in with `USE_SUDO=1`, which keeps `/usr/local/bin`. An explicit `BIN_DIR` is used as is, and the installer stops if it isn't writable. `VERSION` pins a release: `VERSION=1.18.2` and `VERSION=v1.18.2` both install tag `v1.18.2`. Leave `VERSION` unset for the latest release. A missing tag prints `atlas-tasker: release <tag> not found at <url>`.
+The one-liner above is the normal path: latest **published** GitHub release, SHA-256, GitHub build attestation via a local bundle (`gh` required; no GitHub login). Default destination `/usr/local/bin`. If that directory isn't writable and you didn't set `BIN_DIR`, the installer puts `tracker` in `~/.local/bin` instead (creating it) and prints the `PATH` line to add if that directory isn't on your `PATH`. It never runs `sudo` unless you opt in with `USE_SUDO=1`, which keeps `/usr/local/bin`. An explicit `BIN_DIR` is used as is, and the installer stops if it isn't writable. `VERSION` pins a release: `VERSION=1.18.3` and `VERSION=v1.18.3` both install tag `v1.18.3`. Leave `VERSION` unset for the latest release. A missing tag prints `atlas-tasker: release <tag> not found at <url>`.
 
 **Minimum `gh`: 2.102.0.** Releases before 2.96.0 can't download public release assets without a GitHub login, and releases before 2.49.0 have no `gh attestation` command. The floor is 2.102.0 because of two `gh attestation verify` security fixes: 2.97.0 stopped lookalike `--signer-workflow` names from bypassing the signer check ([GHSA-mm27-mwq9-fr5g](https://github.com/cli/cli/security/advisories/GHSA-mm27-mwq9-fr5g)), and 2.102.0 made `--source-ref` matching case-sensitive ([GHSA-4mq3-hpgx-9cx8](https://github.com/cli/cli/security/advisories/GHSA-4mq3-hpgx-9cx8)). Distro packages such as Ubuntu 24.04's gh 2.45.0 and Debian 13's gh 2.46.0 don't work. The installer checks `gh --version` before downloading anything and stops with:
 
@@ -75,7 +75,7 @@ gh --version 2>/dev/null | awk 'NR==1{f=$3; split(f,v,"."); ok=(f~/^[0-9]+\.[0-9
 Building from source requires Go 1.26.10 or newer:
 
 ```bash
-go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.2
+go install github.com/myrrazor/atlas-tasker/cmd/tracker@v1.18.3
 ```
 
 With the default `GOTOOLCHAIN=auto`, Go downloads Go 1.26.10 only when your local toolchain is older than 1.26.10; a local Go 1.26.10 or newer builds directly.
@@ -209,7 +209,7 @@ What Atlas does **not** claim: [security limitations](docs/security-limitations.
 
 ## Status
 
-Atlas Tasker **v1.18.2** is a small fix release for v1.18.1: repair copies under `.tracker/quarantine/` are git-ignored, release `checksums.txt` lists bare asset names, the installer accepts `VERSION` with or without a leading `v` and names a missing release, and the docs say Go 1.26.10 or newer for source builds. v1.18.1 added the GitHub CLI 2.102.0 floor, token-free attestation verification in `tracker update`, the `~/.local/bin` installer fallback, MCP machine-scoped approval fixes, and the restore, repair, web and Home fixes. The installer selects the latest published release. [CHANGELOG.md](CHANGELOG.md) lists the changes. See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
+Atlas Tasker **v1.18.3** is a small fix release for v1.18.2: the TUI watch loop follows SQLite `data_version` so a commit is not missed when a WAL spill moves the index stamp first, and release rehearsal commits `tracker init` files before dispatch so the smoke does not stop with `dirty_repo`. v1.18.2 git-ignored repair copies under `.tracker/quarantine/`, listed bare asset names in release `checksums.txt`, accepted `VERSION` with or without a leading `v`, and documented Go 1.26.10 or newer for source builds. The installer selects the latest published release. [CHANGELOG.md](CHANGELOG.md) lists the changes. See verification results on the [GitHub release page](https://github.com/myrrazor/atlas-tasker/releases/latest).
 
 `v1.9.0` was the first stable release. Found something broken? [Open an issue](https://github.com/myrrazor/atlas-tasker/issues) — and please don't paste private keys, tokens, or full `.tracker` archives into it. Security reports go through [private vulnerability reporting](SECURITY.md).
 
