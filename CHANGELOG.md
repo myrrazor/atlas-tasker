@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Site docs: the `tracker version --json` samples on the CLI page and the JSON and exit codes page match the published v1.18.1 linux/amd64 binary (commit `fe3d0f8a8598027fa4c6c3648b116f981881f355`, build date `2026-10-31T00:39:04Z`, `go1.26.10`, platform `linux/amd64`, keys in the binary's alphabetical order).
 - `.tracker/quarantine/` is excluded from Git, the same way `.tracker/web-session.json` is. `tracker init` writes the rule for new shared and private workspaces. Existing workspaces, including ones created before this release, get it when `tracker doctor --repair` refreshes ignore rules, and a second repair does not add the rule again. Shared, private, and unmanaged modes all leave the quarantine copy untracked; ticket files stay tracked.
 
 ## v1.18.1 - Install, update and MCP approval fixes (2026-10-30)
