@@ -6,6 +6,8 @@ Two install paths that never pipe a remote script into a shell. Both put a `trac
 
 Needs `gh` 2.102.0 or newer (no GitHub login required; older `gh`, including Ubuntu 24.04's 2.45.0 and Debian 13's 2.46.0, asks for `gh auth login` and has no `gh attestation`), `sha256sum` (on macOS use `shasum -a 256 -c -` in its place) and `tar`. Pick your platform: `linux_amd64`, `linux_arm64`, `darwin_amd64`, `darwin_arm64`.
 
+`VERSION` in the block below is the release number without a leading `v`, because those commands add the prefix (`v$VERSION`, `refs/tags/v$VERSION`). `scripts/install.sh` accepts either form: `VERSION=1.18.1` and `VERSION=v1.18.1` both install tag `v1.18.1`.
+
 ```bash
 (
 set -e
