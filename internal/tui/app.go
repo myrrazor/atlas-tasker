@@ -511,7 +511,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		next := m.watchRefreshIfNeeded()
 		return m, next
 	case watchTickMsg:
-		if refresh := m.watchRefreshIfNeeded(); refresh != nil {
+		// A tick retries when the generation cannot be read. Load completion
+		// does not: chaining that retry would reload in a tight loop.
+		if refresh := m.watchRefresh(true); refresh != nil {
 			return m, tea.Batch(refresh, scheduleWatch())
 		}
 		return m, scheduleWatch()
@@ -863,24 +865,45 @@ func (m model) bodyView() string {
 // before the commit is visible, so file stamps are not consulted.
 // While a load is in flight the generation is left unchanged; the completion
 // schedules at most one reload for whatever committed in the meantime.
+// An empty baseline still reloads once a generation can be read. A failed
+// read is left to the next tick so the board does not stick and completions
+// do not chain.
 func (m *model) watchRefreshIfNeeded() tea.Cmd {
+	return m.watchRefresh(false)
+}
+
+// watchRefresh reloads when the on-screen generation is stale. retryUnavailable
+// is set for a watch tick: an empty generation or a failed read then schedules
+// a reload if nothing is in flight. Load completion passes false so a stuck
+// read waits for the next tick instead of spinning.
+func (m *model) watchRefresh(retryUnavailable bool) tea.Cmd {
 	if m.reloads == nil || m.dialog.active() || m.search.Focused() || m.showHelp {
 		return nil
 	}
 	m.reloads.mu.Lock()
 	active := m.reloads.active > 0
 	m.reloads.mu.Unlock()
-	if active || m.indexGen == "" {
+	if active {
 		return nil
 	}
-	gen, ok := watchIndexGen(m.projection)
-	if !ok || gen == m.indexGen {
+	gen, ok := readProjectionGeneration(m.projection)
+	if !ok || gen == "" {
+		if retryUnavailable {
+			return m.refresh()
+		}
+		return nil
+	}
+	if gen == m.indexGen {
 		return nil
 	}
 	return m.refresh()
 }
 
-func watchIndexGen(store *sqlitestore.Store) (string, bool) {
+// readProjectionGeneration is the watch loop's data_version read. Tests
+// replace it to inject a failed ProjectionGeneration.
+var readProjectionGeneration = projectionGeneration
+
+func projectionGeneration(store *sqlitestore.Store) (string, bool) {
 	if store == nil {
 		return "", false
 	}
@@ -911,7 +934,7 @@ func (m model) reload(selectedID string, searchQuery string, status string) tea.
 	return m.trackReload(func() tea.Msg {
 		// Captured before the panels so a commit during the read stays
 		// newer than the generation this snapshot claims to have seen.
-		indexGen, _ := watchIndexGen(m.projection)
+		indexGen, _ := readProjectionGeneration(m.projection)
 		msg := m.readPanels(selectedID, searchQuery, status)
 		msg.indexGen = indexGen
 		return msg

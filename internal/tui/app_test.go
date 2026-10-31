@@ -205,6 +205,100 @@ func TestWatchSeesCommitWhenFileStampStaysPut(t *testing.T) {
 	}
 }
 
+// TestWatchReloadsWhenGenerationReadFails injects a ProjectionGeneration
+// failure after a baseline is on screen. The next tick must still reload,
+// a load already in flight must not gain a second one, and a commit made
+// once reads work again must show up.
+func TestWatchReloadsWhenGenerationReadFails(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.close()
+	m = applyLoad(t, m, m.refresh()())
+	if m.detail.Ticket.Status != contracts.StatusReady {
+		t.Fatalf("initial ticket = %#v", m.detail.Ticket)
+	}
+	if m.indexGen == "" {
+		t.Fatal("initial load did not record a database generation")
+	}
+	baseline := m.indexGen
+
+	prevRead := readProjectionGeneration
+	prevWatch := scheduleWatch
+	readProjectionGeneration = func(*sqlitestore.Store) (string, bool) { return "", false }
+	scheduleWatch = func() tea.Cmd {
+		return func() tea.Msg { return nil }
+	}
+	t.Cleanup(func() {
+		readProjectionGeneration = prevRead
+		scheduleWatch = prevWatch
+	})
+
+	updated, cmd := m.Update(watchTickMsg{})
+	m = updated.(model)
+	loaded, ok := takeWatchReload(t, cmd)
+	if !ok {
+		t.Fatal("tick did not reload when the generation read failed")
+	}
+	if m.indexGen != baseline {
+		t.Fatal("failed generation read replaced the baseline before the reload was applied")
+	}
+	updated, follow := m.Update(loaded)
+	m = updated.(model)
+	if follow != nil || m.reloads.active != 0 {
+		t.Fatal("generation failure chained another reload without waiting for the next tick")
+	}
+	if m.indexGen != baseline {
+		t.Fatal("failed load cleared the generation baseline")
+	}
+	if m.detail.Ticket.Status != contracts.StatusReady {
+		t.Fatalf("generation failure rewrote the ticket: %#v", m.detail.Ticket)
+	}
+
+	held := m.trackReload(func() tea.Msg { return loadedMsg{status: "held"} })
+	updated, cmd = m.Update(watchTickMsg{})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("tick dropped its reschedule while a load was in flight")
+	}
+	if _, isBatch := cmd().(tea.BatchMsg); isBatch {
+		t.Fatal("tick started a second reload while one was in flight")
+	}
+	if m.reloads.active != 1 {
+		t.Fatalf("in-flight reload count = %d", m.reloads.active)
+	}
+	updated, follow = m.Update(held())
+	m = updated.(model)
+	if follow != nil || m.reloads.active != 0 {
+		t.Fatal("held load completion started a reload while the generation read was still failing")
+	}
+
+	readProjectionGeneration = prevRead
+	external, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer external.close()
+	if _, err := external.actions.MoveTicket(context.Background(), "APP-1", contracts.StatusBlocked, "human:owner", "external change"); err != nil {
+		t.Fatal(err)
+	}
+	updated, cmd = m.Update(watchTickMsg{})
+	m = updated.(model)
+	loaded, ok = takeWatchReload(t, cmd)
+	if !ok {
+		t.Fatal("tick missed a commit after generation reads resumed")
+	}
+	m = applyLoad(t, m, loaded)
+	if m.detail.Ticket.Status != contracts.StatusBlocked {
+		t.Fatalf("external status did not reach the TUI: %#v", m.detail.Ticket)
+	}
+	if m.indexGen == "" || m.indexGen == baseline {
+		t.Fatalf("resumed read did not record the committed generation: %q", m.indexGen)
+	}
+}
+
 func applyLoad(t *testing.T, m model, msg tea.Msg) model {
 	t.Helper()
 	updated, cmd := m.Update(msg)

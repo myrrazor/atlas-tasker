@@ -3,7 +3,7 @@
 ## Unreleased
 
 - Release rehearsal commits the workspace files `tracker init` creates before it dispatches, so the smoke no longer stops with `dirty_repo`. The extra sync workspaces use separate directory names so their default projects do not clash. When `VERSION` is not set, it uses the latest `vMAJOR.MINOR.PATCH` git tag instead of a hardcoded version.
-- The TUI watch loop follows SQLite `data_version` instead of index file mtimes. A commit that lands before the next tick is still loaded when a WAL spill moves the file stamp first and the commit itself does not move it again.
+- The TUI watch loop follows SQLite `data_version` instead of index file mtimes. A commit that lands before the next tick is still loaded when a WAL spill moves the file stamp first and the commit itself does not move it again. If that generation cannot be read, the next tick still reloads instead of leaving the board on the last snapshot.
 
 ## v1.18.2 - Quarantine, checksum and installer fixes (2026-10-31)
 
