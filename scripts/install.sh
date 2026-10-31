@@ -161,9 +161,18 @@ EOF
   chmod 600 "$receipt" 2>/dev/null || true
 }
 
+# Release tags are v1.18.1. VERSION=1.18.1 and VERSION=v1.18.1 both mean that
+# tag. Unset VERSION stays "latest" and still uses the published tag name.
+normalize_requested_version() {
+  case "$1" in
+    v*) printf '%s' "$1" ;;
+    *) printf 'v%s' "$1" ;;
+  esac
+}
+
 resolve_version() {
   if [ "$VERSION" != "latest" ]; then
-    printf '%s' "$VERSION"
+    normalize_requested_version "$VERSION"
     return
   fi
   curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
@@ -410,6 +419,27 @@ curl_public() {
   curl -fsSL -H "User-Agent: atlas-tasker-installer" "$@"
 }
 
+# Download one release asset. A missing tag or asset names the resolved tag
+# and the URL instead of exiting with a bare curl 404.
+download_release_asset() {
+  dest="$1"
+  url="$2"
+  code_file="$TMP_DIR/http-code"
+  if curl_public -o "$dest" -w "%{http_code}" "$url" >"$code_file" 2>/dev/null; then
+    return 0
+  fi
+  code=""
+  if [ -f "$code_file" ]; then
+    IFS= read -r code <"$code_file" || true
+  fi
+  if [ "$code" = "404" ]; then
+    echo "atlas-tasker: release ${TAG} not found at ${url}" >&2
+    exit 1
+  fi
+  echo "atlas-tasker: failed to download release ${TAG} from ${url}" >&2
+  exit 1
+}
+
 fetch_attestation_bundle() {
   archive_path="$1"
   dest="$TMP_DIR/attestation-bundle.jsonl"
@@ -496,7 +526,7 @@ verify_archive() {
   else
     checksums_url="https://github.com/${REPO}/releases/download/${TAG}/checksums.txt"
   fi
-  curl_public "$checksums_url" -o "$TMP_DIR/checksums.txt"
+  download_release_asset "$TMP_DIR/checksums.txt" "$checksums_url"
   expected_sum="$(awk -v file="$archive_name" '
     {
       name = $2
@@ -619,7 +649,7 @@ fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
-curl_public "$URL" -o "$TMP_DIR/$ARCHIVE"
+download_release_asset "$TMP_DIR/$ARCHIVE" "$URL"
 verify_archive "$TMP_DIR/$ARCHIVE" "$ARCHIVE"
 tar -xzf "$TMP_DIR/$ARCHIVE" -C "$TMP_DIR"
 if [ ! -f "$TMP_DIR/$BIN_NAME" ]; then

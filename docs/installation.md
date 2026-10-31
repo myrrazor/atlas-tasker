@@ -27,17 +27,19 @@ export PATH="$HOME/.local/bin:$PATH"
 tracker version --json
 ```
 
-`BIN_DIR` selects the destination and `VERSION` pins a published tag. When running
-a checked-out installer, for example:
+`BIN_DIR` selects the destination and `VERSION` pins a published tag.
+`1.18.1` and `v1.18.1` both request tag `v1.18.1`. Leave `VERSION` unset for the latest release.
+When running a checked-out installer, for example:
 
 ```bash
-VERSION=v1.16.0 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
+VERSION=1.18.1 BIN_DIR="$HOME/.local/bin" sh ./scripts/install.sh
 ```
 
 Inspect installer scripts before running them. Use repository or release URLs,
 and do not run commands copied from untrusted issues or comments.
 
 Checksum mismatch, missing bundle, or identity failure refuses the install.
+A missing tag or asset prints `atlas-tasker: release <tag> not found at <url>` and exits non-zero.
 There is no checksum-only fallback. `VERIFY_ATTESTATIONS=0` is an explicit
 local-fixture override, not a normal install.
 
