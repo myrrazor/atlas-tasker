@@ -111,7 +111,7 @@ Prefer a full-screen view? `tracker tui` — board, queues, ticket detail, searc
 
 ![Ticket detail with runs, evidence, and timeline](docs/assets/tui-detail.png)
 
-Every ticket is markdown under `projects/`, every change is an append-only event in `.tracker/`, and the SQLite file is a disposable index. If it goes missing, the next command rebuilds it; `tracker doctor --repair` does it on demand. A ticket file that is cut short or no longer parses is named by `tracker doctor` (exit 7), and `tracker doctor --repair` backs it up to `.tracker/quarantine/` and restores it from the event log.
+Every ticket is markdown under `projects/`, every change is an append-only event in `.tracker/`, and the SQLite file is a disposable index. If it goes missing, the next command rebuilds it; `tracker doctor --repair` does it on demand. A ticket file that is cut short or no longer parses is named by `tracker doctor` (exit 7), and `tracker doctor --repair` backs it up to `.tracker/quarantine/` and restores it from the event log. Quarantine backups are git-ignored. On an existing workspace, run `tracker doctor --repair` once to refresh the ignore rules.
 
 ## Grok plugin
 

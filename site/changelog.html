@@ -74,6 +74,12 @@
     </header>
     <div class="legal-content">
       <section class="shell">
+        <h2>Unreleased</h2>
+        <ul>
+          <li>Repair copies under <code>.tracker/quarantine/</code> are git-ignored. On an existing workspace, run <code>tracker doctor --repair</code> once to refresh the ignore rules.</li>
+        </ul>
+      </section>
+      <section class="shell">
         <h2>v1.18.1 — Install, update and MCP approval fixes</h2>
         <ul>
           <li>The installer and <code>tracker update</code> need GitHub CLI (<code>gh</code>) 2.102.0 or newer and stop before downloading with an upgrade message. The no-script install block starts with a real <code>gh</code> check and stops cleanly when <code>gh</code> is missing or too old.</li>
