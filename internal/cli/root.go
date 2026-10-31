@@ -1946,6 +1946,14 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 }
 
 func runDoctorAtRoot(cmd *cobra.Command, ctx context.Context, root string, repair bool) error {
+	// Existing workspaces (including ones initialized before quarantine was
+	// ignored) pick up new local-ignore rules here. Init alone cannot reach
+	// them, and unmanaged mode never writes the root block.
+	if repair {
+		if err := app.RefreshManagedIgnores(root); err != nil {
+			return err
+		}
+	}
 	pending, err := (service.MutationJournal{Root: root, Clock: defaultNow}).List()
 	if err != nil {
 		return err
