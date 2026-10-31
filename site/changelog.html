@@ -74,10 +74,14 @@
     </header>
     <div class="legal-content">
       <section class="shell">
-        <h2>Unreleased</h2>
+        <h2>v1.18.2 — Quarantine, checksum and installer fixes</h2>
         <ul>
           <li>Repair copies under <code>.tracker/quarantine/</code> are git-ignored. On an existing workspace, run <code>tracker doctor --repair</code> once to refresh the ignore rules.</li>
+          <li>Release <code>checksums.txt</code> lists bare asset names, so <code>sha256sum -c checksums.txt</code> works in the download folder. The installer and <code>tracker update</code> still accept the older <code>dist/</code> lines.</li>
+          <li>The installer accepts <code>VERSION=1.18.2</code> or <code>VERSION=v1.18.2</code> and names a missing release with its URL.</li>
+          <li>Docs: building from source needs Go 1.26.10 or newer, and the <code>tracker version --json</code> samples match a real release binary.</li>
         </ul>
+        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.2">Download v1.18.2 and read its verification results</a>. The installer selects this stable release.</p>
       </section>
       <section class="shell">
         <h2>v1.18.1 — Install, update and MCP approval fixes</h2>
@@ -92,7 +96,7 @@
           <li><code>tracker init</code> no longer shows another Atlas instance's Home port (such as <code>127.0.0.1:7432</code>) as this workspace's Home; it names the owner and points to <code>service.port</code>.</li>
           <li>Upgrading from v1.18.0 or older: the old updater can't verify without a token, so reinstall with the installer or the no-script steps.</li>
         </ul>
-        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.1">Download v1.18.1 and read its verification results</a>. The installer selects this stable release.</p>
+        <p><a href="https://github.com/myrrazor/atlas-tasker/releases/tag/v1.18.1">Download v1.18.1 and read its verification results</a>.</p>
       </section>
       <section class="shell">
         <h2>v1.18.0 — Grok plugin and install without curl | sh</h2>

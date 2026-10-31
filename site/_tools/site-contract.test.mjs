@@ -392,7 +392,7 @@ test("hero install note shows the full pinned release version", () => {
   const pinned = index.match(
     /id="go-install"[^>]*>go install github\.com\/myrrazor\/atlas-tasker\/cmd\/tracker@(v\d+\.\d+\.\d+)<\/code>/,
   )?.[1];
-  assert.equal(pinned, "v1.18.1");
+  assert.equal(pinned, "v1.18.2");
   const note = index.match(/<p class="command-note">([\s\S]*?)<\/p>/)?.[1] ?? "";
   assert.equal(
     note.match(/· (v\d+\.\d+\.\d+)\s*$/)?.[1],
