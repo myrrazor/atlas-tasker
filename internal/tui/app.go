@@ -173,12 +173,14 @@ type model struct {
 	cursor             int
 	status             string
 	showHelp           bool
-	indexStamp         string
-	reloads            *reloadState
-	dialog             dialogState
-	lastBulk           *service.BulkOperationResult
-	pendingBulk        *service.BulkOperation
-	boardStyle         render.BoardStyle
+	// indexGen is the SQLite data_version of the snapshot on screen.
+	// It is recorded only when that snapshot is applied.
+	indexGen    string
+	reloads     *reloadState
+	dialog      dialogState
+	lastBulk    *service.BulkOperationResult
+	pendingBulk *service.BulkOperation
+	boardStyle  render.BoardStyle
 }
 
 // reloadState is shared with Init's model copy. Commands reserve their generation
@@ -192,6 +194,7 @@ type reloadState struct {
 
 type loadedMsg struct {
 	generation        uint64
+	indexGen          string
 	board             service.BoardViewModel
 	queue             service.QueueView
 	agentWork         service.AgentWorkView
@@ -342,7 +345,6 @@ func newModel(root string, explicitActor contracts.Actor) (model, error) {
 		search:     searchInput,
 		status:     "loading…",
 		boardStyle: render.BoardStyleTable,
-		indexStamp: projectionStamp(root),
 		reloads:    &reloadState{},
 	}, nil
 }
@@ -353,10 +355,17 @@ func watchTick() tea.Cmd {
 	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return watchTickMsg{} })
 }
 
-// projectionStamp includes the WAL and SHM files. A single write often lands
-// only in index.sqlite-wal, so the main database mtime stays put until a
-// checkpoint.
-func projectionStamp(root string) string {
+// scheduleWatch is the next-tick command. Tests replace it with a command
+// that returns immediately so a tick can be inspected without waiting.
+var scheduleWatch = watchTick
+
+// projectionStamp is the index file mtime/size token. It is not a commit
+// signal: a WAL spill moves it before readers can see the commit, and the
+// commit can then land without moving it again. Tests freeze it to prove a
+// stuck stamp cannot hide a write.
+var projectionStamp = projectionFileStamp
+
+func projectionFileStamp(root string) string {
 	var b strings.Builder
 	dir := storage.TrackerDir(root)
 	for _, name := range []string{"index.sqlite", "index.sqlite-wal", "index.sqlite-shm"} {
@@ -371,7 +380,7 @@ func projectionStamp(root string) string {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(m.refresh(), splashMinDelayCmd(), watchTick())
+	return tea.Batch(m.refresh(), splashMinDelayCmd(), scheduleWatch())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -394,6 +403,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				next := m.watchRefreshIfNeeded()
 				return m, next
 			}
+		}
+		// indexGen is the generation read before the panels. A commit that
+		// lands while they load stays ahead of it and is picked up below.
+		if msg.indexGen != "" {
+			m.indexGen = msg.indexGen
 		}
 		// even a failed load counts as "ready" -- the splash must never
 		// outlive the data it was waiting for
@@ -497,10 +511,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		next := m.watchRefreshIfNeeded()
 		return m, next
 	case watchTickMsg:
-		if refresh := m.watchRefreshIfNeeded(); refresh != nil {
-			return m, tea.Batch(refresh, watchTick())
+		// A tick retries when the generation cannot be read. Load completion
+		// does not: chaining that retry would reload in a tight loop.
+		if refresh := m.watchRefresh(true); refresh != nil {
+			return m, tea.Batch(refresh, scheduleWatch())
 		}
-		return m, watchTick()
+		return m, scheduleWatch()
 	case detailMsg:
 		if msg.err != nil {
 			m.status = msg.err.Error()
@@ -842,9 +858,25 @@ func (m model) bodyView() string {
 	}
 }
 
-// watchRefreshIfNeeded leaves the observed stamp unchanged while a load is
-// running. Its completion then schedules one load for the latest disk state.
+// watchRefreshIfNeeded schedules one reload when another SQLite connection
+// has committed since the snapshot on screen. The generation is not updated
+// here: the reload records the generation it read, and Update stores that
+// value only once those rows are applied. A WAL spill can move file mtimes
+// before the commit is visible, so file stamps are not consulted.
+// While a load is in flight the generation is left unchanged; the completion
+// schedules at most one reload for whatever committed in the meantime.
+// An empty baseline still reloads once a generation can be read. A failed
+// read is left to the next tick so the board does not stick and completions
+// do not chain.
 func (m *model) watchRefreshIfNeeded() tea.Cmd {
+	return m.watchRefresh(false)
+}
+
+// watchRefresh reloads when the on-screen generation is stale. retryUnavailable
+// is set for a watch tick: an empty generation or a failed read then schedules
+// a reload if nothing is in flight. Load completion passes false so a stuck
+// read waits for the next tick instead of spinning.
+func (m *model) watchRefresh(retryUnavailable bool) tea.Cmd {
 	if m.reloads == nil || m.dialog.active() || m.search.Focused() || m.showHelp {
 		return nil
 	}
@@ -854,12 +886,28 @@ func (m *model) watchRefreshIfNeeded() tea.Cmd {
 	if active {
 		return nil
 	}
-	stamp := projectionStamp(m.root)
-	if stamp == m.indexStamp {
+	gen, ok := readProjectionGeneration(m.projection)
+	if !ok || gen == "" {
+		if retryUnavailable {
+			return m.refresh()
+		}
 		return nil
 	}
-	m.indexStamp = stamp
+	if gen == m.indexGen {
+		return nil
+	}
 	return m.refresh()
+}
+
+// readProjectionGeneration is the watch loop's data_version read. Tests
+// replace it to inject a failed ProjectionGeneration.
+var readProjectionGeneration = projectionGeneration
+
+func projectionGeneration(store *sqlitestore.Store) (string, bool) {
+	if store == nil {
+		return "", false
+	}
+	return store.ProjectionGeneration(context.Background())
 }
 
 func (m model) trackReload(cmd tea.Cmd) tea.Cmd {
@@ -884,179 +932,188 @@ func (m model) refresh() tea.Cmd {
 
 func (m model) reload(selectedID string, searchQuery string, status string) tea.Cmd {
 	return m.trackReload(func() tea.Msg {
-		ctx := context.Background()
-		actor := m.actor
-		actorErr := ""
-		if actor == "" {
-			resolved, err := m.queries.ResolveActor(ctx, "")
-			if err != nil {
-				actorErr = "queue context is unset; board-only mode is available"
-			} else {
-				actor = resolved
-			}
-		}
-		board, err := m.queries.Board(ctx, contracts.BoardQueryOptions{})
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		queue := service.QueueView{}
-		agentWork := service.AgentWorkView{GeneratedAt: m.now()}
-		review := service.QueueView{}
-		runs := []contracts.RunSnapshot{}
-		runDetail := service.RunDetailView{GeneratedAt: m.now()}
-		runLaunch := service.RunLaunchManifestView{GeneratedAt: m.now()}
-		agents := []service.AgentDetailView{}
-		approvals := []service.ApprovalItemView{}
-		operatorInbox := []service.InboxItemView{}
-		dispatchQueue := service.DispatchQueueView{}
-		agentWakeups := []service.AgentWakeup{}
-		worktrees := []service.WorktreeStatusView{}
-		dashboard := service.DashboardSummaryView{GeneratedAt: m.now()}
-		timeline := service.TimelineView{GeneratedAt: m.now()}
-		owner, err := m.queries.Queue(ctx, contracts.Actor("human:owner"))
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		if actor != "" {
-			queue, err = m.queries.Queue(ctx, actor)
-			if err != nil {
-				return loadedMsg{err: err}
-			}
-			agentWork, err = m.queries.AgentWork(ctx, actor)
-			if err != nil {
-				return loadedMsg{err: err}
-			}
-			review = service.QueueView{Actor: actor, GeneratedAt: queue.GeneratedAt, Categories: map[service.QueueCategory][]service.QueueEntry{
-				service.QueueNeedsReview: queue.Categories[service.QueueNeedsReview],
-			}}
-		}
-		searchHits := []contracts.TicketSnapshot{}
-		if searchQuery != "" {
-			parsed, err := contracts.ParseSearchQueryFlexible(searchQuery)
-			if err != nil {
-				return loadedMsg{err: err}
-			}
-			searchHits, err = m.queries.Search(ctx, parsed)
-			if err != nil {
-				return loadedMsg{err: err}
-			}
-		}
-		detail := service.TicketDetailView{}
-		runs, err = m.queries.ListRuns(ctx, "", "", "")
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		agents, err = m.queries.ListAgents(ctx)
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		approvals, err = m.queries.Approvals(ctx, m.collaboratorFilter)
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		operatorInbox, err = m.queries.Inbox(ctx, m.collaboratorFilter)
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		dispatchQueue, err = m.queries.DispatchQueue(ctx)
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		if actor != "" {
-			agentWakeups, err = m.queries.AgentWakeups(ctx, tuiAgentIDFromActor(actor))
-			if err != nil {
-				return loadedMsg{err: err}
-			}
-		}
-		worktrees, err = m.queries.WorktreeList(ctx)
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		dashboard, err = m.queries.Dashboard(ctx, m.collaboratorFilter)
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		if selectedID == "" {
-			selectedID = firstBoardTicketID(board)
-		}
-		if selectedID != "" {
-			detail, err = m.queries.TicketDetail(ctx, selectedID)
-			if err != nil {
-				return loadedMsg{err: err}
-			}
-			timeline, err = m.queries.Timeline(ctx, selectedID, m.collaboratorFilter)
-			if err != nil {
-				return loadedMsg{err: err}
-			}
-			if focusRunID := focusRunIDForTicket(detail.Ticket, runs); focusRunID != "" {
-				runDetail, err = m.queries.RunDetail(ctx, focusRunID)
-				if err != nil {
-					return loadedMsg{err: err}
-				}
-				runLaunch, err = m.queries.RunOpen(ctx, focusRunID)
-				if err != nil {
-					return loadedMsg{err: err}
-				}
-			}
-		}
-		inbox, err := m.queries.NotificationLog(12)
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		deadLetters, err := m.queries.DeadLetters(6)
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		savedViews, err := m.queries.ListSavedViews()
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		automations, err := m.queries.AutomationRules()
-		if err != nil {
-			return loadedMsg{err: err}
-		}
-		automationExplain := []service.AutomationResult{}
-		if selectedID != "" {
-			automationExplain, err = m.queries.ExplainAutomationRules(ctx, selectedID)
-			if err != nil {
-				return loadedMsg{err: err}
-			}
-		}
-		selectedView := m.selectedView
-		if selectedView == "" && len(savedViews) > 0 {
-			selectedView = savedViews[0].Name
-		}
-		return loadedMsg{
-			board:             board,
-			queue:             queue,
-			agentWork:         agentWork,
-			review:            review,
-			owner:             owner,
-			runs:              runs,
-			runDetail:         runDetail,
-			runLaunch:         runLaunch,
-			agents:            agents,
-			approvals:         approvals,
-			operatorInbox:     operatorInbox,
-			dispatchQueue:     dispatchQueue,
-			agentWakeups:      agentWakeups,
-			worktrees:         worktrees,
-			dashboard:         dashboard,
-			timeline:          timeline,
-			inbox:             inbox,
-			deadLetters:       deadLetters,
-			savedViews:        savedViews,
-			automations:       automations,
-			automationExplain: automationExplain,
-			detail:            detail,
-			searchHits:        searchHits,
-			selectedID:        selectedID,
-			selectedView:      selectedView,
-			actor:             actor,
-			actorErr:          actorErr,
-			status:            status,
-		}
+		// Captured before the panels so a commit during the read stays
+		// newer than the generation this snapshot claims to have seen.
+		indexGen, _ := readProjectionGeneration(m.projection)
+		msg := m.readPanels(selectedID, searchQuery, status)
+		msg.indexGen = indexGen
+		return msg
 	})
+}
+
+func (m model) readPanels(selectedID string, searchQuery string, status string) loadedMsg {
+	ctx := context.Background()
+	actor := m.actor
+	actorErr := ""
+	if actor == "" {
+		resolved, err := m.queries.ResolveActor(ctx, "")
+		if err != nil {
+			actorErr = "queue context is unset; board-only mode is available"
+		} else {
+			actor = resolved
+		}
+	}
+	board, err := m.queries.Board(ctx, contracts.BoardQueryOptions{})
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	queue := service.QueueView{}
+	agentWork := service.AgentWorkView{GeneratedAt: m.now()}
+	review := service.QueueView{}
+	runs := []contracts.RunSnapshot{}
+	runDetail := service.RunDetailView{GeneratedAt: m.now()}
+	runLaunch := service.RunLaunchManifestView{GeneratedAt: m.now()}
+	agents := []service.AgentDetailView{}
+	approvals := []service.ApprovalItemView{}
+	operatorInbox := []service.InboxItemView{}
+	dispatchQueue := service.DispatchQueueView{}
+	agentWakeups := []service.AgentWakeup{}
+	worktrees := []service.WorktreeStatusView{}
+	dashboard := service.DashboardSummaryView{GeneratedAt: m.now()}
+	timeline := service.TimelineView{GeneratedAt: m.now()}
+	owner, err := m.queries.Queue(ctx, contracts.Actor("human:owner"))
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	if actor != "" {
+		queue, err = m.queries.Queue(ctx, actor)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		agentWork, err = m.queries.AgentWork(ctx, actor)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		review = service.QueueView{Actor: actor, GeneratedAt: queue.GeneratedAt, Categories: map[service.QueueCategory][]service.QueueEntry{
+			service.QueueNeedsReview: queue.Categories[service.QueueNeedsReview],
+		}}
+	}
+	searchHits := []contracts.TicketSnapshot{}
+	if searchQuery != "" {
+		parsed, err := contracts.ParseSearchQueryFlexible(searchQuery)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		searchHits, err = m.queries.Search(ctx, parsed)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+	}
+	detail := service.TicketDetailView{}
+	runs, err = m.queries.ListRuns(ctx, "", "", "")
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	agents, err = m.queries.ListAgents(ctx)
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	approvals, err = m.queries.Approvals(ctx, m.collaboratorFilter)
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	operatorInbox, err = m.queries.Inbox(ctx, m.collaboratorFilter)
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	dispatchQueue, err = m.queries.DispatchQueue(ctx)
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	if actor != "" {
+		agentWakeups, err = m.queries.AgentWakeups(ctx, tuiAgentIDFromActor(actor))
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+	}
+	worktrees, err = m.queries.WorktreeList(ctx)
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	dashboard, err = m.queries.Dashboard(ctx, m.collaboratorFilter)
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	if selectedID == "" {
+		selectedID = firstBoardTicketID(board)
+	}
+	if selectedID != "" {
+		detail, err = m.queries.TicketDetail(ctx, selectedID)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		timeline, err = m.queries.Timeline(ctx, selectedID, m.collaboratorFilter)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+		if focusRunID := focusRunIDForTicket(detail.Ticket, runs); focusRunID != "" {
+			runDetail, err = m.queries.RunDetail(ctx, focusRunID)
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+			runLaunch, err = m.queries.RunOpen(ctx, focusRunID)
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+		}
+	}
+	inbox, err := m.queries.NotificationLog(12)
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	deadLetters, err := m.queries.DeadLetters(6)
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	savedViews, err := m.queries.ListSavedViews()
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	automations, err := m.queries.AutomationRules()
+	if err != nil {
+		return loadedMsg{err: err}
+	}
+	automationExplain := []service.AutomationResult{}
+	if selectedID != "" {
+		automationExplain, err = m.queries.ExplainAutomationRules(ctx, selectedID)
+		if err != nil {
+			return loadedMsg{err: err}
+		}
+	}
+	selectedView := m.selectedView
+	if selectedView == "" && len(savedViews) > 0 {
+		selectedView = savedViews[0].Name
+	}
+	return loadedMsg{
+		board:             board,
+		queue:             queue,
+		agentWork:         agentWork,
+		review:            review,
+		owner:             owner,
+		runs:              runs,
+		runDetail:         runDetail,
+		runLaunch:         runLaunch,
+		agents:            agents,
+		approvals:         approvals,
+		operatorInbox:     operatorInbox,
+		dispatchQueue:     dispatchQueue,
+		agentWakeups:      agentWakeups,
+		worktrees:         worktrees,
+		dashboard:         dashboard,
+		timeline:          timeline,
+		inbox:             inbox,
+		deadLetters:       deadLetters,
+		savedViews:        savedViews,
+		automations:       automations,
+		automationExplain: automationExplain,
+		detail:            detail,
+		searchHits:        searchHits,
+		selectedID:        selectedID,
+		selectedView:      selectedView,
+		actor:             actor,
+		actorErr:          actorErr,
+		status:            status,
+	}
 }
 
 func (m model) searchCmd() tea.Cmd {
