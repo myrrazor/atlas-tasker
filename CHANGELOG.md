@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- atlastasker.com hero install note shows the full published release (v1.18.1), matching the pinned `go install` and the rest of the site. The site contract test requires that note to use the same `vMAJOR.MINOR.PATCH` pin, so a minor-only label cannot drift again.
 - `.tracker/quarantine/` is excluded from Git, the same way `.tracker/web-session.json` is. `tracker init` writes the rule for new shared and private workspaces. Existing workspaces, including ones created before this release, get it when `tracker doctor --repair` refreshes ignore rules, and a second repair does not add the rule again. Shared, private, and unmanaged modes all leave the quarantine copy untracked; ticket files stay tracked.
 
 ## v1.18.1 - Install, update and MCP approval fixes (2026-10-30)
