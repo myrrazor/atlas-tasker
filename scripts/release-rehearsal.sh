@@ -2,7 +2,48 @@
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
-VERSION="${VERSION:-v1.13.0-rc1}"
+
+# Accept only vMAJOR.MINOR.PATCH. Pre-release tags such as v1.2.3-rc1 do not match.
+release_tag_ok() {
+  tag="$1"
+  case "$tag" in
+    v*.*.*) ;;
+    *) return 1 ;;
+  esac
+  rest="${tag#v}"
+  major="${rest%%.*}"
+  rest="${rest#*.}"
+  minor="${rest%%.*}"
+  patch="${rest#*.}"
+  case "$major" in
+    ""|*[!0-9]*) return 1 ;;
+  esac
+  case "$minor" in
+    ""|*[!0-9]*) return 1 ;;
+  esac
+  case "$patch" in
+    ""|*[!0-9]*) return 1 ;;
+  esac
+  return 0
+}
+
+# An explicit VERSION wins. Otherwise use the latest tag on the source repo.
+if [ -z "${VERSION:-}" ]; then
+  if ! command -v git >/dev/null 2>&1; then
+    echo "missing required command: git" >&2
+    exit 1
+  fi
+  described="$(git -C "$ROOT_DIR" describe --tags --abbrev=0 2>/dev/null || true)"
+  if release_tag_ok "$described"; then
+    VERSION="$described"
+  elif [ -z "$described" ]; then
+    echo "VERSION is unset and no git tag was found in $ROOT_DIR" >&2
+    exit 1
+  else
+    echo "VERSION is unset and the latest tag '$described' does not match vMAJOR.MINOR.PATCH" >&2
+    exit 1
+  fi
+fi
 VERSION_NO_V="${VERSION#v}"
 BIN_NAME="tracker"
 DIST_DIR="${DIST_DIR:-$(mktemp -d)}"
@@ -123,6 +164,36 @@ git commit -m init >/dev/null
 "$INSTALL_DIR/$BIN_NAME" ticket create --project APP --title "Smoke" --type task --reviewer agent:reviewer-1 --actor human:owner
 "$INSTALL_DIR/$BIN_NAME" ticket move APP-1 ready --actor human:owner
 "$INSTALL_DIR/$BIN_NAME" agent create builder-1 --name "Builder One" --provider codex --capability go --actor human:owner
+# init leaves agent guides and workspace files untracked. Dispatch treats the
+# guides as a dirty repo. Later setup keeps editing the same tracker paths, so
+# commit them again before each dispatch. Anything else stays untracked.
+commit_tracker_workspace() {
+  tracker_path=""
+  for tracker_path in \
+    .agents \
+    .claude \
+    .cursor \
+    .grok \
+    .gitignore \
+    .tracker \
+    AGENTS.md \
+    CLAUDE.md \
+    projects
+  do
+    if [ -e "$tracker_path" ] || [ -L "$tracker_path" ]; then
+      git add -- "$tracker_path"
+    fi
+  done
+  if ! git diff --cached --quiet; then
+    GIT_AUTHOR_NAME=atlas-rehearsal \
+    GIT_AUTHOR_EMAIL=rehearsal@example.invalid \
+    GIT_COMMITTER_NAME=atlas-rehearsal \
+    GIT_COMMITTER_EMAIL=rehearsal@example.invalid \
+    git -c user.name=atlas-rehearsal -c user.email=rehearsal@example.invalid \
+      commit -m "Record tracker workspace for rehearsal" >/dev/null
+  fi
+}
+commit_tracker_workspace
 DISPATCH_JSON="$("$INSTALL_DIR/$BIN_NAME" run dispatch APP-1 --agent builder-1 --actor human:owner --json)"
 RUN_ID="$(printf '%s' "$DISPATCH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["run_id"])')"
 "$INSTALL_DIR/$BIN_NAME" run launch "$RUN_ID" --actor human:owner
@@ -172,9 +243,11 @@ run_in() {
 GIT_REMOTE_ROOT="$(mktemp -d)"
 GIT_REMOTE="$GIT_REMOTE_ROOT/sync-remote.git"
 git init --bare "$GIT_REMOTE" >/dev/null
-WORK_B="$(mktemp -d)"
-WORK_C="$(mktemp -d)"
-WORK_D="$(mktemp -d)"
+# init names the default project from the directory. Plain mktemp dirs are
+# all "tmp.…", which becomes the same project key and makes sync conflict.
+WORK_B="$(mktemp -d "${TMPDIR:-/tmp}/syncb.XXXXXX")"
+WORK_C="$(mktemp -d "${TMPDIR:-/tmp}/syncc.XXXXXX")"
+WORK_D="$(mktemp -d "${TMPDIR:-/tmp}/syncd.XXXXXX")"
 
 run_in "$WORK_B" init
 run_in "$WORK_C" init
@@ -277,6 +350,7 @@ case "$MENTIONS_D" in
 esac
 
 run_in "$WORK_DIR" ticket move APP-3 ready --actor human:owner >/dev/null
+commit_tracker_workspace
 SYNCED_DISPATCH_JSON="$(run_in "$WORK_DIR" run dispatch APP-3 --agent builder-1 --actor human:owner --json)"
 SYNCED_RUN_ID="$(printf '%s' "$SYNCED_DISPATCH_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["payload"]["run_id"])')"
 run_in "$WORK_DIR" run launch "$SYNCED_RUN_ID" --actor human:owner >/dev/null
