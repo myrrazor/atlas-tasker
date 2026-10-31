@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The TUI watch loop follows SQLite `data_version` instead of index file mtimes. A commit that lands before the next tick is still loaded when a WAL spill moves the file stamp first and the commit itself does not move it again.
 - Installer: `VERSION=1.18.1` and `VERSION=v1.18.1` both download release tag `v1.18.1`. A missing tag or asset prints `atlas-tasker: release <tag> not found at <url>` and exits non-zero. Leaving `VERSION` unset still installs the latest release.
 - Docs: building from source requires Go 1.26.10 or newer.
 - atlastasker.com hero install note shows the full published release (v1.18.1), matching the pinned `go install` and the rest of the site. The site contract test requires that note to use the same `vMAJOR.MINOR.PATCH` pin, so a minor-only label cannot drift again.

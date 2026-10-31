@@ -105,8 +105,7 @@ func TestWatchRefreshesWriteBeforeFirstTick(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.close()
-	updated, _ := m.Update(m.refresh()())
-	m = updated.(model)
+	m = applyLoad(t, m, m.refresh()())
 	if m.detail.Ticket.Status != contracts.StatusReady {
 		t.Fatalf("initial ticket = %#v", m.detail.Ticket)
 	}
@@ -141,6 +140,115 @@ func TestWatchRefreshesWriteBeforeFirstTick(t *testing.T) {
 	}
 }
 
+// TestWatchSeesCommitWhenFileStampStaysPut forces the interleaving that drops
+// a write when the watch loop trusts index file mtimes:
+//
+//  1. The file token changes before a commit is visible (a WAL spill).
+//  2. The watch samples that token. The rows are still the old status.
+//  3. The commit then lands without moving the file token again.
+//
+// The tick after the commit must load the new status. Freezing
+// projectionStamp is the spill: the token moves once, then stays put.
+func TestWatchSeesCommitWhenFileStampStaysPut(t *testing.T) {
+	root := seededTUIWorkspace(t)
+	m, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.close()
+	m = applyLoad(t, m, m.refresh()())
+	if m.detail.Ticket.Status != contracts.StatusReady {
+		t.Fatalf("initial ticket = %#v", m.detail.Ticket)
+	}
+
+	prevStamp := projectionStamp
+	prevWatch := scheduleWatch
+	projectionStamp = func(string) string { return "spilled" }
+	scheduleWatch = func() tea.Cmd {
+		return func() tea.Msg { return nil }
+	}
+	t.Cleanup(func() {
+		projectionStamp = prevStamp
+		scheduleWatch = prevWatch
+	})
+
+	updated, cmd := m.Update(watchTickMsg{})
+	m = updated.(model)
+	if loaded, ok := takeWatchReload(t, cmd); ok {
+		m = applyLoad(t, m, loaded)
+	}
+	if m.detail.Ticket.Status != contracts.StatusReady {
+		t.Fatalf("stamp change before a commit rewrote the ticket: %#v", m.detail.Ticket)
+	}
+
+	external, err := newModel(root, contracts.Actor("human:owner"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer external.close()
+	if _, err := external.actions.MoveTicket(context.Background(), "APP-1", contracts.StatusBlocked, "human:owner", "external change"); err != nil {
+		t.Fatal(err)
+	}
+	if got := projectionStamp(root); got != "spilled" {
+		t.Fatalf("file stamp hook was not in effect: %s", got)
+	}
+
+	updated, cmd = m.Update(watchTickMsg{})
+	m = updated.(model)
+	loaded, ok := takeWatchReload(t, cmd)
+	if !ok {
+		t.Fatal("watch missed a commit whose file stamp did not move")
+	}
+	m = applyLoad(t, m, loaded)
+	if m.detail.Ticket.Status != contracts.StatusBlocked {
+		t.Fatalf("external status did not reach the TUI: %#v", m.detail.Ticket)
+	}
+}
+
+func applyLoad(t *testing.T, m model, msg tea.Msg) model {
+	t.Helper()
+	updated, cmd := m.Update(msg)
+	m = updated.(model)
+	for i := 0; cmd != nil && i < 5; i++ {
+		loaded, ok := cmd().(loadedMsg)
+		if !ok {
+			t.Fatal("load follow-up was not a snapshot")
+		}
+		if loaded.err != nil {
+			t.Fatal(loaded.err)
+		}
+		updated, cmd = m.Update(loaded)
+		m = updated.(model)
+	}
+	if cmd != nil {
+		t.Fatal("load follow-up did not settle")
+	}
+	if m.reloads != nil && m.reloads.active != 0 {
+		t.Fatalf("reload still in flight: %d", m.reloads.active)
+	}
+	return m
+}
+
+func takeWatchReload(t *testing.T, cmd tea.Cmd) (loadedMsg, bool) {
+	t.Helper()
+	if cmd == nil {
+		return loadedMsg{}, false
+	}
+	msg := cmd()
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return loadedMsg{}, false
+	}
+	if len(batch) == 0 || batch[0] == nil {
+		t.Fatal("watch batch missing reload")
+	}
+	loaded, ok := batch[0]().(loadedMsg)
+	if !ok || loaded.err != nil {
+		t.Fatalf("watch reload failed: %#v", loaded)
+	}
+	return loaded, true
+}
+
 func TestWatchCoalescesChangesDuringReload(t *testing.T) {
 	root := seededTUIWorkspace(t)
 	m, err := newModel(root, contracts.Actor("human:owner"))
@@ -148,9 +256,11 @@ func TestWatchCoalescesChangesDuringReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.close()
-	updated, _ := m.Update(m.refresh()())
-	m = updated.(model)
-	baseline := m.indexStamp
+	m = applyLoad(t, m, m.refresh()())
+	baseline := m.indexGen
+	if baseline == "" {
+		t.Fatal("initial load did not record a database generation")
+	}
 	// Hold a load's completion without making the test wait for a slow board.
 	held := m.trackReload(func() tea.Msg { return loadedMsg{status: "held"} })
 	generation := m.reloads.generation
@@ -158,12 +268,12 @@ func TestWatchCoalescesChangesDuringReload(t *testing.T) {
 		if _, err := m.actions.MoveTicket(context.Background(), "APP-1", status, "human:owner", "external change"); err != nil {
 			t.Fatal(err)
 		}
-		updated, _ = m.Update(watchTickMsg{})
+		updated, _ := m.Update(watchTickMsg{})
 		m = updated.(model)
 		if m.reloads.active != 1 || m.reloads.generation != generation {
 			t.Fatal("watch started an overlapping reload")
 		}
-		if m.indexStamp != baseline {
+		if m.indexGen != baseline {
 			t.Fatal("watch consumed a change before loading it")
 		}
 	}
@@ -188,7 +298,7 @@ func TestWatchCoalescesChangesDuringReload(t *testing.T) {
 
 func TestReloadRejectsOlderCompletionAndReleasesFailures(t *testing.T) {
 	root := t.TempDir()
-	m := model{root: root, indexStamp: projectionStamp(root), reloads: &reloadState{}}
+	m := model{root: root, reloads: &reloadState{}}
 	older := m.trackReload(func() tea.Msg { return loadedMsg{status: "older"} })
 	newer := m.trackReload(func() tea.Msg { return loadedMsg{status: "newer"} })
 	updated, _ := m.Update(newer())
